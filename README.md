@@ -35,20 +35,14 @@ Stream, discover, and enjoy your favorite tunes with a beautiful and responsive 
 ## 🚦 Getting Started
 
 1. **Clone the repository:**
-
 git clone https://github.com/KESPREME/music_streaming_app.git
 cd music_streaming_app
 
-
 2. **Install dependencies:**
-
 flutter pub get
 
-
 3. **Run the app:**
-
 flutter run
-
 
 > *Requires Flutter SDK 3.x. For setup instructions, see the [Flutter documentation](https://flutter.dev/docs/get-started/install).*
 
