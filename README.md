@@ -88,36 +88,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!  
-Feel free to [open an issue](https://github.com/KESPREME/music_streaming_app/issues) or submit a pull request.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙋‍♂️ Author
-
-- **Nipun Gupta**  
-  [GitHub](https://github.com/KESPREME) | [LinkedIn](https://www.linkedin.com/in/nipun-gupta-198b90175)
-
----
----
-
 <p align="center">
   Made with ❤️ by using Flutter <a href="https://github.com/KESPREME">KESPREME</a>
 </p>
-
-
-
-
-
-
