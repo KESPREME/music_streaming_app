@@ -1,404 +1,481 @@
-import 'package:connectivity_plus/connectivity_plus.dart'; // For bitrate dropdown
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
-import '../services/api_service.dart' show ApiService; // Keep for top artists for now
-// Import screen for Genre navigation
-// Assume GenreSongsScreen is in its own file now, or adjust import if needed
-// import 'genre_songs_screen.dart'; // If separated
-import '../widgets/track_tile.dart'; // Import the standard TrackTile
-import '../home_tab_content.dart'; // Import content for the first tab
+import '../services/api_service.dart' show ApiService;
+import '../widgets/track_tile.dart';
+import '../home_tab_content.dart'; // Assuming this will also be restyled or replaced
+
+// Placeholder for GenreSongsScreen - ensure it exists and is styled
+// For now, we'll assume it will be created/styled later.
+// import 'genre_songs_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Use listen: false if only using methods, true if UI depends on state changes here
     final musicProvider = Provider.of<MusicProvider>(context);
+    final theme = Theme.of(context);
 
     return DefaultTabController(
-      length: 2, // For "Home" and "Explore" tabs
+      length: 2, // "Home" and "Explore"
       child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
+        // backgroundColor is handled by theme
         appBar: AppBar(
-          backgroundColor: const Color(0xFF1D1D1D), // Darker AppBar
-          title: const Text(
-            'Music Streaming', // Or your app name
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          // backgroundColor and elevation are handled by theme's appBarTheme
+          title: Text(
+            'Discover', // More engaging title
+            style: theme.textTheme.headlineSmall,
           ),
           actions: [
-            // --- Recommendation: Remove this Bitrate Dropdown ---
-            // This is better placed in a dedicated settings screen.
-            FutureBuilder<List<ConnectivityResult>>(
-              future: Connectivity().checkConnectivity(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
-                  return const SizedBox(width: 48); // Placeholder space
-                }
-                final bool isWifi = snapshot.data!.contains(ConnectivityResult.wifi);
-                // Use watch here if you want the dropdown value to react immediately
-                // If only setting, listen: false in the main build method is fine.
-                final currentBitrate = isWifi ? musicProvider.wifiBitrate : musicProvider.cellularBitrate;
-
-                // Ensure the current value exists in the items
-                final items = isWifi
-                    ? [64, 128, 256] // Example bitrates for WiFi
-                    : [32, 64, 128]; // Example bitrates for Cellular
-                final validValue = items.contains(currentBitrate) ? currentBitrate : items.first;
-
-                return DropdownButton<int>(
-                  value: validValue,
-                  dropdownColor: const Color(0xFF282828), // Darker dropdown
-                  icon: const Icon(Icons.signal_cellular_alt, color: Colors.white70, size: 20), // Generic icon
-                  underline: const SizedBox(), // Remove default underline
-                  items: items.map((bitrate) {
-                    return DropdownMenuItem(
-                      value: bitrate,
-                      child: Text('$bitrate kbps', style: const TextStyle(color: Colors.white, fontSize: 14)),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      if (isWifi) {
-                        musicProvider.setWifiBitrate(value);
-                      } else {
-                        musicProvider.setCellularBitrate(value);
-                      }
-                    }
-                  },
+            // Consider moving bitrate settings to a dedicated settings screen for cleaner UI
+            // For now, let's style it minimally if kept.
+            _buildBitrateDropdown(context, musicProvider, theme),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: "Settings",
+              onPressed: () {
+                // TODO: Navigate to SettingsScreen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Settings button pressed (not implemented)")),
                 );
               },
             ),
-            const SizedBox(width: 16),
-            // --- End Recommendation ---
+            const SizedBox(width: 8),
           ],
-          bottom: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.deepPurpleAccent, // Match theme accent
-            indicatorWeight: 3.0,
-            tabs: [
-              Tab(text: 'Home'),
+          bottom: TabBar(
+            // Styling from theme.tabBarTheme
+            tabs: const [
+              Tab(text: 'Feed'), // Renamed for a more modern feel
               Tab(text: 'Explore'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            // Content for the first tab ("Home")
-            const HomeTabContent(),
-            // Content for the second tab ("Explore")
-            _buildExploreTab(context),
+            // "Feed" tab content (previously HomeTabContent)
+            // This likely needs significant redesign for a modern look.
+            // For now, let's assume HomeTabContent will be updated or replaced.
+            RefreshIndicator(
+              onRefresh: () async {
+                await musicProvider.fetchTracks(forceRefresh: true);
+                await musicProvider.fetchTrendingTracks(forceRefresh: true);
+                // Add other data fetching logic as needed for the Feed
+              },
+              backgroundColor: theme.colorScheme.surface,
+              color: theme.colorScheme.primary,
+              child: const HomeTabContent(), // This will be the main focus for "Feed"
+            ),
+            // "Explore" tab content
+            _buildExploreTab(context, theme),
           ],
         ),
       ),
     );
   }
 
-  // Builds the content for the "Explore" tab
-  Widget _buildExploreTab(BuildContext context) {
-    // No need for provider reference here if passing down
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(), // Nice scroll physics
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildBitrateDropdown(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
+    return FutureBuilder<List<ConnectivityResult>>(
+      future: Connectivity().checkConnectivity(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(width: 40); // Placeholder
+        }
+        final bool isWifi = snapshot.data!.contains(ConnectivityResult.wifi);
+        final currentBitrate = isWifi ? musicProvider.wifiBitrate : musicProvider.cellularBitrate;
+        final items = isWifi ? [64, 128, 256, 320] : [32, 64, 128]; // Added 320 for WiFi
+        final validValue = items.contains(currentBitrate) ? currentBitrate : items.first;
+
+        return Theme(
+          data: theme.copyWith(
+            canvasColor: theme.colorScheme.surface, // Dropdown background
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: validValue,
+              icon: Icon(Icons.speed_outlined, color: theme.iconTheme.color?.withOpacity(0.7), size: 20),
+              items: items.map((bitrate) {
+                return DropdownMenuItem(
+                  value: bitrate,
+                  child: Text(
+                    '$bitrate kbps',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface),
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  if (isWifi) {
+                    musicProvider.setWifiBitrate(value);
+                  } else {
+                    musicProvider.setCellularBitrate(value);
+                  }
+                }
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildExploreTab(BuildContext context, ThemeData theme) {
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    // Using RefreshIndicator for pull-to-refresh functionality
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Add logic to refresh data for the Explore tab
+        await musicProvider.fetchTracks(forceRefresh: true); // Example: refresh popular tracks
+        // await musicProvider.fetchTopArtists(); // If you have such a method
+        // await musicProvider.fetchGenres(); // If you have a method to fetch genres
+      },
+      backgroundColor: theme.colorScheme.surface,
+      color: theme.colorScheme.primary,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.symmetric(vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle("What's Hot", theme, onViewMore: () {
+              // TODO: Navigate to a "Trending Now" screen
+            }),
+            _buildHorizontalTrackCarousel(context, musicProvider.fetchTrendingTracks, theme, itemWidth: 160, imageHeight: 160),
+            const SizedBox(height: 24),
+            _buildSectionTitle("Browse Genres", theme, onViewMore: () {
+              // TODO: Navigate to a "All Genres" screen
+            }),
+            _buildGenresSection(context, musicProvider, theme),
+            const SizedBox(height: 24),
+            _buildSectionTitle("Top Artists", theme, onViewMore: () {
+              // TODO: Navigate to an "All Artists" screen
+            }),
+            _buildTopArtistsSection(context, theme),
+            const SizedBox(height: 20), // Bottom padding
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, ThemeData theme, {VoidCallback? onViewMore}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const SizedBox(height: 20),
-          // Pass provider down to avoid multiple lookups
-          _buildNewReleasesSection(context, Provider.of<MusicProvider>(context, listen: false)),
-          const SizedBox(height: 24),
-          _buildGenresSection(context, Provider.of<MusicProvider>(context, listen: false)),
-          const SizedBox(height: 24),
-          // Pass context needed for provider lookup if fixing ApiService call
-          _buildTopArtistsSection(context),
-          const SizedBox(height: 20), // Padding at the bottom
+          Text(
+            title,
+            style: theme.textTheme.titleLarge,
+          ),
+          if (onViewMore != null)
+            TextButton(
+              onPressed: onViewMore,
+              child: Text('View More', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.primary)),
+            ),
         ],
       ),
     );
   }
 
-  // Builds the "New Releases" horizontal list
-  Widget _buildNewReleasesSection(BuildContext context, MusicProvider musicProvider) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            'Popular Tracks', // Changed title slightly
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 190, // Increased height slightly for padding/text
-          child: FutureBuilder<List<Track>>(
-            // Fetch general tracks - assume fetchTracks gets popular/new
-            future: musicProvider.fetchTracks(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && musicProvider.tracks.isEmpty) {
-                // Show loader only if no cached data is available
-                return const Center(child: CircularProgressIndicator(color: Colors.deepPurpleAccent));
-              } else if (snapshot.hasError && musicProvider.tracks.isEmpty) {
-                // Show error only if no cached data
-                return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white70)));
-              }
+  Widget _buildHorizontalTrackCarousel(
+    BuildContext context,
+    Future<List<Track>> Function({bool forceRefresh}) fetchFunction,
+    ThemeData theme, {
+    double itemWidth = 140,
+    double imageHeight = 140,
+  }) {
+    final musicProvider = Provider.of<MusicProvider>(context);
+    return SizedBox(
+      height: imageHeight + 70, // Image height + text space + padding
+      child: FutureBuilder<List<Track>>(
+        future: fetchFunction(forceRefresh: false), // Don't force refresh on every build
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && musicProvider.tracks.isEmpty) {
+            return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
+          }
+          if (snapshot.hasError && musicProvider.tracks.isEmpty) {
+            return Center(child: Text('Error: ${snapshot.error}', style: theme.textTheme.bodyMedium));
+          }
 
-              // Use provider's data if available (handles cache display while refreshing)
-              final tracks = musicProvider.tracks;
+          // Use provider's data which might be cached or from snapshot
+          final tracks = snapshot.data ?? (fetchFunction == musicProvider.fetchTracks ? musicProvider.tracks : musicProvider.trendingTracks);
 
-              if (tracks.isEmpty) {
-                return const Center(child: Text('No popular tracks found.', style: TextStyle(color: Colors.white70)));
-              }
 
-              // Use ListView.separated for spacing
-              return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0), // Add padding
-                scrollDirection: Axis.horizontal,
-                itemCount: tracks.length,
-                separatorBuilder: (context, index) => const SizedBox(width: 12), // Spacing between items
-                itemBuilder: (context, index) {
-                  final track = tracks[index];
-                  final isPlaying = musicProvider.currentTrack?.id == track.id && musicProvider.isPlaying;
-                  // Use the standard TrackTile inside a SizedBox for layout control
-                  return SizedBox(
-                      width: 130, // Width for horizontal tile layout
-                      child: Column( // Column for image + text below
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Use AspectRatio for consistent image size
-                          AspectRatio(
-                            aspectRatio: 1.0, // Square image
-                            child: TrackTile( // Call standard TrackTile
-                              track: track,
-                              isPlaying: isPlaying,
-                              // Use default onTap (playTrack)
-                            ),
-                          ),
-                          // Removed the text part from here, as TrackTile now handles title/subtitle
-                        ],
-                      )
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
+          if (tracks.isEmpty) {
+            return Center(child: Text('Nothing to show here.', style: theme.textTheme.bodyMedium));
+          }
 
-  // Builds the Genres grid
-  Widget _buildGenresSection(BuildContext context, MusicProvider musicProvider) {
-    // Consider fetching genres dynamically if they change
-    final genres = [
-      {'name': 'Pop', 'color': Colors.pinkAccent},
-      {'name': 'Rock', 'color': Colors.lightBlueAccent},
-      {'name': 'Hip-Hop', 'color': Colors.tealAccent},
-      {'name': 'Jazz', 'color': Colors.orangeAccent},
-      {'name': 'Classical', 'color': Colors.deepPurpleAccent},
-      {'name': 'Electronic', 'color': Colors.cyanAccent},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            'Explore Genres',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: GridView.builder(
-            shrinkWrap: true, // Important inside SingleChildScrollView
-            physics: const NeverScrollableScrollPhysics(), // Disable GridView's own scrolling
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2, // Two columns
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 16 / 7, // Adjust aspect ratio for desired height
-            ),
-            itemCount: genres.length,
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            scrollDirection: Axis.horizontal,
+            itemCount: tracks.length,
             itemBuilder: (context, index) {
-              final genre = genres[index];
-              final genreName = genre['name'] as String;
-              final genreColor = genre['color'] as Color;
-              return GestureDetector(
-                onTap: () async {
-                  // Fetch tracks for the genre first
-                  await musicProvider.fetchGenreTracks(genreName);
-                  // Then navigate to the screen which will display musicProvider.genreTracks
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      // Ensure GenreSongsScreen exists and takes genre name
-                      builder: (context) => GenreSongsScreen(genre: genreName),
-                    ),
-                  );
+              final track = tracks[index];
+              return InkWell(
+                onTap: () {
+                  musicProvider.playTrack(track, playlistTracks: tracks);
                 },
+                borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  decoration: BoxDecoration(
-                    color: genreColor,
-                    borderRadius: BorderRadius.circular(8), // Slightly rounded corners
-                    gradient: LinearGradient( // Add subtle gradient
-                      colors: [genreColor.withOpacity(0.7), genreColor],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      genreName,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 2, color: Colors.black45)]),
-                    ),
+                  width: itemWidth,
+                  margin: const EdgeInsets.only(right: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12.0),
+                        child: CachedNetworkImage(
+                          imageUrl: track.albumArtUrl,
+                          height: imageHeight,
+                          width: itemWidth,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            height: imageHeight,
+                            width: itemWidth,
+                            color: theme.colorScheme.surfaceVariant,
+                            child: Center(child: Icon(Icons.music_note, color: theme.colorScheme.onSurfaceVariant, size: 40)),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            height: imageHeight,
+                            width: itemWidth,
+                            color: theme.colorScheme.surfaceVariant,
+                            child: Center(child: Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant, size: 40)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        track.trackName,
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        track.artistName,
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               );
             },
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 
-  // Builds the Top Artists horizontal list
-  Widget _buildTopArtistsSection(BuildContext context) {
-    // --- Recommendation: Fix direct ApiService call ---
-    // Ideally, MusicProvider should have a method `fetchTopArtists`
-    // that internally calls `_apiService.fetchTopArtists()`.
-    // For now, leaving the direct call but it's not best practice.
-    final apiService = ApiService(); // Creates a new instance - not ideal
+  Widget _buildGenresSection(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
+    final genres = [
+      {'name': 'Pop', 'color': theme.colorScheme.primary.withOpacity(0.8), 'icon': Icons.music_note},
+      {'name': 'Rock', 'color': theme.colorScheme.secondary.withOpacity(0.8), 'icon': Icons.electric_guitar},
+      {'name': 'Hip-Hop', 'color': Colors.orangeAccent.withOpacity(0.8), 'icon': Icons.mic_external_on},
+      {'name': 'Electronic', 'color': Colors.cyanAccent.withOpacity(0.8), 'icon': Icons.headphones},
+      {'name': 'Jazz', 'color': Colors.blueAccent.withOpacity(0.8), 'icon': Icons.speaker},
+      {'name': 'Classical', 'color': Colors.purpleAccent.withOpacity(0.8), 'icon': Icons.piano},
+    ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            'Top Artists',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-          ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 16 / 6, // Adjusted for better look
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 150, // Height for avatar + text
-          child: FutureBuilder<List<Map<String, String>>>(
-            future: apiService.fetchTopArtists(), // Direct call
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(color: Colors.deepPurpleAccent));
-              } else if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white70)));
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text('No top artists found.', style: TextStyle(color: Colors.white70)));
+        itemCount: genres.length,
+        itemBuilder: (context, index) {
+          final genre = genres[index];
+          final genreName = genre['name'] as String;
+          final genreColor = genre['color'] as Color;
+          final genreIcon = genre['icon'] as IconData?;
+
+          return InkWell(
+            onTap: () async {
+              await musicProvider.fetchGenreTracks(genreName);
+              if (context.mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GenreSongsScreen(genre: genreName),
+                  ),
+                );
               }
-
-              final artists = snapshot.data!;
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0), // Add padding
-                scrollDirection: Axis.horizontal,
-                itemCount: artists.length,
-                itemBuilder: (context, index) {
-                  final artist = artists[index];
-                  final imageUrl = artist['image'] ?? ''; // Handle potential null
-                  final artistName = artist['name'] ?? 'Unknown Artist'; // Handle potential null
-
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 16.0), // Spacing between artists
-                    child: GestureDetector(
-                      onTap: () {
-                        // TODO: Navigate to Artist Detail Screen
-                        print("Tapped Artist: $artistName");
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min, // Fit content
-                        children: [
-                          CircleAvatar(
-                            radius: 50, // Size of the avatar
-                            backgroundColor: Colors.grey[800], // Background if image fails
-                            backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
-                            child: imageUrl.isEmpty ? const Icon(Icons.person, size: 40, color: Colors.white70) : null, // Placeholder icon
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: 100, // Limit text width
-                            child: Text(
-                              artistName,
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [genreColor.withOpacity(0.7), genreColor],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  children: [
+                    if (genreIcon != null)
+                      Icon(genreIcon, color: Colors.white.withOpacity(0.9), size: 24),
+                    if (genreIcon != null)
+                      const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        genreName,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
-// Private _buildTrackTile helper is REMOVED
+  Widget _buildTopArtistsSection(BuildContext context, ThemeData theme) {
+    final apiService = ApiService(); // Consider injecting via Provider or constructor
+
+    return SizedBox(
+      height: 170, // Avatar + text + padding
+      child: FutureBuilder<List<Map<String, String>>>(
+        future: apiService.fetchTopArtists(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}', style: theme.textTheme.bodyMedium));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(child: Text('No top artists found.', style: theme.textTheme.bodyMedium));
+          }
+
+          final artists = snapshot.data!;
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            scrollDirection: Axis.horizontal,
+            itemCount: artists.length,
+            itemBuilder: (context, index) {
+              final artist = artists[index];
+              final imageUrl = artist['image'] ?? '';
+              final artistName = artist['name'] ?? 'Unknown Artist';
+
+              return InkWell(
+                onTap: () {
+                  // TODO: Navigate to Artist Detail Screen
+                  // Example: Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artistName: artistName)));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Tapped Artist: $artistName (not implemented)")),
+                  );
+                },
+                borderRadius: BorderRadius.circular(65), // Half of width + padding
+                child: Container(
+                  width: 110, // Fixed width for consistent layout
+                  margin: const EdgeInsets.only(right: 16.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: theme.colorScheme.surfaceVariant,
+                        child: ClipOval(
+                          child: CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.cover,
+                            width: 100,
+                            height: 100,
+                            placeholder: (context, url) => Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
+                            errorWidget: (context, url, error) => Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        artistName,
+                        style: theme.textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
 }
 
-
-// --- GenreSongsScreen Widget ---
-// Keep this separate or move to its own file (e.g., lib/screens/genre_songs_screen.dart)
+// --- GenreSongsScreen Widget (Placeholder) ---
+// This should be in its own file and styled according to the new theme.
 class GenreSongsScreen extends StatelessWidget {
   final String genre;
-
   const GenreSongsScreen({required this.genre, super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Use Consumer to listen for changes in genreTracks
-    return Consumer<MusicProvider>(
-        builder: (context, musicProvider, child) {
-          final genreTracks = musicProvider.genreTracks;
+    final musicProvider = Provider.of<MusicProvider>(context);
+    final theme = Theme.of(context);
+    // Ensure fetchGenreTracks was called before navigating here.
+    // Data is expected to be in musicProvider.genreTracks
 
-          return Scaffold(
-            backgroundColor: const Color(0xFF121212),
-            appBar: AppBar(
-              backgroundColor: const Color(0xFF1D1D1D),
-              title: Text(
-                genre, // Just show genre name
-                style: const TextStyle(color: Colors.white),
-              ),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.white), // Use iOS style back arrow
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            body: genreTracks.isEmpty
-            // Check if loading or truly empty
-                ? musicProvider.errorMessage != null && musicProvider.errorMessage!.contains(genre) // Check if error relates to this genre fetch
-                ? Center(child: Text('Error loading tracks for $genre', style: const TextStyle(color: Colors.redAccent)))
-                : const Center(child: Text('No songs found for this genre.', style: TextStyle(color: Colors.white70)))
-                : ListView.builder(
-              itemCount: genreTracks.length,
-              itemBuilder: (context, index) {
-                final track = genreTracks[index];
-                final isPlaying = musicProvider.currentTrack?.id == track.id && musicProvider.isPlaying;
-                // Use the standard TrackTile
-                return TrackTile(
-                  track: track,
-                  isPlaying: isPlaying,
-                );
-              },
-            ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(genre, style: theme.textTheme.headlineSmall),
+        // Back button is added automatically by Navigator
+      ),
+      body: Consumer<MusicProvider>(
+        builder: (context, provider, child) {
+          if (provider.genreTracks.isEmpty) {
+            // Could be loading, error, or truly empty. Provider should have flags for this.
+            // For now, a simple check.
+            if (provider.errorMessage != null && provider.errorMessage!.contains(genre)) {
+               return Center(child: Text('Error loading tracks for $genre.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)));
+            }
+            return Center(child: Text('No songs found for $genre.', style: theme.textTheme.bodyMedium));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            itemCount: provider.genreTracks.length,
+            itemBuilder: (context, index) {
+              final track = provider.genreTracks[index];
+              final isPlaying = provider.currentTrack?.id == track.id && provider.isPlaying;
+              return TrackTile(
+                track: track,
+                isPlaying: isPlaying,
+                // onTap will be handled by TrackTile's default or can be overridden if needed
+              );
+            },
           );
-        }
+        },
+      ),
     );
   }
 }

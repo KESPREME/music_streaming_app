@@ -1,180 +1,167 @@
-// lib/widgets/player_controls.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 
 class PlayerControls extends StatelessWidget {
-  final bool showLabels;
-  final bool compact;
+  final bool showLabels; // Keep for potential future use, but modern designs often hide them
+  final bool compact;    // To differentiate between full player and mini player controls if needed
+  final double iconSize;
+  final double mainIconSize;
 
   const PlayerControls({
     Key? key,
     this.showLabels = false,
     this.compact = false,
+    this.iconSize = 28.0,       // Default icon size
+    this.mainIconSize = 40.0, // Default for play/pause
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
-    final isPlaying = musicProvider.isPlaying;
-    final shuffleEnabled = musicProvider.shuffleEnabled;
-    final repeatMode = musicProvider.repeatMode;
+    final musicProvider = Provider.of<MusicProvider>(context); // Listen to changes for UI updates
+    final theme = Theme.of(context);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (!compact)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildShuffleButton(context, shuffleEnabled),
-              _buildRepeatButton(context, repeatMode),
-            ],
-          ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (!compact) _buildPreviousButton(context),
-            const SizedBox(width: 16),
-            _buildPlayPauseButton(context, isPlaying),
-            const SizedBox(width: 16),
-            if (!compact) _buildNextButton(context),
-          ],
-        ),
-      ],
-    );
-  }
+    final Color activeColor = theme.colorScheme.primary;
+    final Color inactiveColor = theme.iconTheme.color?.withOpacity(0.7) ?? theme.colorScheme.onSurface.withOpacity(0.7);
 
-  Widget _buildShuffleButton(BuildContext context, bool shuffleEnabled) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(
-            Icons.shuffle,
-            color: shuffleEnabled ? Colors.deepPurple : Colors.white70,
-            size: 24,
-          ),
-          onPressed: () {
-            final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-            musicProvider.toggleShuffle();
-          },
-        ),
-        if (showLabels)
-          Text(
-            'Shuffle',
-            style: TextStyle(
-              color: shuffleEnabled ? Colors.deepPurple : Colors.white70,
-              fontSize: 12,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 16.0, vertical: compact ? 8.0 : 12.0),
+      child: Row(
+        mainAxisAlignment: compact ? MainAxisAlignment.end : MainAxisAlignment.spaceAround,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (!compact)
+            _buildIconButton(
+              context: context,
+              theme: theme,
+              icon: Icons.shuffle_rounded,
+              label: 'Shuffle',
+              isActive: musicProvider.shuffleEnabled,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+              onPressed: musicProvider.toggleShuffle,
+              iconSize: iconSize * 0.85, // Slightly smaller for shuffle/repeat
             ),
+
+          if (!compact) Spacer(flex: 1),
+
+          _buildIconButton(
+            context: context,
+            theme: theme,
+            icon: Icons.skip_previous_rounded,
+            label: 'Previous',
+            onPressed: musicProvider.skipToPrevious,
+            iconSize: iconSize,
+            inactiveColor: inactiveColor,
           ),
-      ],
+
+          Padding( // Add padding around the main play/pause button
+            padding: EdgeInsets.symmetric(horizontal: compact ? 8.0 : 16.0),
+            child: _buildPlayPauseButton(context, musicProvider, theme, activeColor),
+          ),
+
+          _buildIconButton(
+            context: context,
+            theme: theme,
+            icon: Icons.skip_next_rounded,
+            label: 'Next',
+            onPressed: musicProvider.skipToNext,
+            iconSize: iconSize,
+            inactiveColor: inactiveColor,
+          ),
+
+          if (!compact) Spacer(flex: 1),
+
+          if (!compact)
+            _buildIconButton(
+              context: context,
+              theme: theme,
+              icon: musicProvider.repeatMode == RepeatMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+              label: 'Repeat',
+              isActive: musicProvider.repeatMode != RepeatMode.off,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+              onPressed: musicProvider.cycleRepeatMode,
+              iconSize: iconSize * 0.85, // Slightly smaller for shuffle/repeat
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildRepeatButton(BuildContext context, RepeatMode repeatMode) {
-    IconData icon;
-    String label;
-    Color color;
+  Widget _buildIconButton({
+    required BuildContext context,
+    required ThemeData theme,
+    required IconData icon,
+    required String label,
+    bool isActive = false, // For icons like shuffle/repeat that have an active state
+    Color? activeColor,
+    Color? inactiveColor,
+    required VoidCallback onPressed,
+    double? iconSize,
+  }) {
+    final color = isActive ? (activeColor ?? theme.colorScheme.primary) : (inactiveColor ?? theme.iconTheme.color);
 
-    switch (repeatMode) {
-      case RepeatMode.off:
-        icon = Icons.repeat;
-        label = 'Repeat Off';
-        color = Colors.white70;
-        break;
-      case RepeatMode.all:
-        icon = Icons.repeat;
-        label = 'Repeat All';
-        color = Colors.deepPurple;
-        break;
-      case RepeatMode.one:
-        icon = Icons.repeat_one;
-        label = 'Repeat One';
-        color = Colors.deepPurple;
-        break;
+    if (showLabels) { // If labels are ever needed
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(icon, size: iconSize ?? this.iconSize),
+            color: color,
+            onPressed: onPressed,
+            tooltip: label,
+            padding: EdgeInsets.all(compact ? 8.0 : 12.0),
+            splashRadius: (iconSize ?? this.iconSize) + 8,
+          ),
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: color)),
+        ],
+      );
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(
-            icon,
-            color: color,
-            size: 24,
-          ),
-          onPressed: () {
-            final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-            musicProvider.cycleRepeatMode();
-          },
-        ),
-        if (showLabels)
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildPreviousButton(BuildContext context) {
     return IconButton(
-      icon: const Icon(
-        Icons.skip_previous,
-        color: Colors.white,
-        size: 36,
-      ),
-      onPressed: () {
-        final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-        musicProvider.skipToPrevious();
-      },
+      icon: Icon(icon, size: iconSize ?? this.iconSize),
+      color: color,
+      onPressed: onPressed,
+      tooltip: label,
+      padding: EdgeInsets.all(compact ? 8.0 : 12.0), // Adjust padding for touch target
+      splashRadius: (iconSize ?? this.iconSize) + 4, // Control splash radius
     );
   }
 
-  Widget _buildPlayPauseButton(BuildContext context, bool isPlaying) {
+  Widget _buildPlayPauseButton(BuildContext context, MusicProvider musicProvider, ThemeData theme, Color activeColor) {
     return Container(
-      width: compact ? 48 : 64,
-      height: compact ? 48 : 64,
       decoration: BoxDecoration(
-        color: Colors.deepPurple,
+        color: theme.colorScheme.primary, // Use primary color for background for emphasis
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withOpacity(0.3),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          )
+        ]
       ),
       child: IconButton(
         icon: Icon(
-          isPlaying ? Icons.pause : Icons.play_arrow,
-          color: Colors.white,
-          size: compact ? 24 : 36,
+          musicProvider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+          size: mainIconSize,
         ),
+        color: theme.colorScheme.onPrimary, // Ensure contrast with primary background
         onPressed: () {
-          final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-          if (isPlaying) {
+          if (musicProvider.isPlaying) {
             musicProvider.pauseTrack();
           } else {
             if (musicProvider.currentTrack != null) {
               musicProvider.resumeTrack();
             }
+            // Optionally, if currentTrack is null, could try to play the first from queue or a default list
           }
         },
+        tooltip: musicProvider.isPlaying ? 'Pause' : 'Play',
+        padding: EdgeInsets.all(compact ? 10.0 : 16.0), // Generous padding for main button
+        splashRadius: mainIconSize + 8,
       ),
-    );
-  }
-
-  Widget _buildNextButton(BuildContext context) {
-    return IconButton(
-      icon: const Icon(
-        Icons.skip_next,
-        color: Colors.white,
-        size: 36,
-      ),
-      onPressed: () {
-        final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-        musicProvider.skipToNext();
-      },
     );
   }
 }
