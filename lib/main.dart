@@ -133,8 +133,8 @@ class MyApp extends StatelessWidget {
           backgroundColor: AppColors.surface, // Use surface for a slightly elevated look
           selectedItemColor: AppColors.primary,
           unselectedItemColor: AppColors.onSurface.withOpacity(0.6),
-          selectedLabelStyle: googleFontsTextTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
-          unselectedLabelStyle: googleFontsTextTheme.labelSmall,
+          selectedLabelStyle: fallbackTextTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+          unselectedLabelStyle: fallbackTextTheme.labelSmall,
           type: BottomNavigationBarType.fixed,
           elevation: 8, // Add some elevation
         ),
@@ -147,8 +147,8 @@ class MyApp extends StatelessWidget {
         dialogTheme: DialogTheme(
           backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          titleTextStyle: googleFontsTextTheme.titleLarge,
-          contentTextStyle: googleFontsTextTheme.bodyMedium,
+          titleTextStyle: fallbackTextTheme.titleLarge,
+          contentTextStyle: fallbackTextTheme.bodyMedium,
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
@@ -156,19 +156,19 @@ class MyApp extends StatelessWidget {
             foregroundColor: AppColors.onPrimary,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            textStyle: googleFontsTextTheme.labelLarge,
+            textStyle: fallbackTextTheme.labelLarge,
           ),
         ),
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
             foregroundColor: AppColors.primary,
-            textStyle: googleFontsTextTheme.labelLarge,
+            textStyle: fallbackTextTheme.labelLarge,
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: AppColors.surface.withOpacity(0.5),
-          hintStyle: googleFontsTextTheme.bodyMedium?.copyWith(color: AppColors.onSurface.withOpacity(0.5)),
+          hintStyle: fallbackTextTheme.bodyMedium?.copyWith(color: AppColors.onSurface.withOpacity(0.5)),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
@@ -198,8 +198,8 @@ class MyApp extends StatelessWidget {
           indicator: const UnderlineTabIndicator(
             borderSide: BorderSide(color: AppColors.primary, width: 2.0),
           ),
-          labelStyle: googleFontsTextTheme.labelLarge,
-          unselectedLabelStyle: googleFontsTextTheme.labelLarge,
+          labelStyle: fallbackTextTheme.labelLarge,
+          unselectedLabelStyle: fallbackTextTheme.labelLarge,
         ),
       ),
       home: const MainScreen(),

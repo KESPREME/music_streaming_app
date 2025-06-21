@@ -247,8 +247,8 @@ class SocialBloc { // Temp placeholder
   void emit(SocialState state) {} // Placeholder emit
 // --- Commenting out BLoC and StreamSubscription for now to resolve package errors ---
 // --- The SocialScreen will be a simple placeholder until packages can be added. ---
-/*
-import 'dart:async';
+// The BLoC code below is commented out line-by-line.
+// import 'dart:async';
 // No longer needed here as Platform is only in _checkAndRequestPermissions
 // import 'dart:io';
 import 'package:flutter/material.dart';
@@ -484,7 +484,7 @@ class SocialBloc { // Temp placeholder
   Stream<SocialState> get stream => Stream.value(SocialState()); // Placeholder stream
   void emit(SocialState state) {} // Placeholder emit
 }
-*/
+// End of commented out BLoC section
 
 // --- Social Screen Widget (Simplified Placeholder) ---
 class SocialScreen extends StatefulWidget {
