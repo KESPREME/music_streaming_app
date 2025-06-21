@@ -1,4 +1,4 @@
-import 'package:equatable/equatable.dart';
+// import 'package:equatable/equatable.dart'; // Commented out
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum FriendRequestStatus {
@@ -7,7 +7,7 @@ enum FriendRequestStatus {
   declined,
 }
 
-class FriendRequestModel extends Equatable {
+class FriendRequestModel { // Removed "extends Equatable"
   final String id;
   final String senderId;
   final String receiverId;
@@ -22,8 +22,8 @@ class FriendRequestModel extends Equatable {
     required this.timestamp,
   });
 
-  @override
-  List<Object?> get props => [id, senderId, receiverId, status, timestamp];
+  // @override
+  // List<Object?> get props => [id, senderId, receiverId, status, timestamp]; // Commented out
 
   factory FriendRequestModel.fromMap(Map<String, dynamic> map, String documentId) {
     return FriendRequestModel(

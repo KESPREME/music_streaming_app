@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
 import '../models/album.dart';
-import '../models/track.dart';
+// import '../models/track.dart'; // Commented out: Track is used via TrackTile and Album model
 
 class AlbumScreen extends StatelessWidget {
   final String albumName;

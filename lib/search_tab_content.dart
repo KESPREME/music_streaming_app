@@ -4,125 +4,104 @@ import 'package:provider/provider.dart'; // Import Provider
 import '../models/track.dart';
 import '../providers/music_provider.dart'; // Import MusicProvider
 import '../services/api_service.dart'; // Keep ApiService for now
-import '../widgets/track_tile.dart'; // Import standard TrackTile
+import '../widgets/track_tile.dart';
 
 class SearchTabContent extends StatefulWidget {
-  const SearchTabContent({super.key});
+  final String searchQuery; // Accept search query as a parameter
+
+  const SearchTabContent({required this.searchQuery, super.key});
 
   @override
   State<SearchTabContent> createState() => _SearchTabContentState();
 }
 
 class _SearchTabContentState extends State<SearchTabContent> {
-  final TextEditingController _searchController = TextEditingController();
+  // Removed _searchController as search is now driven by widget.searchQuery
   List<Track> _searchResults = [];
   bool _isLoading = false;
   String? _errorMessage;
-  // Keep track of the last successful query for context if needed
-  String _lastQuery = '';
+  String _currentSearchQuery = ''; // To track the query this state is for
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _currentSearchQuery = widget.searchQuery;
+    if (_currentSearchQuery.isNotEmpty) {
+      _fetchResultsForQuery(_currentSearchQuery);
+    }
   }
 
-  // --- Recommendation: Move search logic to MusicProvider ---
-  // This keeps UI layer cleaner and centralizes data fetching.
-  // Provider could hold searchResults, searchLoading, searchError states.
-  Future<void> _searchTracks(String query) async {
-    final trimmedQuery = query.trim();
-    if (trimmedQuery.isEmpty) {
+  @override
+  void didUpdateWidget(SearchTabContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.searchQuery != oldWidget.searchQuery && widget.searchQuery.isNotEmpty) {
+      _currentSearchQuery = widget.searchQuery;
+      _fetchResultsForQuery(_currentSearchQuery);
+    } else if (widget.searchQuery.isEmpty && _searchResults.isNotEmpty) {
+      // Clear results if search query becomes empty
       setState(() {
         _searchResults = [];
         _errorMessage = null;
         _isLoading = false;
-        _lastQuery = '';
+        _currentSearchQuery = '';
       });
+    }
+  }
+
+  Future<void> _fetchResultsForQuery(String query) async {
+    if (query.trim().isEmpty) {
+       if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _errorMessage = null;
+          _isLoading = false;
+        });
+      }
       return;
     }
 
-    // Avoid searching again for the same query if already showing results
-    if (trimmedQuery == _lastQuery && _searchResults.isNotEmpty && !_isLoading) {
-      return;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
     }
-
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _lastQuery = trimmedQuery; // Store the query being searched
-    });
 
     try {
-      // Creates a new instance every time - see previous recommendation
-      final apiService = ApiService();
-      final results = await apiService.fetchTracksByQuery(trimmedQuery);
-      // Check if the current query is still the one we initiated the search for
-      if (_lastQuery == trimmedQuery) {
+      // Use Provider to get MusicProvider instance for API calls
+      final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+      // Assuming MusicProvider has a method that uses ApiService
+      // If not, ApiService instance needs to be accessible here.
+      // For now, let's assume MusicProvider handles this.
+      final results = await musicProvider.fetchTracksByQuery(query.trim());
+
+      if (mounted && query == _currentSearchQuery) { // Ensure results are for the current query
         setState(() {
           _searchResults = results;
           _isLoading = false;
         });
       }
     } catch (e) {
-      // Check if the current query is still the one that failed
-      if (_lastQuery == trimmedQuery) {
+      if (mounted && query == _currentSearchQuery) {
         setState(() {
           _errorMessage = 'Search failed: ${e.toString()}';
-          _searchResults = []; // Clear results on error
+          _searchResults = [];
           _isLoading = false;
         });
       }
-      print("Search error for '$trimmedQuery': $e"); // Log error
+      print("SearchTabContent error for '$query': $e");
     }
   }
-  // --- End Recommendation Comment ---
 
   @override
   Widget build(BuildContext context) {
+    // The main search TextField is now in SearchScreen's AppBar.
+    // This widget just displays results based on widget.searchQuery.
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0), // Adjust padding as TextField is removed
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Search input field
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search tracks, artists, albums...', // Broader hint text
-              hintStyle: TextStyle(color: Colors.grey[400]),
-              filled: true,
-              fillColor: Colors.grey[850],
-              prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.clear, color: Colors.white70),
-                tooltip: "Clear",
-                onPressed: () {
-                  _searchController.clear();
-                  // Clear results when manually cleared
-                  setState(() {
-                    _searchResults = [];
-                    _errorMessage = null;
-                    _isLoading = false;
-                    _lastQuery = '';
-                  });
-                },
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 14.0),
-            ),
-            style: const TextStyle(color: Colors.white),
-            textInputAction: TextInputAction.search,
-            onSubmitted: _searchTracks, // Call search on submit
-            // Optionally search as user types (debounced)
-            // onChanged: (value) { /* Implement debouncing logic here */ },
-          ),
-          const SizedBox(height: 20),
-
           // Search Results Area
           Expanded(
             child: _buildSearchResults(),

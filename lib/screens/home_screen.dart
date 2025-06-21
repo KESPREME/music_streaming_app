@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+// import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -228,24 +228,34 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12.0),
-                        child: CachedNetworkImage(
-                          imageUrl: track.albumArtUrl,
-                          height: imageHeight,
-                          width: itemWidth,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            height: imageHeight,
-                            width: itemWidth,
-                            color: theme.colorScheme.surfaceVariant,
-                            child: Center(child: Icon(Icons.music_note, color: theme.colorScheme.onSurfaceVariant, size: 40)),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            height: imageHeight,
-                            width: itemWidth,
-                            color: theme.colorScheme.surfaceVariant,
-                            child: Center(child: Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant, size: 40)),
-                          ),
-                        ),
+                        child: track.albumArtUrl.isNotEmpty
+                            ? Image.network( // Replaced CachedNetworkImage
+                                track.albumArtUrl,
+                                height: imageHeight,
+                                width: itemWidth,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  height: imageHeight,
+                                  width: itemWidth,
+                                  color: theme.colorScheme.surfaceVariant,
+                                  child: Center(child: Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant, size: 40)),
+                                ),
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    height: imageHeight,
+                                    width: itemWidth,
+                                    color: theme.colorScheme.surfaceVariant,
+                                    child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)),
+                                  );
+                                },
+                              )
+                            : Container( // Placeholder if no albumArtUrl
+                                height: imageHeight,
+                                width: itemWidth,
+                                color: theme.colorScheme.surfaceVariant,
+                                child: Center(child: Icon(Icons.music_note, color: theme.colorScheme.onSurfaceVariant, size: 40)),
+                              ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -274,7 +284,7 @@ class HomeScreen extends StatelessWidget {
   Widget _buildGenresSection(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
     final genres = [
       {'name': 'Pop', 'color': theme.colorScheme.primary.withOpacity(0.8), 'icon': Icons.music_note},
-      {'name': 'Rock', 'color': theme.colorScheme.secondary.withOpacity(0.8), 'icon': Icons.electric_guitar},
+      {'name': 'Rock', 'color': theme.colorScheme.secondary.withOpacity(0.8), 'icon': Icons.album }, // Replaced Icons.electric_guitar
       {'name': 'Hip-Hop', 'color': Colors.orangeAccent.withOpacity(0.8), 'icon': Icons.mic_external_on},
       {'name': 'Electronic', 'color': Colors.cyanAccent.withOpacity(0.8), 'icon': Icons.headphones},
       {'name': 'Jazz', 'color': Colors.blueAccent.withOpacity(0.8), 'icon': Icons.speaker},
@@ -402,14 +412,19 @@ class HomeScreen extends StatelessWidget {
                         radius: 50,
                         backgroundColor: theme.colorScheme.surfaceVariant,
                         child: ClipOval(
-                          child: CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            width: 100,
-                            height: 100,
-                            placeholder: (context, url) => Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
-                            errorWidget: (context, url, error) => Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
-                          ),
+                          child: imageUrl.isNotEmpty
+                            ? Image.network( // Replaced CachedNetworkImage
+                                imageUrl,
+                                fit: BoxFit.cover,
+                                width: 100,
+                                height: 100,
+                                errorBuilder: (context, error, stackTrace) => Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null));
+                                },
+                              )
+                            : Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ),
                       const SizedBox(height: 10),

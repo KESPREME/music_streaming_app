@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:equatable/equatable.dart';
+// import 'package:equatable/equatable.dart'; // Commented out
 
-class ChatMessageModel extends Equatable {
+class ChatMessageModel { // Removed "extends Equatable"
   final String id; // Message ID
   final String chatId; // ID of the chat room/conversation
   final String senderId;
@@ -20,8 +20,8 @@ class ChatMessageModel extends Equatable {
     this.isRead = false,
   });
 
-  @override
-  List<Object?> get props => [id, chatId, senderId, receiverId, text, timestamp, isRead];
+  // @override
+  // List<Object?> get props => [id, chatId, senderId, receiverId, text, timestamp, isRead]; // Commented out
 
   factory ChatMessageModel.fromMap(Map<String, dynamic> map, String documentId) {
     return ChatMessageModel(
@@ -68,7 +68,7 @@ class ChatMessageModel extends Equatable {
 }
 
 // Represents a chat room or conversation between two users
-class ChatRoomModel extends Equatable {
+class ChatRoomModel { // Removed "extends Equatable"
   final String id; // Chat room ID (e.g., combination of user IDs)
   final List<String> participantIds;
   final String lastMessage;
@@ -83,8 +83,8 @@ class ChatRoomModel extends Equatable {
     this.unreadCounts = const {},
   });
 
-  @override
-  List<Object?> get props => [id, participantIds, lastMessage, lastMessageTimestamp, unreadCounts];
+  // @override
+  // List<Object?> get props => [id, participantIds, lastMessage, lastMessageTimestamp, unreadCounts]; // Commented out
 
   factory ChatRoomModel.fromMap(Map<String, dynamic> map, String documentId) {
     return ChatRoomModel(
