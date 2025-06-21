@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart'; // For kDebugMode
 // import 'package:uuid/uuid.dart'; // Commented out - Uuid was only for Firestore IDs before
 import '../models/user_model.dart'; // Your UserModel
 
+// Moved FriendRequestAction enum to the top, after imports
+enum FriendRequestAction { sent, accepted, declined }
+
 // --- Mock classes for flutter_nearby_connections ---
 // These are simplified placeholders to allow the code to compile without the actual package.
 // The functionality will not work.
@@ -63,32 +66,23 @@ class NearbyService {
   final Nearby _nearby = Nearby();
   final String _serviceType = 'tune-link'; // Unique service type for your app
 
-  // User details for broadcasting (should be updated from Auth/MusicProvider)
   late UserModel _currentUser;
   String get currentUserId => _currentUser.id;
 
-  // Discovered devices: key is deviceId, value is UserModel
   final Map<String, UserModel> _discoveredUsers = {};
   final StreamController<List<UserModel>> _discoveredUsersController = StreamController.broadcast();
   Stream<List<UserModel>> get discoveredUsersStream => _discoveredUsersController.stream;
 
-  // Connected devices: key is deviceId
   final Map<String, ConnectionInfo> _connectedDevices = {};
   final StreamController<List<String>> _connectedDeviceIdsController = StreamController.broadcast();
   Stream<List<String>> get connectedDeviceIdsStream => _connectedDeviceIdsController.stream;
 
+  final Function(String deviceId, UserModel user)? onUserDiscovered;
+  final Function(String deviceId)? onUserLost;
+  final Function(String deviceId, String message)? onMessageReceived;
+  final Function(String deviceId, FriendRequestAction action)? onFriendRequestAction;
 
-  // Callbacks for UI updates
-  final Function(String deviceId, UserModel user)? onUserDiscovered; // User found via browsing
-  final Function(String deviceId)? onUserLost; // User no longer discoverable
-  final Function(String deviceId, String message)? onMessageReceived; // Generic message
-  final Function(String deviceId, FriendRequestAction action)? onFriendRequestAction; // Specific action
-
-
-NearbyService({this.onUserDiscovered, this.onUserLost, this.onMessageReceived, this.onFriendRequestAction});
-
-// Moved FriendRequestAction enum outside the class
-enum FriendRequestAction { sent, accepted, declined }
+  NearbyService({this.onUserDiscovered, this.onUserLost, this.onMessageReceived, this.onFriendRequestAction});
 
   Future<void> initialize(UserModel currentUser) async {
     _currentUser = currentUser;
@@ -109,8 +103,6 @@ enum FriendRequestAction { sent, accepted, declined }
             _connectedDevices[device.deviceId] = device;
              _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
             if (kDebugMode) print("Connected to: ${device.deviceId}");
-            // Optionally send current user data upon connection
-            // sendCurrentUserPayload(device.deviceId, _currentUser);
           }
         } else if (device.state == SessionState.disconnected) {
           if (_connectedDevices.containsKey(device.deviceId)) {
@@ -147,15 +139,14 @@ enum FriendRequestAction { sent, accepted, declined }
           case 'friendRequestDeclined':
              onFriendRequestAction?.call(data.deviceId, FriendRequestAction.declined);
              break;
-          // Add more cases for chat messages, etc.
           default:
-            onMessageReceived?.call(data.deviceId, data.message); // Generic message
+            onMessageReceived?.call(data.deviceId, data.message);
         }
       } catch (e) {
         if (kDebugMode) {
           print("Error decoding received data: $e");
         }
-        onMessageReceived?.call(data.deviceId, data.message); // Treat as generic if decode fails
+        onMessageReceived?.call(data.deviceId, data.message);
       }
     });
   }
@@ -163,14 +154,14 @@ enum FriendRequestAction { sent, accepted, declined }
   Future<bool> startAdvertising() async {
     try {
       await _nearby.startAdvertising(
-        _currentUser.name, // Advertise current user's name
-        Strategy.P2P_STAR, // Recommended strategy
+        _currentUser.name,
+        Strategy.P2P_STAR,
         serviceId: _serviceType,
         onConnectionInitiated: _onConnectionInitiated,
         onConnectionResult: (deviceId, status) {
           if (kDebugMode) print("Advertising Connection Result: $deviceId, Status: $status");
            if (status == Status.CONNECTED) {
-             sendCurrentUserPayload(deviceId, _currentUser); // Send user data after connection
+             sendCurrentUserPayload(deviceId, _currentUser);
            }
         },
         onDisconnected: (deviceId) {
@@ -190,14 +181,12 @@ enum FriendRequestAction { sent, accepted, declined }
   Future<bool> startBrowsing() async {
     try {
       await _nearby.startBrowsing(
-        _currentUser.name, // Your user's name (can be anything for browsing)
+        _currentUser.name,
         Strategy.P2P_STAR,
         serviceId: _serviceType,
         onServiceFound: (deviceId, name, serviceId) {
-          // This callback is for service discovery, not direct user data.
-          // Connection needs to be initiated to exchange user data.
           if (kDebugMode) print("Service found: $deviceId, Name: $name, ServiceId: $serviceId. Requesting connection...");
-          if (!_connectedDevices.containsKey(deviceId) && deviceId != _currentUser.id) { // Avoid connecting to self
+          if (!_connectedDevices.containsKey(deviceId) && deviceId != _currentUser.id) {
              _nearby.requestConnection(
               _currentUser.name,
               deviceId,
@@ -205,14 +194,14 @@ enum FriendRequestAction { sent, accepted, declined }
               onConnectionResult: (id, status) {
                 if (kDebugMode) print("Browsing Connection Result: $id, Status: $status");
                  if (status == Status.CONNECTED) {
-                    sendCurrentUserPayload(id, _currentUser); // Send own data after connecting
+                    sendCurrentUserPayload(id, _currentUser);
                  }
               },
               onDisconnected: (id) {
                 if (kDebugMode) print("Browsing Disconnected: $id");
                  _connectedDevices.remove(id);
                  _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
-                 _discoveredUsers.remove(id); // Also remove from discovered if disconnected
+                 _discoveredUsers.remove(id);
                  _discoveredUsersController.add(_discoveredUsers.values.toList());
                  onUserLost?.call(id);
               },
@@ -238,17 +227,12 @@ enum FriendRequestAction { sent, accepted, declined }
     if (kDebugMode) {
       print("Connection initiated with $deviceId, Name: ${connectionInfo.endpointName}, AuthToken: ${connectionInfo.authenticationToken}");
     }
-    // Automatically accept connections for simplicity in this example
-    // In a real app, you might want to show a confirmation dialog
     _nearby.acceptConnection(
       deviceId,
       onPayLoadRecieved: (endpointId, payload) async {
-        // This is where you'd handle direct payloads during connection if needed,
-        // but primary data exchange is handled by dataReceivedSubscription after connection.
         if (kDebugMode) print("Payload received during connection from $endpointId: ${payload.bytes}");
       },
       onPayloadTransferUpdate: (endpointId, payloadTransferUpdate) {
-        // Handle payload transfer updates (e.g., progress)
       },
     );
   }
@@ -267,7 +251,6 @@ enum FriendRequestAction { sent, accepted, declined }
     }
   }
 
-  // Specific payload sending methods
   Future<void> sendCurrentUserPayload(String deviceId, UserModel user) async {
     final payload = NearbyPayload(type: 'userData', data: user.toMap());
     await sendPayload(deviceId, payload);
@@ -281,23 +264,19 @@ enum FriendRequestAction { sent, accepted, declined }
      if (kDebugMode && _connectedDevices.isNotEmpty) print("Broadcasted current user data to all connected devices.");
   }
 
-  // Example: Send a friend request action
   Future<void> sendFriendRequestAction(String toDeviceId, FriendRequestAction action) async {
     String type;
     switch(action) {
       case FriendRequestAction.sent: type = 'friendRequestSent'; break;
       case FriendRequestAction.accepted: type = 'friendRequestAccepted'; break;
       case FriendRequestAction.declined: type = 'friendRequestDeclined'; break;
-      // Add a default case to satisfy the non-nullable assignment, though with an enum this should ideally not be hit.
       default:
         if (kDebugMode) print("Error: Unknown FriendRequestAction: $action");
         throw ArgumentError("Unknown FriendRequestAction: $action");
     }
-    // Data could include sender/receiver IDs if needed, or just the action type
     final payload = NearbyPayload(type: type, data: {'fromUserId': _currentUser.id});
     await sendPayload(toDeviceId, payload);
   }
-
 
   Future<void> stopAdvertising() async {
     await _nearby.stopAdvertising();
@@ -321,13 +300,12 @@ enum FriendRequestAction { sent, accepted, declined }
   Future<void> dispose() async {
     await _nearby.stopAdvertising();
     await _nearby.stopBrowsing();
-    await _nearby.stopAllEndpoints(); // Disconnects from all connected devices
+    await _nearby.stopAllEndpoints();
     _discoveredUsersController.close();
     _connectedDeviceIdsController.close();
     if (kDebugMode) print("NearbyService disposed");
   }
 
-  // Helper to get a copy of discovered users
   List<UserModel> getDiscoveredUsersList() {
     return List<UserModel>.from(_discoveredUsers.values);
   }
