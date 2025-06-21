@@ -288,6 +288,10 @@ enum FriendRequestAction { sent, accepted, declined }
       case FriendRequestAction.sent: type = 'friendRequestSent'; break;
       case FriendRequestAction.accepted: type = 'friendRequestAccepted'; break;
       case FriendRequestAction.declined: type = 'friendRequestDeclined'; break;
+      // Add a default case to satisfy the non-nullable assignment, though with an enum this should ideally not be hit.
+      default:
+        if (kDebugMode) print("Error: Unknown FriendRequestAction: $action");
+        throw ArgumentError("Unknown FriendRequestAction: $action");
     }
     // Data could include sender/receiver IDs if needed, or just the action type
     final payload = NearbyPayload(type: type, data: {'fromUserId': _currentUser.id});

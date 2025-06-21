@@ -81,8 +81,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     // and _buildArtistsTab will filter/fetch based on query.
     // MusicProvider might need more specific search methods like searchArtists(query), searchPlaylists(query)
     if (_tabController.index == 0) { // Tracks
-        // SearchTabContent might need to be passed the query or listen to a provider state
-        musicProvider.fetchTracksByQuery(query);
+        // SearchTabContent will use the new provider.searchTracks method internally via its searchQuery prop
+        // Triggering it here might be redundant if SearchTabContent handles it, but ensures data is fetched.
+        musicProvider.searchTracks(query);
     } else if (_tabController.index == 1) { // Artists
         // This was `musicProvider.fetchArtistTracks(query);` which fetches tracks BY an artist.
         // For a search screen, you'd typically search FOR artists.

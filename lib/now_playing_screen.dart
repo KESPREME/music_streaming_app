@@ -75,7 +75,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         currentTrack.albumArtUrl,
                         fit: BoxFit.cover,
                         frameBuilder: (BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
-                          final image = child; // child is the Image widget itself
+                          // final image = child; // child is the Image widget itself // Not needed directly
                           if (wasSynchronouslyLoaded || frame != null) {
                             return Container(
                               decoration: BoxDecoration(
@@ -95,7 +95,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             return Container(color: theme.colorScheme.surface); // Placeholder while loading
                           }
                         },
-                        errorBuilder: (context, url, error) => Container(color: theme.colorScheme.background), // Fallback on error
+                        errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.background), // Corrected parameters
                       )
                     : Container(color: theme.colorScheme.background), // Fallback if no URL
               ),
@@ -138,7 +138,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                         if (loadingProgress == null) return child;
                                         return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
                                       },
-                                      errorWidget: (context, url, error) => Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.broken_image, size: 80, color: theme.colorScheme.onSurfaceVariant))),
+                                      errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.broken_image, size: 80, color: theme.colorScheme.onSurfaceVariant))),
                                     )
                                   : Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.music_note, size: 80, color: theme.colorScheme.onSurfaceVariant))),
                             ),

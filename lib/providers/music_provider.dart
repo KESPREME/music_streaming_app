@@ -272,6 +272,31 @@ class MusicProvider with ChangeNotifier {
   // --- API Content Fetching ---
   Future<List<Track>> fetchTracks({bool forceRefresh = false}) async { const k = 'popular_music'; if (!forceRefresh && _cachedTracks.containsKey(k)) return _cachedTracks[k]!; if (_isOfflineMode) { _errorMessage = "Offline: No new tracks."; notifyListeners(); return _tracks; } try { _tracks = await _apiService.fetchTracks(); _cachedTracks[k] = _tracks; notifyListeners(); return _tracks; } catch (e) { _errorMessage = 'Failed to load tracks.'; _addToRetryQueue(_RetryOperation('Fetch tracks', () => fetchTracks(forceRefresh: true))); notifyListeners(); return _tracks; } }
   Future<List<Track>> fetchTrendingTracks({bool forceRefresh = false}) async { const k = 'trending_music'; if (!forceRefresh && _cachedTracks.containsKey(k)) { _fullTrendingTracks = _cachedTracks[k]!; _trendingTracks = _fullTrendingTracks.take(5).toList(); return _fullTrendingTracks;} if (_isOfflineMode) { _errorMessage = "Offline: No trending."; notifyListeners(); return _fullTrendingTracks; } try { _fullTrendingTracks = await _apiService.fetchTrendingTracks(); _cachedTracks[k] = _fullTrendingTracks; _trendingTracks = _fullTrendingTracks.take(5).toList(); notifyListeners(); return _fullTrendingTracks; } catch (e) { _errorMessage = 'Failed to load trending.'; _addToRetryQueue(_RetryOperation('Fetch trending', () => fetchTrendingTracks(forceRefresh: true))); notifyListeners(); return _fullTrendingTracks; } }
+
+  // Method for generic track search, used by SearchTabContent
+  Future<List<Track>> searchTracks(String query, {bool forceRefresh = false}) async {
+    // Note: Caching for generic search results is handled by ApiService if implemented there.
+    // This provider method primarily acts as a pass-through.
+    if (_isOfflineMode && !_networkService.isConnected) {
+      _errorMessage = "Offline: Cannot perform search.";
+      notifyListeners();
+      return []; // Return empty list in offline mode
+    }
+    try {
+      _clearError(); // Clear previous errors before a new search
+      final results = await _apiService.fetchTracksByQuery(query);
+      // Optionally, could update a specific part of the state for search results if needed elsewhere
+      // For now, SearchTabContent manages its own display of these results.
+      notifyListeners(); // Notify if any state like errorMessage was cleared
+      return results;
+    } catch (e) {
+      _errorMessage = 'Search failed for "$query": ${e.toString()}';
+      _addToRetryQueue(_RetryOperation('Search tracks: $query', () => searchTracks(query, forceRefresh: true)));
+      notifyListeners();
+      return []; // Return empty list on error
+    }
+  }
+
   Future<void> fetchArtistTracks(String artistName, {bool forceRefresh = false}) async { final k = 'artist_$artistName'; if (!forceRefresh && _cachedTracks.containsKey(k)) { _artistTracks = _cachedTracks[k]!; notifyListeners(); return; } if (_isOfflineMode) { _errorMessage = "Offline: No artist tracks."; notifyListeners(); return; } try { _artistTracks = await _apiService.fetchTracksByQuery('$artistName top tracks'); _cachedTracks[k] = _artistTracks; notifyListeners(); } catch (e) { _errorMessage = 'Failed for $artistName.'; _addToRetryQueue(_RetryOperation('Fetch artist: $artistName', () => fetchArtistTracks(artistName, forceRefresh: true))); notifyListeners(); } }
   Future<void> fetchGenreTracks(String genre, {bool forceRefresh = false}) async { final k = 'genre_$genre'; if (!forceRefresh && _cachedTracks.containsKey(k)) { _genreTracks = _cachedTracks[k]!; notifyListeners(); return; } if (_isOfflineMode) { _errorMessage = "Offline: No genre tracks."; notifyListeners(); return; } try { _genreTracks = await _apiService.fetchTracksByQuery('$genre music'); _cachedTracks[k] = _genreTracks; notifyListeners(); } catch (e) { _errorMessage = 'Failed for $genre.'; _addToRetryQueue(_RetryOperation('Fetch genre: $genre', () => fetchGenreTracks(genre, forceRefresh: true))); notifyListeners(); } }
 

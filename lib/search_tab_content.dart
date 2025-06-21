@@ -34,22 +34,28 @@ class _SearchTabContentState extends State<SearchTabContent> {
   @override
   void didUpdateWidget(SearchTabContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.searchQuery != oldWidget.searchQuery && widget.searchQuery.isNotEmpty) {
+    if (widget.searchQuery != oldWidget.searchQuery) { // Simplified condition
       _currentSearchQuery = widget.searchQuery;
-      _fetchResultsForQuery(_currentSearchQuery);
-    } else if (widget.searchQuery.isEmpty && _searchResults.isNotEmpty) {
-      // Clear results if search query becomes empty
-      setState(() {
-        _searchResults = [];
-        _errorMessage = null;
-        _isLoading = false;
-        _currentSearchQuery = '';
-      });
+      if (_currentSearchQuery.isNotEmpty) {
+        _fetchResultsForQuery(_currentSearchQuery);
+      } else {
+         // Clear results if search query becomes empty
+        setState(() {
+          _searchResults = [];
+          _errorMessage = null;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _fetchResultsForQuery(String query) async {
-    if (query.trim().isEmpty) {
+    // query is already trimmed by SearchScreen if it calls a provider method that trims.
+    // Or SearchScreen's _performSearch should trim before updating state that leads to this widget.
+    // For safety, we can trim here too.
+    final String trimmedQuery = query.trim();
+
+    if (trimmedQuery.isEmpty) {
        if (mounted) {
         setState(() {
           _searchResults = [];
@@ -64,32 +70,29 @@ class _SearchTabContentState extends State<SearchTabContent> {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
+        // _currentSearchQuery is already set in didUpdateWidget or initState
       });
     }
 
     try {
-      // Use Provider to get MusicProvider instance for API calls
       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-      // Assuming MusicProvider has a method that uses ApiService
-      // If not, ApiService instance needs to be accessible here.
-      // For now, let's assume MusicProvider handles this.
-      final results = await musicProvider.fetchTracksByQuery(query.trim());
+      final results = await musicProvider.searchTracks(trimmedQuery);
 
-      if (mounted && query == _currentSearchQuery) { // Ensure results are for the current query
+      if (mounted && trimmedQuery == _currentSearchQuery) {
         setState(() {
           _searchResults = results;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted && query == _currentSearchQuery) {
+      if (mounted && trimmedQuery == _currentSearchQuery) {
         setState(() {
           _errorMessage = 'Search failed: ${e.toString()}';
           _searchResults = [];
           _isLoading = false;
         });
       }
-      print("SearchTabContent error for '$query': $e");
+      print("SearchTabContent error for '$trimmedQuery': $e");
     }
   }
 
@@ -130,18 +133,17 @@ class _SearchTabContentState extends State<SearchTabContent> {
       );
     }
 
-    // Use _lastQuery to differentiate between initial state and no results found
-    if (_lastQuery.isEmpty && _searchResults.isEmpty) {
+    // Use _currentSearchQuery to differentiate between initial state and no results found
+    if (_currentSearchQuery.isEmpty && _searchResults.isEmpty) {
       return const Center(
         child: Text('Enter a search term to find music.', style: TextStyle(color: Colors.white70)),
       );
     }
 
-
-    if (_searchResults.isEmpty) {
+    if (_searchResults.isEmpty && _currentSearchQuery.isNotEmpty) { // Also check if a search was actually performed
       return Center(
         child: Text(
-          'No results found for "$_lastQuery"', // Show query in message
+          'No results found for "$_currentSearchQuery"', // Show query in message
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white70, fontSize: 15),
         ),
