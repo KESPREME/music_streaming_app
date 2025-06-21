@@ -1,5 +1,5 @@
 import 'dart:ui'; // For ImageFilter
-import 'package:cached_network_image/cached_network_image.dart';
+// import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
@@ -21,13 +21,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
+    // final screenWidth = MediaQuery.of(context).size.width; // Commented out: Unused
+    // final screenHeight = MediaQuery.of(context).size.height; // Commented out: Unused
 
     return Consumer<MusicProvider>(
       builder: (context, musicProvider, child) {
         final currentTrack = musicProvider.currentTrack ?? widget.track; // Fallback to initial track
-        final isPlaying = musicProvider.isPlaying;
+        // final isPlaying = musicProvider.isPlaying; // Commented out: Unused in this build method directly
         // shuffleEnabled and repeatMode are available in musicProvider if needed for UI indication
 
         return Scaffold(
@@ -71,27 +71,33 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               // Blurred Background Image (like Spotify)
               Positioned.fill(
                 child: currentTrack.albumArtUrl.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: currentTrack.albumArtUrl,
+                    ? Image.network(
+                        currentTrack.albumArtUrl,
                         fit: BoxFit.cover,
-                        imageBuilder: (context, imageProvider) => Container(
-                          decoration: BoxDecoration(
-                            image: DecorationImage(
-                              image: imageProvider,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-                            child: Container(
-                              decoration: BoxDecoration(color: Colors.black.withOpacity(0.4)), // Dark overlay
-                            ),
-                          ),
-                        ),
-                        placeholder: (context, url) => Container(color: theme.colorScheme.surface),
-                        errorWidget: (context, url, error) => Container(color: theme.colorScheme.surface),
+                        frameBuilder: (BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
+                          final image = child; // child is the Image widget itself
+                          if (wasSynchronouslyLoaded || frame != null) {
+                            return Container(
+                              decoration: BoxDecoration(
+                                image: DecorationImage(
+                                  image: NetworkImage(currentTrack.albumArtUrl), // Re-fetch for DecorationImage
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                                child: Container(
+                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.4)), // Dark overlay
+                                ),
+                              ),
+                            );
+                          } else {
+                            return Container(color: theme.colorScheme.surface); // Placeholder while loading
+                          }
+                        },
+                        errorBuilder: (context, url, error) => Container(color: theme.colorScheme.background), // Fallback on error
                       )
-                    : Container(color: theme.colorScheme.background), // Fallback background
+                    : Container(color: theme.colorScheme.background), // Fallback if no URL
               ),
               // Main Content
               Padding(
@@ -125,10 +131,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(16.0),
                               child: currentTrack.albumArtUrl.isNotEmpty
-                                  ? CachedNetworkImage(
-                                      imageUrl: currentTrack.albumArtUrl,
+                                  ? Image.network( // Replaced CachedNetworkImage
+                                      currentTrack.albumArtUrl,
                                       fit: BoxFit.cover,
-                                      placeholder: (context, url) => Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.music_note, size: 80, color: theme.colorScheme.onSurfaceVariant))),
+                                      loadingBuilder: (context, child, loadingProgress) {
+                                        if (loadingProgress == null) return child;
+                                        return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
+                                      },
                                       errorWidget: (context, url, error) => Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.broken_image, size: 80, color: theme.colorScheme.onSurfaceVariant))),
                                     )
                                   : Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.music_note, size: 80, color: theme.colorScheme.onSurfaceVariant))),

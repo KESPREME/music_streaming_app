@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Required for SystemUiOverlayStyle
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart'; // Import Google Fonts
+// import 'package:google_fonts/google_fonts.dart'; // Import Google Fonts - Commented out
 
 import 'providers/music_provider.dart';
 import 'screens/home_screen.dart';
@@ -54,27 +54,42 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final googleFontsTextTheme = GoogleFonts.robotoTextTheme(textTheme).copyWith(
-      headlineLarge: GoogleFonts.roboto(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.5),
-      headlineMedium: GoogleFonts.roboto(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.25),
-      headlineSmall: GoogleFonts.roboto(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.15),
-      titleLarge: GoogleFonts.roboto(fontSize: 20, fontWeight: FontWeight.w500, color: AppColors.onBackground),
-      titleMedium: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.15),
-      titleSmall: GoogleFonts.roboto(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.1),
-      bodyLarge: GoogleFonts.roboto(fontSize: 16, color: AppColors.onBackground.withOpacity(0.87), letterSpacing: 0.5),
-      bodyMedium: GoogleFonts.roboto(fontSize: 14, color: AppColors.onBackground.withOpacity(0.70), letterSpacing: 0.25),
-      bodySmall: GoogleFonts.roboto(fontSize: 12, color: AppColors.onBackground.withOpacity(0.60), letterSpacing: 0.4),
-      labelLarge: GoogleFonts.roboto(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 1.25),
-      labelMedium: GoogleFonts.roboto(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.onBackground.withOpacity(0.7)),
-      labelSmall: GoogleFonts.roboto(fontSize: 10, fontWeight: FontWeight.w400, color: AppColors.onBackground.withOpacity(0.6), letterSpacing: 1.5),
+    // final googleFontsTextTheme = GoogleFonts.robotoTextTheme(textTheme).copyWith(
+    //   headlineLarge: GoogleFonts.roboto(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.5),
+    //   headlineMedium: GoogleFonts.roboto(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.25),
+    //   headlineSmall: GoogleFonts.roboto(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.15),
+    //   titleLarge: GoogleFonts.roboto(fontSize: 20, fontWeight: FontWeight.w500, color: AppColors.onBackground),
+    //   titleMedium: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.15),
+    //   titleSmall: GoogleFonts.roboto(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.1),
+    //   bodyLarge: GoogleFonts.roboto(fontSize: 16, color: AppColors.onBackground.withOpacity(0.87), letterSpacing: 0.5),
+    //   bodyMedium: GoogleFonts.roboto(fontSize: 14, color: AppColors.onBackground.withOpacity(0.70), letterSpacing: 0.25),
+    //   bodySmall: GoogleFonts.roboto(fontSize: 12, color: AppColors.onBackground.withOpacity(0.60), letterSpacing: 0.4),
+    //   labelLarge: GoogleFonts.roboto(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 1.25),
+    //   labelMedium: GoogleFonts.roboto(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.onBackground.withOpacity(0.7)),
+    //   labelSmall: GoogleFonts.roboto(fontSize: 10, fontWeight: FontWeight.w400, color: AppColors.onBackground.withOpacity(0.6), letterSpacing: 1.5),
+    // );
+    final fallbackTextTheme = textTheme.copyWith( // Using fallback standard text theme
+      headlineLarge: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.5),
+      headlineMedium: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.25),
+      headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.15),
+      titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: AppColors.onBackground),
+      titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.15),
+      titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.1),
+      bodyLarge: TextStyle(fontSize: 16, color: AppColors.onBackground.withOpacity(0.87), letterSpacing: 0.5),
+      bodyMedium: TextStyle(fontSize: 14, color: AppColors.onBackground.withOpacity(0.70), letterSpacing: 0.25),
+      bodySmall: TextStyle(fontSize: 12, color: AppColors.onBackground.withOpacity(0.60), letterSpacing: 0.4),
+      labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 1.25),
+      labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.onBackground.withOpacity(0.7)),
+      labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w400, color: AppColors.onBackground.withOpacity(0.6), letterSpacing: 1.5),
     );
+
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true, // Enable Material 3 features
         brightness: Brightness.dark,
-        colorScheme: const ColorScheme(
+        colorScheme: ColorScheme( // Removed const
           brightness: Brightness.dark,
           primary: AppColors.primary,
           onPrimary: AppColors.onPrimary,
@@ -106,12 +121,12 @@ class MyApp extends StatelessWidget {
           surfaceTint: AppColors.primary, // Tint color for surfaces like AppBar
         ),
         scaffoldBackgroundColor: AppColors.background,
-        textTheme: googleFontsTextTheme,
+        textTheme: fallbackTextTheme, // Using fallback text theme
         appBarTheme: AppBarTheme(
           backgroundColor: AppColors.surface, // Use surface color for AppBar
           elevation: 0, // Flat AppBar
           iconTheme: IconThemeData(color: AppColors.onSurface.withOpacity(0.8)),
-          titleTextStyle: googleFontsTextTheme.headlineSmall?.copyWith(color: AppColors.onSurface),
+          titleTextStyle: fallbackTextTheme.headlineSmall?.copyWith(color: AppColors.onSurface),
           systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent),
         ),
         bottomNavigationBarTheme: BottomNavigationBarThemeData(

@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
+// import 'package:uuid/uuid.dart'; // Commented out
 import '../models/friend_listening.dart'; // Keep if still used for a different feature
 import '../models/user_model.dart';
 import '../models/friend_request_model.dart';
@@ -7,7 +7,7 @@ import '../models/chat_message_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final Uuid _uuid = Uuid();
+  // final Uuid _uuid = Uuid(); // Commented out - replaced with Firestore auto-ID for friend requests
 
   // Collection references
   final CollectionReference _usersCollection = FirebaseFirestore.instance.collection('users');
@@ -79,16 +79,18 @@ class FirestoreService {
       // If declined, allow sending a new one by creating a new request document.
     }
 
-    final requestId = _uuid.v4();
+    // final requestId = _uuid.v4(); // Using Firestore's auto-generated ID
+    final requestDocRef = _friendRequestsCollection.doc(); // Create a new doc ref for auto-ID
     final newRequest = FriendRequestModel(
-      id: requestId,
+      id: requestDocRef.id, // Use Firestore's auto-generated ID
       senderId: senderId,
       receiverId: receiverId,
       status: FriendRequestStatus.pending,
       timestamp: Timestamp.now(),
     );
     try {
-      await _friendRequestsCollection.doc(requestId).set(newRequest.toMap());
+      // await _friendRequestsCollection.doc(requestId).set(newRequest.toMap()); // Old way
+      await requestDocRef.set(newRequest.toMap()); // Set data using the new doc ref
     } catch (e) {
       print('Error sending friend request: $e');
       throw Exception('Failed to send friend request.');

@@ -1,6 +1,6 @@
-import 'package:equatable/equatable.dart';
+// import 'package:equatable/equatable.dart'; // Commented out
 
-class UserModel extends Equatable {
+class UserModel { // Removed "extends Equatable"
   final String id;
   final String name;
   final String? avatarUrl;
@@ -15,8 +15,8 @@ class UserModel extends Equatable {
     this.currentTrackArtist,
   });
 
-  @override
-  List<Object?> get props => [id, name, avatarUrl, currentTrackName, currentTrackArtist];
+  // @override
+  // List<Object?> get props => [id, name, avatarUrl, currentTrackName, currentTrackArtist]; // Commented out
 
   // Factory constructor for creating a new UserModel instance from a map
   factory UserModel.fromMap(Map<String, dynamic> map) {

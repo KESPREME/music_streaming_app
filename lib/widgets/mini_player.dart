@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+// import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
@@ -62,13 +62,16 @@ class MiniPlayer extends StatelessWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4.0),
                           child: currentTrack.albumArtUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: currentTrack.albumArtUrl,
+                              ? Image.network( // Replaced CachedNetworkImage
+                                  currentTrack.albumArtUrl,
                                   width: 48, // Standard size
                                   height: 48,
                                   fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(width: 48, height: 48, color: theme.colorScheme.surface, child: Icon(Icons.music_note, color: theme.colorScheme.onSurface.withOpacity(0.5))),
-                                  errorWidget: (context, url, error) => Container(width: 48, height: 48, color: theme.colorScheme.surface, child: Icon(Icons.broken_image, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                                  errorBuilder: (context, error, stackTrace) => Container(width: 48, height: 48, color: theme.colorScheme.surface, child: Icon(Icons.broken_image, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Container(width: 48, height: 48, color: theme.colorScheme.surface, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
+                                  },
                                 )
                               : Container(width: 48, height: 48, color: theme.colorScheme.surface, child: Icon(Icons.music_note, color: theme.colorScheme.onSurface.withOpacity(0.5))),
                         ),

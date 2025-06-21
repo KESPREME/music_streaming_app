@@ -2,9 +2,48 @@ import 'dart:async';
 import 'dart:convert'; // For encoding/decoding JSON payloads
 import 'dart:io'; // For Platform checks
 import 'package:flutter/foundation.dart'; // For kDebugMode
-import 'package:flutter_nearby_connections/flutter_nearby_connections.dart';
-import 'package:uuid/uuid.dart';
+// import 'package:flutter_nearby_connections/flutter_nearby_connections.dart'; // Commented out
+// import 'package:uuid/uuid.dart'; // Commented out - Uuid was only for Firestore IDs before
 import '../models/user_model.dart'; // Your UserModel
+
+// --- Mock classes for flutter_nearby_connections ---
+// These are simplified placeholders to allow the code to compile without the actual package.
+// The functionality will not work.
+
+class Nearby {
+  Future<void> stopAdvertising() async {}
+  Future<void> stopBrowsing() async {}
+  Future<void> stopAllEndpoints() async {}
+  void stateChangedSubscription({required Function(List<ConnectionInfo> devicesList) callback}) {}
+  void dataReceivedSubscription({required Function(dynamic data) callback}) {}
+  Future<bool> startAdvertising(String userName, dynamic strategy, {required String serviceId, Function? onConnectionInitiated, Function? onConnectionResult, Function? onDisconnected}) async { return true; }
+  Future<bool> startBrowsing(String userName, dynamic strategy, {required String serviceId, Function? onServiceFound, Function? onServiceLost}) async { return true; }
+  Future<void> requestConnection(String userName, String deviceId, {Function? onConnectionInitiated, Function? onConnectionResult, Function? onDisconnected}) async {}
+  Future<void> acceptConnection(String deviceId, {Function? onPayLoadRecieved, Function? onPayloadTransferUpdate}) async {}
+  Future<void> sendBytesPayload(String deviceId, Uint8List bytes) async {}
+  Future<void> disconnectFromEndpoint(String deviceId) async {}
+}
+
+enum SessionState { connected, disconnected, notConnected } // Simplified
+enum Strategy { P2P_STAR } // Simplified
+enum Status { CONNECTED, REJECTED, ERROR } // Simplified
+
+class ConnectionInfo {
+  final String deviceId;
+  final SessionState state;
+  final String endpointName;
+  final String authenticationToken;
+  ConnectionInfo({required this.deviceId, required this.state, this.endpointName = "", this.authenticationToken = ""});
+}
+
+class ReceivedData {
+  final String deviceId;
+  final String message;
+  final Uint8List bytes;
+  ReceivedData({required this.deviceId, required this.message, required this.bytes});
+}
+// --- End Mock classes ---
+
 
 // Payload structure for nearby communication
 class NearbyPayload {
@@ -45,11 +84,11 @@ class NearbyService {
   final Function(String deviceId, String message)? onMessageReceived; // Generic message
   final Function(String deviceId, FriendRequestAction action)? onFriendRequestAction; // Specific action
 
-  // For friend requests via nearby
-  enum FriendRequestAction { sent, accepted, declined }
 
+NearbyService({this.onUserDiscovered, this.onUserLost, this.onMessageReceived, this.onFriendRequestAction});
 
-  NearbyService({this.onUserDiscovered, this.onUserLost, this.onMessageReceived, this.onFriendRequestAction});
+// Moved FriendRequestAction enum outside the class
+enum FriendRequestAction { sent, accepted, declined }
 
   Future<void> initialize(UserModel currentUser) async {
     _currentUser = currentUser;

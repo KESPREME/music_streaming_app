@@ -82,9 +82,15 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     // MusicProvider might need more specific search methods like searchArtists(query), searchPlaylists(query)
     if (_tabController.index == 0) { // Tracks
         // SearchTabContent might need to be passed the query or listen to a provider state
-        musicProvider.fetchTracksByQuery(query); // Example, adapt as needed
+        musicProvider.fetchTracksByQuery(query);
     } else if (_tabController.index == 1) { // Artists
-        musicProvider.fetchArtistTracks(query); // This fetches tracks *by* an artist, might need a dedicated artist search
+        // This was `musicProvider.fetchArtistTracks(query);` which fetches tracks BY an artist.
+        // For a search screen, you'd typically search FOR artists.
+        // Assuming a new/different method in MusicProvider or ApiService is needed for "searching artists".
+        // For now, to fix the direct error, we'll keep it if it's intended to show top tracks of a *specific* artist search.
+        // If the intent is to search *for* artists, this needs a different backend call.
+        // Let's assume for now the current behavior of fetching tracks for a searched artist name is what's desired for this tab.
+        musicProvider.fetchArtistTracks(query);
     }
     // Add playlist search logic if needed
     print("Performing search for: $query on tab ${_tabController.index}");
@@ -193,7 +199,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         // This is a workaround. Ideally, the API returns a list of artists.
         final Map<String, List<Track>> tracksByArtist = {};
         for (var track in provider.artistTracks) {
-          tracksByAgent.putIfAbsent(track.artistName, () => []).add(track);
+          tracksByArtist.putIfAbsent(track.artistName, () => []).add(track);
         }
         final uniqueArtists = tracksByArtist.keys.toList();
 

@@ -1,5 +1,5 @@
-import 'dart:typed_data';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:typed_data'; // Keep, might be used for local artwork in future
+// import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -30,23 +30,26 @@ class TrackTile extends StatelessWidget {
     if (track.albumArtUrl.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(dense ? 4 : 6),
-        child: CachedNetworkImage(
-          imageUrl: track.albumArtUrl,
+        child: Image.network( // Replaced CachedNetworkImage
+          track.albumArtUrl,
           width: artworkSize,
           height: artworkSize,
           fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            width: artworkSize,
-            height: artworkSize,
-            color: theme.colorScheme.surfaceVariant,
-            child: Icon(Icons.music_note, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
-          ),
-          errorWidget: (context, url, error) => Container(
+          errorBuilder: (context, error, stackTrace) => Container(
             width: artworkSize,
             height: artworkSize,
             color: theme.colorScheme.surfaceVariant,
             child: Icon(Icons.broken_image, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
           ),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              width: artworkSize,
+              height: artworkSize,
+              color: theme.colorScheme.surfaceVariant,
+              child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null, strokeWidth: 2.0,)),
+            );
+          },
         ),
       );
     } else {
