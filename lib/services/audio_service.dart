@@ -75,7 +75,19 @@ class AudioService {
       _isLocalFile = false;
 
       // Create audio source from URL
-      final audioSource = AudioSource.uri(Uri.parse(url));
+      AudioSource audioSource;
+      if (url == _preloadedUrl && _preloadedSource != null) {
+        if (kDebugMode) print("AudioService: Using preloaded source for $url");
+        audioSource = _preloadedSource!;
+        _preloadedSource = null; // Consume the preloaded source
+        _preloadedUrl = null;
+      } else {
+        if (kDebugMode) print("AudioService: Creating new AudioSource.uri for $url. Preloaded URL was $_preloadedUrl");
+        // If a different track is played than preloaded, clear preloaded info
+        _preloadedSource = null;
+        _preloadedUrl = null;
+        audioSource = AudioSource.uri(Uri.parse(url));
+      }
 
       // Set the audio source and play
       await _audioPlayer.setAudioSource(audioSource);
@@ -235,6 +247,76 @@ class AudioService {
   }
 
   bool get _isPlaying => _audioPlayer.playing;
+
+  // --- Preloading ---
+  LockCachingAudioSource? _preloadedSource;
+  String? _preloadedUrl;
+
+  Future<void> preloadTrack(String url) async {
+    if (url == _preloadedUrl && _preloadedSource != null) {
+      if (kDebugMode) print("AudioService: Track $url already preloaded or being preloaded.");
+      return;
+    }
+    if (kDebugMode) print("AudioService: Preloading track $url");
+    _preloadedUrl = url;
+    try {
+      // Dispose previous preloaded source if any
+      // await _preloadedSource?.dispose(); // LockCachingAudioSource doesn't have dispose directly, it's managed by player
+
+      _preloadedSource = LockCachingAudioSource(Uri.parse(url));
+      // Pre-buffering happens implicitly when the source is set or by calling load.
+      // We don't want to play it, just have it ready.
+      // `just_audio` often starts buffering when setAudioSource is called.
+      // To ensure it buffers a decent amount, we can "prepare" it without playing.
+      // This is a bit of a conceptual step as just_audio handles much of this.
+      // We could potentially use a separate player instance for preloading if more control is needed.
+      // For now, just creating LockCachingAudioSource is the main step.
+      // If more aggressive pre-buffering is needed, one might call:
+      // await _audioPlayer.setAudioSource(_preloadedSource!);
+      // await _audioPlayer.load(); // This would start loading it into the main player
+      // await _audioPlayer.stop(); // And then stop it.
+      // This is complex if current track is playing.
+      // A simpler approach is to let LockCachingAudioSource handle its caching.
+      // The main benefit comes when this _preloadedSource is used in play() later.
+      if (kDebugMode) print("AudioService: Set up LockCachingAudioSource for $url");
+
+    } catch (e) {
+      if (kDebugMode) print("AudioService: Error preloading track $url: $e");
+      _preloadedUrl = null;
+      _preloadedSource = null;
+    }
+  }
+
+  Future<void> configureBufferSettings({
+    Duration? bufferDuration, // How much to buffer ahead
+    Duration? minBufferDuration, // How much to buffer before starting playback
+    Duration? maxBufferDuration, // Max buffer size
+    int? bufferSegmentSize, // Size of segments to download (bytes)
+    bool? preload, // Whether to preload data before playback starts
+  }) async {
+    try {
+      await _audioPlayer.setAudioLoadConfiguration(AudioLoadConfiguration(
+        androidLoadControl: AndroidLoadControl(
+          minBufferDur: minBufferDuration,
+          maxBufferDur: maxBufferDuration,
+          bufferForPlaybackDur: bufferDuration,
+          prioritizeTimeOverSizeThresholds: true, // Typically better for streaming
+        ),
+        darwinLoadControl: DarwinLoadControl(
+          preferredForwardBufferDuration: bufferDuration,
+          // Other Darwin specific settings can be explored if needed
+        ),
+        // bufferDuration: bufferDuration, // This is a more general one if not using platform specific
+      ));
+      if (kDebugMode) {
+        print("AudioService: Buffer settings configured - Buffer: $bufferDuration, Min: $minBufferDuration, Max: $maxBufferDuration");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("AudioService: Error configuring buffer settings: $e");
+      }
+    }
+  }
 
   void dispose() {
     _audioPlayer.dispose();

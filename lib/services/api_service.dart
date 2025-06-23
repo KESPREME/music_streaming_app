@@ -18,21 +18,51 @@ class ApiService {
   final YoutubeExplode _yt = YoutubeExplode();
   final NetworkService _networkService = NetworkService();
 
-  // Cache for audio stream URLs
+  // In-memory cache for lists (tracks, artists)
+  final Map<String, _CacheEntry> _inMemoryListCache = {};
+  static const int _maxInMemoryCacheEntries = 5; // Max number of list entries in memory
+  static const Duration _inMemoryCacheDuration = Duration(minutes: 5); // Short duration for in-memory
+
+  // Cache for audio stream URLs (remains specific for stream URLs)
   final Map<String, Map<String, dynamic>> _streamUrlCache = {};
 
   // Pending operations queue (Consider consolidating this with MusicProvider's retry queue)
   final List<_PendingOperation> _pendingOperations = [];
   bool _isProcessingQueue = false;
 
+  // --- In-Memory Cache Helpers ---
+  T? _getInMemoryCache<T>(String key) {
+    final entry = _inMemoryListCache[key];
+    if (entry != null && !entry.isExpired && entry.data is T) {
+      print("ApiService: Returning from in-memory cache for key $key");
+      return entry.data as T;
+    }
+    _inMemoryListCache.remove(key); // Remove if expired or type mismatch
+    return null;
+  }
+
+  void _setInMemoryCache<T>(String key, T data) {
+    if (_inMemoryListCache.length >= _maxInMemoryCacheEntries) {
+      // Simple FIFO eviction, could be LRU for more sophistication
+      _inMemoryListCache.remove(_inMemoryListCache.keys.first);
+    }
+    _inMemoryListCache[key] = _CacheEntry(data, _inMemoryCacheDuration);
+    print("ApiService: Set in-memory cache for key $key");
+  }
+
   // --- Track Fetching Methods ---
 
   Future<List<Track>> fetchTracks() async {
     const cacheKey = 'popular_music_tracks';
+    // Try in-memory cache first
+    final List<Track>? memoryCached = _getInMemoryCache<List<Track>>(cacheKey);
+    if (memoryCached != null) return memoryCached;
+
     try {
-      final cached = await _getCachedTracks(cacheKey);
+      final cached = await _getCachedTracks(cacheKey); // SharedPreferences cache
       if (cached != null) {
-        print("ApiService: Returning cached popular tracks.");
+        print("ApiService: Returning cached popular tracks from SharedPreferences.");
+        _setInMemoryCache(cacheKey, cached); // Populate in-memory cache
         return cached;
       }
       if (!_networkService.isConnected) throw Exception('No internet connection');
@@ -40,7 +70,8 @@ class ApiService {
       print("ApiService: Fetching popular tracks from YouTube search...");
       final results = await _yt.search.search('popular music'); // Simple query
       final tracks = _mapVideoResultsToTracks(results.take(15).toList()); // Take more for popular
-      await _cacheTracks(cacheKey, tracks, NetworkConfig.longCacheValidity);
+      await _cacheTracks(cacheKey, tracks, NetworkConfig.longCacheValidity); // Save to SharedPreferences
+      _setInMemoryCache(cacheKey, tracks); // Also save to in-memory cache
       print("ApiService: Fetched and cached ${tracks.length} popular tracks.");
       return tracks;
     } catch (e) {
@@ -57,10 +88,15 @@ class ApiService {
 
   Future<List<Track>> fetchTrendingTracks() async {
     const cacheKey = 'trending_music_tracks';
+    // Try in-memory cache first
+    final List<Track>? memoryCached = _getInMemoryCache<List<Track>>(cacheKey);
+    if (memoryCached != null) return memoryCached;
+
     try {
-      final cached = await _getCachedTracks(cacheKey);
+      final cached = await _getCachedTracks(cacheKey); // SharedPreferences cache
       if (cached != null) {
-        print("ApiService: Returning cached trending tracks.");
+        print("ApiService: Returning cached trending tracks from SharedPreferences.");
+        _setInMemoryCache(cacheKey, cached); // Populate in-memory cache
         return cached;
       }
       if (!_networkService.isConnected) throw Exception('No internet connection');
@@ -71,6 +107,7 @@ class ApiService {
       final results = await _yt.search.search('top new music videos this week');
       final tracks = _mapVideoResultsToTracks(results.take(20).toList()); // Take more for trending
       await _cacheTracks(cacheKey, tracks, NetworkConfig.shortCacheValidity); // Shorter cache for trending
+      _setInMemoryCache(cacheKey, tracks); // Also save to in-memory cache
       print("ApiService: Fetched and cached ${tracks.length} trending tracks.");
       return tracks;
     } catch (e) {
@@ -86,11 +123,16 @@ class ApiService {
   }
 
   Future<List<Track>> fetchTracksByQuery(String query) async {
-    final cacheKey = 'search_${query.hashCode}';
+    final cacheKey = 'search_${query.hashCode}'; // Using hashCode of query for key
+    // Try in-memory cache first
+    final List<Track>? memoryCached = _getInMemoryCache<List<Track>>(cacheKey);
+    if (memoryCached != null) return memoryCached;
+
     try {
-      final cached = await _getCachedTracks(cacheKey);
+      final cached = await _getCachedTracks(cacheKey); // SharedPreferences cache
       if (cached != null) {
-        print("ApiService: Returning cached search results for '$query'.");
+        print("ApiService: Returning cached search results for '$query' from SharedPreferences.");
+        _setInMemoryCache(cacheKey, cached); // Populate in-memory cache
         return cached;
       }
       if (!_networkService.isConnected) throw Exception('No internet connection');
@@ -104,6 +146,7 @@ class ApiService {
       final limitedTracks = tracks.take(20).toList();
 
       await _cacheTracks(cacheKey, limitedTracks, NetworkConfig.shortCacheValidity); // Use defined short validity
+      _setInMemoryCache(cacheKey, limitedTracks); // Also save to in-memory cache
       print("ApiService: Cached ${limitedTracks.length} search results for '$query'.");
       return limitedTracks;
     } catch (e) {
@@ -143,10 +186,15 @@ class ApiService {
 
   Future<List<Map<String, String>>> fetchTopArtists() async {
     const cacheKey = 'top_artists';
+    // Try in-memory cache first
+    final List<Map<String, String>>? memoryCached = _getInMemoryCache<List<Map<String, String>>>(cacheKey);
+    if (memoryCached != null) return memoryCached;
+
     try {
-      final cached = await _getCachedArtists(cacheKey);
+      final cached = await _getCachedArtists(cacheKey); // SharedPreferences cache
       if (cached != null) {
-        print("ApiService: Returning cached top artists.");
+        print("ApiService: Returning cached top artists from SharedPreferences.");
+        _setInMemoryCache(cacheKey, cached); // Populate in-memory cache
         return cached;
       }
       if (!_networkService.isConnected) throw Exception('No internet connection');
@@ -166,7 +214,8 @@ class ApiService {
         return {'name': entry.key, 'image': entry.value};
       }).toList();
 
-      await _cacheArtists(cacheKey, artists, NetworkConfig.longCacheValidity);
+      await _cacheArtists(cacheKey, artists, NetworkConfig.longCacheValidity); // Save to SharedPreferences
+      _setInMemoryCache(cacheKey, artists); // Also save to in-memory cache
       print("ApiService: Fetched and cached ${artists.length} top artists (simulated).");
       return artists;
     } catch (e) {
@@ -480,12 +529,23 @@ class ApiService {
   Future<void> _processOperationsQueue() async { if (_pendingOperations.isEmpty || _isProcessingQueue) return; _isProcessingQueue = true; print("API Service: Processing pending queue..."); while (_pendingOperations.isNotEmpty && _networkService.isConnected) { final op = _pendingOperations.removeAt(0); try { await op.execute(); } catch (e) { if (op.attempts < 2) { op.attempts++; _pendingOperations.add(op); } await Future.delayed(const Duration(seconds: 5)); } } _isProcessingQueue = false; print("API Service: Finished queue."); }
 
   // --- Cache Management & Dispose ---
-  Future<void> clearCache() async { try { final p=await SharedPreferences.getInstance(); final k=p.getKeys().where((k)=> k.startsWith('tracks_')||k.startsWith('artists_')||k.startsWith('all_tracks_cache')||k.startsWith('tracks_expiry_')||k.startsWith('artists_expiry_')).toList(); for(final key in k) await p.remove(key); _streamUrlCache.clear(); print("ApiService Cache Cleared."); } catch(e){ print('Error clearing ApiService cache: $e');}}
-  void dispose() { _yt.close(); _pendingOperations.clear(); print("ApiService disposed."); }
+  Future<void> clearCache() async { try { final p=await SharedPreferences.getInstance(); final k=p.getKeys().where((k)=> k.startsWith('tracks_')||k.startsWith('artists_')||k.startsWith('all_tracks_cache')||k.startsWith('tracks_expiry_')||k.startsWith('artists_expiry_')).toList(); for(final key in k) await p.remove(key); _streamUrlCache.clear(); _inMemoryListCache.clear(); print("ApiService Cache Cleared (SharedPreferences & In-Memory)."); } catch(e){ print('Error clearing ApiService cache: $e');}}
+  void dispose() { _yt.close(); _pendingOperations.clear(); _inMemoryListCache.clear(); print("ApiService disposed."); }
 }
 
 // Helper class for pending operations
 class _PendingOperation {
   final String description; final Future<dynamic> Function() execute; int attempts = 1;
   _PendingOperation(this.description, this.execute);
+}
+
+// Private helper class for in-memory cache entries
+class _CacheEntry<T> {
+  final T data;
+  final DateTime expiryTime;
+
+  _CacheEntry(this.data, Duration duration)
+      : expiryTime = DateTime.now().add(duration);
+
+  bool get isExpired => DateTime.now().isAfter(expiryTime);
 }
