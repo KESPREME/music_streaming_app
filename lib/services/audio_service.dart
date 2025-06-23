@@ -288,28 +288,33 @@ class AudioService {
   }
 
   Future<void> configureBufferSettings({
-    Duration? bufferDuration, // How much to buffer ahead
-    Duration? minBufferDuration, // How much to buffer before starting playback
-    Duration? maxBufferDuration, // Max buffer size
-    int? bufferSegmentSize, // Size of segments to download (bytes)
-    bool? preload, // Whether to preload data before playback starts
+    Duration? bufferDuration, // How much to buffer ahead (used for both playback and forward buffering)
+    Duration? minBufferDuration, // How much to buffer before starting playback (Android specific)
+    Duration? maxBufferDuration, // Max buffer size (Android specific)
+    // int? bufferSegmentSize, // Not directly used by AudioLoadConfiguration in this way
+    // bool? preload, // preload is part of setAudioSource, not AudioLoadConfiguration
   }) async {
     try {
+      // Default values if specific ones aren't provided, matching just_audio defaults or sensible values.
+      final effectiveMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
+      final effectiveMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 50000);
+      final effectiveBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
+      final effectivePreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
+
+
       await _audioPlayer.setAudioLoadConfiguration(AudioLoadConfiguration(
         androidLoadControl: AndroidLoadControl(
-          minBufferDur: minBufferDuration,
-          maxBufferDur: maxBufferDuration,
-          bufferForPlaybackDur: bufferDuration,
-          prioritizeTimeOverSizeThresholds: true, // Typically better for streaming
+          minBufferDur: effectiveMinBufferDur,
+          maxBufferDur: effectiveMaxBufferDur,
+          bufferForPlaybackDur: effectiveBufferForPlaybackDur,
+          prioritizeTimeOverSizeThresholds: true,
         ),
         darwinLoadControl: DarwinLoadControl(
-          preferredForwardBufferDuration: bufferDuration,
-          // Other Darwin specific settings can be explored if needed
+          preferredForwardBufferDuration: effectivePreferredForwardBufferDur,
         ),
-        // bufferDuration: bufferDuration, // This is a more general one if not using platform specific
       ));
       if (kDebugMode) {
-        print("AudioService: Buffer settings configured - Buffer: $bufferDuration, Min: $minBufferDuration, Max: $maxBufferDuration");
+        print("AudioService: Buffer settings configured - MinBuffer: $effectiveMinBufferDur, MaxBuffer: $effectiveMaxBufferDur, PlaybackBuffer: $effectiveBufferForPlaybackDur, ForwardBuffer: $effectivePreferredForwardBufferDur");
       }
     } catch (e) {
       if (kDebugMode) {
