@@ -161,22 +161,30 @@ class MusicProvider with ChangeNotifier {
   Future<void> _saveSettings() async { try { final p = await SharedPreferences.getInstance(); await p.setInt('wifiBitrate', _wifiBitrate); await p.setInt('cellularBitrate', _cellularBitrate); await p.setBool('offlineMode', _isOfflineMode); await p.setBool('userManuallySetOffline', _userManuallySetOffline); await p.setBool('lowDataMode', _isLowDataMode); await p.setBool('shuffleEnabled', _shuffleEnabled); await p.setInt('repeatMode', _repeatMode.index); await p.setInt('localSortCriteria', _localTracksSortCriteria.index); print('Settings saved.'); } catch (e) { _errorMessage = "Failed to save settings."; notifyListeners(); } }
 
   // --- Playback Control & Context ---
-  void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); }
-  void cycleRepeatMode() { _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length]; _saveSettings(); notifyListeners(); }
-  void _shufflePlaylist() { if (_currentPlayingTracks == null || _currentPlayingTracks!.isEmpty) { _shuffledPlaylist = []; _currentIndex = -1; return; } _shuffledPlaylist = List.from(_currentPlayingTracks!)..shuffle(Random()); _updateCurrentIndex(); }
+  void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void cycleRepeatMode() { _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length]; _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void _shufflePlaylist() { if (_currentPlayingTracks == null || _currentPlayingTracks!.isEmpty) { _shuffledPlaylist = []; _currentIndex = -1; return; } _shuffledPlaylist = List.from(_currentPlayingTracks!)..shuffle(Random()); _updateCurrentIndex(); /* Preload handled by toggleShuffle or setPlaybackContext */ }
   List<Track> _getActivePlaylist() => _shuffleEnabled ? _shuffledPlaylist : (_currentPlayingTracks ?? []);
   void _updateCurrentIndex() { final list = _getActivePlaylist(); _currentIndex = (_currentTrack != null && list.isNotEmpty) ? list.indexWhere((t) => t.id == _currentTrack!.id) : -1; }
-  void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { print("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); print("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) _shufflePlaylist(); else _updateCurrentIndex(); } else { _updateCurrentIndex(); } _updateCombinedQueueIndex(); }
-  void _onTrackComplete() { print('Track completion: ${_currentTrack?.trackName}'); if (_currentTrack == null) { stopTrack(); return; } if (_repeatMode == RepeatMode.one) { seekTo(Duration.zero); if(!_isPlaying) resumeTrack(); return; } if (_queue.isNotEmpty) { final next = _queue.removeAt(0); print("Playing next from queue: ${next.trackName}"); _playTrackInternal(next, setContext: false, clearQueue: false); notifyListeners(); return; } final list = _getActivePlaylist(); if (list.isEmpty) { stopTrack(); return; } _updateCurrentIndex(); int nextIdx = _currentIndex + 1; if (nextIdx < list.length) { print('Playing next from context index $nextIdx'); _playTrackInternal(list[nextIdx], setContext: true, clearQueue: false); } else { if (_repeatMode == RepeatMode.all) { print('Looping context to start.'); _playTrackInternal(list[0], setContext: true, clearQueue: false); } else { print('End of context, Repeat off, stopping.'); stopTrack(); } } }
-  Future<void> _playTrackInternal(Track track, {bool setContext = true, bool clearQueue = true}) async { if (setContext) _setPlaybackContext(_currentPlayingTracks, playlistId: _currentPlaylistId, clearQueue: clearQueue); else { _currentTrack = track; _updateCurrentIndex(); _currentTrack = null; } bool offline = await _shouldPlayOffline(track); try { if (offline) await playOfflineTrack(track, setContext: setContext, clearQueue: clearQueue); else await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue); } catch(e) { print("Error in _playTrackInternal: $e"); } _updateCombinedQueueIndex(); }
+  void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { print("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); print("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) _shufflePlaylist(); else _updateCurrentIndex(); _handlePlaybackOrContextChangeForPreloading();} else { _updateCurrentIndex(); } _updateCombinedQueueIndex();  }
+  void _onTrackComplete() { print('Track completion: ${_currentTrack?.trackName}'); if (_currentTrack == null) { stopTrack(); return; } if (_repeatMode == RepeatMode.one) { seekTo(Duration.zero); if(!_isPlaying) resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } if (_queue.isNotEmpty) { final next = _queue.removeAt(0); print("Playing next from queue: ${next.trackName}"); _playTrackInternal(next, setContext: false, clearQueue: false); notifyListeners(); /* Preload handled by playTrackInternal -> playTrack */ return; } final list = _getActivePlaylist(); if (list.isEmpty) { stopTrack(); return; } _updateCurrentIndex(); int nextIdx = _currentIndex + 1; if (nextIdx < list.length) { print('Playing next from context index $nextIdx'); _playTrackInternal(list[nextIdx], setContext: true, clearQueue: false); } else { if (_repeatMode == RepeatMode.all) { print('Looping context to start.'); _playTrackInternal(list[0], setContext: true, clearQueue: false); } else { print('End of context, Repeat off, stopping.'); stopTrack(); } } /* Preload handled by playTrackInternal if it plays */ }
+  Future<void> _playTrackInternal(Track track, {bool setContext = true, bool clearQueue = true}) async { if (setContext) _setPlaybackContext(_currentPlayingTracks, playlistId: _currentPlaylistId, clearQueue: clearQueue); else { _currentTrack = track; _updateCurrentIndex(); /* _currentTrack = null; */ } bool offline = await _shouldPlayOffline(track); try { if (offline) await playOfflineTrack(track, setContext: setContext, clearQueue: clearQueue); else await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue); } catch(e) { print("Error in _playTrackInternal: $e"); } _updateCombinedQueueIndex(); /* Preload handled by playTrack/playOfflineTrack */ }
   Future<bool> _shouldPlayOffline(Track track) async => track.source == 'local' || await isTrackDownloaded(track.id);
-  Future<void> skipToNext() async { print('SkipNext requested.'); if (_currentTrack == null) return; if (_queue.isNotEmpty) { final next = _queue.removeAt(0); print("Skipping to next from queue: ${next.trackName}"); await _playTrackInternal(next, setContext: false, clearQueue: false); notifyListeners(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list[0]); return; } int next = _currentIndex + 1; if (next < list.length) { await _playTrackInternal(list[next]); } else { if (_repeatMode != RepeatMode.off) await _playTrackInternal(list[0]); else await stopTrack(); } _updateCombinedQueueIndex(); }
-  Future<void> skipToPrevious() async { print('SkipPrevious requested.'); if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) await _playTrackInternal(list.last); else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); } } _updateCombinedQueueIndex(); }
+  Future<void> skipToNext() async { print('SkipNext requested.'); if (_currentTrack == null) return; if (_queue.isNotEmpty) { final next = _queue.removeAt(0); print("Skipping to next from queue: ${next.trackName}"); await _playTrackInternal(next, setContext: false, clearQueue: false); notifyListeners(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list[0]); return; } int next = _currentIndex + 1; if (next < list.length) { await _playTrackInternal(list[next]); } else { if (_repeatMode != RepeatMode.off) await _playTrackInternal(list[0]); else await stopTrack(); } _updateCombinedQueueIndex(); /* Preload handled by playTrackInternal if it plays */ }
+  Future<void> skipToPrevious() async { print('SkipPrevious requested.'); if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) await _playTrackInternal(list.last); else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); } } _updateCombinedQueueIndex(); /* Preload handled by playTrackInternal if it plays */ }
 
   // --- Core Playback Methods ---
-  Future<void> playTrack(Track track, {String? playlistId, List<Track>? playlistTracks, bool setContext = true, bool clearQueue = true}) async { print('Request playTrack: ${track.trackName} (SetContext: $setContext, ClearQueue: $clearQueue)'); if (_currentTrack?.id == track.id && _isPlaying) { await pauseTrack(); return; } if (_currentTrack?.id == track.id && !_isPlaying && _currentTrack != null) { await resumeTrack(); return; } _clearError(); try { if (_isPlaying) await _audioService.stop(); _isPlaying = false; if (setContext) _setPlaybackContext(playlistTracks, playlistId: playlistId, clearQueue: clearQueue); else { _currentTrack = track; _updateCurrentIndex(); _currentTrack = null; } bool playOffline = await _shouldPlayOffline(track); if (playOffline) { await playOfflineTrack(track, setContext: setContext, clearQueue: clearQueue); return; } if (_isOfflineMode) throw Exception('Offline Mode: Track not available.'); if (!_networkService.isConnected) throw Exception('No internet connection.'); _currentTrack = track; _isOfflineTrack = false; notifyListeners(); String playableId = track.id; Track effectiveTrack = track; if (track.source == 'spotify') { final yt = await _spotifyService.findYouTubeTrack(track); if (yt != null) { playableId = yt.id; effectiveTrack = track.copyWith(id: playableId, source: 'youtube', previewUrl: yt.previewUrl); _currentTrack = effectiveTrack; notifyListeners(); } else throw Exception("No playable version for '${track.trackName}'."); } final bitrate = await _getBitrate(); if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.'); final url = await _apiService.getAudioStreamUrl(playableId, bitrate); await _audioService.play(url); _currentTrack = effectiveTrack; _isPlaying = true; _updateRecentlyPlayed(effectiveTrack); _updateCurrentIndex(); _updateCombinedQueueIndex(); notifyListeners(); } catch (e, s) { print('--- ERROR PLAYING TRACK ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing track: ${e.toString()}'); } }
-  Future<void> playOfflineTrack(Track track, {bool setContext = true, bool clearQueue = true}) async { bool knownOffline = track.source == 'local' || _downloadedTracksMetadata.containsKey(track.id); if (!knownOffline) { await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue); return; } if (_currentTrack?.id == track.id && _isPlaying) { await pauseTrack(); return; } if (_currentTrack?.id == track.id && !_isPlaying && _currentTrack != null) { await resumeTrack(); return; } _clearError(); try { if (_isPlaying) await _audioService.stop(); _isPlaying = false; String filePath; bool isDownloaded = _downloadedTracksMetadata.containsKey(track.id); if (track.source == 'local') filePath = track.previewUrl; else if (isDownloaded) { final meta = _downloadedTracksMetadata[track.id]; filePath = meta?['filePath'] as String? ?? ''; } else throw Exception('Source not local/downloaded.'); if (filePath.isEmpty) throw Exception('File path empty.'); final file = File(filePath); if (!await file.exists()) { await _handleMissingOfflineFile(track.id, filePath); throw Exception('File missing.'); } _currentTrack = track; _isOfflineTrack = true; if (setContext) { List<Track> contextTracks; String contextDesc; if (isDownloaded) { contextTracks = await getDownloadedTracks(); contextDesc = "Downloads"; } else { contextTracks = _localTracks; contextDesc = "Local Tracks"; } _setPlaybackContext(contextTracks, clearQueue: clearQueue); print("Set playback context to $contextDesc"); } else _updateCurrentIndex(); notifyListeners(); await _audioService.playLocalFile(filePath); _isPlaying = true; _updateRecentlyPlayed(track); _updateCombinedQueueIndex(); notifyListeners(); } catch (e, s) { print('--- ERROR PLAYING OFFLINE ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing offline track: ${e.toString()}'); } }
-  Future<void> pauseTrack() async { if (!_isPlaying) return; try { await _audioService.pause(); } catch (e) { await _handlePlaybackError('Error pausing: $e'); } }
+  Future<void> playTrack(Track track, {String? playlistId, List<Track>? playlistTracks, bool setContext = true, bool clearQueue = true}) async { print('Request playTrack: ${track.trackName} (SetContext: $setContext, ClearQueue: $clearQueue)'); if (_currentTrack?.id == track.id && _isPlaying) { await pauseTrack(); return; } if (_currentTrack?.id == track.id && !_isPlaying && _currentTrack != null) { await resumeTrack(); return; } _clearError(); try { if (_isPlaying) await _audioService.stop(); _isPlaying = false; if (setContext) _setPlaybackContext(playlistTracks, playlistId: playlistId, clearQueue: clearQueue); else { _currentTrack = track; _updateCurrentIndex(); _currentTrack = null; } bool playOffline = await _shouldPlayOffline(track); if (playOffline) { await playOfflineTrack(track, setContext: setContext, clearQueue: clearQueue); return; } if (_isOfflineMode) throw Exception('Offline Mode: Track not available.'); if (!_networkService.isConnected) throw Exception('No internet connection.'); _currentTrack = track; _isOfflineTrack = false; notifyListeners(); String playableId = track.id; Track effectiveTrack = track; if (track.source == 'spotify') { final yt = await _spotifyService.findYouTubeTrack(track); if (yt != null) { playableId = yt.id; effectiveTrack = track.copyWith(id: playableId, source: 'youtube', previewUrl: yt.previewUrl); _currentTrack = effectiveTrack; notifyListeners(); } else throw Exception("No playable version for '${track.trackName}'."); } final bitrate = await _getBitrate(); if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.');
+      _handleNetworkQualityChange(_networkService.networkQuality);
+      final url = await _apiService.getAudioStreamUrl(playableId, bitrate); await _audioService.play(url); _currentTrack = effectiveTrack; _isPlaying = true; _updateRecentlyPlayed(effectiveTrack); _updateCurrentIndex(); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING TRACK ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing track: ${e.toString()}'); } }
+  Future<void> playOfflineTrack(Track track, {bool setContext = true, bool clearQueue = true}) async { bool knownOffline = track.source == 'local' || _downloadedTracksMetadata.containsKey(track.id); if (!knownOffline) { await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue); return; } if (_currentTrack?.id == track.id && _isPlaying) { await pauseTrack(); return; } if (_currentTrack?.id == track.id && !_isPlaying && _currentTrack != null) { await resumeTrack(); return; } _clearError(); try { if (_isPlaying) await _audioService.stop(); _isPlaying = false; String filePath; bool isDownloaded = _downloadedTracksMetadata.containsKey(track.id); if (track.source == 'local') filePath = track.previewUrl; else if (isDownloaded) { final meta = _downloadedTracksMetadata[track.id]; filePath = meta?['filePath'] as String? ?? ''; } else throw Exception('Source not local/downloaded.'); if (filePath.isEmpty) throw Exception('File path empty.'); final file = File(filePath); if (!await file.exists()) { await _handleMissingOfflineFile(track.id, filePath); throw Exception('File missing.'); } _currentTrack = track; _isOfflineTrack = true; if (setContext) { List<Track> contextTracks; String contextDesc; if (isDownloaded) { contextTracks = await getDownloadedTracks(); contextDesc = "Downloads"; } else { contextTracks = _localTracks; contextDesc = "Local Tracks"; } _setPlaybackContext(contextTracks, clearQueue: clearQueue); print("Set playback context to $contextDesc"); } else _updateCurrentIndex();
+      _audioService.configureBufferSettings(
+          bufferDuration: const Duration(seconds: 15),
+          minBufferDuration: const Duration(seconds: 5),
+          maxBufferDuration: const Duration(seconds: 30)
+      );
+      notifyListeners(); await _audioService.playLocalFile(filePath); _isPlaying = true; _updateRecentlyPlayed(track); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING OFFLINE ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing offline track: ${e.toString()}'); } }
+  Future<void> pauseTrack() async { if (!_isPlaying) return; try { await _audioService.pause(); /* No preload on pause */ } catch (e) { await _handlePlaybackError('Error pausing: $e'); } }
   Future<void> resumeTrack() async { if (_isPlaying || _currentTrack == null) return; _clearError(); try { await _audioService.resume(); } catch (e) { await _handlePlaybackError('Error resuming: $e'); } }
   Future<void> seekTo(Duration position) async { if (_currentTrack == null) return; final dur = _duration; final clamped = position.isNegative ? Duration.zero : (dur > Duration.zero && position > dur ? dur : position); try { await _audioService.seekTo(clamped); _position = clamped; notifyListeners(); } catch (e) { _errorMessage = 'Error seeking.'; notifyListeners(); } }
   Future<void> stopTrack() async { try { await _audioService.stop(); } catch (e) { print('Error stopping service: $e'); } finally { _isPlaying = false; _currentTrack = null; _isOfflineTrack = false; _position = Duration.zero; _duration = Duration.zero; _currentIndex = -1; _currentPlayingTracks = null; _currentPlaylistId = null; _shuffledPlaylist = []; _queue.clear(); _queueIndex = -1; notifyListeners(); } }
@@ -186,10 +194,10 @@ class MusicProvider with ChangeNotifier {
   Future<void> _handlePlaybackError(String message) async { print("Playback Error: $message"); _errorMessage = message.length > 150 ? '${message.substring(0, 147)}...' : message; await stopTrack(); }
 
   // --- Queue Management ---
-  void addToQueue(Track track) { _queue.add(track); print("Added to queue: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); }
-  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); print("Added ${tracks.length} to queue. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); }
-  void playNext(Track track) { _queue.insert(0, track); print("Play next: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); }
-  void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); _updateCombinedQueueIndex(); notifyListeners(); }
+  void addToQueue(Track track) { _queue.add(track); print("Added to queue: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); print("Added ${tracks.length} to queue. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void playNext(Track track) { _queue.insert(0, track); print("Play next: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
 
   // Updated to accept Track object or index
   void removeFromQueue(dynamic item) {
@@ -217,11 +225,69 @@ class MusicProvider with ChangeNotifier {
     if (removed) {
       _updateCombinedQueueIndex();
       notifyListeners();
+      _handlePlaybackOrContextChangeForPreloading(); // Also call after removing from queue
     }
   }
 
-  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); print("Queue cleared."); _updateCombinedQueueIndex(); notifyListeners(); }
+  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); print("Queue cleared."); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
   void _updateCombinedQueueIndex() { if (_currentTrack == null) { _queueIndex = -1; return; } int indexInQueue = _queue.indexWhere((t) => t.id == _currentTrack!.id); if (indexInQueue != -1) _queueIndex = indexInQueue; else _queueIndex = -1; }
+
+  // --- Preloading Logic ---
+  Track? _getActualNextTrack() {
+    if (_queue.isNotEmpty) {
+      return _queue.first; // Next in queue always takes precedence
+    }
+    final activePlaylist = _getActivePlaylist();
+    if (activePlaylist.isEmpty || _currentIndex < 0) return null;
+
+    if (_repeatMode == RepeatMode.one) {
+      return _currentTrack; // If repeat one, next is current (it will restart)
+    }
+
+    int nextIndex = _currentIndex + 1;
+    if (nextIndex < activePlaylist.length) {
+      return activePlaylist[nextIndex];
+    } else if (_repeatMode == RepeatMode.all) {
+      return activePlaylist.first; // Loop back to start
+    }
+    return null; // End of playlist, no repeat all
+  }
+
+  Future<void> _preloadNextTrack() async {
+    final nextTrack = _getActualNextTrack();
+    if (nextTrack != null && nextTrack.id != _currentTrack?.id && nextTrack.source != 'local' && !(await isTrackDownloaded(nextTrack.id))) {
+      try {
+        if (kDebugMode) print("MusicProvider: Attempting to preload ${nextTrack.trackName}");
+        String playableId = nextTrack.id;
+        if (nextTrack.source == 'spotify') {
+          final ytEquivalent = await _spotifyService.findYouTubeTrack(nextTrack);
+          if (ytEquivalent != null) playableId = ytEquivalent.id;
+          else {
+            if (kDebugMode) print("MusicProvider: Could not find YouTube equivalent for Spotify track ${nextTrack.trackName} for preloading.");
+            return;
+          }
+        }
+        final bitrate = await _getBitrate(); // Use current adaptive bitrate for preloading
+        final url = await _apiService.getAudioStreamUrl(playableId, bitrate);
+        await _audioService.preloadTrack(url);
+      } catch (e) {
+        if (kDebugMode) print("MusicProvider: Error preloading next track ${nextTrack.trackName}: $e");
+      }
+    } else {
+      if (kDebugMode) print("MusicProvider: No suitable next track to preload or next is same as current/local/downloaded.");
+    }
+  }
+
+  // Call _preloadNextTrack after a track starts playing or context changes
+  void _handlePlaybackOrContextChangeForPreloading() {
+    // Clear any existing preloaded track if context changes significantly
+    // This is implicitly handled by AudioService if a different track is played.
+    // Explicitly: _audioService.cancelPreload(); (if such method existed)
+
+    // Then try to preload the new next track
+    _preloadNextTrack();
+  }
+
 
   // --- Placeholder Navigation Methods ---
   Future<void> navigateToArtist(String artistName) async { print("PROVIDER ACTION: Navigate to Artist: $artistName"); _isLoadingArtist = true; _currentArtistDetails = null; _errorMessage = null; notifyListeners(); try { _currentArtistDetails = await _apiService.fetchArtistDetails(artistName); print("PROVIDER: Artist details fetched for $artistName"); } catch (e) { _errorMessage = "Could not load artist details."; _currentArtistDetails = null; } finally { _isLoadingArtist = false; notifyListeners(); } }
@@ -229,7 +295,62 @@ class MusicProvider with ChangeNotifier {
 
   // --- Network & Mode Management ---
   void _setupConnectivityMonitoring() { _networkQualitySubscription = _networkService.onNetworkQualityChanged.listen((q) => _handleNetworkQualityChange(q), onError: (e) => print("NetQual stream error: $e")); _connectivityStatusSubscription = _networkService.onConnectivityChanged.listen((c) => _handleConnectivityChange(c), onError: (e) => print("Connect stream error: $e")); _networkService.checkNetworkQualityNow().then((q) { _handleNetworkQualityChange(q); _handleConnectivityChange(q != NetworkQuality.offline); }); }
-  void _handleNetworkQualityChange(NetworkQuality quality) { if (!_isLowDataMode) { int nW = _wifiBitrate, nC = _cellularBitrate; switch(quality) { case NetworkQuality.poor: nW=nC=NetworkConfig.poorNetworkBitrate; break; case NetworkQuality.moderate: nW=NetworkConfig.moderateNetworkBitrate; nC=NetworkConfig.poorNetworkBitrate; break; case NetworkQuality.good: nW=NetworkConfig.goodNetworkBitrate; nC=NetworkConfig.moderateNetworkBitrate; break; case NetworkQuality.excellent: nW=NetworkConfig.excellentNetworkBitrate; nC=NetworkConfig.goodNetworkBitrate; break; default: break;} if(nW!=_wifiBitrate||nC!=_cellularBitrate){_wifiBitrate=nW; _cellularBitrate=nC; _saveSettings(); notifyListeners();}} }
+
+  void _handleNetworkQualityChange(NetworkQuality quality) {
+    // Adjust bitrates based on network quality (existing logic)
+    if (!_isLowDataMode) {
+      int nW = _wifiBitrate, nC = _cellularBitrate;
+      switch (quality) {
+        case NetworkQuality.poor: nW = nC = NetworkConfig.poorNetworkBitrate; break;
+        case NetworkQuality.moderate: nW = NetworkConfig.moderateNetworkBitrate; nC = NetworkConfig.poorNetworkBitrate; break;
+        case NetworkQuality.good: nW = NetworkConfig.goodNetworkBitrate; nC = NetworkConfig.moderateNetworkBitrate; break;
+        case NetworkQuality.excellent: nW = NetworkConfig.excellentNetworkBitrate; nC = NetworkConfig.goodNetworkBitrate; break;
+        default: break;
+      }
+      if (nW != _wifiBitrate || nC != _cellularBitrate) {
+        _wifiBitrate = nW;
+        _cellularBitrate = nC;
+        _saveSettings(); // Save bitrate settings
+        // notifyListeners(); // Notifying for bitrate change might be too frequent if UI doesn't directly show it
+      }
+    }
+
+    // Adjust audio buffer settings based on network quality
+    Duration bufferDuration, minBufferDuration, maxBufferDuration;
+    switch (quality) {
+      case NetworkQuality.offline: // Should not happen if playing online content
+      case NetworkQuality.poor:
+        minBufferDuration = const Duration(seconds: 15); // Start playback after 15s buffered
+        bufferDuration = const Duration(seconds: 60);    // Try to keep 60s buffered ahead
+        maxBufferDuration = const Duration(seconds: 120); // Max buffer size
+        break;
+      case NetworkQuality.moderate:
+        minBufferDuration = const Duration(seconds: 8);
+        bufferDuration = const Duration(seconds: 45);
+        maxBufferDuration = const Duration(seconds: 90);
+        break;
+      case NetworkQuality.good:
+        minBufferDuration = const Duration(seconds: 5);
+        bufferDuration = const Duration(seconds: 30);
+        maxBufferDuration = const Duration(seconds: 60);
+        break;
+      case NetworkQuality.excellent:
+        minBufferDuration = const Duration(seconds: 2);
+        bufferDuration = const Duration(seconds: 20);
+        maxBufferDuration = const Duration(seconds: 40);
+        break;
+    }
+    // Only configure if playing online content
+    if (currentTrack != null && !_isOfflineTrack) {
+        _audioService.configureBufferSettings(
+            bufferDuration: bufferDuration,
+            minBufferDuration: minBufferDuration,
+            maxBufferDuration: maxBufferDuration
+        );
+    }
+    // No need to notifyListeners() here as this primarily affects background player behavior
+  }
+
   void _handleConnectivityChange(bool isConnected) { if (!isConnected && !_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = false; _saveSettings(); _showOfflineModeNotification('Connection lost.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } else if (isConnected && _isOfflineMode && !_userManuallySetOffline) { goOnline(); } else if (isConnected && _isOfflineMode && _userManuallySetOffline) { if (!_isReconnecting) _showReconnectionPrompt(); _processRetryQueue(); _processDownloadQueue(); } else if (isConnected && !_isOfflineMode) { if (_isReconnecting) { _isReconnecting = false; _reconnectionTimer?.cancel(); _errorMessage = null; notifyListeners(); } _processRetryQueue(); _processDownloadQueue(); } }
   void goOnline() { if (_isOfflineMode) { bool wasOffline = _isOfflineMode; _isOfflineMode = false; _userManuallySetOffline = false; _isReconnecting = false; _reconnectionTimer?.cancel(); _saveSettings(); _errorMessage = 'You are now online.'; notifyListeners(); if (wasOffline) _refreshDataOnReconnect(); _processRetryQueue(); _processDownloadQueue(); } }
   void goOffline() { if (!_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = true; _isReconnecting = false; _reconnectionTimer?.cancel(); _saveSettings(); _showOfflineModeNotification('Offline mode enabled.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } }
