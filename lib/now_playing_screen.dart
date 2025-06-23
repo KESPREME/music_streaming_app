@@ -9,6 +9,7 @@ import '../widgets/player_controls.dart';
 import '../widgets/playlist_selection_dialog.dart'; // Import the new dialog
 import '../screens/album_screen.dart'; // Import AlbumScreen
 import '../screens/artist_screen.dart'; // Import ArtistScreen
+import '../screens/queue_screen.dart'; // Import QueueScreen
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track; // Initial track, but current track from provider is source of truth
