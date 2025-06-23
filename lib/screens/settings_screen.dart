@@ -1,138 +1,163 @@
-// lib/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/music_provider.dart';
-import 'playback_settings_screen.dart';
+import '../providers/music_provider.dart'; // For bitrate settings, offline mode etc.
+import '../services/auth_service.dart'; // For sign out
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final musicProvider = Provider.of<MusicProvider>(context);
+    final authService = Provider.of<AuthService>(context, listen: false);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1D1D1D),
-        title: const Text('Settings'),
+        title: Text('Settings', style: theme.textTheme.headlineSmall),
       ),
       body: ListView(
-        children: [
-          _buildSettingsGroup(
-            title: 'Playback',
-            children: [
-              ListTile(
-                leading: const Icon(Icons.music_note, color: Colors.deepPurple),
-                title: const Text('Playback Settings', style: TextStyle(color: Colors.white)),
-                subtitle: Text(
-                  'Shuffle: ${musicProvider.shuffleEnabled ? 'On' : 'Off'}, Repeat: ${_getRepeatModeText(musicProvider.repeatMode)}',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 16),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const PlaybackSettingsScreen()),
-                  );
-                },
-              ),
-            ],
+        padding: const EdgeInsets.all(16.0),
+        children: <Widget>[
+          _buildSectionTitle('Playback', theme),
+          ListTile(
+            leading: Icon(Icons.wifi_tethering, color: theme.iconTheme.color),
+            title: Text('Wi-Fi Streaming Quality', style: theme.textTheme.titleMedium),
+            subtitle: Text('${musicProvider.wifiBitrate} kbps', style: theme.textTheme.bodySmall),
+            onTap: () => _showBitrateOptions(context, musicProvider, true),
           ),
-          _buildSettingsGroup(
-            title: 'Network',
-            children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.offline_bolt, color: Colors.deepPurple),
-                title: const Text('Offline Mode', style: TextStyle(color: Colors.white)),
-                subtitle: const Text(
-                  'Only play downloaded tracks',
-                  style: TextStyle(color: Colors.white70),
-                ),
-                value: musicProvider.isOfflineMode,
-                activeColor: Colors.deepPurple,
-                onChanged: (value) {
-                  if (value) {
-                    musicProvider.goOffline();
-                  } else {
-                    musicProvider.goOnline();
-                  }
-                },
-              ),
-              SwitchListTile(
-                secondary: const Icon(Icons.data_saver_off, color: Colors.deepPurple),
-                title: const Text('Low Data Mode', style: TextStyle(color: Colors.white)),
-                subtitle: const Text(
-                  'Reduce data usage by lowering audio quality',
-                  style: TextStyle(color: Colors.white70),
-                ),
-                value: musicProvider.isLowDataMode,
-                activeColor: Colors.deepPurple,
-                onChanged: (value) {
-                  musicProvider.toggleLowDataMode();
-                },
-              ),
-            ],
+          ListTile(
+            leading: Icon(Icons.signal_cellular_alt, color: theme.iconTheme.color),
+            title: Text('Cellular Streaming Quality', style: theme.textTheme.titleMedium),
+            subtitle: Text('${musicProvider.cellularBitrate} kbps', style: theme.textTheme.bodySmall),
+            onTap: () => _showBitrateOptions(context, musicProvider, false),
           ),
-          _buildSettingsGroup(
-            title: 'Storage',
-            children: [
-              ListTile(
-                leading: const Icon(Icons.cleaning_services, color: Colors.deepPurple),
-                title: const Text('Clear Cache', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  musicProvider.clearAllCaches();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Cache cleared')),
-                  );
-                },
-              ),
-            ],
+          SwitchListTile(
+            title: Text('Low Data Mode', style: theme.textTheme.titleMedium),
+            subtitle: Text('Reduces data usage by lowering streaming quality', style: theme.textTheme.bodySmall),
+            value: musicProvider.isLowDataMode,
+            onChanged: (bool value) {
+              musicProvider.toggleLowDataMode();
+            },
+            activeColor: theme.colorScheme.primary,
+            secondary: Icon(Icons.data_saver_off_outlined, color: theme.iconTheme.color),
           ),
-          _buildSettingsGroup(
-            title: 'About',
-            children: [
-              ListTile(
-                leading: const Icon(Icons.info_outline, color: Colors.deepPurple),
-                title: const Text('App Version', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('1.0.0', style: TextStyle(color: Colors.white70)),
-              ),
-            ],
+          const Divider(),
+          _buildSectionTitle('Account', theme),
+          ListTile(
+            leading: Icon(Icons.offline_bolt_outlined, color: theme.iconTheme.color),
+            title: Text('Offline Mode', style: theme.textTheme.titleMedium),
+            trailing: Switch(
+              value: musicProvider.isOfflineMode,
+              onChanged: (bool value) {
+                musicProvider.toggleOfflineMode();
+              },
+              activeColor: theme.colorScheme.primary,
+            ),
+            onTap: () => musicProvider.toggleOfflineMode(), // Allow tapping whole tile
+          ),
+          ListTile(
+            leading: Icon(Icons.logout, color: theme.colorScheme.error),
+            title: Text('Sign Out', style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.error)),
+            onTap: () async {
+              // Confirmation dialog
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (BuildContext dialogContext) => AlertDialog(
+                  title: Text('Sign Out?', style: theme.dialogTheme.titleTextStyle),
+                  content: Text('Are you sure you want to sign out?', style: theme.dialogTheme.contentTextStyle),
+                  actions: <Widget>[
+                    TextButton(
+                      child: const Text('Cancel'),
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                    ),
+                    TextButton(
+                      child: Text('Sign Out', style: TextStyle(color: theme.colorScheme.error)),
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await authService.signOut();
+                // Potentially navigate to login screen or show a message
+                // For now, just pop this screen if successful
+                if (context.mounted && Navigator.canPop(context)) {
+                  // Pop settings screen, then potentially pop further if on auth-gated content,
+                  // or main.dart should handle navigation based on auth state stream.
+                  Navigator.pop(context);
+                }
+              }
+            },
+          ),
+          const Divider(),
+           _buildSectionTitle('About', theme),
+          ListTile(
+            leading: Icon(Icons.info_outline, color: theme.iconTheme.color),
+            title: Text('Version', style: theme.textTheme.titleMedium),
+            subtitle: Text('1.0.0 (Simulated)', style: theme.textTheme.bodySmall), // Replace with actual version later
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSettingsGroup({required String title, required List<Widget> children}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.deepPurple,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+  Widget _buildSectionTitle(String title, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      child: Text(
+        title.toUpperCase(),
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.bold,
         ),
-        ...children,
-        const Divider(color: Colors.grey),
-      ],
+      ),
     );
   }
 
-  String _getRepeatModeText(RepeatMode mode) {
-    switch (mode) {
-      case RepeatMode.off:
-        return 'Off';
-      case RepeatMode.all:
-        return 'All';
-      case RepeatMode.one:
-        return 'One';
-    }
+  void _showBitrateOptions(BuildContext context, MusicProvider musicProvider, bool isWifi) {
+    final theme = Theme.of(context);
+    final currentBitrate = isWifi ? musicProvider.wifiBitrate : musicProvider.cellularBitrate;
+    final List<int> options = isWifi ? [64, 128, 256, 320] : [32, 64, 128];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text('Select ${isWifi ? "Wi-Fi" : "Cellular"} Quality', style: theme.dialogTheme.titleTextStyle),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: options.map((bitrate) {
+                return RadioListTile<int>(
+                  title: Text('$bitrate kbps', style: theme.textTheme.bodyLarge),
+                  value: bitrate,
+                  groupValue: currentBitrate,
+                  onChanged: (int? value) {
+                    if (value != null) {
+                      if (isWifi) {
+                        musicProvider.setWifiBitrate(value);
+                      } else {
+                        musicProvider.setCellularBitrate(value);
+                      }
+                      Navigator.pop(dialogContext);
+                    }
+                  },
+                  activeColor: theme.colorScheme.primary,
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+             TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 }

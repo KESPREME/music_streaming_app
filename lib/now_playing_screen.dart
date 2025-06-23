@@ -1,10 +1,14 @@
 import 'dart:ui'; // For ImageFilter
 // import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart'; // Import for Share
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../widgets/player_controls.dart'; // Assuming this will be styled or replaced by themed controls
+import '../widgets/player_controls.dart';
+import '../widgets/playlist_selection_dialog.dart'; // Import the new dialog
+import '../screens/album_screen.dart'; // Import AlbumScreen
+import '../screens/artist_screen.dart'; // Import ArtistScreen
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track; // Initial track, but current track from provider is source of truth
@@ -51,9 +55,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 icon: const Icon(Icons.queue_music_outlined),
                 tooltip: "View Queue",
                 onPressed: () {
-                  // TODO: Implement show queue bottom sheet or screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Queue button pressed (not implemented)")),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const QueueScreen()),
                   );
                 },
               ),
@@ -283,8 +287,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             leading: Icon(Icons.playlist_add_outlined, color: theme.iconTheme.color),
             title: Text('Add to Playlist', style: theme.textTheme.titleMedium),
             onTap: () {
-              Navigator.pop(context); // Close this sheet
-              _showAddToPlaylistBottomSheet(context, track, theme, musicProvider); // Show playlist selection
+              Navigator.pop(context); // Close the options bottom sheet
+              showPlaylistSelectionDialog(context, track); // Show the new dialog
             },
           ),
           ListTile(
@@ -315,34 +319,86 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           ListTile(
             leading: Icon(Icons.share_outlined, color: theme.iconTheme.color),
             title: Text('Share', style: theme.textTheme.titleMedium),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Implement share functionality using share_plus or similar
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Share (not implemented)")),
-              );
+            onTap: () async { // Made async
+              Navigator.pop(context); // Close bottom sheet first
+
+              String shareText = 'Listening to: ${track.trackName} by ${track.artistName}';
+              String? shareableLink;
+
+              if (track.source == 'youtube' && track.previewUrl.startsWith('http')) {
+                shareableLink = track.previewUrl;
+              } else if (track.source == 'spotify') {
+                // Example: shareableLink = 'https://open.spotify.com/track/${track.id}';
+              }
+
+              if (shareableLink != null) {
+                shareText += '\n\n$shareableLink';
+              }
+
+              try {
+                await Share.share(shareText, subject: 'Check out this track: ${track.trackName}');
+              } catch (e) {
+                print('Error sharing track from NowPlayingScreen: $e');
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not share track.'))
+                  );
+                }
+              }
             },
           ),
           ListTile(
             leading: Icon(Icons.album_outlined, color: theme.iconTheme.color),
             title: Text('Go to Album', style: theme.textTheme.titleMedium),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Navigate to AlbumScreen
-               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Go to Album (not implemented)")),
-              );
+            onTap: () async { // Made async
+              Navigator.pop(context); // Close bottom sheet
+              bool isAlbumValid = track.albumName.isNotEmpty && track.albumName != 'Unknown Album' && track.albumName != 'YouTube';
+              if (!isAlbumValid) {
+                 if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Album details not available')));
+                }
+                return;
+              }
+              await musicProvider.navigateToAlbum(track.albumName, track.artistName);
+              if (context.mounted) { // Check mounted again after await
+                if (musicProvider.currentAlbumDetails != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AlbumScreen(albumName: track.albumName, artistName: track.artistName)),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(musicProvider.errorMessage ?? 'Could not load album details'), backgroundColor: theme.colorScheme.error),
+                  );
+                }
+              }
             },
           ),
            ListTile(
             leading: Icon(Icons.person_outline, color: theme.iconTheme.color),
             title: Text('Go to Artist', style: theme.textTheme.titleMedium),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Navigate to ArtistScreen
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Go to Artist (not implemented)")),
-              );
+            onTap: () async { // Made async
+              Navigator.pop(context); // Close bottom sheet
+              bool isArtistValid = track.artistName.isNotEmpty && track.artistName != 'Unknown Artist';
+              if (!isArtistValid) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Artist details not available')));
+                }
+                return;
+              }
+              await musicProvider.navigateToArtist(track.artistName);
+              if (context.mounted) { // Check mounted again after await
+                if (musicProvider.currentArtistDetails != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ArtistScreen(artistName: track.artistName)),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(musicProvider.errorMessage ?? 'Could not load artist details'), backgroundColor: theme.colorScheme.error),
+                  );
+                }
+              }
             },
           ),
           const SizedBox(height: 16), // Padding at the bottom
@@ -351,112 +407,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  void _showAddToPlaylistBottomSheet(BuildContext context, Track track, ThemeData theme, MusicProvider musicProvider) {
-    // This is a simplified version. A real app might have a scrollable list of playlists.
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: theme.colorScheme.surfaceVariant,
-       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Add to Playlist', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary),
-              title: Text('Create New Playlist', style: theme.textTheme.titleMedium),
-              onTap: () {
-                Navigator.pop(context); // Close this sheet
-                _showCreatePlaylistDialog(context, track, theme, musicProvider);
-              },
-            ),
-            // Dynamically generate list of existing playlists
-            if (musicProvider.userPlaylists.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: Text("You haven't created any playlists yet.", style: theme.textTheme.bodyMedium),
-              )
-            else
-              Flexible( // Use Flexible for scrollable content within BottomSheet
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: musicProvider.userPlaylists.length,
-                  itemBuilder: (context, index) {
-                    final playlist = musicProvider.userPlaylists[index];
-                    bool isTrackInPlaylist = playlist.tracks.any((t) => t.id == track.id);
-                    return ListTile(
-                      leading: Icon(
-                        isTrackInPlaylist ? Icons.playlist_add_check_circle_outlined : Icons.playlist_add_outlined,
-                        color: isTrackInPlaylist ? theme.colorScheme.primary : theme.iconTheme.color,
-                      ),
-                      title: Text(playlist.name, style: theme.textTheme.titleMedium),
-                      subtitle: Text('${playlist.tracks.length} tracks', style: theme.textTheme.bodySmall),
-                      onTap: () {
-                        Navigator.pop(context);
-                        if (!isTrackInPlaylist) {
-                          musicProvider.addTrackToPlaylist(playlist.id, track);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Added to ${playlist.name}')),
-                          );
-                        } else {
-                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Track is already in ${playlist.name}')),
-                          );
-                        }
-                        if(mounted) setState(() {}); // Rebuild to reflect changes if any
-                      },
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCreatePlaylistDialog(BuildContext context, Track track, ThemeData theme, MusicProvider musicProvider) {
-    final TextEditingController nameController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        // Theme for AlertDialog is set in main.dart
-        title: Text('Create New Playlist', style: theme.dialogTheme.titleTextStyle),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: InputDecoration( // Uses theme.inputDecorationTheme
-            hintText: 'Playlist name',
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('Cancel'), // Uses theme.textButtonTheme
-            onPressed: () => Navigator.pop(context),
-          ),
-          ElevatedButton( // Uses theme.elevatedButtonTheme
-            child: const Text('Create'),
-            onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                musicProvider.createPlaylist(nameController.text.trim(), initialTracks: [track]);
-                Navigator.pop(context); // Close dialog
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Playlist "${nameController.text.trim()}" created.')),
-                );
-                 if(mounted) setState(() {}); // Rebuild to reflect changes
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed _showAddToPlaylistBottomSheet as its functionality is replaced by showPlaylistSelectionDialog
+  // Removed _showCreatePlaylistDialog as its functionality is part of showPlaylistSelectionDialog
 
    void _showDownloadOptionsBottomSheet(BuildContext context, Track track, ThemeData theme, MusicProvider musicProvider) {
     showModalBottomSheet(
