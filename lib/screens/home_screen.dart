@@ -6,11 +6,14 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../services/api_service.dart' show ApiService;
 import '../widgets/track_tile.dart';
-import '../home_tab_content.dart'; // Assuming this will also be restyled or replaced
+import '../home_tab_content.dart';
+import 'trending_now_screen.dart'; // Import new screen
+import 'all_genres_screen.dart';   // Import new screen
+import 'all_artists_screen.dart';  // Import new screen
+import 'settings_screen.dart';     // Import new screen
 
-// Placeholder for GenreSongsScreen - ensure it exists and is styled
-// For now, we'll assume it will be created/styled later.
-// import 'genre_songs_screen.dart';
+
+// GenreSongsScreen is defined in this file for now, but could be moved.
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -38,9 +41,9 @@ class HomeScreen extends StatelessWidget {
               icon: const Icon(Icons.settings_outlined),
               tooltip: "Settings",
               onPressed: () {
-                // TODO: Navigate to SettingsScreen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Settings button pressed (not implemented)")),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
                 );
               },
             ),
@@ -141,17 +144,17 @@ class HomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSectionTitle("What's Hot", theme, onViewMore: () {
-              // TODO: Navigate to a "Trending Now" screen
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TrendingNowScreen()));
             }),
             _buildHorizontalTrackCarousel(context, musicProvider.fetchTrendingTracks, theme, itemWidth: 160, imageHeight: 160),
             const SizedBox(height: 24),
             _buildSectionTitle("Browse Genres", theme, onViewMore: () {
-              // TODO: Navigate to a "All Genres" screen
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const AllGenresScreen()));
             }),
             _buildGenresSection(context, musicProvider, theme),
             const SizedBox(height: 24),
             _buildSectionTitle("Top Artists", theme, onViewMore: () {
-              // TODO: Navigate to an "All Artists" screen
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const AllArtistsScreen()));
             }),
             _buildTopArtistsSection(context, theme),
             const SizedBox(height: 20), // Bottom padding

@@ -190,7 +190,36 @@ class MusicProvider with ChangeNotifier {
   void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); print("Added ${tracks.length} to queue. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); }
   void playNext(Track track) { _queue.insert(0, track); print("Play next: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); }
   void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); _updateCombinedQueueIndex(); notifyListeners(); }
-  void removeFromQueue(int index) { if (index < 0 || index >= _queue.length) return; final rTr = _queue.removeAt(index); print("Removed from queue: ${rTr.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); }
+
+  // Updated to accept Track object or index
+  void removeFromQueue(dynamic item) {
+    bool removed = false;
+    if (item is int && item >= 0 && item < _queue.length) {
+      final rTr = _queue.removeAt(item);
+      print("Removed from queue by index: ${rTr.trackName}. Size: ${_queue.length}");
+      removed = true;
+    } else if (item is Track) {
+      final initialLength = _queue.length;
+      _queue.removeWhere((t) => t.id == item.id);
+      if (_queue.length < initialLength) {
+        print("Removed from queue by track: ${item.trackName}. Size: ${_queue.length}");
+        removed = true;
+      }
+    } else if (item is String) { // Remove by track ID
+       final initialLength = _queue.length;
+      _queue.removeWhere((t) => t.id == item);
+      if (_queue.length < initialLength) {
+        print("Removed from queue by track ID: $item. Size: ${_queue.length}");
+        removed = true;
+      }
+    }
+
+    if (removed) {
+      _updateCombinedQueueIndex();
+      notifyListeners();
+    }
+  }
+
   void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); print("Queue cleared."); _updateCombinedQueueIndex(); notifyListeners(); }
   void _updateCombinedQueueIndex() { if (_currentTrack == null) { _queueIndex = -1; return; } int indexInQueue = _queue.indexWhere((t) => t.id == _currentTrack!.id); if (indexInQueue != -1) _queueIndex = indexInQueue; else _queueIndex = -1; }
 

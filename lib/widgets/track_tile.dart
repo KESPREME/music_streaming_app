@@ -7,7 +7,7 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
-// import '../widgets/playlist_selection_sheet.dart'; // For "Add to Playlist" modal
+import 'playlist_selection_dialog.dart'; // Import the dialog
 
 class TrackTile extends StatelessWidget {
   final Track track;
@@ -15,6 +15,7 @@ class TrackTile extends StatelessWidget {
   final bool isPlaying;
   final String? playlistId; // For contextual actions like "Remove from this playlist"
   final bool dense; // For a more compact tile, e.g., in queues
+  final bool isInQueueContext; // New parameter
 
   const TrackTile({
     required this.track,
@@ -22,6 +23,7 @@ class TrackTile extends StatelessWidget {
     this.isPlaying = false,
     this.playlistId,
     this.dense = false,
+    this.isInQueueContext = false, // Default to false
     super.key,
   });
 
@@ -192,6 +194,14 @@ class TrackTile extends StatelessWidget {
         child: _menuItemContent('Remove from Playlist', Icons.remove_circle_outline_outlined, iconColor: theme.colorScheme.error),
       ));
     }
+
+    if (isInQueueContext) {
+      items.add(const PopupMenuDivider());
+      items.add(PopupMenuItem(
+        value: 'remove_from_queue',
+        child: _menuItemContent('Remove from Queue', Icons.delete_sweep_outlined, iconColor: theme.colorScheme.error),
+      ));
+    }
     return items;
   }
 
@@ -209,13 +219,8 @@ class TrackTile extends StatelessWidget {
         // messenger.showSnackBar(SnackBar(content: Text(provider.isSongLiked(track.id) ? 'Added to Liked Songs' : 'Removed from Liked Songs'), duration: const Duration(seconds: 1)));
         break;
       case 'add_playlist':
-        // TODO: Implement _showAddToPlaylistBottomSheet from NowPlayingScreen or similar
-        // For now, placeholder:
-        messenger.showSnackBar(SnackBar(
-            content: Text('Add to playlist (not implemented)'),
-            backgroundColor: theme.colorScheme.surfaceVariant,
-            behavior: SnackBarBehavior.floating,
-        ));
+        // Use the new dialog
+        await showPlaylistSelectionDialog(context, track);
         break;
       case 'add_queue':
         provider.addToQueue(track);
@@ -252,13 +257,27 @@ class TrackTile extends StatelessWidget {
         }
         break;
       case 'share':
-        String shareText = 'Check out this track: ${track.trackName} by ${track.artistName}';
+        String shareText = 'Listening to: ${track.trackName} by ${track.artistName}';
+        // Try to get a shareable link. For YouTube, the video URL is good.
+        // For Spotify, a Spotify track URL would be ideal if we had it.
+        // For local files, there's no direct shareable link.
+        String? shareableLink;
         if (track.source == 'youtube' && track.previewUrl.startsWith('http')) {
-          shareText += '\nListen here: ${track.previewUrl}';
+          shareableLink = track.previewUrl;
+        } else if (track.source == 'spotify') {
+          // Ideally, Track model would store the Spotify track URL if available
+          // For now, we don't have it, so we'll just share text.
+          // shareableLink = 'https://open.spotify.com/track/${track.id}'; // Example if ID is Spotify ID
         }
+
+        if (shareableLink != null) {
+          shareText += '\n\n$shareableLink';
+        }
+
         try {
-          await Share.share(shareText, subject: 'Music Recommendation');
+          await Share.share(shareText, subject: 'Check out this track: ${track.trackName}');
         } catch (e) {
+          print('Error sharing track: $e');
           messenger.showSnackBar(const SnackBar(content: Text('Could not share track.')));
         }
         break;
@@ -267,6 +286,10 @@ class TrackTile extends StatelessWidget {
           provider.removeTrackFromPlaylist(playlistId!, track.id);
           // SnackBar feedback is often handled in the provider or calling screen
         }
+        break;
+      case 'remove_from_queue':
+        provider.removeFromQueue(track); // Pass the track object
+        messenger.showSnackBar(SnackBar(content: Text('Removed "${track.trackName}" from queue'), duration: const Duration(seconds: 1)));
         break;
       // case 'download':
       //   if (!(await provider.isTrackDownloaded(track.id)) && !(provider.isDownloading[track.id] ?? false)) {
