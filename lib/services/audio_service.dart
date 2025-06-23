@@ -2,7 +2,7 @@
 import 'dart:io';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
-import 'package:path_provider/path_provider.dart';
+// import 'package:path_provider/path_provider.dart'; // Unused import
 import 'package:flutter/foundation.dart';
 import '../services/network_service.dart';
 import '../utils/network_config.dart';
@@ -16,7 +16,7 @@ class AudioService {
   String? _currentUrl;
   String? _currentFilePath; // Reinstated: Used in playLocalFile
   bool _isLocalFile = false;
-  AudioLoadConfiguration? _currentLoadConfiguration; // Store current load config
+  // AudioLoadConfiguration? _currentLoadConfiguration; // Store current load config - REMOVED
 
   // Streams
   Stream<Duration> get onPositionChanged => _audioPlayer.positionStream.map((position) => position ?? Duration.zero);
@@ -26,20 +26,14 @@ class AudioService {
       .map((state) => state == ProcessingState.completed);
 
   AudioService() {
-    // Set a default load configuration
-    _currentLoadConfiguration = AudioLoadConfiguration(
-      androidLoadControl: AndroidLoadControl(
-        minBufferDur: const Duration(milliseconds: 15000),
-        maxBufferDur: const Duration(milliseconds: 60000),
-        bufferForPlaybackDur: const Duration(milliseconds: 2500),
-        prioritizeTimeOverSizeThresholds: true,
-      ),
-      darwinLoadControl: DarwinLoadControl(
-        preferredForwardBufferDuration: const Duration(seconds: 30),
-      ),
+    // Apply a default load configuration when service is initialized
+    configureBufferSettings(
+      bufferDuration: const Duration(seconds: 30), // Default overall buffer hint
+      minBufferDuration: const Duration(milliseconds: 15000), // Android specific
+      maxBufferDuration: const Duration(milliseconds: 60000), // Android specific
     );
 
-    _initAudioSession(); // Call this after setting default config potentially
+    _initAudioSession();
 
     // Listen for network quality changes
     _networkService.onNetworkQualityChanged.listen((quality) {
@@ -104,7 +98,7 @@ class AudioService {
       }
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource, initialConfiguration: _currentLoadConfiguration);
+      await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
       await _audioPlayer.play();
     } catch (e) {
       print('Error playing audio: $e');
@@ -130,7 +124,7 @@ class AudioService {
       final audioSource = AudioSource.uri(Uri.file(filePath));
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource, initialConfiguration: _currentLoadConfiguration);
+      await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
       await _audioPlayer.play();
     } catch (e) {
       print('Error playing local file: $e');
@@ -317,7 +311,7 @@ class AudioService {
 
       final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
 
-      _currentLoadConfiguration = AudioLoadConfiguration( // Update the member variable
+      final audioLoadConfiguration = AudioLoadConfiguration(
         androidLoadControl: AndroidLoadControl(
           minBufferDur: androidMinBufferDur,
           maxBufferDur: androidMaxBufferDur,
@@ -329,10 +323,10 @@ class AudioService {
         ),
       );
 
-      // No longer calling _audioPlayer.setAudioLoadConfiguration here directly.
-      // It will be applied when setAudioSource is called.
+      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
+
       if (kDebugMode) {
-        print("AudioService: Stored buffer settings - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
+        print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
       }
     } catch (e) {
       if (kDebugMode) {
