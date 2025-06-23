@@ -14,8 +14,9 @@ class AudioService {
   final NetworkService _networkService = NetworkService();
   bool _isInitialized = false;
   String? _currentUrl;
-  String? _currentFilePath;
+  String? _currentFilePath; // Reinstated: Used in playLocalFile
   bool _isLocalFile = false;
+  AudioLoadConfiguration? _currentLoadConfiguration; // Store current load config
 
   // Streams
   Stream<Duration> get onPositionChanged => _audioPlayer.positionStream.map((position) => position ?? Duration.zero);
@@ -25,7 +26,20 @@ class AudioService {
       .map((state) => state == ProcessingState.completed);
 
   AudioService() {
-    _initAudioSession();
+    // Set a default load configuration
+    _currentLoadConfiguration = AudioLoadConfiguration(
+      androidLoadControl: AndroidLoadControl(
+        minBufferDur: const Duration(milliseconds: 15000),
+        maxBufferDur: const Duration(milliseconds: 60000),
+        bufferForPlaybackDur: const Duration(milliseconds: 2500),
+        prioritizeTimeOverSizeThresholds: true,
+      ),
+      darwinLoadControl: DarwinLoadControl(
+        preferredForwardBufferDuration: const Duration(seconds: 30),
+      ),
+    );
+
+    _initAudioSession(); // Call this after setting default config potentially
 
     // Listen for network quality changes
     _networkService.onNetworkQualityChanged.listen((quality) {
@@ -90,7 +104,7 @@ class AudioService {
       }
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource);
+      await _audioPlayer.setAudioSource(audioSource, initialConfiguration: _currentLoadConfiguration);
       await _audioPlayer.play();
     } catch (e) {
       print('Error playing audio: $e');
@@ -116,7 +130,7 @@ class AudioService {
       final audioSource = AudioSource.uri(Uri.file(filePath));
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource);
+      await _audioPlayer.setAudioSource(audioSource, initialConfiguration: _currentLoadConfiguration);
       await _audioPlayer.play();
     } catch (e) {
       print('Error playing local file: $e');
@@ -148,6 +162,8 @@ class AudioService {
       _currentUrl = null;
       _currentFilePath = null;
       _isLocalFile = false;
+      _preloadedUrl = null; // Clear preloaded info on stop
+      _preloadedSource = null;
     } catch (e) {
       print('Error stopping audio: $e');
       throw Exception('Failed to stop audio: $e');
@@ -301,7 +317,7 @@ class AudioService {
 
       final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
 
-      final audioLoadConfiguration = AudioLoadConfiguration(
+      _currentLoadConfiguration = AudioLoadConfiguration( // Update the member variable
         androidLoadControl: AndroidLoadControl(
           minBufferDur: androidMinBufferDur,
           maxBufferDur: androidMaxBufferDur,
@@ -313,10 +329,10 @@ class AudioService {
         ),
       );
 
-      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
-
+      // No longer calling _audioPlayer.setAudioLoadConfiguration here directly.
+      // It will be applied when setAudioSource is called.
       if (kDebugMode) {
-        print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
+        print("AudioService: Stored buffer settings - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
       }
     } catch (e) {
       if (kDebugMode) {
