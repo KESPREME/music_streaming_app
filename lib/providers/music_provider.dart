@@ -178,11 +178,11 @@ class MusicProvider with ChangeNotifier {
       _handleNetworkQualityChange(_networkService.networkQuality);
       final url = await _apiService.getAudioStreamUrl(playableId, bitrate); await _audioService.play(url); _currentTrack = effectiveTrack; _isPlaying = true; _updateRecentlyPlayed(effectiveTrack); _updateCurrentIndex(); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING TRACK ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing track: ${e.toString()}'); } }
   Future<void> playOfflineTrack(Track track, {bool setContext = true, bool clearQueue = true}) async { bool knownOffline = track.source == 'local' || _downloadedTracksMetadata.containsKey(track.id); if (!knownOffline) { await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue); return; } if (_currentTrack?.id == track.id && _isPlaying) { await pauseTrack(); return; } if (_currentTrack?.id == track.id && !_isPlaying && _currentTrack != null) { await resumeTrack(); return; } _clearError(); try { if (_isPlaying) await _audioService.stop(); _isPlaying = false; String filePath; bool isDownloaded = _downloadedTracksMetadata.containsKey(track.id); if (track.source == 'local') filePath = track.previewUrl; else if (isDownloaded) { final meta = _downloadedTracksMetadata[track.id]; filePath = meta?['filePath'] as String? ?? ''; } else throw Exception('Source not local/downloaded.'); if (filePath.isEmpty) throw Exception('File path empty.'); final file = File(filePath); if (!await file.exists()) { await _handleMissingOfflineFile(track.id, filePath); throw Exception('File missing.'); } _currentTrack = track; _isOfflineTrack = true; if (setContext) { List<Track> contextTracks; String contextDesc; if (isDownloaded) { contextTracks = await getDownloadedTracks(); contextDesc = "Downloads"; } else { contextTracks = _localTracks; contextDesc = "Local Tracks"; } _setPlaybackContext(contextTracks, clearQueue: clearQueue); print("Set playback context to $contextDesc"); } else _updateCurrentIndex();
-      _audioService.configureBufferSettings(
-          bufferDuration: const Duration(seconds: 15),
-          minBufferDuration: const Duration(seconds: 5),
-          maxBufferDuration: const Duration(seconds: 30)
-      );
+      // _audioService.configureBufferSettings( // This call is removed as the method in AudioService is commented out
+      //     bufferDuration: const Duration(seconds: 15),
+      //     minBufferDuration: const Duration(seconds: 5),
+      //     maxBufferDuration: const Duration(seconds: 30)
+      // );
       notifyListeners(); await _audioService.playLocalFile(filePath); _isPlaying = true; _updateRecentlyPlayed(track); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING OFFLINE ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing offline track: ${e.toString()}'); } }
   Future<void> pauseTrack() async { if (!_isPlaying) return; try { await _audioService.pause(); /* No preload on pause */ } catch (e) { await _handlePlaybackError('Error pausing: $e'); } }
   Future<void> resumeTrack() async { if (_isPlaying || _currentTrack == null) return; _clearError(); try { await _audioService.resume(); } catch (e) { await _handlePlaybackError('Error resuming: $e'); } }
@@ -340,14 +340,16 @@ class MusicProvider with ChangeNotifier {
         maxBufferDuration = const Duration(seconds: 40);
         break;
     }
-    // Only configure if playing online content
-    if (currentTrack != null && !_isOfflineTrack) {
-        _audioService.configureBufferSettings(
-            bufferDuration: bufferDuration,
-            minBufferDuration: minBufferDuration,
-            maxBufferDuration: maxBufferDuration
-        );
-    }
+    // The following lines related to calling _audioService.configureBufferSettings are now removed
+    // as that method in AudioService is commented out.
+    // // Only configure if playing online content
+    // if (currentTrack != null && !_isOfflineTrack) {
+    //     _audioService.configureBufferSettings(
+    //         bufferDuration: bufferDuration,
+    //         minBufferDuration: minBufferDuration,
+    //         maxBufferDuration: maxBufferDuration
+    //     );
+    // }
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
 
