@@ -27,18 +27,18 @@ class AudioService {
 
   AudioService() {
     // Apply a default load configuration when service is initialized
-    configureBufferSettings(
-      bufferDuration: const Duration(seconds: 30), // Default overall buffer hint
-      minBufferDuration: const Duration(milliseconds: 15000), // Android specific
-      maxBufferDuration: const Duration(milliseconds: 60000), // Android specific
-    );
+    // configureBufferSettings( // Commented out call
+    //   bufferDuration: const Duration(seconds: 30), // Default overall buffer hint
+    //   minBufferDuration: const Duration(milliseconds: 15000), // Android specific
+    //   maxBufferDuration: const Duration(milliseconds: 60000), // Android specific
+    // );
 
     _initAudioSession();
 
     // Listen for network quality changes
-    _networkService.onNetworkQualityChanged.listen((quality) {
-      _handleNetworkQualityChange(quality);
-    });
+    // _networkService.onNetworkQualityChanged.listen((quality) { // Commented out listener
+    //   _handleNetworkQualityChange(quality);
+    // });
   }
 
   Future<void> _initAudioSession() async {
@@ -192,22 +192,22 @@ class AudioService {
   }
 
   // Handle network quality changes
-  void _handleNetworkQualityChange(NetworkQuality quality) {
-    // If we're playing a remote file and network quality drops
-    if (_isPlaying && !_isLocalFile && _currentUrl != null) {
-      if (quality == NetworkQuality.poor) {
-        // Reduce buffer size for poor networks to prevent long buffering
-        _audioPlayer.setAndroidAudioAttributes(
-          const AndroidAudioAttributes(
-            contentType: AndroidAudioContentType.music,
-            usage: AndroidAudioUsage.media,
-            flags: AndroidAudioFlags.audibilityEnforced,
-            // Use low latency mode for poor networks
-          ),
-        );
-      }
-    }
-  }
+  // void _handleNetworkQualityChange(NetworkQuality quality) { // Commented out method
+  //   // If we're playing a remote file and network quality drops
+  //   if (_isPlaying && !_isLocalFile && _currentUrl != null) {
+  //     if (quality == NetworkQuality.poor) {
+  //       // Reduce buffer size for poor networks to prevent long buffering
+  //       _audioPlayer.setAndroidAudioAttributes(
+  //         const AndroidAudioAttributes(
+  //           contentType: AndroidAudioContentType.music,
+  //           usage: AndroidAudioUsage.media,
+  //           flags: AndroidAudioFlags.audibilityEnforced,
+  //           // Use low latency mode for poor networks
+  //         ),
+  //       );
+  //     }
+  //   }
+  // }
 
   // Handle playback errors
   void _handlePlaybackError(dynamic error) {
@@ -297,43 +297,43 @@ class AudioService {
     }
   }
 
-  Future<void> configureBufferSettings({
-    Duration? bufferDuration,
-    Duration? minBufferDuration,
-    Duration? maxBufferDuration,
-  }) async {
-    try {
-      // Define effective durations, falling back to sensible defaults if null
-      // These names match the parameters of AndroidLoadControl and DarwinLoadControl
-      final Duration androidMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
-      final Duration androidMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 60000);
-      final Duration androidBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
+  // Future<void> configureBufferSettings({ // Commented out entire method
+  //   Duration? bufferDuration,
+  //   Duration? minBufferDuration,
+  //   Duration? maxBufferDuration,
+  // }) async {
+  //   try {
+  //     // Define effective durations, falling back to sensible defaults if null
+  //     // These names match the parameters of AndroidLoadControl and DarwinLoadControl
+  //     final Duration androidMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
+  //     final Duration androidMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 60000);
+  //     final Duration androidBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
 
-      final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
+  //     final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
 
-      final audioLoadConfiguration = AudioLoadConfiguration(
-        androidLoadControl: AndroidLoadControl(
-          minBufferDur: androidMinBufferDur,
-          maxBufferDur: androidMaxBufferDur,
-          bufferForPlaybackDur: androidBufferForPlaybackDur,
-          prioritizeTimeOverSizeThresholds: true,
-        ),
-        darwinLoadControl: DarwinLoadControl(
-          preferredForwardBufferDuration: darwinPreferredForwardBufferDur,
-        ),
-      );
+  //     final audioLoadConfiguration = AudioLoadConfiguration(
+  //       androidLoadControl: AndroidLoadControl(
+  //         minBufferDur: androidMinBufferDur,
+  //         maxBufferDur: androidMaxBufferDur,
+  //         bufferForPlaybackDur: androidBufferForPlaybackDur,
+  //         prioritizeTimeOverSizeThresholds: true,
+  //       ),
+  //       darwinLoadControl: DarwinLoadControl(
+  //         preferredForwardBufferDuration: darwinPreferredForwardBufferDur,
+  //       ),
+  //     );
 
-      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
+  //     await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
 
-      if (kDebugMode) {
-        print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("AudioService: Error configuring buffer settings: $e");
-      }
-    }
-  }
+  //     if (kDebugMode) {
+  //       print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
+  //     }
+  //   } catch (e) {
+  //     if (kDebugMode) {
+  //       print("AudioService: Error configuring buffer settings: $e");
+  //     }
+  //   }
+  // }
 
   void dispose() {
     _audioPlayer.dispose();

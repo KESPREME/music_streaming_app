@@ -138,13 +138,13 @@ class MyApp extends StatelessWidget {
           type: BottomNavigationBarType.fixed,
           elevation: 8, // Add some elevation
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData( // Changed to CardThemeData
           elevation: 2,
           color: AppColors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData( // Changed to DialogThemeData
           backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           titleTextStyle: fallbackTextTheme.titleLarge,
@@ -192,7 +192,7 @@ class MyApp extends StatelessWidget {
           color: AppColors.onSurface.withOpacity(0.8),
           size: 24,
         ),
-        tabBarTheme: TabBarTheme(
+        tabBarTheme: TabBarThemeData( // Changed to TabBarThemeData
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.onSurface.withOpacity(0.7),
           indicator: const UnderlineTabIndicator(
