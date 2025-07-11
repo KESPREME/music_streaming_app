@@ -28,7 +28,7 @@ class Nearby {
 }
 
 enum SessionState { connected, disconnected, notConnected } // Simplified
-enum Strategy { P2P_STAR } // Simplified
+enum Strategy { P2P_STAR, P2P_CLUSTER } // Added P2P_CLUSTER
 enum Status { CONNECTED, REJECTED, ERROR } // Simplified
 
 class ConnectionInfo {
@@ -155,7 +155,7 @@ class NearbyService {
     try {
       await _nearby.startAdvertising(
         _currentUser.name,
-        Strategy.P2P_STAR,
+        Strategy.P2P_CLUSTER, // Changed to P2P_CLUSTER
         serviceId: _serviceType,
         onConnectionInitiated: _onConnectionInitiated,
         onConnectionResult: (deviceId, status) {
@@ -182,7 +182,7 @@ class NearbyService {
     try {
       await _nearby.startBrowsing(
         _currentUser.name,
-        Strategy.P2P_STAR,
+        Strategy.P2P_CLUSTER, // Changed to P2P_CLUSTER
         serviceId: _serviceType,
         onServiceFound: (deviceId, name, serviceId) {
           if (kDebugMode) print("Service found: $deviceId, Name: $name, ServiceId: $serviceId. Requesting connection...");
