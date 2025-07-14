@@ -52,25 +52,40 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this); // Tracks, Artists, Playlists
-    _searchController.addListener(() {
-      if (mounted) {
-        setState(() {
-          _searchQuery = _searchController.text;
-        });
-      }
-    });
+    _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+       if (mounted && _searchController.text != _searchQuery) {
+        setState(() {
+          _searchQuery = _searchController.text;
+        });
+        // Perform search after state has been updated with the new query
+        if (_searchQuery.isNotEmpty) {
+           _performSearch(_searchQuery);
+        } else {
+          // If query is empty, clear results in the provider
+          Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
+        }
+      }
+    });
   }
 
   void _performSearch(String query) {
@@ -138,7 +153,15 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   : null,
               contentPadding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 16.0),
             ),
-            onSubmitted: _performSearch,
+            onSubmitted: (query) {
+              _debounce?.cancel(); // Cancel any pending debounce
+              if (query != _searchQuery) {
+                 setState(() {
+                  _searchQuery = query;
+                });
+              }
+              _performSearch(query);
+            },
             textInputAction: TextInputAction.search,
           ),
         ),
@@ -154,9 +177,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Tracks Tab - SearchTabContent needs to be refactored to accept/use query
-          // For now, assuming SearchTabContent is adapted to use _searchQuery or a provider state
-          SearchTabContent(searchQuery: _searchQuery), // Pass query
+          // Tracks Tab - SearchTabContent now consumes directly from MusicProvider
+          const SearchTabContent(),
           _buildArtistsTab(context, _searchQuery),
           _buildPlaylistsTab(context, _searchQuery), // Placeholder for playlists
         ],

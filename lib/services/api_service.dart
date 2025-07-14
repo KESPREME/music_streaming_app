@@ -74,7 +74,10 @@ class ApiService {
       _setInMemoryCache(cacheKey, tracks); // Also save to in-memory cache
       print("ApiService: Fetched and cached ${tracks.length} popular tracks.");
       return tracks;
-    } catch (e) {
+    } on SocketException catch (e) {
+      print('Network error fetching tracks: $e');
+      final cached = await _getCachedTracks(cacheKey, ignoreExpiry: true);
+    } on Exception catch (e) {
       print('Error fetching tracks: $e');
       final cached = await _getCachedTracks(cacheKey, ignoreExpiry: true);
       if (cached != null) {
@@ -110,7 +113,10 @@ class ApiService {
       _setInMemoryCache(cacheKey, tracks); // Also save to in-memory cache
       print("ApiService: Fetched and cached ${tracks.length} trending tracks.");
       return tracks;
-    } catch (e) {
+    } on SocketException catch (e) {
+      print('Network error fetching trending: $e');
+      final cached = await _getCachedTracks(cacheKey, ignoreExpiry: true);
+    } on Exception catch (e) {
       print('Error fetching trending: $e');
       final cached = await _getCachedTracks(cacheKey, ignoreExpiry: true);
       if (cached != null) {
@@ -149,7 +155,10 @@ class ApiService {
       _setInMemoryCache(cacheKey, limitedTracks); // Also save to in-memory cache
       print("ApiService: Cached ${limitedTracks.length} search results for '$query'.");
       return limitedTracks;
-    } catch (e) {
+    } on SocketException catch (e) {
+      print('Network error fetching by query "$query": $e');
+      final cached = await _getCachedTracks(cacheKey, ignoreExpiry: true);
+    } on Exception catch (e) {
       print('Error fetching by query "$query": $e');
       final cached = await _getCachedTracks(cacheKey, ignoreExpiry: true);
       if (cached != null) {
@@ -218,7 +227,10 @@ class ApiService {
       _setInMemoryCache(cacheKey, artists); // Also save to in-memory cache
       print("ApiService: Fetched and cached ${artists.length} top artists (simulated).");
       return artists;
-    } catch (e) {
+    } on SocketException catch (e) {
+      print('Network error fetching top artists: $e');
+      final cached = await _getCachedArtists(cacheKey, ignoreExpiry: true);
+    } on Exception catch (e) {
       print('Error fetching top artists: $e');
       final cached = await _getCachedArtists(cacheKey, ignoreExpiry: true);
       if (cached != null) {
@@ -294,6 +306,12 @@ class ApiService {
           if (attempts >= NetworkConfig.maxRetries) rethrow;
           await _waitBeforeRetry(attempts);
           if (!_networkService.isConnected) throw Exception('Lost connection during retry.');
+        } on YoutubeExplodeException catch (e) {
+          attempts++; print("Attempt $attempts failed (YouTubeExplode): $e");
+          if (e.message.contains("Video unavailable") || e.message.contains("Private video")) {
+            throw Exception("Video unavailable: $videoId");
+          }
+          if (attempts >= NetworkConfig.maxRetries) rethrow;
         } on Exception catch (e) { // Other API errors
           attempts++; print("Attempt $attempts failed (API/Manifest): $e");
           if (e.toString().contains("Video unavailable") || e.toString().contains("Private video")) throw Exception("Video unavailable: $videoId");

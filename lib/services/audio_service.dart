@@ -100,6 +100,9 @@ class AudioService {
       // Set the audio source and play
       await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
       await _audioPlayer.play();
+    } on PlayerException catch (e) {
+      print('just_audio PlayerException during play: ${e.message}');
+      throw Exception('Failed to play audio: ${e.message}');
     } catch (e) {
       print('Error playing audio: $e');
       throw Exception('Failed to play audio: $e');
@@ -126,6 +129,9 @@ class AudioService {
       // Set the audio source and play
       await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
       await _audioPlayer.play();
+    } on PlayerException catch (e) {
+      print('just_audio PlayerException during playLocalFile: ${e.message}');
+      throw Exception('Failed to play local file: ${e.message}');
     } catch (e) {
       print('Error playing local file: $e');
       throw Exception('Failed to play local file: $e');

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io'; // For SocketException
+import 'package:flutter/services.dart'; // For PlatformException
 import 'package:http/http.dart' as http;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import '../models/track.dart';
@@ -71,6 +73,13 @@ class SpotifyService {
       } else {
         throw Exception('Failed to get access token: ${response.body}');
       }
+    } on PlatformException catch (e) {
+      // This can happen if the user cancels the web auth flow.
+      print('Spotify Auth Error (Platform): ${e.message}');
+      throw Exception('Authentication cancelled or failed.');
+    } on SocketException catch (e) {
+      print('Spotify Auth Error (Network): $e');
+      throw Exception('Network error during authentication. Please check your connection.');
     } catch (e) {
       print('Authentication error: $e');
       throw Exception('Failed to authenticate with Spotify: $e');
