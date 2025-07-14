@@ -69,16 +69,16 @@ class MyApp extends StatelessWidget {
     //   labelSmall: GoogleFonts.roboto(fontSize: 10, fontWeight: FontWeight.w400, color: AppColors.onBackground.withOpacity(0.6), letterSpacing: 1.5),
     // );
     final fallbackTextTheme = textTheme.copyWith( // Using fallback standard text theme
-      headlineLarge: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.5),
-      headlineMedium: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.25),
-      headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.15),
-      titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: AppColors.onBackground),
-      titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.15),
-      titleSmall: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.1),
+      headlineLarge: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.5),
+      headlineMedium: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.25),
+      headlineSmall: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onBackground, letterSpacing: 0.15),
+      titleLarge: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: AppColors.onBackground),
+      titleMedium: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.15),
+      titleSmall: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 0.1),
       bodyLarge: TextStyle(fontSize: 16, color: AppColors.onBackground.withOpacity(0.87), letterSpacing: 0.5),
       bodyMedium: TextStyle(fontSize: 14, color: AppColors.onBackground.withOpacity(0.70), letterSpacing: 0.25),
       bodySmall: TextStyle(fontSize: 12, color: AppColors.onBackground.withOpacity(0.60), letterSpacing: 0.4),
-      labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 1.25),
+      labelLarge: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.onBackground, letterSpacing: 1.25),
       labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.onBackground.withOpacity(0.7)),
       labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w400, color: AppColors.onBackground.withOpacity(0.6), letterSpacing: 1.5),
     );
@@ -89,7 +89,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true, // Enable Material 3 features
         brightness: Brightness.dark,
-        colorScheme: ColorScheme( // Removed const
+        colorScheme: const ColorScheme( // Removed const
           brightness: Brightness.dark,
           primary: AppColors.primary,
           onPrimary: AppColors.onPrimary,
@@ -113,8 +113,8 @@ class MyApp extends StatelessWidget {
           onSurface: AppColors.onSurface,
           surfaceVariant: Color(0xFF2C2C2C), // For slightly different surfaces
           onSurfaceVariant: AppColors.onBackground.withOpacity(0.8),
-          outline: Colors.grey[700],
-          shadow: Colors.black.withOpacity(0.5),
+          outline: Colors.grey,
+          shadow: Colors.black,
           inverseSurface: AppColors.onBackground, // For elements on dark surface that need light bg
           onInverseSurface: AppColors.background,
           inversePrimary: AppColors.background, // For text on primary color buttons
@@ -179,14 +179,14 @@ class MyApp extends StatelessWidget {
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
-        sliderTheme: SliderThemeData(
+        sliderTheme: const SliderThemeData(
           activeTrackColor: AppColors.primary,
-          inactiveTrackColor: AppColors.surface.withOpacity(0.7),
+          inactiveTrackColor: AppColors.surface,
           thumbColor: AppColors.primary,
-          overlayColor: AppColors.primary.withOpacity(0.2),
+          overlayColor: Color.fromRGBO(187, 134, 252, 0.2), // AppColors.primary.withOpacity(0.2)
           trackHeight: 3.0,
-          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12.0),
+          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6.0),
+          overlayShape: RoundSliderOverlayShape(overlayRadius: 12.0),
         ),
         iconTheme: IconThemeData(
           color: AppColors.onSurface.withOpacity(0.8),
@@ -248,11 +248,11 @@ class _MainScreenState extends State<MainScreen> {
           Container(
             decoration: BoxDecoration(
               color: Theme.of(context).bottomNavigationBarTheme.backgroundColor ?? AppColors.surface,
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Color.fromRGBO(0, 0, 0, 0.1),
                   blurRadius: 8,
-                  offset: const Offset(0, -2), // Shadow on top
+                  offset: Offset(0, -2), // Shadow on top
                 ),
               ],
             ),

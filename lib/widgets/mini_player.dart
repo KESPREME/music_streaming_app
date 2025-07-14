@@ -5,7 +5,7 @@ import '../providers/music_provider.dart';
 import '../now_playing_screen.dart'; // Ensure this is the updated NowPlayingScreen
 
 class MiniPlayer extends StatelessWidget {
-  const MiniPlayer({Key? key}) : super(key: key);
+  const MiniPlayer({super.key});
 
   @override
   Widget build(BuildContext context) {

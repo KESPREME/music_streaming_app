@@ -41,6 +41,7 @@ class TrendingNowScreen extends StatelessWidget {
               )
             : ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
+                itemExtent: 72.0, // Optimization for fixed height items
                 itemCount: trendingTracks.length,
                 itemBuilder: (context, index) {
                   final track = trendingTracks[index];

@@ -12,7 +12,7 @@ class ArtistSearchTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const ArtistSearchTile({
-    Key? key,
+    super.key,
     required this.artistName,
     this.artistImageUrl,
     required this.onTap,

@@ -9,7 +9,7 @@ class PlayerControls extends StatelessWidget {
   final double mainIconSize;
 
   const PlayerControls({
-    Key? key,
+    super.key,
     this.showLabels = false,
     this.compact = false,
     this.iconSize = 28.0,       // Default icon size

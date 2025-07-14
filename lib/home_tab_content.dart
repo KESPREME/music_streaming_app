@@ -10,16 +10,24 @@ class HomeTabContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
-
+    // No need to listen to the whole provider here.
+    // Consumers will be used for specific data.
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 16),
-          _buildTrendingSection(context, musicProvider.trendingTracks),
+          Consumer<MusicProvider>(
+            builder: (context, musicProvider, child) {
+              return _buildTrendingSection(context, musicProvider.trendingTracks);
+            },
+          ),
           const SizedBox(height: 16),
-          _buildRecentlyPlayed(context, musicProvider.recentlyPlayed),
+          Consumer<MusicProvider>(
+            builder: (context, musicProvider, child) {
+              return _buildRecentlyPlayed(context, musicProvider.recentlyPlayed);
+            },
+          ),
         ],
       ),
     );
@@ -153,7 +161,8 @@ class _SongTileState extends State<_SongTile> {
 
   @override
   Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
+    // Get a provider instance for actions only, no need to listen here.
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
 
     return Padding(
       padding: const EdgeInsets.only(right: 16.0),
@@ -235,26 +244,31 @@ class _SongTileState extends State<_SongTile> {
                   Positioned(
                     top: 4,
                     right: 4,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      icon: Icon(
-                        musicProvider.isSongLiked(widget.track.id) ? Icons.favorite : Icons.favorite_border,
-                        color: musicProvider.isSongLiked(widget.track.id) ? Colors.red : Colors.white70,
-                        size: 20,
-                      ),
-                      onPressed: () {
-                        if (musicProvider.isSongLiked(widget.track.id)) {
-                          musicProvider.unlikeSong(widget.track.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Removed from Liked Songs')),
-                          );
-                        } else {
-                          musicProvider.likeSong(widget.track);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Added to Liked Songs')),
-                          );
-                        }
+                    child: Consumer<MusicProvider>( // Wrap only the like button
+                      builder: (context, provider, child) {
+                        final isLiked = provider.isSongLiked(widget.track.id);
+                        return IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: Icon(
+                            isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: isLiked ? Colors.red : Colors.white70,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            if (isLiked) {
+                              provider.unlikeSong(widget.track.id);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Removed from Liked Songs')),
+                              );
+                            } else {
+                              provider.likeSong(widget.track);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Added to Liked Songs')),
+                              );
+                            }
+                          },
+                        );
                       },
                     ),
                   ),
