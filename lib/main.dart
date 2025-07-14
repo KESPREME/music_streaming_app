@@ -89,7 +89,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true, // Enable Material 3 features
         brightness: Brightness.dark,
-        colorScheme: const ColorScheme( // Removed const
+        colorScheme: const ColorScheme( // Added const back
           brightness: Brightness.dark,
           primary: AppColors.primary,
           onPrimary: AppColors.onPrimary,
@@ -111,10 +111,10 @@ class MyApp extends StatelessWidget {
           onBackground: AppColors.onBackground,
           surface: AppColors.surface,
           onSurface: AppColors.onSurface,
-          surfaceVariant: Color(0xFF2C2C2C), // For slightly different surfaces
-          onSurfaceVariant: AppColors.onBackground.withOpacity(0.8),
-          outline: Colors.grey,
-          shadow: Colors.black,
+          surfaceVariant: const Color(0xFF2C2C2C), // For slightly different surfaces
+          onSurfaceVariant: const Color.fromRGBO(255, 255, 255, 0.8),
+          outline: const Color(0xFF616161), // Colors.grey[700]
+          shadow: const Color(0x80000000), // Colors.black.withOpacity(0.5)
           inverseSurface: AppColors.onBackground, // For elements on dark surface that need light bg
           onInverseSurface: AppColors.background,
           inversePrimary: AppColors.background, // For text on primary color buttons
@@ -185,8 +185,8 @@ class MyApp extends StatelessWidget {
           thumbColor: AppColors.primary,
           overlayColor: Color.fromRGBO(187, 134, 252, 0.2), // AppColors.primary.withOpacity(0.2)
           trackHeight: 3.0,
-          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6.0),
-          overlayShape: RoundSliderOverlayShape(overlayRadius: 12.0),
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12.0),
         ),
         iconTheme: IconThemeData(
           color: AppColors.onSurface.withOpacity(0.8),

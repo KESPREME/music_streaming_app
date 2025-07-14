@@ -2,6 +2,7 @@ import 'dart:ui'; // For ImageFilter
 // import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/player_controls.dart';
