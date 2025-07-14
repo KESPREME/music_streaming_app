@@ -66,6 +66,8 @@ class MiniPlayer extends StatelessWidget {
                                   currentTrack.albumArtUrl,
                                   width: 48, // Standard size
                                   height: 48,
+                                  cacheWidth: (48 * MediaQuery.of(context).devicePixelRatio).round(),
+                                  cacheHeight: (48 * MediaQuery.of(context).devicePixelRatio).round(),
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) => Container(width: 48, height: 48, color: theme.colorScheme.surface, child: Icon(Icons.broken_image, color: theme.colorScheme.onSurface.withOpacity(0.5))),
                                   loadingBuilder: (context, child, loadingProgress) {

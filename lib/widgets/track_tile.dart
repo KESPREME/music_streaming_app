@@ -29,6 +29,9 @@ class TrackTile extends StatelessWidget {
 
   Widget _buildArtworkWidget(BuildContext context, ThemeData theme) {
     final artworkSize = dense ? 40.0 : 50.0;
+    final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+    final cacheSize = (artworkSize * pixelRatio).round();
+
     if (track.albumArtUrl.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(dense ? 4 : 6),
@@ -36,6 +39,8 @@ class TrackTile extends StatelessWidget {
           track.albumArtUrl,
           width: artworkSize,
           height: artworkSize,
+          cacheWidth: cacheSize,
+          cacheHeight: cacheSize,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
             width: artworkSize,

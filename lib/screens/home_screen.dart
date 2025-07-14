@@ -260,6 +260,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 track.albumArtUrl,
                                 height: imageHeight,
                                 width: itemWidth,
+                                cacheWidth: (itemWidth * MediaQuery.of(context).devicePixelRatio).round(),
+                                cacheHeight: (imageHeight * MediaQuery.of(context).devicePixelRatio).round(),
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) => Container(
                                   height: imageHeight,
@@ -435,23 +437,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: theme.colorScheme.surfaceVariant,
+                      SizedBox(
+                        width: 100,
+                        height: 100,
                         child: ClipOval(
                           child: imageUrl.isNotEmpty
-                            ? Image.network( // Replaced CachedNetworkImage
-                                imageUrl,
-                                fit: BoxFit.cover,
-                                width: 100,
-                                height: 100,
-                                errorBuilder: (context, error, stackTrace) => Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
-                                loadingBuilder: (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null));
-                                },
-                              )
-                            : Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant),
+                              ? Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  width: 100,
+                                  height: 100,
+                                  cacheWidth: (100 * MediaQuery.of(context).devicePixelRatio).round(),
+                                  cacheHeight: (100 * MediaQuery.of(context).devicePixelRatio).round(),
+                                  errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.surfaceVariant, child: Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant)),
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
+                                  },
+                                )
+                              : Container(color: theme.colorScheme.surfaceVariant, child: Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant)),
                         ),
                       ),
                       const SizedBox(height: 10),

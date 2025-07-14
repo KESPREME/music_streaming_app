@@ -383,7 +383,7 @@ class ApiService {
           return Track.fromJson(Map<String, dynamic>.from(trackData));
         }
       }
-    } catch (e) { print('Error reading all_tracks_cache: $e'); }
+    } catch (_) { print('Error reading all_tracks_cache.'); }
     return null;
   }
 
@@ -547,7 +547,7 @@ class ApiService {
   Future<void> _processOperationsQueue() async { if (_pendingOperations.isEmpty || _isProcessingQueue) return; _isProcessingQueue = true; print("API Service: Processing pending queue..."); while (_pendingOperations.isNotEmpty && _networkService.isConnected) { final op = _pendingOperations.removeAt(0); try { await op.execute(); } catch (e) { if (op.attempts < 2) { op.attempts++; _pendingOperations.add(op); } await Future.delayed(const Duration(seconds: 5)); } } _isProcessingQueue = false; print("API Service: Finished queue."); }
 
   // --- Cache Management & Dispose ---
-  Future<void> clearCache() async { try { final p=await SharedPreferences.getInstance(); final k=p.getKeys().where((k)=> k.startsWith('tracks_')||k.startsWith('artists_')||k.startsWith('all_tracks_cache')||k.startsWith('tracks_expiry_')||k.startsWith('artists_expiry_')).toList(); for(final key in k) await p.remove(key); _streamUrlCache.clear(); _inMemoryListCache.clear(); print("ApiService Cache Cleared (SharedPreferences & In-Memory)."); } catch(e){ print('Error clearing ApiService cache: $e');}}
+  Future<void> clearCache() async { try { final p=await SharedPreferences.getInstance(); final k=p.getKeys().where((k)=> k.startsWith('tracks_')||k.startsWith('artists_')||k.startsWith('all_tracks_cache')||k.startsWith('tracks_expiry_')||k.startsWith('artists_expiry_')).toList(); for(final key in k) await p.remove(key); _streamUrlCache.clear(); _inMemoryListCache.clear(); print("ApiService Cache Cleared (SharedPreferences & In-Memory)."); } catch(_){ print('Error clearing ApiService cache.');}}
   void dispose() { _yt.close(); _pendingOperations.clear(); _inMemoryListCache.clear(); print("ApiService disposed."); }
 }
 

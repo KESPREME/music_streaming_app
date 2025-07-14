@@ -1,11 +1,12 @@
 // lib/services/network_service.dart
 import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart'; // Unused
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:internet_connection_checker/internet_connection_checker.dart';
@@ -164,8 +165,9 @@ class NetworkService {
       );
 
       return isJioDns;
-    } catch (e) {
-      print('Error checking for Jio network: $e');
+    } catch (_) {
+      // Error is not used, just print a generic message.
+      print('Could not determine carrier-specific network details.');
       return false;
     }
   }
@@ -181,7 +183,7 @@ class NetworkService {
       final dns2 = result2.stdout.toString().trim();
 
       return [dns1, dns2].where((dns) => dns.isNotEmpty).toList();
-    } catch (e) {
+    } catch (_) {
       // If we can't get DNS servers, return empty list
       return [];
     }
@@ -313,8 +315,8 @@ class NetworkService {
       final expiryTime = DateTime.now().add(expiry).millisecondsSinceEpoch;
       await prefs.setString(cacheKey, jsonEncode(data));
       await prefs.setInt(expiryKey, expiryTime);
-    } catch (e) {
-      print('Error caching response: $e');
+    } catch (_) {
+      print('Error caching response for key: $url');
     }
   }
 
@@ -343,8 +345,8 @@ class NetworkService {
       if (cachedData != null) {
         return jsonDecode(cachedData);
       }
-    } catch (e) {
-      print('Error getting cached response: $e');
+    } catch (_) {
+      print('Error getting cached response for key: $url');
     }
 
     return null;
@@ -366,9 +368,9 @@ class NetworkService {
 
       final response = await _dio.get(url, options: options);
       await _cacheResponse(url, response.data, cacheExpiry);
-    } catch (e) {
+    } catch (_) {
       // Ignore errors during background refresh
-      print('Background cache refresh failed: $e');
+      print('Background cache refresh failed for url: $url');
     }
   }
 
@@ -445,7 +447,7 @@ class NetworkService {
     if (await file.exists()) {
       try {
         startBytes = await file.length();
-      } catch (e) {
+        } catch (_) {
         // If we can't get length, start from beginning
         startBytes = 0;
       }
@@ -516,7 +518,7 @@ class NetworkService {
         if (await file.exists()) {
           try {
             startBytes = await file.length();
-          } catch (e) {
+          } catch (_) {
             // If we can't get length, continue from last known position
           }
         }
@@ -539,8 +541,8 @@ class NetworkService {
         if (fileInfo != null) {
           return fileInfo.file;
         }
-      } catch (e) {
-        print('Error getting file from cache: $e');
+      } catch (_) {
+        print('Error getting file from cache for key: ${key ?? url}');
       }
       throw Exception('No internet connection');
     }
@@ -559,8 +561,8 @@ class NetworkService {
         if (fileInfo != null) {
           return fileInfo.file;
         }
-      } catch (cacheError) {
-        print('Error getting file from cache: $cacheError');
+      } catch (_) {
+        print('Error getting file from cache for key: ${key ?? url}');
       }
       rethrow;
     }
@@ -583,7 +585,7 @@ class NetworkService {
         ),
       );
       return response.statusCode != null && response.statusCode! < 400;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
@@ -615,8 +617,8 @@ class NetworkService {
       }
 
       await _cacheManager.emptyCache();
-    } catch (e) {
-      print('Error clearing cache: $e');
+    } catch (_) {
+      print('Error clearing network service cache.');
     }
   }
 
