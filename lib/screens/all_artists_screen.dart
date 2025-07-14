@@ -103,6 +103,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
             final artists = snapshot.data!;
             return ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
+              itemExtent: 78.0, // ListTile with CircleAvatar radius 25 is ~72-78dp tall with padding
               itemCount: artists.length,
               itemBuilder: (context, index) {
                 final artist = artists[index];

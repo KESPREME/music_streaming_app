@@ -72,6 +72,10 @@ class TrackTile extends StatelessWidget {
     final musicProvider = Provider.of<MusicProvider>(context, listen: false); // listen:false for actions
     final theme = Theme.of(context);
 
+    // Standard height for a non-dense ListTile is around 72.0 with default padding
+    // Our leading is 50, vertical padding is 8*2=16. Total height is ~66.
+    // We can use this for itemExtent optimization in ListView.builder.
+
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: dense ? 12.0 : 16.0, vertical: dense ? 4.0 : 8.0),
       leading: _buildArtworkWidget(context, theme),

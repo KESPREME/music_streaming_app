@@ -85,6 +85,7 @@ class LikedSongsScreen extends StatelessWidget {
             ),
           )
               : ListView.builder(
+            itemExtent: 72.0, // Optimization for fixed height items
             itemCount: likedSongs.length,
             itemBuilder: (context, index) {
               final track = likedSongs[index];

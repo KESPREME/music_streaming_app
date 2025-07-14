@@ -1,7 +1,6 @@
 import 'dart:ui'; // For ImageFilter
 // import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart'; // Import for Share
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
@@ -21,242 +20,35 @@ class NowPlayingScreen extends StatefulWidget {
 }
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
-  // No local state needed if all driven by MusicProvider and theme
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // final screenWidth = MediaQuery.of(context).size.width; // Commented out: Unused
-    // final screenHeight = MediaQuery.of(context).size.height; // Commented out: Unused
 
     return Consumer<MusicProvider>(
       builder: (context, musicProvider, child) {
-        final currentTrack = musicProvider.currentTrack ?? widget.track; // Fallback to initial track
-        // final isPlaying = musicProvider.isPlaying; // Commented out: Unused in this build method directly
-        // shuffleEnabled and repeatMode are available in musicProvider if needed for UI indication
+        final currentTrack = musicProvider.currentTrack ?? widget.track;
 
         return Scaffold(
-          // backgroundColor will be from theme.scaffoldBackgroundColor
-          extendBodyBehindAppBar: true, // Allows content to go behind AppBar
-          appBar: AppBar(
-            backgroundColor: Colors.transparent, // Make AppBar transparent
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down), // Standard icon, color from theme
-              onPressed: () => Navigator.of(context).pop(),
-              tooltip: "Close player",
-            ),
-            title: Text(
-              'Now Playing',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            centerTitle: true,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.queue_music_outlined),
-                tooltip: "View Queue",
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const QueueScreen()),
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_vert_outlined),
-                tooltip: "More options",
-                onPressed: () {
-                  _showOptionsBottomSheet(context, currentTrack, theme, musicProvider);
-                },
-              ),
-            ],
-          ),
+          extendBodyBehindAppBar: true,
+          appBar: _buildAppBar(context, theme, currentTrack, musicProvider),
           body: Stack(
             children: [
-              // Blurred Background Image (like Spotify)
-              Positioned.fill(
-                child: currentTrack.albumArtUrl.isNotEmpty
-                    ? Image.network(
-                        currentTrack.albumArtUrl,
-                        fit: BoxFit.cover,
-                        frameBuilder: (BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
-                          // final image = child; // child is the Image widget itself // Not needed directly
-                          if (wasSynchronouslyLoaded || frame != null) {
-                            return Container(
-                              decoration: BoxDecoration(
-                                image: DecorationImage(
-                                  image: NetworkImage(currentTrack.albumArtUrl), // Re-fetch for DecorationImage
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-                                child: Container(
-                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.4)), // Dark overlay
-                                ),
-                              ),
-                            );
-                          } else {
-                            return Container(color: theme.colorScheme.surface); // Placeholder while loading
-                          }
-                        },
-                        errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.background), // Corrected parameters
-                      )
-                    : Container(color: theme.colorScheme.background), // Fallback if no URL
-              ),
-              // Main Content
+              _buildBlurredBackground(context, theme, currentTrack),
               Padding(
                 padding: EdgeInsets.only(
-                  top: kToolbarHeight + MediaQuery.of(context).padding.top + 20, // Below AppBar
-                  bottom: MediaQuery.of(context).padding.bottom + 20, // Above system navigation
+                  top: kToolbarHeight + MediaQuery.of(context).padding.top + 20,
+                  bottom: MediaQuery.of(context).padding.bottom + 20,
                   left: 24,
                   right: 24,
                 ),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween, // Distribute space
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Album Art - centered and responsive
-                    Expanded(
-                      flex: 5, // Give more space to album art
-                      child: Center(
-                        child: AspectRatio(
-                          aspectRatio: 1.0,
-                          child: Container(
-                            margin: const EdgeInsets.all(16), // Margin around art
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16), // Softer corners
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.5),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16.0),
-                              child: currentTrack.albumArtUrl.isNotEmpty
-                                  ? Image.network( // Replaced CachedNetworkImage
-                                      currentTrack.albumArtUrl,
-                                      fit: BoxFit.cover,
-                                      loadingBuilder: (context, child, loadingProgress) {
-                                        if (loadingProgress == null) return child;
-                                        return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
-                                      },
-                                      errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.broken_image, size: 80, color: theme.colorScheme.onSurfaceVariant))),
-                                    )
-                                  : Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.music_note, size: 80, color: theme.colorScheme.onSurfaceVariant))),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Track Info & Like Button
-                    Expanded(
-                      flex: 2, // Space for track info
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      currentTrack.trackName,
-                                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      currentTrack.artistName,
-                                      style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onBackground.withOpacity(0.7)),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  musicProvider.isSongLiked(currentTrack.id) ? Icons.favorite : Icons.favorite_border,
-                                  color: musicProvider.isSongLiked(currentTrack.id) ? theme.colorScheme.primary : theme.iconTheme.color,
-                                  size: 28,
-                                ),
-                                onPressed: () {
-                                  musicProvider.toggleLike(currentTrack);
-                                  // setState is implicitly called by Consumer
-                                },
-                                tooltip: musicProvider.isSongLiked(currentTrack.id) ? "Unlike" : "Like",
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Progress Bar
-                    Expanded(
-                      flex: 1, // Space for progress bar
-                      child: StreamBuilder<Duration>(
-                        stream: musicProvider.positionStream,
-                        builder: (context, snapshot) {
-                          final position = snapshot.data ?? Duration.zero;
-                          final duration = musicProvider.duration;
-                          return Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Slider( // Uses SliderTheme from main.dart
-                                value: position.inSeconds.toDouble().clamp(0.0, duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0),
-                                min: 0,
-                                max: duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0, // Avoid division by zero if duration is 0
-                                onChanged: (value) {
-                                  musicProvider.seekTo(Duration(seconds: value.toInt()));
-                                },
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0), // Match slider padding
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(_formatDuration(position), style: theme.textTheme.bodySmall),
-                                    Text(_formatDuration(duration), style: theme.textTheme.bodySmall),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Playback Controls (using the PlayerControls widget, which should also be themed)
-                    Expanded(
-                      flex: 2, // Space for controls
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16.0),
-                        child: PlayerControls(showLabels: false, compact: false), // Using existing controls
-                                                                          // This widget should be updated to use theme colors
-                      )
-                    ),
-
-                    // Additional Controls (Shuffle, Repeat, etc. - can be part of PlayerControls or separate)
-                    // For now, assuming PlayerControls handles shuffle/repeat indication
-                    // Or add a row here:
-                    // Row(
-                    //   mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    //   children: [
-                    //     IconButton(icon: Icon(Icons.shuffle, color: musicProvider.shuffleEnabled ? theme.primaryColor : Colors.white70), onPressed: musicProvider.toggleShuffle),
-                    //     IconButton(icon: Icon(Icons.repeat, color: musicProvider.repeatMode != RepeatMode.off ? theme.primaryColor : Colors.white70), onPressed: musicProvider.cycleRepeatMode),
-                    //     // Add more like share, download status etc.
-                    //   ],
-                    // ),
+                    _buildAlbumArt(context, theme, currentTrack),
+                    _buildTrackInfo(context, theme, currentTrack, musicProvider),
+                    _buildProgressBar(context, musicProvider),
+                    const PlayerControls(showLabels: false, compact: false),
                   ],
                 ),
               ),
@@ -264,6 +56,198 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           ),
         );
       },
+    );
+  }
+
+  AppBar _buildAppBar(BuildContext context, ThemeData theme, Track track, MusicProvider musicProvider) {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.keyboard_arrow_down),
+        onPressed: () => Navigator.of(context).pop(),
+        tooltip: "Close player",
+      ),
+      title: Text(
+        'Now Playing',
+        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      centerTitle: true,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.queue_music_outlined),
+          tooltip: "View Queue",
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const QueueScreen()),
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.more_vert_outlined),
+          tooltip: "More options",
+          onPressed: () {
+            _showOptionsBottomSheet(context, track, theme, musicProvider);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBlurredBackground(BuildContext context, ThemeData theme, Track currentTrack) {
+    return Positioned.fill(
+      child: currentTrack.albumArtUrl.isNotEmpty
+          ? Image.network(
+              currentTrack.albumArtUrl,
+              fit: BoxFit.cover,
+              frameBuilder: (BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
+                if (wasSynchronouslyLoaded || frame != null) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: NetworkImage(currentTrack.albumArtUrl),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                      child: Container(
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.4)),
+                      ),
+                    ),
+                  );
+                } else {
+                  return Container(color: theme.colorScheme.surface);
+                }
+              },
+              errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.background),
+            )
+          : Container(color: theme.colorScheme.background),
+    );
+  }
+
+  Widget _buildAlbumArt(BuildContext context, ThemeData theme, Track currentTrack) {
+    return Expanded(
+      flex: 5,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: 1.0,
+          child: Container(
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16.0),
+              child: currentTrack.albumArtUrl.isNotEmpty
+                  ? Image.network(
+                      currentTrack.albumArtUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
+                      },
+                      errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.broken_image, size: 80, color: theme.colorScheme.onSurfaceVariant))),
+                    )
+                  : Container(color: theme.colorScheme.surfaceVariant, child: Center(child: Icon(Icons.music_note, size: 80, color: theme.colorScheme.onSurfaceVariant))),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrackInfo(BuildContext context, ThemeData theme, Track currentTrack, MusicProvider musicProvider) {
+    return Expanded(
+      flex: 2,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      currentTrack.trackName,
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      currentTrack.artistName,
+                      style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onBackground.withOpacity(0.7)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  musicProvider.isSongLiked(currentTrack.id) ? Icons.favorite : Icons.favorite_border,
+                  color: musicProvider.isSongLiked(currentTrack.id) ? theme.colorScheme.primary : theme.iconTheme.color,
+                  size: 28,
+                ),
+                onPressed: () {
+                  musicProvider.toggleLike(currentTrack);
+                },
+                tooltip: musicProvider.isSongLiked(currentTrack.id) ? "Unlike" : "Like",
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(BuildContext context, MusicProvider musicProvider) {
+    final theme = Theme.of(context);
+    return Expanded(
+      flex: 1,
+      child: StreamBuilder<Duration>(
+        stream: musicProvider.positionStream,
+        builder: (context, snapshot) {
+          final position = snapshot.data ?? Duration.zero;
+          final duration = musicProvider.duration;
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Slider(
+                value: position.inSeconds.toDouble().clamp(0.0, duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0),
+                min: 0,
+                max: duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0,
+                onChanged: (value) {
+                  musicProvider.seekTo(Duration(seconds: value.toInt()));
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_formatDuration(position), style: theme.textTheme.bodySmall),
+                    Text(_formatDuration(duration), style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -275,26 +259,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   void _showOptionsBottomSheet(BuildContext context, Track track, ThemeData theme, MusicProvider musicProvider) {
-    // Using theme for bottom sheet
     showModalBottomSheet(
       context: context,
-      backgroundColor: theme.colorScheme.surfaceVariant, // Darker surface for bottom sheet
+      backgroundColor: theme.colorScheme.surfaceVariant,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Wrap( // Use Wrap for content that might overflow vertically
+      builder: (context) => Wrap(
         children: [
           ListTile(
             leading: Icon(Icons.playlist_add_outlined, color: theme.iconTheme.color),
             title: Text('Add to Playlist', style: theme.textTheme.titleMedium),
             onTap: () {
-              Navigator.pop(context); // Close the options bottom sheet
-              showPlaylistSelectionDialog(context, track); // Show the new dialog
+              Navigator.pop(context);
+              showPlaylistSelectionDialog(context, track);
             },
           ),
           ListTile(
             leading: Icon(
-              musicProvider.isTrackDownloaded(track.id) == true // This future needs to be resolved or use a state
+              musicProvider.isTrackDownloaded(track.id) == true
                   ? Icons.download_done_outlined
                   : Icons.download_outlined,
               color: musicProvider.isTrackDownloaded(track.id) == true ? theme.colorScheme.primary : theme.iconTheme.color,
@@ -313,15 +296,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   SnackBar(content: Text('Downloading ${track.trackName}...')),
                 );
               }
-              // Consider rebuilding NowPlayingScreen or parts of it if download status changes UI there
               if(mounted) setState(() {});
             },
           ),
           ListTile(
             leading: Icon(Icons.share_outlined, color: theme.iconTheme.color),
             title: Text('Share', style: theme.textTheme.titleMedium),
-            onTap: () async { // Made async
-              Navigator.pop(context); // Close bottom sheet first
+            onTap: () async {
+              Navigator.pop(context);
 
               String shareText = 'Listening to: ${track.trackName} by ${track.artistName}';
               String? shareableLink;
@@ -351,8 +333,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           ListTile(
             leading: Icon(Icons.album_outlined, color: theme.iconTheme.color),
             title: Text('Go to Album', style: theme.textTheme.titleMedium),
-            onTap: () async { // Made async
-              Navigator.pop(context); // Close bottom sheet
+            onTap: () async {
+              Navigator.pop(context);
               bool isAlbumValid = track.albumName.isNotEmpty && track.albumName != 'Unknown Album' && track.albumName != 'YouTube';
               if (!isAlbumValid) {
                  if (context.mounted) {
@@ -361,7 +343,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 return;
               }
               await musicProvider.navigateToAlbum(track.albumName, track.artistName);
-              if (context.mounted) { // Check mounted again after await
+              if (context.mounted) {
                 if (musicProvider.currentAlbumDetails != null) {
                   Navigator.push(
                     context,
@@ -378,8 +360,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
            ListTile(
             leading: Icon(Icons.person_outline, color: theme.iconTheme.color),
             title: Text('Go to Artist', style: theme.textTheme.titleMedium),
-            onTap: () async { // Made async
-              Navigator.pop(context); // Close bottom sheet
+            onTap: () async {
+              Navigator.pop(context);
               bool isArtistValid = track.artistName.isNotEmpty && track.artistName != 'Unknown Artist';
               if (!isArtistValid) {
                 if (context.mounted) {
@@ -388,7 +370,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 return;
               }
               await musicProvider.navigateToArtist(track.artistName);
-              if (context.mounted) { // Check mounted again after await
+              if (context.mounted) {
                 if (musicProvider.currentArtistDetails != null) {
                   Navigator.push(
                     context,

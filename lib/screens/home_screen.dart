@@ -20,7 +20,10 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
+    // This provider call is only used for the bitrate dropdown, which is a small part of the UI.
+    // It's better to use a Consumer for that specific widget if it needs to rebuild.
+    // For now, keeping it here but noting it as an optimization point.
+    // final musicProvider = Provider.of<MusicProvider>(context);
     final theme = Theme.of(context);
 
     return DefaultTabController(
@@ -36,7 +39,11 @@ class HomeScreen extends StatelessWidget {
           actions: [
             // Consider moving bitrate settings to a dedicated settings screen for cleaner UI
             // For now, let's style it minimally if kept.
-            _buildBitrateDropdown(context, musicProvider, theme),
+            Consumer<MusicProvider>(
+              builder: (context, musicProvider, child) {
+                return _buildBitrateDropdown(context, musicProvider, theme);
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               tooltip: "Settings",
