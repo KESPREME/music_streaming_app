@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:just_audio/just_audio.dart'; // Import for PlayerState
 import 'dart:math';
 
 // Flutter Foundation & Material
@@ -151,6 +152,7 @@ class MusicProvider with ChangeNotifier {
   Stream<Duration> get positionStream => _audioService.onPositionChanged;
   Stream<Duration> get durationStream => _audioService.onDurationChanged;
   Stream<bool> get playbackStateStream => _audioService.onPlaybackStateChanged;
+  Stream<PlayerState> get playerStateStream => _audioService.playerStateStream;
   Stream<bool> get playbackCompleteStream => _audioService.onPlaybackComplete;
 
   // --- Initialization & Setup ---

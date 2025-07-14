@@ -22,6 +22,7 @@ class AudioService {
   Stream<Duration> get onPositionChanged => _audioPlayer.positionStream.map((position) => position ?? Duration.zero);
   Stream<Duration> get onDurationChanged => _audioPlayer.durationStream.map((duration) => duration ?? Duration.zero);
   Stream<bool> get onPlaybackStateChanged => _audioPlayer.playingStream;
+  Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream; // Expose the full player state
   Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
       .map((state) => state == ProcessingState.completed);
 
