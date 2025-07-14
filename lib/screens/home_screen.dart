@@ -36,10 +36,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // This provider call is only used for the bitrate dropdown, which is a small part of the UI.
-    // It's better to use a Consumer for that specific widget if it needs to rebuild.
-    // For now, keeping it here but noting it as an optimization point.
-    // final musicProvider = Provider.of<MusicProvider>(context);
+    // Use listen:false here because we only need to pass the provider down for actions.
+    // UI rebuilds are handled by specific Consumer widgets.
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     final theme = Theme.of(context);
 
     return DefaultTabController(
@@ -96,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const HomeTabContent(), // This will be the main focus for "Feed"
             ),
             // "Explore" tab content
-            _buildExploreTab(context, theme),
+            _buildExploreTab(context, theme, musicProvider),
           ],
         ),
       ),
@@ -150,8 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildExploreTab(BuildContext context, ThemeData theme) {
-    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+  Widget _buildExploreTab(BuildContext context, ThemeData theme, MusicProvider musicProvider) {
     // Using RefreshIndicator for pull-to-refresh functionality
     return RefreshIndicator(
       onRefresh: () async {
@@ -181,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildSectionTitle("Browse Genres", theme, onViewMore: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const AllGenresScreen()));
             }),
-            _buildGenresSection(context, musicProvider, theme),
+            _buildGenresSection(context, musicProvider, theme), // Already correct
             const SizedBox(height: 24),
             _buildSectionTitle("Top Artists", theme, onViewMore: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const AllArtistsScreen()));
