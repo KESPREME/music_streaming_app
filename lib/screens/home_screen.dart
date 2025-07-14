@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // For now, let's style it minimally if kept.
             Consumer<MusicProvider>(
               builder: (context, musicProvider, child) {
-                return _buildBitrateDropdown(context, musicProvider, theme);
+                return _buildBitrateDropdown(context, theme); // Removed musicProvider parameter
               },
             ),
             IconButton(
@@ -103,7 +103,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBitrateDropdown(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
+  Widget _buildBitrateDropdown(BuildContext context, ThemeData theme) {
+    // MusicProvider is now accessed from the Consumer that wraps this method's call site.
+    final musicProvider = Provider.of<MusicProvider>(context);
     return FutureBuilder<List<ConnectivityResult>>(
       future: _connectivityFuture, // Use state variable
       builder: (context, snapshot) {

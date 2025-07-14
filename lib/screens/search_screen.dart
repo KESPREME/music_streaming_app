@@ -1,3 +1,4 @@
+import 'dart:async'; // For Timer (debouncing)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
@@ -16,7 +17,7 @@ class ArtistSearchTile extends StatelessWidget {
     required this.artistName,
     this.artistImageUrl,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
