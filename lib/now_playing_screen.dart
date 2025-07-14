@@ -151,6 +151,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   ? Image.network(
                       currentTrack.albumArtUrl,
                       fit: BoxFit.cover,
+                      cacheWidth: (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).round(),
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
