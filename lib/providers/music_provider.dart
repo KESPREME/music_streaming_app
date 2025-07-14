@@ -61,6 +61,7 @@ class MusicProvider with ChangeNotifier {
   List<Track> _fullTrendingTracks = [];
   List<Track> _recentlyPlayed = [];
   List<Track> _likedSongs = [];
+  List<Track> _searchedTracks = []; // For generic track search results
   List<Track> _artistTracks = [];
   List<Track> _genreTracks = [];
   List<Playlist> _userPlaylists = [];
@@ -115,6 +116,7 @@ class MusicProvider with ChangeNotifier {
   List<Track> get tracks => List.unmodifiable(_tracks);
   List<Track> get trendingTracks => List.unmodifiable(_trendingTracks);
   List<Track> get fullTrendingTracks => List.unmodifiable(_fullTrendingTracks);
+  List<Track> get searchedTracks => List.unmodifiable(_searchedTracks); // Getter for searched tracks
   List<Track> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   List<Track> get likedSongs => List.unmodifiable(_likedSongs);
   List<Track> get artistTracks => List.unmodifiable(_artistTracks);
@@ -436,13 +438,12 @@ class MusicProvider with ChangeNotifier {
     }
     try {
       _clearError(); // Clear previous errors before a new search
-      final results = await _apiService.fetchTracksByQuery(query);
-      // Optionally, could update a specific part of the state for search results if needed elsewhere
-      // For now, SearchTabContent manages its own display of these results.
-      notifyListeners(); // Notify if any state like errorMessage was cleared
-      return results;
+      _searchedTracks = await _apiService.fetchTracksByQuery(query);
+      notifyListeners(); // Notify listeners that new search results are available
+      return _searchedTracks;
     } catch (e) {
       _errorMessage = 'Search failed for "$query": ${e.toString()}';
+      _searchedTracks = []; // Clear results on error
       _addToRetryQueue(_RetryOperation('Search tracks: $query', () => searchTracks(query, forceRefresh: true)));
       notifyListeners();
       return []; // Return empty list on error
@@ -456,6 +457,13 @@ class MusicProvider with ChangeNotifier {
   void _startRetryTimer() { _retryTimer?.cancel(); _retryTimer = Timer.periodic(const Duration(seconds: 45), (t) { if (_networkService.isConnected && !_isOfflineMode && _retryQueue.isNotEmpty) _processRetryQueue(); }); }
   void _addToRetryQueue(_RetryOperation operation) { if (!_retryQueue.any((op) => op.description == operation.description)) { _retryQueue.add(operation); if (_networkService.isConnected && !_isOfflineMode) _processRetryQueue(); } }
   Future<void> _processRetryQueue() async { if (_retryQueue.isEmpty || _isOfflineMode || !_networkService.isConnected) return; final op = _retryQueue.removeAt(0); try { await op.execute(); if (_retryQueue.isNotEmpty) Future.delayed(const Duration(seconds: 2), _processRetryQueue); } catch (e) { if (op.attempts < _maxRetryAttempts) { op.attempts++; _retryQueue.add(op); } else { _errorMessage = "Failed ${op.description}."; notifyListeners(); } if (_retryQueue.isNotEmpty) Future.delayed(const Duration(seconds: 5), _processRetryQueue); } }
+
+  void clearSearchResults() {
+    _searchedTracks.clear();
+    _artistTracks.clear();
+    // Potentially clear other search-related lists here if they exist
+    notifyListeners();
+  }
 
   // --- Utility & Diagnostics ---
   Track? getTrackById(String id) { if (_currentTrack?.id == id) return _currentTrack; Track? find(List<Track> l, String i) { try { return l.firstWhere((t) => t.id == i); } catch (_) { return null; } } Track? f; f = find(_localTracks, id); if (f != null) return f; f = find(_likedSongs, id); if (f != null) return f; if (_downloadedTracksMetadata.containsKey(id)) { final d = _downloadedTracksMetadata[id]?['track']; if (d is Track) return d; } f = find(_recentlyPlayed, id); if (f != null) return f; f = find(_tracks, id); if (f != null) return f; f = find(_fullTrendingTracks, id); if (f != null) return f; for (final p in _userPlaylists) { f = find(p.tracks, id); if (f != null) return f; } f = find(_artistTracks, id); if (f != null) return f; f = find(_genreTracks, id); if (f != null) return f; return null; }

@@ -15,8 +15,24 @@ import 'settings_screen.dart';     // Import new screen
 
 // GenreSongsScreen is defined in this file for now, but could be moved.
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late Future<List<ConnectivityResult>> _connectivityFuture;
+  late Future<List<Map<String, String>>> _topArtistsFuture;
+  final ApiService _apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _connectivityFuture = Connectivity().checkConnectivity();
+    _topArtistsFuture = _apiService.fetchTopArtists();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +105,7 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildBitrateDropdown(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
     return FutureBuilder<List<ConnectivityResult>>(
-      future: Connectivity().checkConnectivity(),
+      future: _connectivityFuture, // Use state variable
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(width: 40); // Placeholder
@@ -153,7 +169,12 @@ class HomeScreen extends StatelessWidget {
             _buildSectionTitle("What's Hot", theme, onViewMore: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const TrendingNowScreen()));
             }),
-            _buildHorizontalTrackCarousel(context, musicProvider.fetchTrendingTracks, theme, itemWidth: 160, imageHeight: 160),
+            Consumer<MusicProvider>(
+              builder: (context, provider, child) {
+                // This consumer rebuilds the carousel when trendingTracks changes
+                return _buildHorizontalTrackCarousel(context, provider.trendingTracks, theme, itemWidth: 160, imageHeight: 160);
+              }
+            ),
             const SizedBox(height: 24),
             _buildSectionTitle("Browse Genres", theme, onViewMore: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const AllGenresScreen()));
@@ -193,28 +214,24 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildHorizontalTrackCarousel(
     BuildContext context,
-    Future<List<Track>> Function({bool forceRefresh}) fetchFunction,
+    // Future<List<Track>> Function({bool forceRefresh}) fetchFunction, // No longer need to pass the function
+    List<Track> tracks, // Pass the track list directly
     ThemeData theme, {
     double itemWidth = 140,
     double imageHeight = 140,
   }) {
-    final musicProvider = Provider.of<MusicProvider>(context);
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false); // For actions only
     return SizedBox(
       height: imageHeight + 70, // Image height + text space + padding
-      child: FutureBuilder<List<Track>>(
-        future: fetchFunction(forceRefresh: false), // Don't force refresh on every build
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting && musicProvider.tracks.isEmpty) {
+      child: Builder( // Use Builder to get a new context if needed, though not strictly necessary here
+        builder: (context) {
+          // If the list is empty, it might be because it's loading or there's an error.
+          // The Consumer in the parent widget will handle rebuilding when the list populates.
+          if (tracks.isEmpty) {
+            // We can show a loading indicator or an empty message.
+            // A simple loading indicator is fine as the parent RefreshIndicator can handle errors.
             return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
           }
-          if (snapshot.hasError && musicProvider.tracks.isEmpty) {
-            return Center(child: Text('Error: ${snapshot.error}', style: theme.textTheme.bodyMedium));
-          }
-
-          // Use provider's data which might be cached or from snapshot
-          final tracks = snapshot.data ?? (fetchFunction == musicProvider.fetchTracks ? musicProvider.tracks : musicProvider.trendingTracks);
-
-
           if (tracks.isEmpty) {
             return Center(child: Text('Nothing to show here.', style: theme.textTheme.bodyMedium));
           }
@@ -376,12 +393,12 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildTopArtistsSection(BuildContext context, ThemeData theme) {
-    final apiService = ApiService(); // Consider injecting via Provider or constructor
+    // final apiService = ApiService(); // Now using state variable _apiService
 
     return SizedBox(
       height: 170, // Avatar + text + padding
       child: FutureBuilder<List<Map<String, String>>>(
-        future: apiService.fetchTopArtists(),
+        future: _topArtistsFuture, // Use state variable
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
