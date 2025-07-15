@@ -468,13 +468,6 @@ class MusicProvider with ChangeNotifier {
         maxBufferDuration = const Duration(seconds: 40);
         break;
     }
-    if (currentTrack != null && !_isOfflineTrack) {
-      _audioService.configureBufferSettings(
-        bufferDuration: bufferDuration,
-        minBufferDuration: minBufferDuration,
-        maxBufferDuration: maxBufferDuration,
-      );
-    }
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
 

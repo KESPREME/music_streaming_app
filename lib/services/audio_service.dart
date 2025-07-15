@@ -322,34 +322,4 @@ class AudioService {
   void dispose() {
     _audioPlayer.dispose();
   }
-
-  Future<void> configureBufferSettings({
-    Duration? bufferDuration,
-    Duration? minBufferDuration,
-    Duration? maxBufferDuration,
-  }) async {
-    try {
-      final audioLoadConfiguration = AudioLoadConfiguration(
-        androidLoadControl: AndroidLoadControl(
-          minBufferDuration: minBufferDuration,
-          maxBufferDuration: maxBufferDuration,
-          bufferForPlaybackDuration: bufferDuration,
-          prioritizeTimeOverSizeThresholds: true,
-        ),
-        darwinLoadControl: DarwinLoadControl(
-          preferredForwardBufferDuration: bufferDuration,
-        ),
-      );
-
-      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
-
-      if (kDebugMode) {
-        print("AudioService: Buffer settings configured");
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("AudioService: Error configuring buffer settings: $e");
-      }
-    }
-  }
 }
