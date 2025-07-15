@@ -56,6 +56,16 @@ class SettingsScreen extends StatelessWidget {
         activeColor: theme.colorScheme.primary,
         secondary: Icon(Icons.data_saver_off_outlined, color: theme.iconTheme.color),
       ),
+      SwitchListTile(
+        title: Text('Search Playlists', style: theme.textTheme.titleMedium),
+        subtitle: Text('Include playlists in search results', style: theme.textTheme.bodySmall),
+        value: musicProvider.searchPlaylists,
+        onChanged: (bool value) {
+          musicProvider.toggleSearchPlaylists();
+        },
+        activeColor: theme.colorScheme.primary,
+        secondary: Icon(Icons.playlist_play, color: theme.iconTheme.color),
+      ),
     ];
   }
 

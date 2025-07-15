@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/music_provider.dart';
 import 'now_playing_screen.dart';
+import 'screens/artist_screen.dart';
+import 'screens/album_screen.dart';
 
 class ModernPlaybackBar extends StatelessWidget {
   const ModernPlaybackBar({Key? key}) : super(key: key);
@@ -148,6 +150,37 @@ class ModernPlaybackBar extends StatelessWidget {
                         },
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
+                      ),
+                      PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'goToArtist') {
+                            musicProvider.navigateToArtist(currentTrack.artistName);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ArtistScreen(artistName: currentTrack.artistName),
+                              ),
+                            );
+                          } else if (value == 'goToAlbum') {
+                            musicProvider.navigateToAlbum(currentTrack.albumName, currentTrack.artistName);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AlbumScreen(albumName: currentTrack.albumName, artistName: currentTrack.artistName),
+                              ),
+                            );
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                          const PopupMenuItem<String>(
+                            value: 'goToArtist',
+                            child: Text('Go to Artist'),
+                          ),
+                          const PopupMenuItem<String>(
+                            value: 'goToAlbum',
+                            child: Text('Go to Album'),
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -63,6 +63,7 @@ class MusicProvider with ChangeNotifier {
   List<Track> _recentlyPlayed = [];
   List<Track> _likedSongs = [];
   List<Track> _searchedTracks = []; // For generic track search results
+  List<Playlist> _searchedPlaylists = [];
   List<Track> _artistTracks = [];
   List<Track> _genreTracks = [];
   List<Playlist> _userPlaylists = [];
@@ -86,6 +87,7 @@ class MusicProvider with ChangeNotifier {
   bool _isOfflineMode = false;
   bool _userManuallySetOffline = false;
   bool _isLowDataMode = false;
+  bool searchPlaylists = false;
   bool _isReconnecting = false;
   Timer? _reconnectionTimer;
   String? _errorMessage;
@@ -118,6 +120,7 @@ class MusicProvider with ChangeNotifier {
   List<Track> get trendingTracks => List.unmodifiable(_trendingTracks);
   List<Track> get fullTrendingTracks => List.unmodifiable(_fullTrendingTracks);
   List<Track> get searchedTracks => List.unmodifiable(_searchedTracks); // Getter for searched tracks
+  List<Playlist> get searchedPlaylists => List.unmodifiable(_searchedPlaylists);
   List<Track> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   List<Track> get likedSongs => List.unmodifiable(_likedSongs);
   List<Track> get artistTracks => List.unmodifiable(_artistTracks);
@@ -157,12 +160,12 @@ class MusicProvider with ChangeNotifier {
 
   // --- Initialization & Setup ---
   MusicProvider() { _spotifyService = SpotifyService(_apiService); _initialize(); }
-  Future<void> _initialize() async { print('Initializing...'); await _loadSettings(); await _loadLikedSongs(); await _loadRecentlyPlayed(); await loadUserPlaylists(); await _loadDownloadedTracksMetadata(); _setupAudioListeners(); _startRetryTimer(); _setupConnectivityMonitoring(); final isConnected = _networkService.isConnected; if (isConnected && !_isOfflineMode) { try { await Future.wait([ fetchTracks(), fetchTrendingTracks() ]); } catch (e) { _errorMessage = 'Could not load initial content.'; } } else { _errorMessage = _isOfflineMode ? (_userManuallySetOffline ? 'Currently in offline mode.' : 'No internet connection.') : 'No internet connection.'; } unawaited(loadLocalMusicFiles()); print('Initialization complete.'); }
+  Future<void> _initialize() async { print('Initializing...'); await _loadSettings(); await _loadLikedSongs(); await _loadRecentlyPlayed(); await loadUserPlaylists(); await _loadDownloadedTracksMetadata(); _setupAudioListeners(); _startRetryTimer(); _setupConnectivityMonitoring(); final isConnected = _networkService.isConnected; if (isConnected && !_isOfflineMode) { try { await Future.wait([ fetchTracks(), fetchTrendingTracks() ]); if (_tracks.isNotEmpty) { _preloadNextTrack(); } } catch (e) { _errorMessage = 'Could not load initial content.'; } } else { _errorMessage = _isOfflineMode ? (_userManuallySetOffline ? 'Currently in offline mode.' : 'No internet connection.') : 'No internet connection.'; } unawaited(loadLocalMusicFiles()); print('Initialization complete.'); }
   void _setupAudioListeners() { _audioService.onPositionChanged.listen((pos) { if (_position != pos) { _position = pos; notifyListeners(); } }, onError: (e) => print("Pos stream error: $e")); _audioService.onDurationChanged.listen((dur) { if ((_duration - dur).abs() > const Duration(milliseconds: 500) && dur > Duration.zero) { _duration = dur; notifyListeners(); } }, onError: (e) => print("Dur stream error: $e")); _audioService.onPlaybackStateChanged.listen((playing) { if (_isPlaying != playing) { _isPlaying = playing; notifyListeners(); } }, onError: (e) => print("State stream error: $e")); _audioService.onPlaybackComplete.listen((completed) { if (completed) _onTrackComplete(); }, onError: (e) => print("Complete stream error: $e")); }
 
   // --- Settings Persistence ---
-  Future<void> _loadSettings() async { try { final p = await SharedPreferences.getInstance(); _wifiBitrate = p.getInt('wifiBitrate') ?? NetworkConfig.goodNetworkBitrate; _cellularBitrate = p.getInt('cellularBitrate') ?? NetworkConfig.moderateNetworkBitrate; _isOfflineMode = p.getBool('offlineMode') ?? false; _userManuallySetOffline = p.getBool('userManuallySetOffline') ?? false; _isLowDataMode = p.getBool('lowDataMode') ?? false; _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; try { _repeatMode = RepeatMode.values[p.getInt('repeatMode') ?? RepeatMode.off.index]; } catch (_) { _repeatMode = RepeatMode.off; } try { _localTracksSortCriteria = SortCriteria.values[p.getInt('localSortCriteria') ?? SortCriteria.nameAsc.index]; } catch (_) { _localTracksSortCriteria = SortCriteria.nameAsc; } print('Settings loaded.'); } catch (e) { print("Error loading settings: $e"); } }
-  Future<void> _saveSettings() async { try { final p = await SharedPreferences.getInstance(); await p.setInt('wifiBitrate', _wifiBitrate); await p.setInt('cellularBitrate', _cellularBitrate); await p.setBool('offlineMode', _isOfflineMode); await p.setBool('userManuallySetOffline', _userManuallySetOffline); await p.setBool('lowDataMode', _isLowDataMode); await p.setBool('shuffleEnabled', _shuffleEnabled); await p.setInt('repeatMode', _repeatMode.index); await p.setInt('localSortCriteria', _localTracksSortCriteria.index); print('Settings saved.'); } catch (e) { _errorMessage = "Failed to save settings."; notifyListeners(); } }
+  Future<void> _loadSettings() async { try { final p = await SharedPreferences.getInstance(); _wifiBitrate = p.getInt('wifiBitrate') ?? NetworkConfig.goodNetworkBitrate; _cellularBitrate = p.getInt('cellularBitrate') ?? NetworkConfig.moderateNetworkBitrate; _isOfflineMode = p.getBool('offlineMode') ?? false; _userManuallySetOffline = p.getBool('userManuallySetOffline') ?? false; _isLowDataMode = p.getBool('lowDataMode') ?? false; searchPlaylists = p.getBool('searchPlaylists') ?? false; _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; try { _repeatMode = RepeatMode.values[p.getInt('repeatMode') ?? RepeatMode.off.index]; } catch (_) { _repeatMode = RepeatMode.off; } try { _localTracksSortCriteria = SortCriteria.values[p.getInt('localSortCriteria') ?? SortCriteria.nameAsc.index]; } catch (_) { _localTracksSortCriteria = SortCriteria.nameAsc; } print('Settings loaded.'); } catch (e) { print("Error loading settings: $e"); } }
+  Future<void> _saveSettings() async { try { final p = await SharedPreferences.getInstance(); await p.setInt('wifiBitrate', _wifiBitrate); await p.setInt('cellularBitrate', _cellularBitrate); await p.setBool('offlineMode', _isOfflineMode); await p.setBool('userManuallySetOffline', _userManuallySetOffline); await p.setBool('lowDataMode', _isLowDataMode); await p.setBool('searchPlaylists', searchPlaylists); await p.setBool('shuffleEnabled', _shuffleEnabled); await p.setInt('repeatMode', _repeatMode.index); await p.setInt('localSortCriteria', _localTracksSortCriteria.index); print('Settings saved.'); } catch (e) { _errorMessage = "Failed to save settings."; notifyListeners(); } }
 
   // --- Playback Control & Context ---
   void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
@@ -229,7 +232,12 @@ class MusicProvider with ChangeNotifier {
       Track effectiveTrack = track;
 
       if (track.source == 'spotify') {
-        final yt = await _spotifyService.findYouTubeTrack(track);
+        final ytFuture = _spotifyService.findYouTubeTrack(track);
+        final bitrateFuture = _getBitrate();
+        final results = await Future.wait([ytFuture, bitrateFuture]);
+        final yt = results[0] as Track?;
+        final bitrate = results[1] as int;
+
         if (yt != null) {
           playableId = yt.id;
           effectiveTrack = track.copyWith(
@@ -242,14 +250,20 @@ class MusicProvider with ChangeNotifier {
         } else {
           throw Exception("No playable version for '${track.trackName}'.");
         }
+
+        if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.');
+
+        _handleNetworkQualityChange(_networkService.networkQuality);
+        final url = await _apiService.getAudioStreamUrl(playableId, bitrate);
+        await _audioService.play(url);
+      } else {
+        final bitrate = await _getBitrate();
+        if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.');
+
+        _handleNetworkQualityChange(_networkService.networkQuality);
+        final url = await _apiService.getAudioStreamUrl(playableId, bitrate);
+        await _audioService.play(url);
       }
-
-      final bitrate = await _getBitrate();
-      if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.');
-
-      _handleNetworkQualityChange(_networkService.networkQuality);
-      final url = await _apiService.getAudioStreamUrl(playableId, bitrate);
-      await _audioService.play(url);
 
       _currentTrack = effectiveTrack;
       _isPlaying = true;
@@ -444,16 +458,14 @@ class MusicProvider with ChangeNotifier {
         maxBufferDuration = const Duration(seconds: 40);
         break;
     }
-    // The following lines related to calling _audioService.configureBufferSettings are now removed
-    // as that method in AudioService is commented out.
-    // // Only configure if playing online content
-    // if (currentTrack != null && !_isOfflineTrack) {
-    //     _audioService.configureBufferSettings(
-    //         bufferDuration: bufferDuration,
-    //         minBufferDuration: minBufferDuration,
-    //         maxBufferDuration: maxBufferDuration
-    //     );
-    // }
+    // Only configure if playing online content
+    if (currentTrack != null && !_isOfflineTrack) {
+        _audioService.configureBufferSettings(
+            bufferDuration: bufferDuration,
+            minBufferDuration: minBufferDuration,
+            maxBufferDuration: maxBufferDuration
+        );
+    }
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
 
@@ -462,6 +474,7 @@ class MusicProvider with ChangeNotifier {
   void goOffline() { if (!_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = true; _isReconnecting = false; _reconnectionTimer?.cancel(); _saveSettings(); _showOfflineModeNotification('Offline mode enabled.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } }
   void toggleOfflineMode() => _isOfflineMode ? goOnline() : goOffline();
   void toggleLowDataMode() { _isLowDataMode = !_isLowDataMode; if (_isLowDataMode) { _wifiBitrate = NetworkConfig.moderateNetworkBitrate; _cellularBitrate = NetworkConfig.poorNetworkBitrate; _errorMessage = "Low data mode enabled."; } else { _handleNetworkQualityChange(_networkService.networkQuality); _errorMessage = "Low data mode disabled."; } _saveSettings(); notifyListeners(); }
+  void toggleSearchPlaylists() { searchPlaylists = !searchPlaylists; _saveSettings(); notifyListeners(); }
   void _showReconnectionPrompt() { if (_isReconnecting) return; _isReconnecting = true; _errorMessage = 'Internet available. Tap to go online.'; notifyListeners(); }
   void _showOfflineModeNotification(String message) { _errorMessage = message; notifyListeners(); }
   Future<void> _refreshDataOnReconnect() async { try { await fetchTracks(forceRefresh: true); } catch (_) {} try { await fetchTrendingTracks(forceRefresh: true); } catch (_) {} }
@@ -550,6 +563,24 @@ class MusicProvider with ChangeNotifier {
       notifyListeners();
       return []; // Return empty list on error
     }
+  }
+
+  Future<void> searchPlaylists(String query) async {
+    if (!searchPlaylists) {
+      _searchedPlaylists = [];
+      notifyListeners();
+      return;
+    }
+    if (query.isEmpty) {
+      _searchedPlaylists = [];
+      notifyListeners();
+      return;
+    }
+    _searchedPlaylists = _userPlaylists
+        .where((playlist) =>
+            playlist.name.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+    notifyListeners();
   }
 
   Future<void> fetchArtistTracks(String artistName, {bool forceRefresh = false}) async { final k = 'artist_$artistName'; if (!forceRefresh && _cachedTracks.containsKey(k)) { _artistTracks = _cachedTracks[k]!; notifyListeners(); return; } if (_isOfflineMode) { _errorMessage = "Offline: No artist tracks."; notifyListeners(); return; } try { _artistTracks = await _apiService.fetchTracksByQuery('$artistName top tracks'); _cachedTracks[k] = _artistTracks; notifyListeners(); } catch (e) { _errorMessage = 'Failed for $artistName.'; _addToRetryQueue(_RetryOperation('Fetch artist: $artistName', () => fetchArtistTracks(artistName, forceRefresh: true))); notifyListeners(); } }

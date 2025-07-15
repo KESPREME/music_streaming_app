@@ -5,6 +5,7 @@ import '../providers/music_provider.dart';
 import '../search_tab_content.dart'; // This will also need redesigning
 import '../widgets/track_tile.dart';
 import '../models/track.dart'; // Keep Track model import
+import 'artist_screen.dart'; // Import the artist screen
 
 // Example placeholder for a more visual artist tile
 class ArtistSearchTile extends StatelessWidget {
@@ -110,6 +111,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         musicProvider.fetchArtistTracks(query);
     }
     // Add playlist search logic if needed
+    else if (_tabController.index == 2) { // Playlists
+        musicProvider.searchPlaylists(query);
+    }
     print("Performing search for: $query on tab ${_tabController.index}");
   }
 
@@ -242,14 +246,13 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               // artistImageUrl: artist.imageUrl, // If available
               onTap: () {
                 // Navigate to artist detail screen
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artist: artist)));
-                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Navigate to $artistName's screen (not implemented)")),
-                  );
-                // For now, we can play the first track of this artist as an example
-                if (tracksByArtist[artistName]!.isNotEmpty) {
-                  provider.playTrack(tracksByArtist[artistName]!.first, playlistTracks: tracksByArtist[artistName]);
-                }
+                provider.navigateToArtist(artistName);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ArtistScreen(artistName: artistName),
+                  ),
+                );
               }
             );
           },
@@ -259,13 +262,65 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   Widget _buildPlaylistsTab(BuildContext context, String query) {
-     final theme = Theme.of(context);
-    // Placeholder - implement similar to artists tab with playlist-specific search and tiles
-    return Center(
-      child: Text(
-        'Playlist search coming soon!',
-        style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
-      ),
+    final theme = Theme.of(context);
+    return Consumer<MusicProvider>(
+      builder: (context, provider, child) {
+        if (!provider.searchPlaylists) {
+          return Center(
+            child: Column(
+              mainAxisAlignment.center,
+              children: [
+                Text(
+                  'Playlist search is disabled.',
+                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    );
+                  },
+                  child: const Text('Enable in Settings'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (query.trim().isEmpty) {
+          return Center(
+            child: Text(
+              'Search for playlists.',
+              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+            ),
+          );
+        }
+
+        if (provider.searchedPlaylists.isEmpty) {
+          return Center(
+            child: Text(
+              'No playlists found for "$query".',
+              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.8)),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          itemCount: provider.searchedPlaylists.length,
+          itemBuilder: (context, index) {
+            final playlist = provider.searchedPlaylists[index];
+            return ListTile(
+              leading: const Icon(Icons.playlist_play),
+              title: Text(playlist.name),
+              onTap: () {
+                provider.playPlaylist(playlist.id);
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

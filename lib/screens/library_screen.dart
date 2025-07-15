@@ -18,6 +18,9 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   // Define categories for filtering, could be dynamic in the future
   final List<String> _filterChips = ["Playlists", "Artists", "Albums", "Songs", "Downloaded"];
@@ -29,6 +32,11 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     _tabController = TabController(length: 2, vsync: this); // e.g., "My Music" and "Podcasts" (future)
                                                           // For now, only one main view, so TabController might be overkill
                                                           // but kept for potential future expansion.
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
   }
 
   @override
@@ -91,105 +99,137 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     ];
 
 
+    final filteredLibraryItems = libraryItems
+        .where((item) =>
+            item['title'].toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Your Library', style: theme.textTheme.headlineSmall),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: "Create new playlist",
-            onPressed: () {
-              // TODO: Implement create playlist dialog/screen
-               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Create playlist (not implemented)")),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.search_outlined),
-            tooltip: "Search in library",
-            onPressed: () {
-              // TODO: Implement library-specific search
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Search library (not implemented)")),
-              );
-            },
-          ),
-        ],
-        // Potentially add TabBar here if using multiple top-level library sections
-        // bottom: TabBar(
-        //   controller: _tabController,
-        //   tabs: [
-        //     Tab(text: "Music"),
-        //     Tab(text: "Podcasts"), // Example
-        //   ],
-        // ),
-      ),
-      body: NestedScrollView(
-        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-          return <Widget>[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                child: SizedBox(
-                  height: 40,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _filterChips.length,
-                    itemBuilder: (context, index) {
-                      final chipLabel = _filterChips[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: FilterChip(
-                          label: Text(chipLabel),
-                          selected: _selectedFilter == chipLabel,
-                          onSelected: (bool selected) {
-                            setState(() {
-                              _selectedFilter = selected ? chipLabel : null;
-                            });
-                            // TODO: Implement filtering logic based on _selectedFilter
-                          },
-                          backgroundColor: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-                          selectedColor: theme.colorScheme.primary.withOpacity(0.3),
-                          labelStyle: theme.textTheme.labelMedium?.copyWith(
-                            color: _selectedFilter == chipLabel ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+        appBar: AppBar(
+          title: _isSearching
+              ? TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Search your library...',
+                    border: InputBorder.none,
+                  ),
+                  style: theme.textTheme.headlineSmall,
+                )
+              : Text('Your Library', style: theme.textTheme.headlineSmall),
+          actions: [
+            if (_isSearching)
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  setState(() {
+                    _isSearching = false;
+                    _searchController.clear();
+                  });
+                },
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.search_outlined),
+                tooltip: "Search in library",
+                onPressed: () {
+                  setState(() {
+                    _isSearching = true;
+                  });
+                },
+              ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: "Create new playlist",
+              onPressed: () {
+                // This is a placeholder for a track. In a real app, you would
+                // pass the actual track you want to add.
+                final track = context.read<MusicProvider>().tracks.first;
+                showPlaylistSelectionDialog(context, track);
+              },
+            ),
+          ],
+          // Potentially add TabBar here if using multiple top-level library sections
+          // bottom: TabBar(
+          //   controller: _tabController,
+          //   tabs: [
+          //     Tab(text: "Music"),
+          //     Tab(text: "Podcasts"), // Example
+          //   ],
+          // ),
+        ),
+        body: NestedScrollView(
+          headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+            return <Widget>[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 8.0),
+                  child: SizedBox(
+                    height: 40,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _filterChips.length,
+                      itemBuilder: (context, index) {
+                        final chipLabel = _filterChips[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: FilterChip(
+                            label: Text(chipLabel),
+                            selected: _selectedFilter == chipLabel,
+                            onSelected: (bool selected) {
+                              setState(() {
+                                _selectedFilter = selected ? chipLabel : null;
+                              });
+                              // TODO: Implement filtering logic based on _selectedFilter
+                            },
+                            backgroundColor: theme.colorScheme.surfaceVariant
+                                .withOpacity(0.5),
+                            selectedColor:
+                                theme.colorScheme.primary.withOpacity(0.3),
+                            labelStyle: theme.textTheme.labelMedium?.copyWith(
+                              color: _selectedFilter == chipLabel
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                            checkmarkColor: theme.colorScheme.primary,
+                            shape: StadiumBorder(
+                                side: BorderSide(
+                                    color: theme.colorScheme.outline
+                                        .withOpacity(0.3))),
                           ),
-                          checkmarkColor: theme.colorScheme.primary,
-                          shape: StadiumBorder(side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3))),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
-          ];
-        },
-        body: ListView.separated(
-          padding: const EdgeInsets.all(16.0),
-          itemCount: libraryItems.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final item = libraryItems[index];
-            return _buildModernLibraryCard(
-              context,
-              theme: theme,
-              title: item['title'],
-              icon: item['icon'],
-              activeIcon: item['activeIcon'],
-              color: item['color'],
-              subtitle: item['subtitle'], // Optional subtitle
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => item['screen']),
-                );
-              },
-            );
+            ];
           },
-        ),
-      )
-    );
+          body: ListView.separated(
+            padding: const EdgeInsets.all(16.0),
+            itemCount: filteredLibraryItems.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final item = filteredLibraryItems[index];
+              return _buildModernLibraryCard(
+                context,
+                theme: theme,
+                title: item['title'],
+                icon: item['icon'],
+                activeIcon: item['activeIcon'],
+                color: item['color'],
+                subtitle: item['subtitle'], // Optional subtitle
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => item['screen']),
+                  );
+                },
+              );
+            },
+          ),
+        ));
   }
 
   Widget _buildModernLibraryCard(

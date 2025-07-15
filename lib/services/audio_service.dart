@@ -313,43 +313,43 @@ class AudioService {
     }
   }
 
-  // Future<void> configureBufferSettings({ // Commented out entire method
-  //   Duration? bufferDuration,
-  //   Duration? minBufferDuration,
-  //   Duration? maxBufferDuration,
-  // }) async {
-  //   try {
-  //     // Define effective durations, falling back to sensible defaults if null
-  //     // These names match the parameters of AndroidLoadControl and DarwinLoadControl
-  //     final Duration androidMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
-  //     final Duration androidMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 60000);
-  //     final Duration androidBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
+  Future<void> configureBufferSettings({
+    Duration? bufferDuration,
+    Duration? minBufferDuration,
+    Duration? maxBufferDuration,
+  }) async {
+    try {
+      // Define effective durations, falling back to sensible defaults if null
+      // These names match the parameters of AndroidLoadControl and DarwinLoadControl
+      final Duration androidMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
+      final Duration androidMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 60000);
+      final Duration androidBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
 
-  //     final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
+      final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
 
-  //     final audioLoadConfiguration = AudioLoadConfiguration(
-  //       androidLoadControl: AndroidLoadControl(
-  //         minBufferDur: androidMinBufferDur,
-  //         maxBufferDur: androidMaxBufferDur,
-  //         bufferForPlaybackDur: androidBufferForPlaybackDur,
-  //         prioritizeTimeOverSizeThresholds: true,
-  //       ),
-  //       darwinLoadControl: DarwinLoadControl(
-  //         preferredForwardBufferDuration: darwinPreferredForwardBufferDur,
-  //       ),
-  //     );
+      final audioLoadConfiguration = AudioLoadConfiguration(
+        androidLoadControl: AndroidLoadControl(
+          minBufferDur: androidMinBufferDur,
+          maxBufferDur: androidMaxBufferDur,
+          bufferForPlaybackDur: androidBufferForPlaybackDur,
+          prioritizeTimeOverSizeThresholds: true,
+        ),
+        darwinLoadControl: DarwinLoadControl(
+          preferredForwardBufferDuration: darwinPreferredForwardBufferDur,
+        ),
+      );
 
-  //     await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
+      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
 
-  //     if (kDebugMode) {
-  //       print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
-  //     }
-  //   } catch (e) {
-  //     if (kDebugMode) {
-  //       print("AudioService: Error configuring buffer settings: $e");
-  //     }
-  //   }
-  // }
+      if (kDebugMode) {
+        print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("AudioService: Error configuring buffer settings: $e");
+      }
+    }
+  }
 
   void dispose() {
     _audioPlayer.dispose();
