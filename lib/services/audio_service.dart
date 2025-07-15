@@ -78,6 +78,7 @@ class AudioService {
   }
 
   Future<void> play(String url) async {
+    print("AudioService: play called with url: $url");
     try {
       await _initAudioSession();
       await _audioPlayer.stop();
@@ -113,6 +114,7 @@ class AudioService {
   }
 
   Future<void> playLocalFile(String filePath) async {
+    print("AudioService: playLocalFile called with path: $filePath");
     try {
       await _initAudioSession();
       await _audioPlayer.stop();
@@ -142,6 +144,7 @@ class AudioService {
   }
 
   Future<void> pause() async {
+    print("AudioService: pause called");
     try {
       await _audioPlayer.pause();
     } catch (e) {
@@ -151,6 +154,7 @@ class AudioService {
   }
 
   Future<void> resume() async {
+    print("AudioService: resume called");
     try {
       // If the player has completed, it means the stream was likely closed.
       // Re-seeking to the current position can often re-establish the connection for network streams.
@@ -317,5 +321,35 @@ class AudioService {
 
   void dispose() {
     _audioPlayer.dispose();
+  }
+
+  Future<void> configureBufferSettings({
+    Duration? bufferDuration,
+    Duration? minBufferDuration,
+    Duration? maxBufferDuration,
+  }) async {
+    try {
+      final audioLoadConfiguration = AudioLoadConfiguration(
+        androidLoadControl: AndroidLoadControl(
+          minBufferDuration: minBufferDuration,
+          maxBufferDuration: maxBufferDuration,
+          bufferForPlaybackDuration: bufferDuration,
+          prioritizeTimeOverSizeThresholds: true,
+        ),
+        darwinLoadControl: DarwinLoadControl(
+          preferredForwardBufferDuration: bufferDuration,
+        ),
+      );
+
+      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
+
+      if (kDebugMode) {
+        print("AudioService: Buffer settings configured");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("AudioService: Error configuring buffer settings: $e");
+      }
+    }
   }
 }

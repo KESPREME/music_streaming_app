@@ -187,6 +187,7 @@ class MusicProvider with ChangeNotifier {
         bool setContext = true,
         bool clearQueue = true,
       }) async {
+    print('MusicProvider: playTrack called for ${track.trackName}');
     print('Request playTrack: ${track.trackName} (SetContext: $setContext, ClearQueue: $clearQueue)');
 
     // If currently playing, pause (toggle)
@@ -285,6 +286,7 @@ class MusicProvider with ChangeNotifier {
       // );
       notifyListeners(); await _audioService.playLocalFile(filePath); _isPlaying = true; _updateRecentlyPlayed(track); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING OFFLINE ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing offline track: ${e.toString()}'); } }
   Future<void> pauseTrack() async {
+    print("MusicProvider: pauseTrack called");
     if (!_isPlaying) return;
     try {
       await _audioService.pause(); // Pause the audio player
@@ -293,13 +295,15 @@ class MusicProvider with ChangeNotifier {
     }
   }
   Future<void> resumeTrack() async {
+    print("MusicProvider: resumeTrack called");
     if (_isPlaying || _currentTrack == null) return;
     _clearError();
     try {
       if (_audioService.processingState == ProcessingState.completed) {
-        await _audioService.seekTo(Duration.zero);
-        await _audioService.play(_currentTrack!.previewUrl);
+        print("MusicProvider: Track completed, playing again");
+        await playTrack(_currentTrack!);
       } else {
+        print("MusicProvider: Resuming track");
         await _audioService.resume(); // Just call play() internally
       }
     } catch (e) {
@@ -407,7 +411,9 @@ class MusicProvider with ChangeNotifier {
     // Explicitly: _audioService.cancelPreload(); (if such method existed)
 
     // Then try to preload the new next track
-    _preloadNextTrack();
+    if (_isPlaying) {
+      _preloadNextTrack();
+    }
   }
 
 
@@ -461,6 +467,13 @@ class MusicProvider with ChangeNotifier {
         bufferDuration = const Duration(seconds: 20);
         maxBufferDuration = const Duration(seconds: 40);
         break;
+    }
+    if (currentTrack != null && !_isOfflineTrack) {
+      _audioService.configureBufferSettings(
+        bufferDuration: bufferDuration,
+        minBufferDuration: minBufferDuration,
+        maxBufferDuration: maxBufferDuration,
+      );
     }
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
