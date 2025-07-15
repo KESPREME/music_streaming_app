@@ -26,6 +26,8 @@ class AudioService {
   Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
       .map((state) => state == ProcessingState.completed);
 
+  ProcessingState get processingState => _audioPlayer.processingState;
+
   AudioService() {
     // Apply a default load configuration when service is initialized
     // configureBufferSettings( // Commented out call

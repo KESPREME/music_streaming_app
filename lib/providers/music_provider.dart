@@ -296,9 +296,9 @@ class MusicProvider with ChangeNotifier {
     if (_isPlaying || _currentTrack == null) return;
     _clearError();
     try {
-      if (_audioService.playerStateStream.value.processingState == ProcessingState.completed) {
+      if (_audioService.processingState == ProcessingState.completed) {
         await _audioService.seekTo(Duration.zero);
-        await _audioService.play();
+        await _audioService.play(_currentTrack!.previewUrl);
       } else {
         await _audioService.resume(); // Just call play() internally
       }
