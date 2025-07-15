@@ -296,7 +296,12 @@ class MusicProvider with ChangeNotifier {
     if (_isPlaying || _currentTrack == null) return;
     _clearError();
     try {
-      await _audioService.resume(); // Just call play() internally
+      if (_audioService.playerStateStream.value.processingState == ProcessingState.completed) {
+        await _audioService.seekTo(Duration.zero);
+        await _audioService.play();
+      } else {
+        await _audioService.resume(); // Just call play() internally
+      }
     } catch (e) {
       _handlePlaybackError('Error resuming: $e');
     }

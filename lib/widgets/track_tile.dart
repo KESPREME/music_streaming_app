@@ -113,18 +113,22 @@ class TrackTile extends StatelessWidget {
       ),
       onTap: onTap ??
           () async {
-            try {
-              if (track.source == 'local' || await musicProvider.isTrackDownloaded(track.id)) {
-                await musicProvider.playOfflineTrack(track);
-              } else {
-                await musicProvider.playTrack(track);
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Error playing: ${e.toString().split(':').last.trim()}'),
-                  backgroundColor: theme.colorScheme.error,
-                ));
+            if (musicProvider.currentTrack?.id == track.id && !musicProvider.isPlaying) {
+              await musicProvider.resumeTrack();
+            } else {
+              try {
+                if (track.source == 'local' || await musicProvider.isTrackDownloaded(track.id)) {
+                  await musicProvider.playOfflineTrack(track);
+                } else {
+                  await musicProvider.playTrack(track);
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Error playing: ${e.toString().split(':').last.trim()}'),
+                    backgroundColor: theme.colorScheme.error,
+                  ));
+                }
               }
             }
           },
