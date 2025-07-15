@@ -150,7 +150,16 @@ class AudioService {
 
   Future<void> resume() async {
     try {
+      // If the player has completed, it means the stream was likely closed.
+      // Re-seeking to the current position can often re-establish the connection for network streams.
+      if (_audioPlayer.processingState == ProcessingState.completed) {
+        if (kDebugMode) print("AudioService: Stream completed, seeking to current position to resume.");
+        await _audioPlayer.seek(_audioPlayer.position);
+      }
       await _audioPlayer.play();
+    } on PlayerException catch (e) {
+      print('just_audio PlayerException during resume: ${e.message}');
+      throw Exception('Failed to resume audio: ${e.message}');
     } catch (e) {
       print('Error resuming audio: $e');
       throw Exception('Failed to resume audio: $e');
