@@ -23,7 +23,6 @@ class ApiService {
   static const Duration _inMemoryCacheDuration = Duration(minutes: 5);
 
   final Map<String, Map<String, dynamic>> _streamUrlCache = {};
-  final Map<String, String> _urlCache = {};
 
   final List<_PendingOperation> _pendingOperations = [];
   bool _isProcessingQueue = false;
@@ -204,9 +203,6 @@ class ApiService {
   }
   // -- AUDIO STREAM URL LOGIC --
   Future<String> getAudioStreamUrl(String videoId, int bitrate) async {
-    if (_urlCache.containsKey(videoId)) {
-      return _urlCache[videoId]!;
-    }
     print('ApiService: Fetching audio stream for video ID: $videoId with bitrate: $bitrate');
     try {
       // In-memory stream URL cache
@@ -215,10 +211,7 @@ class ApiService {
         final expiryTime = cachedData['expiry'] as int? ?? 0;
         if (DateTime.now().millisecondsSinceEpoch < expiryTime) {
           final streamUrl = cachedData['url'] as String? ?? '';
-          if (streamUrl.isNotEmpty) {
-            _urlCache[videoId] = streamUrl;
-            return streamUrl;
-          }
+          if (streamUrl.isNotEmpty) return streamUrl;
         } else {
           _streamUrlCache.remove(videoId);
         }

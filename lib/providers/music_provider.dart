@@ -160,7 +160,7 @@ class MusicProvider with ChangeNotifier {
   // --- Initialization & Setup ---
   MusicProvider() { _spotifyService = SpotifyService(_apiService); _initialize(); }
   Future<void> _initialize() async { print('Initializing...'); await _loadSettings(); await _loadLikedSongs(); await _loadRecentlyPlayed(); await loadUserPlaylists(); await _loadDownloadedTracksMetadata(); _setupAudioListeners(); _startRetryTimer(); _setupConnectivityMonitoring(); final isConnected = _networkService.isConnected; if (isConnected && !_isOfflineMode) { try { await Future.wait([ fetchTracks(), fetchTrendingTracks() ]); if (_tracks.isNotEmpty) { _preloadNextTrack(); } } catch (e) { _errorMessage = 'Could not load initial content.'; } } else { _errorMessage = _isOfflineMode ? (_userManuallySetOffline ? 'Currently in offline mode.' : 'No internet connection.') : 'No internet connection.'; } unawaited(loadLocalMusicFiles()); print('Initialization complete.'); }
-  void _setupAudioListeners() { _audioService.onPositionChanged.listen((pos) { if (_position != pos) { _position = pos; notifyListeners(); } }, onError: (e) => print("Pos stream error: $e")); _audioService.onDurationChanged.listen((dur) { if ((_duration - dur).abs() > const Duration(milliseconds: 500) && dur > Duration.zero) { _duration = dur; notifyListeners(); } }, onError: (e) => print("Dur stream error: $e")); _audioService.onPlaybackStateChanged.listen((playing) { if (_isPlaying != playing) { _isPlaying = playing; notifyListeners(); } }, onError: (e) => print("State stream error: $e")); _audioService.onPlaybackComplete.listen((completed) { if (completed) _onTrackComplete(); }, onError: (e) => print("Complete stream error: $e")); }
+  void _setupAudioListeners() { _audioService.onPositionChanged.listen((pos) { if (_position != pos) { _position = pos; notifyListeners(); } }, onError: (e) => print("Pos stream error: $e")); _audioService.onDurationChanged.listen((dur) { if ((_duration - dur).abs() > const Duration(milliseconds: 500) && dur > Duration.zero) { _duration = dur; notifyListeners(); } }, onError: (e) => print("Dur stream error: $e")); _audioService.onPlaybackStateChanged.listen((playing) { print("MusicProvider: onPlaybackStateChanged received: $playing"); if (_isPlaying != playing) { _isPlaying = playing; notifyListeners(); } }, onError: (e) => print("State stream error: $e")); _audioService.onPlaybackComplete.listen((completed) { if (completed) _onTrackComplete(); }, onError: (e) => print("Complete stream error: $e")); }
 
   // --- Settings Persistence ---
   Future<void> _loadSettings() async { try { final p = await SharedPreferences.getInstance(); _wifiBitrate = p.getInt('wifiBitrate') ?? NetworkConfig.goodNetworkBitrate; _cellularBitrate = p.getInt('cellularBitrate') ?? NetworkConfig.moderateNetworkBitrate; _isOfflineMode = p.getBool('offlineMode') ?? false; _userManuallySetOffline = p.getBool('userManuallySetOffline') ?? false; _isLowDataMode = p.getBool('lowDataMode') ?? false; enablePlaylistSearch = p.getBool('enablePlaylistSearch') ?? false; _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; try { _repeatMode = RepeatMode.values[p.getInt('repeatMode') ?? RepeatMode.off.index]; } catch (_) { _repeatMode = RepeatMode.off; } try { _localTracksSortCriteria = SortCriteria.values[p.getInt('localSortCriteria') ?? SortCriteria.nameAsc.index]; } catch (_) { _localTracksSortCriteria = SortCriteria.nameAsc; } print('Settings loaded.'); } catch (e) { print("Error loading settings: $e"); } }
@@ -187,89 +187,59 @@ class MusicProvider with ChangeNotifier {
         bool setContext = true,
         bool clearQueue = true,
       }) async {
-    print('MusicProvider: playTrack called for ${track.trackName}');
-    print('Request playTrack: ${track.trackName} (SetContext: $setContext, ClearQueue: $clearQueue)');
-
-    // If currently playing, pause (toggle)
-    if (_currentTrack?.id == track.id && _isPlaying) {
-      await pauseTrack();
-      return;
-    }
-
-    // If currently loaded but paused, resume
-    if (_currentTrack?.id == track.id && !_isPlaying && _currentTrack != null) {
-      await resumeTrack();
+    print("MusicProvider: playTrack called for ${track.trackName}");
+    if (_currentTrack?.id == track.id) {
+      if (_isPlaying) {
+        await pauseTrack();
+      } else {
+        await resumeTrack();
+      }
       return;
     }
 
     _clearError();
     try {
-      if (_isPlaying) await _audioService.stop();
-      _isPlaying = false;
-
-      if (setContext) {
-        _setPlaybackContext(playlistTracks, playlistId: playlistId, clearQueue: clearQueue);
-      } else {
-        _currentTrack = track;
-        _updateCurrentIndex();
-        // FIX: Removed problematic `_currentTrack = null;` that broke state management
-      }
-
-      bool playOffline = await _shouldPlayOffline(track);
-      if (playOffline) {
-        await playOfflineTrack(track, setContext: setContext, clearQueue: clearQueue);
-        return;
-      }
-
-      if (_isOfflineMode) throw Exception('Offline Mode: Track not available.');
-      if (!_networkService.isConnected) throw Exception('No internet connection.');
+      await _audioService.stop();
 
       _currentTrack = track;
       _isOfflineTrack = false;
-      notifyListeners();
+      _isPlaying = false;
+      _position = Duration.zero;
+      _duration = Duration.zero;
 
-      String playableId = track.id;
-      Track effectiveTrack = track;
+      if (setContext) {
+        _setPlaybackContext(playlistTracks, playlistId: playlistId, clearQueue: clearQueue);
+      }
 
-      if (track.source == 'spotify') {
-        final ytFuture = _spotifyService.findYouTubeTrack(track);
-        final bitrateFuture = _getBitrate();
-        final results = await Future.wait([ytFuture, bitrateFuture]);
-        final yt = results[0] as Track?;
-        final bitrate = results[1] as int;
-
-        if (yt != null) {
-          playableId = yt.id;
-          effectiveTrack = track.copyWith(
-            id: playableId,
-            source: 'youtube',
-            previewUrl: yt.previewUrl,
-          );
-          _currentTrack = effectiveTrack;
-          notifyListeners();
-        } else {
-          throw Exception("No playable version for '${track.trackName}'.");
-        }
-
-        if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.');
-
-        _handleNetworkQualityChange(_networkService.networkQuality);
-        final url = await _apiService.getAudioStreamUrl(playableId, bitrate);
-        await _audioService.play(url);
+      final playOffline = await _shouldPlayOffline(track);
+      if (playOffline) {
+        final filePath = track.source == 'local' ? track.previewUrl : (await getDownloadedTrackPath(track.id))!;
+        await _audioService.playLocalFile(filePath);
       } else {
-        final bitrate = await _getBitrate();
-        if (bitrate == 0 && !_isOfflineMode && !_networkService.isConnected) throw Exception('Connection lost.');
+        if (_isOfflineMode) throw Exception('Offline Mode: Track not available.');
+        if (!_networkService.isConnected) throw Exception('No internet connection.');
 
-        _handleNetworkQualityChange(_networkService.networkQuality);
+        var playableId = track.id;
+        if (track.source == 'spotify') {
+          final yt = await _spotifyService.findYouTubeTrack(track);
+          if (yt != null) {
+            playableId = yt.id;
+            _currentTrack = track.copyWith(
+              id: playableId,
+              source: 'youtube',
+              previewUrl: yt.previewUrl,
+            );
+          } else {
+            throw Exception("No playable version for '${track.trackName}'.");
+          }
+        }
+        final bitrate = await _getBitrate();
         final url = await _apiService.getAudioStreamUrl(playableId, bitrate);
         await _audioService.play(url);
       }
 
-      _currentTrack = effectiveTrack;
       _isPlaying = true;
-      _updateRecentlyPlayed(effectiveTrack);
-      _updateCurrentIndex();
-      _updateCombinedQueueIndex();
+      _updateRecentlyPlayed(track);
       notifyListeners();
       _handlePlaybackOrContextChangeForPreloading();
     } catch (e, s) {
@@ -287,6 +257,7 @@ class MusicProvider with ChangeNotifier {
       notifyListeners(); await _audioService.playLocalFile(filePath); _isPlaying = true; _updateRecentlyPlayed(track); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING OFFLINE ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing offline track: ${e.toString()}'); } }
   Future<void> pauseTrack() async {
     print("MusicProvider: pauseTrack called");
+    print("MusicProvider: pauseTrack called");
     if (!_isPlaying) return;
     try {
       await _audioService.pause(); // Pause the audio player
@@ -295,6 +266,7 @@ class MusicProvider with ChangeNotifier {
     }
   }
   Future<void> resumeTrack() async {
+    print("MusicProvider: resumeTrack called");
     print("MusicProvider: resumeTrack called");
     if (_isPlaying || _currentTrack == null) return;
     _clearError();
