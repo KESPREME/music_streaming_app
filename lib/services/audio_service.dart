@@ -99,7 +99,8 @@ class AudioService {
       }
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
+      await _audioPlayer.setAudioSource(audioSource,
+          initialConfiguration: const AudioLoadConfiguration());
       await _audioPlayer.play();
     } on PlayerException catch (e) {
       print('just_audio PlayerException during play: ${e.message}');
@@ -128,7 +129,8 @@ class AudioService {
       final audioSource = AudioSource.uri(Uri.file(filePath));
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
+      await _audioPlayer.setAudioSource(audioSource,
+          initialConfiguration: const AudioLoadConfiguration());
       await _audioPlayer.play();
     } on PlayerException catch (e) {
       print('just_audio PlayerException during playLocalFile: ${e.message}');
@@ -329,9 +331,9 @@ class AudioService {
 
       final audioLoadConfiguration = AudioLoadConfiguration(
         androidLoadControl: AndroidLoadControl(
-          minBufferDur: androidMinBufferDur,
-          maxBufferDur: androidMaxBufferDur,
-          bufferForPlaybackDur: androidBufferForPlaybackDur,
+          minBufferDuration: androidMinBufferDur,
+          maxBufferDuration: androidMaxBufferDur,
+          bufferForPlaybackDuration: androidBufferForPlaybackDur,
           prioritizeTimeOverSizeThresholds: true,
         ),
         darwinLoadControl: DarwinLoadControl(

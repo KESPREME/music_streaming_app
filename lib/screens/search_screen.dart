@@ -6,6 +6,7 @@ import '../search_tab_content.dart'; // This will also need redesigning
 import '../widgets/track_tile.dart';
 import '../models/track.dart'; // Keep Track model import
 import 'artist_screen.dart'; // Import the artist screen
+import 'settings_screen.dart';
 
 // Example placeholder for a more visual artist tile
 class ArtistSearchTile extends StatelessWidget {
@@ -268,7 +269,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         if (!provider.searchPlaylists) {
           return Center(
             child: Column(
-              mainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   'Playlist search is disabled.',
