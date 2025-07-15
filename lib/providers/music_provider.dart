@@ -327,6 +327,7 @@ class MusicProvider with ChangeNotifier {
       }
     }
 
+
     if (removed) {
       _updateCombinedQueueIndex();
       notifyListeners();
