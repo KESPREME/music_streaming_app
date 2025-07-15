@@ -558,7 +558,7 @@ class MusicProvider with ChangeNotifier {
   }
 
   Future<void> searchPlaylists(String query) async {
-    if (!searchPlaylists) {
+    if (!enablePlaylistSearch) {
       _searchedPlaylists = [];
       notifyListeners();
       return;
