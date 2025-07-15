@@ -188,8 +188,24 @@ class MusicProvider with ChangeNotifier {
       //     maxBufferDuration: const Duration(seconds: 30)
       // );
       notifyListeners(); await _audioService.playLocalFile(filePath); _isPlaying = true; _updateRecentlyPlayed(track); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); } catch (e, s) { print('--- ERROR PLAYING OFFLINE ---\nTrack: ${track.trackName}\nError: $e\n$s\n--- END ---'); await _handlePlaybackError('Error playing offline track: ${e.toString()}'); } }
-  Future<void> pauseTrack() async { if (!_isPlaying) return; try { await _audioService.pause(); /* No preload on pause */ } catch (e) { await _handlePlaybackError('Error pausing: $e'); } }
-  Future<void> resumeTrack() async { if (_isPlaying || _currentTrack == null) return; _clearError(); try { await _audioService.resume(); } catch (e) { await _handlePlaybackError('Error resuming: $e'); } }
+  Future<void> pauseTrack() async {
+    if (!_isPlaying) return;
+    try {
+      await _audioService.pause(); // Pause the audio player
+    } catch (e) {
+      _handlePlaybackError('Error pausing: $e');
+    }
+  }
+  Future<void> resumeTrack() async {
+    if (_isPlaying || _currentTrack == null) return;
+    _clearError();
+    try {
+      await _audioService.resume(); // Just call play() internally
+    } catch (e) {
+      _handlePlaybackError('Error resuming: $e');
+    }
+  }
+
   Future<void> seekTo(Duration position) async { if (_currentTrack == null) return; final dur = _duration; final clamped = position.isNegative ? Duration.zero : (dur > Duration.zero && position > dur ? dur : position); try { await _audioService.seekTo(clamped); _position = clamped; notifyListeners(); } catch (e) { _errorMessage = 'Error seeking.'; notifyListeners(); } }
   Future<void> stopTrack() async { try { await _audioService.stop(); } catch (e) { print('Error stopping service: $e'); } finally { _isPlaying = false; _currentTrack = null; _isOfflineTrack = false; _position = Duration.zero; _duration = Duration.zero; _currentIndex = -1; _currentPlayingTracks = null; _currentPlaylistId = null; _shuffledPlaylist = []; _queue.clear(); _queueIndex = -1; notifyListeners(); } }
 
