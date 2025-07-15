@@ -280,12 +280,10 @@ class MusicProvider with ChangeNotifier {
     }
   }
   Future<void> resumeTrack() async {
-    if (_currentTrack == null) return;
+    if (_isPlaying || _currentTrack == null) return;
     _clearError();
     try {
-      // Let the audio service handle the call even if isPlaying is true,
-      // as it might be in a paused state that the UI hasn't caught up with.
-      await _audioService.resume();
+      await _audioService.resume(); // Just call play() internally
     } catch (e) {
       _handlePlaybackError('Error resuming: $e');
     }
