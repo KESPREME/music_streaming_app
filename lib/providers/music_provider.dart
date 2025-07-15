@@ -87,7 +87,6 @@ class MusicProvider with ChangeNotifier {
   bool _isOfflineMode = false;
   bool _userManuallySetOffline = false;
   bool _isLowDataMode = false;
-  bool searchPlaylists = false;
   bool _isReconnecting = false;
   Timer? _reconnectionTimer;
   String? _errorMessage;
@@ -164,8 +163,8 @@ class MusicProvider with ChangeNotifier {
   void _setupAudioListeners() { _audioService.onPositionChanged.listen((pos) { if (_position != pos) { _position = pos; notifyListeners(); } }, onError: (e) => print("Pos stream error: $e")); _audioService.onDurationChanged.listen((dur) { if ((_duration - dur).abs() > const Duration(milliseconds: 500) && dur > Duration.zero) { _duration = dur; notifyListeners(); } }, onError: (e) => print("Dur stream error: $e")); _audioService.onPlaybackStateChanged.listen((playing) { if (_isPlaying != playing) { _isPlaying = playing; notifyListeners(); } }, onError: (e) => print("State stream error: $e")); _audioService.onPlaybackComplete.listen((completed) { if (completed) _onTrackComplete(); }, onError: (e) => print("Complete stream error: $e")); }
 
   // --- Settings Persistence ---
-  Future<void> _loadSettings() async { try { final p = await SharedPreferences.getInstance(); _wifiBitrate = p.getInt('wifiBitrate') ?? NetworkConfig.goodNetworkBitrate; _cellularBitrate = p.getInt('cellularBitrate') ?? NetworkConfig.moderateNetworkBitrate; _isOfflineMode = p.getBool('offlineMode') ?? false; _userManuallySetOffline = p.getBool('userManuallySetOffline') ?? false; _isLowDataMode = p.getBool('lowDataMode') ?? false; searchPlaylists = p.getBool('searchPlaylists') ?? false; _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; try { _repeatMode = RepeatMode.values[p.getInt('repeatMode') ?? RepeatMode.off.index]; } catch (_) { _repeatMode = RepeatMode.off; } try { _localTracksSortCriteria = SortCriteria.values[p.getInt('localSortCriteria') ?? SortCriteria.nameAsc.index]; } catch (_) { _localTracksSortCriteria = SortCriteria.nameAsc; } print('Settings loaded.'); } catch (e) { print("Error loading settings: $e"); } }
-  Future<void> _saveSettings() async { try { final p = await SharedPreferences.getInstance(); await p.setInt('wifiBitrate', _wifiBitrate); await p.setInt('cellularBitrate', _cellularBitrate); await p.setBool('offlineMode', _isOfflineMode); await p.setBool('userManuallySetOffline', _userManuallySetOffline); await p.setBool('lowDataMode', _isLowDataMode); await p.setBool('searchPlaylists', searchPlaylists); await p.setBool('shuffleEnabled', _shuffleEnabled); await p.setInt('repeatMode', _repeatMode.index); await p.setInt('localSortCriteria', _localTracksSortCriteria.index); print('Settings saved.'); } catch (e) { _errorMessage = "Failed to save settings."; notifyListeners(); } }
+  Future<void> _loadSettings() async { try { final p = await SharedPreferences.getInstance(); _wifiBitrate = p.getInt('wifiBitrate') ?? NetworkConfig.goodNetworkBitrate; _cellularBitrate = p.getInt('cellularBitrate') ?? NetworkConfig.moderateNetworkBitrate; _isOfflineMode = p.getBool('offlineMode') ?? false; _userManuallySetOffline = p.getBool('userManuallySetOffline') ?? false; _isLowDataMode = p.getBool('lowDataMode') ?? false; enablePlaylistSearch = p.getBool('enablePlaylistSearch') ?? false; _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; try { _repeatMode = RepeatMode.values[p.getInt('repeatMode') ?? RepeatMode.off.index]; } catch (_) { _repeatMode = RepeatMode.off; } try { _localTracksSortCriteria = SortCriteria.values[p.getInt('localSortCriteria') ?? SortCriteria.nameAsc.index]; } catch (_) { _localTracksSortCriteria = SortCriteria.nameAsc; } print('Settings loaded.'); } catch (e) { print("Error loading settings: $e"); } }
+  Future<void> _saveSettings() async { try { final p = await SharedPreferences.getInstance(); await p.setInt('wifiBitrate', _wifiBitrate); await p.setInt('cellularBitrate', _cellularBitrate); await p.setBool('offlineMode', _isOfflineMode); await p.setBool('userManuallySetOffline', _userManuallySetOffline); await p.setBool('lowDataMode', _isLowDataMode); await p.setBool('enablePlaylistSearch', enablePlaylistSearch); await p.setBool('shuffleEnabled', _shuffleEnabled); await p.setInt('repeatMode', _repeatMode.index); await p.setInt('localSortCriteria', _localTracksSortCriteria.index); print('Settings saved.'); } catch (e) { _errorMessage = "Failed to save settings."; notifyListeners(); } }
 
   // --- Playback Control & Context ---
   void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
@@ -458,14 +457,6 @@ class MusicProvider with ChangeNotifier {
         maxBufferDuration = const Duration(seconds: 40);
         break;
     }
-    // Only configure if playing online content
-    if (currentTrack != null && !_isOfflineTrack) {
-        _audioService.configureBufferSettings(
-            bufferDuration: bufferDuration,
-            minBufferDuration: minBufferDuration,
-            maxBufferDuration: maxBufferDuration
-        );
-    }
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
 
@@ -474,7 +465,8 @@ class MusicProvider with ChangeNotifier {
   void goOffline() { if (!_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = true; _isReconnecting = false; _reconnectionTimer?.cancel(); _saveSettings(); _showOfflineModeNotification('Offline mode enabled.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } }
   void toggleOfflineMode() => _isOfflineMode ? goOnline() : goOffline();
   void toggleLowDataMode() { _isLowDataMode = !_isLowDataMode; if (_isLowDataMode) { _wifiBitrate = NetworkConfig.moderateNetworkBitrate; _cellularBitrate = NetworkConfig.poorNetworkBitrate; _errorMessage = "Low data mode enabled."; } else { _handleNetworkQualityChange(_networkService.networkQuality); _errorMessage = "Low data mode disabled."; } _saveSettings(); notifyListeners(); }
-  void toggleSearchPlaylists() { searchPlaylists = !searchPlaylists; _saveSettings(); notifyListeners(); }
+  bool enablePlaylistSearch = false;
+  void toggleSearchPlaylists() { enablePlaylistSearch = !enablePlaylistSearch; _saveSettings(); notifyListeners(); }
   void _showReconnectionPrompt() { if (_isReconnecting) return; _isReconnecting = true; _errorMessage = 'Internet available. Tap to go online.'; notifyListeners(); }
   void _showOfflineModeNotification(String message) { _errorMessage = message; notifyListeners(); }
   Future<void> _refreshDataOnReconnect() async { try { await fetchTracks(forceRefresh: true); } catch (_) {} try { await fetchTrendingTracks(forceRefresh: true); } catch (_) {} }

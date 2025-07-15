@@ -266,7 +266,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     final theme = Theme.of(context);
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
-        if (!provider.searchPlaylists) {
+        if (!provider.enablePlaylistSearch) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

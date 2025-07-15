@@ -59,7 +59,7 @@ class SettingsScreen extends StatelessWidget {
       SwitchListTile(
         title: Text('Search Playlists', style: theme.textTheme.titleMedium),
         subtitle: Text('Include playlists in search results', style: theme.textTheme.bodySmall),
-        value: musicProvider.searchPlaylists,
+        value: musicProvider.enablePlaylistSearch,
         onChanged: (bool value) {
           musicProvider.toggleSearchPlaylists();
         },

@@ -99,8 +99,7 @@ class AudioService {
       }
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource,
-          initialConfiguration: const AudioLoadConfiguration());
+      await _audioPlayer.setAudioSource(audioSource);
       await _audioPlayer.play();
     } on PlayerException catch (e) {
       print('just_audio PlayerException during play: ${e.message}');
@@ -129,8 +128,7 @@ class AudioService {
       final audioSource = AudioSource.uri(Uri.file(filePath));
 
       // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource,
-          initialConfiguration: const AudioLoadConfiguration());
+      await _audioPlayer.setAudioSource(audioSource);
       await _audioPlayer.play();
     } on PlayerException catch (e) {
       print('just_audio PlayerException during playLocalFile: ${e.message}');
@@ -312,44 +310,6 @@ class AudioService {
       if (kDebugMode) print("AudioService: Error preloading track $url: $e");
       _preloadedUrl = null;
       _preloadedSource = null;
-    }
-  }
-
-  Future<void> configureBufferSettings({
-    Duration? bufferDuration,
-    Duration? minBufferDuration,
-    Duration? maxBufferDuration,
-  }) async {
-    try {
-      // Define effective durations, falling back to sensible defaults if null
-      // These names match the parameters of AndroidLoadControl and DarwinLoadControl
-      final Duration androidMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
-      final Duration androidMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 60000);
-      final Duration androidBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
-
-      final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
-
-      final audioLoadConfiguration = AudioLoadConfiguration(
-        androidLoadControl: AndroidLoadControl(
-          minBufferDuration: androidMinBufferDur,
-          maxBufferDuration: androidMaxBufferDur,
-          bufferForPlaybackDuration: androidBufferForPlaybackDur,
-          prioritizeTimeOverSizeThresholds: true,
-        ),
-        darwinLoadControl: DarwinLoadControl(
-          preferredForwardBufferDuration: darwinPreferredForwardBufferDur,
-        ),
-      );
-
-      await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
-
-      if (kDebugMode) {
-        print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("AudioService: Error configuring buffer settings: $e");
-      }
     }
   }
 
