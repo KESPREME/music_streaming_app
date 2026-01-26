@@ -3,7 +3,7 @@ import org.gradle.api.file.Directory
 import org.gradle.kotlin.dsl.*
 
 buildscript {
-    val kotlin_version by extra("1.8.10")
+    val kotlin_version by extra("2.1.20")
 
     repositories {
         google()

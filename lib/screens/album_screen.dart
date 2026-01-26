@@ -12,8 +12,8 @@ class AlbumScreen extends StatelessWidget {
   const AlbumScreen({
     required this.albumName,
     required this.artistName,
-    Key? key
-  }) : super(key: key);
+    super.key
+  });
 
   @override
   Widget build(BuildContext context) {

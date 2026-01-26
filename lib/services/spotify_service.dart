@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
-import '../services/api_service.dart';
+import 'innertube/innertube_service.dart';
 
 class SpotifyService {
   // Replace with your Spotify Developer credentials
@@ -19,9 +19,9 @@ class SpotifyService {
   static const String _apiBaseUrl = 'https://api.spotify.com/v1';
 
   String? _accessToken;
-  final ApiService _apiService;
+  final InnerTubeService _innerTubeService = InnerTubeService();
 
-  SpotifyService(this._apiService);
+  SpotifyService();
 
   Future<String> _authenticate() async {
     if (_accessToken != null) return _accessToken!;
@@ -142,13 +142,13 @@ class SpotifyService {
           );
         }).toList();
 
-        // Convert Spotify tracks to YouTube tracks
+        // Convert Spotify tracks to YouTube tracks using InnerTube
         List<Track> youtubeTracks = [];
         for (var track in tracks) {
           try {
-            // Search for the track on YouTube
-            final searchQuery = "${track.trackName} ${track.artistName} official audio";
-            final searchResults = await _apiService.fetchTracksByQuery(searchQuery);
+            // Search for the track on YouTube Music using InnerTube
+            final searchQuery = "${track.trackName} ${track.artistName}";
+            final searchResults = await _innerTubeService.searchSongs(searchQuery, limit: 3);
 
             if (searchResults.isNotEmpty) {
               // Use the first result but keep the original track name and artist
@@ -191,8 +191,8 @@ class SpotifyService {
   // Helper method to search for a track on YouTube
   Future<Track?> findYouTubeTrack(Track spotifyTrack) async {
     try {
-      final searchQuery = "${spotifyTrack.trackName} ${spotifyTrack.artistName} official audio";
-      final searchResults = await _apiService.fetchTracksByQuery(searchQuery);
+      final searchQuery = "${spotifyTrack.trackName} ${spotifyTrack.artistName}";
+      final searchResults = await _innerTubeService.searchSongs(searchQuery, limit: 3);
 
       if (searchResults.isNotEmpty) {
         return Track(
@@ -209,6 +209,31 @@ class SpotifyService {
     } catch (e) {
       print('Error finding YouTube track: $e');
       return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> getPlaylistMetadata(String playlistId) async {
+    try {
+       final token = await _authenticate();
+       final response = await http.get(
+        Uri.parse('$_apiBaseUrl/playlists/$playlistId?fields=id,name,images'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'id': data['id'],
+          'name': data['name'],
+          'images': data['images'] ?? [],
+        };
+      } else {
+        throw Exception('Failed to fetch playlist metadata: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Failed to fetch playlist metadata: $e');
     }
   }
 }

@@ -1,15 +1,17 @@
-import 'dart:async'; // For Timer (debouncing)
+import 'dart:async'; 
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
-import '../search_tab_content.dart'; // This will also need redesigning
-import '../widgets/track_tile.dart';
-import '../models/track.dart'; // Keep Track model import
+import '../search_tab_content.dart'; 
+import '../models/track.dart';
+import 'artist_detail_screen.dart';
+import 'playlist_detail_screen.dart';
 
-// Example placeholder for a more visual artist tile
 class ArtistSearchTile extends StatelessWidget {
   final String artistName;
-  final String? artistImageUrl; // Optional image URL
+  final String? artistImageUrl;
   final VoidCallback onTap;
 
   const ArtistSearchTile({
@@ -21,26 +23,74 @@ class ArtistSearchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 25,
-        backgroundColor: theme.colorScheme.surfaceVariant,
-        // backgroundImage: artistImageUrl != null && artistImageUrl!.isNotEmpty
-        //     ? NetworkImage(artistImageUrl!) // Consider CachedNetworkImage here
-        //     : null,
-        child: artistImageUrl == null || artistImageUrl!.isEmpty
-            ? Icon(Icons.person, color: theme.colorScheme.onSurfaceVariant)
-            : null,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        splashColor: Colors.white.withOpacity(0.1),
+        highlightColor: Colors.white.withOpacity(0.05),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05), // Glassy background
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 3)),
+                  ],
+                  border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.3), width: 1.5),
+                ),
+                child: CircleAvatar(
+                  radius: 30,
+                  backgroundColor: Colors.grey[850],
+                  backgroundImage: artistImageUrl != null && artistImageUrl!.isNotEmpty
+                      ? NetworkImage(artistImageUrl!)
+                      : null,
+                  child: artistImageUrl == null || artistImageUrl!.isEmpty
+                      ? const Icon(Icons.person, color: Colors.white54, size: 30)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      artistName,
+                      style: GoogleFonts.splineSans(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Artist", 
+                      style: GoogleFonts.splineSans(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500
+                      )
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white30),
+            ],
+          ),
+        ),
       ),
-      title: Text(artistName, style: theme.textTheme.titleMedium),
-      // subtitle: Text("Artist", style: theme.textTheme.bodySmall), // Optional
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
     );
   }
 }
-
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -58,7 +108,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this); // Tracks, Artists, Playlists
+    _tabController = TabController(length: 3, vsync: this); 
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -78,11 +128,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         setState(() {
           _searchQuery = _searchController.text;
         });
-        // Perform search after state has been updated with the new query
         if (_searchQuery.isNotEmpty) {
            _performSearch(_searchQuery);
         } else {
-          // If query is empty, clear results in the provider
           Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
         }
       }
@@ -92,164 +140,198 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   void _performSearch(String query) {
     if (query.trim().isEmpty) return;
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    // Depending on the active tab, call different search methods
-    // For now, let's assume SearchTabContent handles track search based on query
-    // and _buildArtistsTab will filter/fetch based on query.
-    // MusicProvider might need more specific search methods like searchArtists(query), searchPlaylists(query)
-    if (_tabController.index == 0) { // Tracks
-        // SearchTabContent will use the new provider.searchTracks method internally via its searchQuery prop
-        // Triggering it here might be redundant if SearchTabContent handles it, but ensures data is fetched.
+    if (_tabController.index == 0) {
         musicProvider.searchTracks(query);
-    } else if (_tabController.index == 1) { // Artists
-        // This was `musicProvider.fetchArtistTracks(query);` which fetches tracks BY an artist.
-        // For a search screen, you'd typically search FOR artists.
-        // Assuming a new/different method in MusicProvider or ApiService is needed for "searching artists".
-        // For now, to fix the direct error, we'll keep it if it's intended to show top tracks of a *specific* artist search.
-        // If the intent is to search *for* artists, this needs a different backend call.
-        // Let's assume for now the current behavior of fetching tracks for a searched artist name is what's desired for this tab.
+    } else if (_tabController.index == 1) {
         musicProvider.fetchArtistTracks(query);
+    } else if (_tabController.index == 2) {
+        musicProvider.searchPlaylists(query);
     }
-    // Add playlist search logic if needed
-    print("Performing search for: $query on tab ${_tabController.index}");
   }
-
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // final musicProvider = Provider.of<MusicProvider>(context, listen: false); // if needed directly
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false, // Assuming it's a main tab
-        toolbarHeight: 70, // Increased height for search bar
-        title: Padding(
-          padding: const EdgeInsets.only(top: 8.0), // Adjust padding for better alignment
-          child: TextField(
-            controller: _searchController,
-            style: theme.textTheme.bodyLarge,
-            decoration: InputDecoration(
-              hintText: 'Search songs, artists, playlists...',
-              hintStyle: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.5)),
-              filled: true,
-              fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.7),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(25.0), // More rounded
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(25.0),
-                borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
-              ),
-              prefixIcon: Icon(Icons.search, color: theme.iconTheme.color?.withOpacity(0.7)),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(Icons.clear, color: theme.iconTheme.color?.withOpacity(0.7)),
-                      onPressed: () {
-                        _searchController.clear();
-                        // Optionally clear search results in provider
-                        // musicProvider.clearSearchResults();
-                      },
-                    )
-                  : null,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 16.0),
-            ),
-            onSubmitted: (query) {
-              _debounce?.cancel(); // Cancel any pending debounce
-              if (query != _searchQuery) {
-                 setState(() {
-                  _searchQuery = query;
-                });
-              }
-              _performSearch(query);
-            },
-            textInputAction: TextInputAction.search,
+      extendBodyBehindAppBar: true, 
+      body: Container(
+        decoration: BoxDecoration(
+           gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark 
+              ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Tracks'),
-            Tab(text: 'Artists'),
-            Tab(text: 'Playlists'), // Added Playlists tab
-          ],
+        child: SafeArea(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              SliverAppBar(
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent, // Fix purple tint
+                elevation: 0,
+                floating: true,
+                pinned: true,
+                toolbarHeight: 90, 
+                flexibleSpace: ClipRRect( 
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // Reduced to match "Liquid Pill"
+                    child: Container(
+                      color: Colors.black.withOpacity(0.5), // Unified tint, no gradient
+                    ),
+                  ),
+                ),
+                title: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: TextField(
+                    controller: _searchController,
+                    style: GoogleFonts.splineSans(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: 'Search songs, artists...',
+                      hintStyle: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05), // Ultra-translucent glass
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)), // Subtle glass border
+                      ),
+                      enabledBorder: OutlineInputBorder( // Explicit border state
+                         borderRadius: BorderRadius.circular(30),
+                         borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide(color: const Color(0xFFFF1744).withOpacity(0.5), width: 1), // Accent on focus
+                      ),
+                      prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.white54),
+                              onPressed: () {
+                                _searchController.clear();
+                              },
+                            )
+                          : null,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 20.0),
+                    ),
+                    onSubmitted: (query) {
+                      _debounce?.cancel();
+                      if (query != _searchQuery) {
+                         setState(() => _searchQuery = query);
+                      }
+                      _performSearch(query);
+                    },
+                    textInputAction: TextInputAction.search,
+                  ),
+                ),
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(50),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.2), // More subtle container
+                      borderRadius: BorderRadius.circular(25),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)), // Sharper glass edge
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      indicator: BoxDecoration(
+                        color: const Color(0xFFFF1744).withOpacity(0.15), // Softer accent fill
+                        borderRadius: BorderRadius.circular(25),
+                        border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.3)), // Crisp accent border
+                      ),
+                      labelColor: const Color(0xFFFF1744),
+                      unselectedLabelColor: Colors.white.withOpacity(0.5),
+                      labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.bold),
+                      unselectedLabelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w500),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      tabs: const [
+                        Tab(text: 'Tracks'),
+                        Tab(text: 'Artists'),
+                        Tab(text: 'Playlists'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                const SearchTabContent(), // Needs similar glass update in its own file
+                _buildArtistsTab(context, _searchQuery),
+                _buildPlaylistsTab(context, _searchQuery),
+              ],
+            ),
+          ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // Tracks Tab - SearchTabContent now consumes directly from MusicProvider
-          const SearchTabContent(),
-          _buildArtistsTab(context, _searchQuery),
-          _buildPlaylistsTab(context, _searchQuery), // Placeholder for playlists
-        ],
       ),
     );
   }
 
   Widget _buildArtistsTab(BuildContext context, String query) {
-    final theme = Theme.of(context);
-    // This should ideally fetch a list of *artists*, not just tracks by one artist.
-    // For this example, we'll continue using fetchArtistTracks and assume it returns tracks
-    // by the searched artist. A better approach would be musicProvider.searchArtists(query).
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
-        // If query is empty, show suggestions or recent searches
         if (query.trim().isEmpty && provider.artistTracks.isEmpty) {
           return Center(
-            child: Text(
-              'Search for artists.',
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.person_search_outlined, size: 60, color: Colors.white.withOpacity(0.1)),
+                const SizedBox(height: 16),
+                Text(
+                  'Search for your favorite artists',
+                  style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4), fontSize: 16),
+                ),
+              ],
             ),
           );
         }
-
-        // If there's a query but no results yet (or loading state)
-        // Provider should have an isLoading flag for artist search
-        // if (provider.isLoadingArtists && provider.artistTracks.isEmpty) {
-        //   return Center(child: CircularProgressIndicator());
-        // }
 
         if (provider.artistTracks.isEmpty && query.trim().isNotEmpty) {
-          return Center(
+           return Center(
             child: Text(
-              'No artists found for "$query".',
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.8)),
+              'No artists found.',
+              style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
             ),
           );
         }
 
-        // Group tracks by artist to simulate a list of artists
-        // This is a workaround. Ideally, the API returns a list of artists.
-        final Map<String, List<Track>> tracksByArtist = {};
-        for (var track in provider.artistTracks) {
-          tracksByArtist.putIfAbsent(track.artistName, () => []).add(track);
-        }
-        final uniqueArtists = tracksByArtist.keys.toList();
+        // Fix: Do not group by artistName. The results are already unique Artist objects.
+        // In Artist Search Results:
+        // track.trackName = Artist Name (e.g. "The Weeknd")
+        // track.artistName = Subtitle/Description (e.g. "Artist • 269M...")
+        final artists = provider.artistTracks;
 
-
-        // Display results
-        // This should be a list of ArtistSearchTile or similar
         return ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          itemCount: uniqueArtists.length, // provider.searchedArtists.length
+          padding: const EdgeInsets.only(top: 10, bottom: 100),
+          physics: const BouncingScrollPhysics(),
+          itemCount: artists.length,
           itemBuilder: (context, index) {
-            final artistName = uniqueArtists[index];
-            // final artist = provider.searchedArtists[index]; // Ideal
-            // For now, just showing the name as a simple text tile
+            final artistTrack = artists[index];
+            final artistName = artistTrack.trackName; // Correct Name
+            final artistDescription = artistTrack.artistName; // Subtitle info
+
             return ArtistSearchTile(
-              artistName: artistName, // artist.name
-              // artistImageUrl: artist.imageUrl, // If available
+              artistName: artistName, 
+              artistImageUrl: artistTrack.albumArtUrl,
               onTap: () {
-                // Navigate to artist detail screen
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artist: artist)));
-                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Navigate to $artistName's screen (not implemented)")),
-                  );
-                // For now, we can play the first track of this artist as an example
-                if (tracksByArtist[artistName]!.isNotEmpty) {
-                  provider.playTrack(tracksByArtist[artistName]!.first, playlistTracks: tracksByArtist[artistName]);
-                }
+                 // Use robust navigation
+                 provider.navigateToArtistObject(artistTrack);
+                 Navigator.push(
+                   context,
+                   MaterialPageRoute(
+                     builder: (_) => ArtistDetailScreen(
+                       artistId: artistTrack.id,
+                       artistName: artistName,
+                       artistImage: artistTrack.albumArtUrl,
+                     ),
+                   ),
+                 );
               }
             );
           },
@@ -259,13 +341,79 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   Widget _buildPlaylistsTab(BuildContext context, String query) {
-     final theme = Theme.of(context);
-    // Placeholder - implement similar to artists tab with playlist-specific search and tiles
-    return Center(
-      child: Text(
-        'Playlist search coming soon!',
-        style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
-      ),
+    return Consumer<MusicProvider>(
+      builder: (context, provider, child) {
+        if (query.trim().isEmpty && provider.playlistSearchResults.isEmpty) {
+             return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.queue_music_rounded, size: 60, color: Colors.white.withOpacity(0.1)),
+                const SizedBox(height: 16),
+                Text(
+                  'Search for playlists',
+                  style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4), fontSize: 16),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        if (provider.playlistSearchResults.isEmpty && query.trim().isNotEmpty) {
+           return Center(
+            child: Text(
+              'No playlists found.',
+              style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.only(top: 10, bottom: 100),
+          physics: const BouncingScrollPhysics(),
+          itemCount: provider.playlistSearchResults.length,
+          itemBuilder: (context, index) {
+            final playlist = provider.playlistSearchResults[index];
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  playlist.albumArtUrl,
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_,__,___) => Container(
+                    width: 56, height: 56, 
+                    color: Colors.grey[900], 
+                    child: const Icon(Icons.music_note, color: Colors.white24)
+                  ),
+                ),
+              ),
+              title: Text(
+                playlist.trackName, // In search results, title is mapped to trackName
+                style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                'Playlist • ${playlist.artistName}', // Owner/Artist
+                style: GoogleFonts.splineSans(color: Colors.white54),
+              ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PlaylistDetailScreen(
+                      playlistId: playlist.id,
+                      playlistName: playlist.trackName,
+                      playlistImage: playlist.albumArtUrl,
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

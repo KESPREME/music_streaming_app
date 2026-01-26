@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/playlist.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 
@@ -13,7 +12,7 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
 
   await showModalBottomSheet(
     context: context,
-    backgroundColor: theme.colorScheme.surfaceVariant,
+    backgroundColor: theme.colorScheme.surfaceContainerHighest,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -49,12 +48,12 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
                           content: TextField(
                             controller: newPlaylistNameController,
                             autofocus: true,
-                            decoration: InputDecoration(hintText: "Playlist Name"),
+                            decoration: const InputDecoration(hintText: "Playlist Name"),
                             style: theme.textTheme.bodyLarge,
                           ),
                           actions: <Widget>[
                             TextButton(
-                              child: Text('Cancel', style: theme.textButtonTheme.style?.textStyle?.resolve({MaterialState.pressed})),
+                              child: Text('Cancel', style: theme.textButtonTheme.style?.textStyle?.resolve({WidgetState.pressed})),
                               onPressed: () {
                                 Navigator.pop(dialogContext); // Close dialog
                                 newPlaylistNameController.clear();

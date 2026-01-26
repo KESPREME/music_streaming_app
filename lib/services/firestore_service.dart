@@ -235,7 +235,7 @@ class FirestoreService {
     // This might need to be adapted or removed if UserModel's currentTrack fields are used instead
     return _firestore.collection('friend_listening').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) {
-        return FriendListening.fromJson(doc.data() as Map<String, dynamic>);
+        return FriendListening.fromJson(doc.data());
       }).toList();
     });
   }

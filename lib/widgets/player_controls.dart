@@ -162,7 +162,7 @@ class PlayerControls extends StatelessWidget {
           BoxShadow(
             color: theme.colorScheme.primary.withOpacity(0.3),
             blurRadius: 8,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           )
         ]
       ),

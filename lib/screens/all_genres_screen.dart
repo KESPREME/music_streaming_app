@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
+import 'genre_songs_screen.dart'; // Import this
 import 'home_screen.dart'; // For GenreSongsScreen, assuming it's still there or moved
 
 class AllGenresScreen extends StatelessWidget {
-  const AllGenresScreen({Key? key}) : super(key: key);
+  const AllGenresScreen({super.key});
 
   // Using the same genre list as in HomeScreen for consistency
   static final List<Map<String, dynamic>> _genres = [

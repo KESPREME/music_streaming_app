@@ -1,19 +1,16 @@
-// import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
-import '../services/api_service.dart' show ApiService;
-import '../widgets/track_tile.dart';
+import '../widgets/liquid_card.dart'; 
 import '../home_tab_content.dart';
-import 'trending_now_screen.dart'; // Import new screen
-import 'all_genres_screen.dart';   // Import new screen
-import 'all_artists_screen.dart';  // Import new screen
-import 'settings_screen.dart';     // Import new screen
-
-
-// GenreSongsScreen is defined in this file for now, but could be moved.
+import 'trending_now_screen.dart'; 
+import 'all_genres_screen.dart';   
+import 'all_artists_screen.dart';  
+import 'settings_screen.dart';     
+import 'genre_songs_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,505 +19,467 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  late Future<List<ConnectivityResult>> _connectivityFuture;
-  late Future<List<Map<String, String>>> _topArtistsFuture;
-  final ApiService _apiService = ApiService();
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _connectivityFuture = Connectivity().checkConnectivity();
-    _topArtistsFuture = _apiService.fetchTopArtists();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+  
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Use listen:false here because we only need to pass the provider down for actions.
-    // UI rebuilds are handled by specific Consumer widgets.
-    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    final theme = Theme.of(context);
-
-    return DefaultTabController(
-      length: 2, // "Home" and "Explore"
-      child: Scaffold(
-        // backgroundColor is handled by theme
-        appBar: AppBar(
-          // backgroundColor and elevation are handled by theme's appBarTheme
-          title: Text(
-            'Discover', // More engaging title
-            style: theme.textTheme.headlineSmall,
-          ),
-          actions: [
-            // Consider moving bitrate settings to a dedicated settings screen for cleaner UI
-            // For now, let's style it minimally if kept.
-            Consumer<MusicProvider>(
-              builder: (context, musicProvider, child) {
-                return _buildBitrateDropdown(context, theme); // Removed musicProvider parameter
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: "Settings",
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                );
-              },
-            ),
-            const SizedBox(width: 8),
-          ],
-          bottom: TabBar(
-            // Styling from theme.tabBarTheme
-            tabs: const [
-              Tab(text: 'Feed'), // Renamed for a more modern feel
-              Tab(text: 'Explore'),
-            ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Scaffold(
+      extendBody: true, 
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark 
+              ? [const Color(0xFF141414), const Color(0xFF1E1E1E), const Color(0xFF000000)]
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
           ),
         ),
-        body: TabBarView(
-          children: [
-            // "Feed" tab content (previously HomeTabContent)
-            // This likely needs significant redesign for a modern look.
-            // For now, let's assume HomeTabContent will be updated or replaced.
-            RefreshIndicator(
-              onRefresh: () async {
-                await musicProvider.fetchTracks(forceRefresh: true);
-                await musicProvider.fetchTrendingTracks(forceRefresh: true);
-                // Add other data fetching logic as needed for the Feed
-              },
-              backgroundColor: theme.colorScheme.surface,
-              color: theme.colorScheme.primary,
-              child: const HomeTabContent(), // This will be the main focus for "Feed"
-            ),
-            // "Explore" tab content
-            _buildExploreTab(context, theme, musicProvider),
-          ],
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+             children: [
+               _buildCustomHeader(context),
+               _buildCustomTabBar(context),
+               Expanded(
+                 child: TabBarView(
+                   controller: _tabController,
+                   children: [
+                      _buildFeedTab(context),
+                      _buildExploreTab(context),
+                   ],
+                 ),
+               ),
+             ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBitrateDropdown(BuildContext context, ThemeData theme) {
-    // MusicProvider is now accessed from the Consumer that wraps this method's call site.
-    final musicProvider = Provider.of<MusicProvider>(context);
-    return FutureBuilder<List<ConnectivityResult>>(
-      future: _connectivityFuture, // Use state variable
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(width: 40); // Placeholder
-        }
-        final bool isWifi = snapshot.data!.contains(ConnectivityResult.wifi);
-        final currentBitrate = isWifi ? musicProvider.wifiBitrate : musicProvider.cellularBitrate;
-        final items = isWifi ? [64, 128, 256, 320] : [32, 64, 128]; // Added 320 for WiFi
-        final validValue = items.contains(currentBitrate) ? currentBitrate : items.first;
-
-        return Theme(
-          data: theme.copyWith(
-            canvasColor: theme.colorScheme.surface, // Dropdown background
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<int>(
-              value: validValue,
-              icon: Icon(Icons.speed_outlined, color: theme.iconTheme.color?.withOpacity(0.7), size: 20),
-              items: items.map((bitrate) {
-                return DropdownMenuItem(
-                  value: bitrate,
-                  child: Text(
-                    '$bitrate kbps',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface),
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  if (isWifi) {
-                    musicProvider.setWifiBitrate(value);
-                  } else {
-                    musicProvider.setCellularBitrate(value);
-                  }
-                }
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildExploreTab(BuildContext context, ThemeData theme, MusicProvider musicProvider) {
-    // Using RefreshIndicator for pull-to-refresh functionality
-    return RefreshIndicator(
-      onRefresh: () async {
-        // Add logic to refresh data for the Explore tab
-        await musicProvider.fetchTracks(forceRefresh: true); // Example: refresh popular tracks
-        // await musicProvider.fetchTopArtists(); // If you have such a method
-        // await musicProvider.fetchGenres(); // If you have a method to fetch genres
-      },
-      backgroundColor: theme.colorScheme.surface,
-      color: theme.colorScheme.primary,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle("What's Hot", theme, onViewMore: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const TrendingNowScreen()));
-            }),
-            Consumer<MusicProvider>(
-              builder: (context, provider, child) {
-                // This consumer rebuilds the carousel when trendingTracks changes
-                return _buildHorizontalTrackCarousel(context, provider.trendingTracks, theme, itemWidth: 160, imageHeight: 160);
-              }
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle("Browse Genres", theme, onViewMore: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const AllGenresScreen()));
-            }),
-            _buildGenresSection(context, musicProvider, theme), // Already correct
-            const SizedBox(height: 24),
-            _buildSectionTitle("Top Artists", theme, onViewMore: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const AllArtistsScreen()));
-            }),
-            _buildTopArtistsSection(context, theme),
-            const SizedBox(height: 20), // Bottom padding
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title, ThemeData theme, {VoidCallback? onViewMore}) {
+  Widget _buildCustomHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            title,
-            style: theme.textTheme.titleLarge,
-          ),
-          if (onViewMore != null)
-            TextButton(
-              onPressed: onViewMore,
-              child: Text('View More', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.primary)),
+            'Discover',
+            style: GoogleFonts.splineSans(
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              color: Colors.white,
             ),
+          ),
+          Container(
+             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+             decoration: BoxDecoration(
+               color: Colors.white.withOpacity(0.05),
+               borderRadius: BorderRadius.circular(20),
+               border: Border.all(color: Colors.white.withOpacity(0.1)),
+             ),
+             child: Row(
+               children: [
+                 const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFFF1744)), // Red Accent
+                 const SizedBox(width: 4),
+                 GestureDetector(
+                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                   child: const Icon(Icons.settings_outlined, size: 20, color: Colors.white),
+                 ),
+               ],
+             ),
+           ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCustomTabBar(BuildContext context) {
+    return Container(
+      height: 48,
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+           expandedTabItem(0, "Feed"),
+           expandedTabItem(1, "Explore"),
+        ],
+      ),
+    );
+  }
+  
+  Widget expandedTabItem(int index, String title) {
+    return AnimatedBuilder(
+      animation: _tabController,
+      builder: (context, _) {
+         final selected = _tabController.index == index;
+         return Expanded(
+           child: GestureDetector(
+             onTap: () => _tabController.animateTo(index),
+             child: AnimatedContainer(
+               duration: const Duration(milliseconds: 200),
+               decoration: BoxDecoration(
+                 color: selected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+                 borderRadius: BorderRadius.circular(24),
+               ),
+               alignment: Alignment.center,
+               child: Text(
+                 title,
+                 style: GoogleFonts.splineSans(
+                   fontSize: 15,
+                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                   color: selected ? Colors.white : Colors.grey[500],
+                 ),
+               ),
+             ),
+           ),
+         );
+      }
+    );
+  }
+
+  Widget _buildFeedTab(BuildContext context) {
+    final musicProvider = Provider.of<MusicProvider>(context);
+    
+    return RefreshIndicator(
+      color: const Color(0xFFFF1744),
+      backgroundColor: const Color(0xFF1E1E1E),
+      onRefresh: () async {
+        await musicProvider.fetchTracks(forceRefresh: true);
+      },
+      child: ListView(
+        padding: const EdgeInsets.only(top: 10, bottom: 100),
+        physics: const BouncingScrollPhysics(),
+        children: [
+           // 1. Recently Played (Horizontal)
+           if (musicProvider.recentlyPlayed.isNotEmpty) ...[
+             _buildSectionHeader("Jump Back In"),
+             SizedBox(
+               height: 190,
+               child: ListView.builder(
+                 padding: const EdgeInsets.symmetric(horizontal: 20),
+                 scrollDirection: Axis.horizontal,
+                 itemCount: musicProvider.recentlyPlayed.length,
+                 physics: const BouncingScrollPhysics(),
+                 itemBuilder: (context, index) {
+                    final item = musicProvider.recentlyPlayed[index];
+                    return LiquidCard(
+                      imageUrl: item.albumArtUrl, 
+                      title: item.trackName, 
+                      subtitle: item.artistName,
+                      width: 140, 
+                      height: 140,
+                      onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.recentlyPlayed),
+                    );
+                 },
+               ),
+             ),
+           ],
+           
+           // 2. For You (Vertical List)
+           const SizedBox(height: 10),
+           _buildSectionHeader("For You"),
+           if (musicProvider.recommendedTracks.isEmpty)
+              const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFFFF1744)))),
+           ...musicProvider.recommendedTracks.map((track) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                child: InkWell(
+                  onTap: () => musicProvider.playTrack(track),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04), // Glassy list
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            track.albumArtUrl,
+                            width: 60, height: 60, fit: BoxFit.cover,
+                            errorBuilder: (_,__,___) => Container(color: Colors.grey[800], width: 60, height: 60),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                               Text(
+                                 track.trackName,
+                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                                 maxLines: 1, overflow: TextOverflow.ellipsis,
+                               ),
+                               const SizedBox(height: 4),
+                               Text(
+                                 track.artistName,
+                                 style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+                                 maxLines: 1, overflow: TextOverflow.ellipsis,
+                               ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.play_circle_fill, color: Color(0xFFFF1744), size: 30),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+           }),
+           const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _buildHorizontalTrackCarousel(
-    BuildContext context,
-    // Future<List<Track>> Function({bool forceRefresh}) fetchFunction, // No longer need to pass the function
-    List<Track> tracks, // Pass the track list directly
-    ThemeData theme, {
-    double itemWidth = 140,
-    double imageHeight = 140,
-  }) {
-    final musicProvider = Provider.of<MusicProvider>(context, listen: false); // For actions only
-    return SizedBox(
-      height: imageHeight + 70, // Image height + text space + padding
-      child: Builder( // Use Builder to get a new context if needed, though not strictly necessary here
-        builder: (context) {
-          // If the list is empty, it might be because it's loading or there's an error.
-          // The Consumer in the parent widget will handle rebuilding when the list populates.
-          if (tracks.isEmpty) {
-            // We can show a loading indicator or an empty message.
-            // A simple loading indicator is fine as the parent RefreshIndicator can handle errors.
-            return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
-          }
-          if (tracks.isEmpty) {
-            return Center(child: Text('Nothing to show here.', style: theme.textTheme.bodyMedium));
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            scrollDirection: Axis.horizontal,
-            itemCount: tracks.length,
-            itemBuilder: (context, index) {
-              final track = tracks[index];
-              return InkWell(
-                onTap: () {
-                  musicProvider.playTrack(track, playlistTracks: tracks);
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: itemWidth,
-                  margin: const EdgeInsets.only(right: 12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12.0),
-                        child: track.albumArtUrl.isNotEmpty
-                            ? Image.network( // Replaced CachedNetworkImage
-                                track.albumArtUrl,
-                                height: imageHeight,
-                                width: itemWidth,
-                                cacheWidth: (itemWidth * MediaQuery.of(context).devicePixelRatio).round(),
-                                cacheHeight: (imageHeight * MediaQuery.of(context).devicePixelRatio).round(),
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  height: imageHeight,
-                                  width: itemWidth,
-                                  color: theme.colorScheme.surfaceVariant,
-                                  child: Center(child: Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant, size: 40)),
-                                ),
-                                loadingBuilder: (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Container(
-                                    height: imageHeight,
-                                    width: itemWidth,
-                                    color: theme.colorScheme.surfaceVariant,
-                                    child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)),
-                                  );
-                                },
-                              )
-                            : Container( // Placeholder if no albumArtUrl
-                                height: imageHeight,
-                                width: itemWidth,
-                                color: theme.colorScheme.surfaceVariant,
-                                child: Center(child: Icon(Icons.music_note, color: theme.colorScheme.onSurfaceVariant, size: 40)),
-                              ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        track.trackName,
-                        style: theme.textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        track.artistName,
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+  Widget _buildExploreTab(BuildContext context) {
+    final musicProvider = Provider.of<MusicProvider>(context);
+    
+    return RefreshIndicator(
+      color: const Color(0xFFFF1744),
+      backgroundColor: const Color(0xFF1E1E1E),
+      onRefresh: () async {
+        await musicProvider.fetchTrendingTracks(forceRefresh: true);
+      },
+      child: ListView(
+        padding: const EdgeInsets.only(top: 10, bottom: 100), 
+        physics: const BouncingScrollPhysics(),
+        children: [
+           // 1. Trending Now
+           _buildSectionHeader("What's Hot", onViewAll: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const TrendingNowScreen()));
+           }),
+           SizedBox(
+             height: 220,
+             child: ListView.builder(
+               padding: const EdgeInsets.symmetric(horizontal: 20),
+               scrollDirection: Axis.horizontal,
+               itemCount: musicProvider.trendingTracks.length,
+               physics: const BouncingScrollPhysics(),
+               itemBuilder: (context, index) {
+                  final track = musicProvider.trendingTracks[index];
+                  return LiquidCard(
+                    imageUrl: track.albumArtUrl,
+                    title: track.trackName,
+                    subtitle: track.artistName,
+                    width: 170, 
+                    height: 170,
+                    onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.trendingTracks),
+                  );
+               },
+             ),
+           ),
+           
+           // 2. Genres
+           const SizedBox(height: 20),
+           _buildSectionHeader("Vibe Check", onViewAll: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AllGenresScreen()));
+           }),
+           _buildGenresSection(context, musicProvider),
+           
+           // 3. Top Artists
+           const SizedBox(height: 20),
+           _buildSectionHeader("Top Artists", onViewAll: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AllArtistsScreen()));
+           }),
+           _buildTopArtistsSection(context),
+           
+           const SizedBox(height: 80), 
+        ],
       ),
     );
   }
 
-  Widget _buildGenresSection(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
+  Widget _buildSectionHeader(String title, {VoidCallback? onViewAll}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+           Text(
+             title,
+             style: GoogleFonts.splineSans(
+               fontSize: 20,
+               fontWeight: FontWeight.bold,
+               color: Colors.white,
+             ),
+           ),
+           if (onViewAll != null)
+             GestureDetector(
+               onTap: onViewAll,
+               child: Container(
+                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                 decoration: BoxDecoration(
+                   color: const Color(0xFFFF1744).withOpacity(0.1),
+                   borderRadius: BorderRadius.circular(12),
+                   border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.2)),
+                 ),
+                 child: Text(
+                   "SEE ALL",
+                   style: GoogleFonts.splineSans(
+                     fontSize: 10,
+                     fontWeight: FontWeight.bold,
+                     color: const Color(0xFFFF1744), 
+                     letterSpacing: 0.5,
+                   ),
+                 ),
+               ),
+             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenresSection(BuildContext context, MusicProvider musicProvider) {
     final genres = [
-      {'name': 'Pop', 'color': theme.colorScheme.primary.withOpacity(0.8), 'icon': Icons.music_note},
-      {'name': 'Rock', 'color': theme.colorScheme.secondary.withOpacity(0.8), 'icon': Icons.album }, // Replaced Icons.electric_guitar
-      {'name': 'Hip-Hop', 'color': Colors.orangeAccent.withOpacity(0.8), 'icon': Icons.mic_external_on},
-      {'name': 'Electronic', 'color': Colors.cyanAccent.withOpacity(0.8), 'icon': Icons.headphones},
-      {'name': 'Jazz', 'color': Colors.blueAccent.withOpacity(0.8), 'icon': Icons.speaker},
-      {'name': 'Classical', 'color': Colors.purpleAccent.withOpacity(0.8), 'icon': Icons.piano},
+      {'name': 'Pop', 'color': const Color(0xFFFF1744), 'icon': Icons.music_note}, 
+      {'name': 'Hip-Hop', 'color': Colors.blueAccent, 'icon': Icons.mic},
+      {'name': 'Rock', 'color': Colors.amber[800], 'icon': Icons.electric_bolt},
+      {'name': 'Chill', 'color': Colors.tealAccent[400], 'icon': Icons.nightlight_round},
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 16 / 6, // Adjusted for better look
-        ),
-        itemCount: genres.length,
-        itemBuilder: (context, index) {
-          final genre = genres[index];
-          final genreName = genre['name'] as String;
-          final genreColor = genre['color'] as Color;
-          final genreIcon = genre['icon'] as IconData?;
-
-          return InkWell(
-            onTap: () async {
-              await musicProvider.fetchGenreTracks(genreName);
-              if (context.mounted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GenreSongsScreen(genre: genreName),
-                  ),
-                );
-              }
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [genreColor.withOpacity(0.7), genreColor],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Row(
-                  children: [
-                    if (genreIcon != null)
-                      Icon(genreIcon, color: Colors.white.withOpacity(0.9), size: 24),
-                    if (genreIcon != null)
-                      const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        genreName,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildTopArtistsSection(BuildContext context, ThemeData theme) {
-    // final apiService = ApiService(); // Now using state variable _apiService
-
     return SizedBox(
-      height: 170, // Avatar + text + padding
-      child: FutureBuilder<List<Map<String, String>>>(
-        future: _topArtistsFuture, // Use state variable
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}', style: theme.textTheme.bodyMedium));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(child: Text('No top artists found.', style: theme.textTheme.bodyMedium));
-          }
-
-          final artists = snapshot.data!;
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            scrollDirection: Axis.horizontal,
-            itemCount: artists.length,
-            itemBuilder: (context, index) {
-              final artist = artists[index];
-              final imageUrl = artist['image'] ?? '';
-              final artistName = artist['name'] ?? 'Unknown Artist';
-
-              return InkWell(
+      height: 110,
+      child: ListView.builder(
+         padding: const EdgeInsets.symmetric(horizontal: 20),
+         scrollDirection: Axis.horizontal,
+         itemCount: genres.length,
+         physics: const BouncingScrollPhysics(),
+         itemBuilder: (context, index) {
+            final genre = genres[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: InkWell(
                 onTap: () {
-                  // TODO: Navigate to Artist Detail Screen
-                  // Example: Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artistName: artistName)));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Tapped Artist: $artistName (not implemented)")),
-                  );
+                   musicProvider.fetchGenreTracks(genre['name'] as String);
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => GenreSongsScreen(genre: genre['name'] as String)));
                 },
-                borderRadius: BorderRadius.circular(65), // Half of width + padding
+                borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  width: 110, // Fixed width for consistent layout
-                  margin: const EdgeInsets.only(right: 16.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 100,
-                        height: 100,
-                        child: ClipOval(
-                          child: imageUrl.isNotEmpty
-                              ? Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  width: 100,
-                                  height: 100,
-                                  cacheWidth: (100 * MediaQuery.of(context).devicePixelRatio).round(),
-                                  cacheHeight: (100 * MediaQuery.of(context).devicePixelRatio).round(),
-                                  errorBuilder: (context, error, stackTrace) => Container(color: theme.colorScheme.surfaceVariant, child: Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant)),
-                                  loadingBuilder: (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return Container(color: theme.colorScheme.surfaceVariant, child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)));
-                                  },
-                                )
-                              : Container(color: theme.colorScheme.surfaceVariant, child: Icon(Icons.person, size: 50, color: theme.colorScheme.onSurfaceVariant)),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        artistName,
-                        style: theme.textTheme.bodyMedium,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                   width: 130,
+                   padding: const EdgeInsets.all(12),
+                   decoration: BoxDecoration(
+                     gradient: LinearGradient(
+                       begin: Alignment.topLeft,
+                       end: Alignment.bottomRight,
+                       colors: [
+                         (genre['color'] as Color).withOpacity(0.6),
+                         (genre['color'] as Color).withOpacity(0.3),
+                       ],
+                     ),
+                     borderRadius: BorderRadius.circular(20),
+                     border: Border.all(color: Colors.white.withOpacity(0.1)),
+                   ),
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                        Icon(genre['icon'] as IconData, color: Colors.white, size: 28),
+                        const SizedBox(height: 8),
+                        Text(
+                          genre['name'] as String,
+                          style: GoogleFonts.splineSans(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                        )
+                     ],
+                   ),
                 ),
-              );
-            },
-          );
-        },
+              ),
+            );
+         },
       ),
     );
   }
-}
+  
+  Widget _buildTopArtistsSection(BuildContext context) {
+    return SizedBox(
+      height: 150, // Increased height for better spacing
+      child: FutureBuilder(
+         future: Provider.of<MusicProvider>(context, listen: false).fetchTrendingTracks(), 
+         builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF1744)));
+            final tracks = snapshot.data as List<Track>;
+            final uniqueNames = <String>{};
+            final uniqueTracks = tracks.where((t) => uniqueNames.add(t.artistName)).toList();
+            
+            if (uniqueTracks.isEmpty) return const SizedBox.shrink();
 
-// --- GenreSongsScreen Widget (Placeholder) ---
-// This should be in its own file and styled according to the new theme.
-class GenreSongsScreen extends StatelessWidget {
-  final String genre;
-  const GenreSongsScreen({required this.genre, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
-    final theme = Theme.of(context);
-    // Ensure fetchGenreTracks was called before navigating here.
-    // Data is expected to be in musicProvider.genreTracks
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(genre, style: theme.textTheme.headlineSmall),
-        // Back button is added automatically by Navigator
-      ),
-      body: Consumer<MusicProvider>(
-        builder: (context, provider, child) {
-          if (provider.genreTracks.isEmpty) {
-            // Could be loading, error, or truly empty. Provider should have flags for this.
-            // For now, a simple check.
-            if (provider.errorMessage != null && provider.errorMessage!.contains(genre)) {
-               return Center(child: Text('Error loading tracks for $genre.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)));
-            }
-            return Center(child: Text('No songs found for $genre.', style: theme.textTheme.bodyMedium));
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            itemCount: provider.genreTracks.length,
-            itemBuilder: (context, index) {
-              final track = provider.genreTracks[index];
-              final isPlaying = provider.currentTrack?.id == track.id && provider.isPlaying;
-              return TrackTile(
-                track: track,
-                isPlaying: isPlaying,
-                // onTap will be handled by TrackTile's default or can be overridden if needed
-              );
-            },
-          );
-        },
+            return ListView.separated( // Use separated for consistent spacing
+               padding: const EdgeInsets.symmetric(horizontal: 20),
+               scrollDirection: Axis.horizontal,
+               itemCount: uniqueTracks.length,
+               physics: const BouncingScrollPhysics(),
+               separatorBuilder: (ctx, index) => const SizedBox(width: 20), // Proper spacing
+               itemBuilder: (context, index) {
+                  final artistName = uniqueTracks[index].artistName;
+                  final imageUrl = uniqueTracks[index].albumArtUrl;
+                  
+                  return InkWell(
+                    onTap: () {
+                      Provider.of<MusicProvider>(context, listen: false).fetchArtistTracks(artistName);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Loading $artistName..."), duration: const Duration(seconds: 1)));
+                    },
+                    borderRadius: BorderRadius.circular(50),
+                    child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                          Container(
+                            padding: const EdgeInsets.all(3), 
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.5), width: 2),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5, offset: const Offset(0, 3))],
+                            ),
+                            child: CircleAvatar(
+                              radius: 40, // 80x80
+                              backgroundColor: Colors.grey[850],
+                              backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+                              child: imageUrl.isEmpty 
+                                ? const Icon(Icons.person, size: 40, color: Colors.white54)
+                                : null,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: 90, // Constrain text width
+                            child: Text(
+                              artistName, 
+                              style: GoogleFonts.splineSans(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600), 
+                              maxLines: 1,
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )
+                       ],
+                    ),
+                  );
+               },
+            );
+         },
       ),
     );
   }

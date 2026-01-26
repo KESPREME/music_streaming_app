@@ -3,10 +3,13 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  bonsoir_windows
   cloud_firestore
   connectivity_plus
   desktop_webview_window
+  firebase_auth
   firebase_core
+  flutter_inappwebview_windows
   permission_handler_windows
   share_plus
   url_launcher_windows

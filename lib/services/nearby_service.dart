@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert'; // For encoding/decoding JSON payloads
-import 'dart:io'; // For Platform checks
+// For Platform checks
 import 'package:flutter/foundation.dart'; // For kDebugMode
 // import 'package:flutter_nearby_connections/flutter_nearby_connections.dart'; // Commented out
 // import 'package:uuid/uuid.dart'; // Commented out - Uuid was only for Firestore IDs before
@@ -94,7 +94,7 @@ class NearbyService {
 
   void _subscribeToStateChanges() {
     _nearby.stateChangedSubscription(callback: (devicesList) {
-      devicesList.forEach((device) {
+      for (var device in devicesList) {
         if (kDebugMode) {
           print("Nearby State Change: DeviceId: ${device.deviceId}, State: ${device.state}");
         }
@@ -111,7 +111,7 @@ class NearbyService {
             if (kDebugMode) print("Disconnected from: ${device.deviceId}");
           }
         }
-      });
+      }
     });
 
     _nearby.dataReceivedSubscription(callback: (data) {

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 
 class PlaybackSettingsScreen extends StatelessWidget {
-  const PlaybackSettingsScreen({Key? key}) : super(key: key);
+  const PlaybackSettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +30,7 @@ class PlaybackSettingsScreen extends StatelessWidget {
               style: TextStyle(color: Colors.white70),
             ),
             value: musicProvider.shuffleEnabled,
-            activeColor: Colors.deepPurple,
+            activeThumbColor: Colors.deepPurple,
             onChanged: (value) {
               musicProvider.toggleShuffle();
             },
@@ -118,7 +118,7 @@ class PlaybackSettingsScreen extends StatelessWidget {
               style: TextStyle(color: Colors.white70),
             ),
             value: musicProvider.isLowDataMode,
-            activeColor: Colors.deepPurple,
+            activeThumbColor: Colors.deepPurple,
             onChanged: (value) {
               musicProvider.toggleLowDataMode();
             },
@@ -135,7 +135,7 @@ class PlaybackSettingsScreen extends StatelessWidget {
               style: TextStyle(color: Colors.white70),
             ),
             value: musicProvider.isOfflineMode,
-            activeColor: Colors.deepPurple,
+            activeThumbColor: Colors.deepPurple,
             onChanged: (value) {
               if (value) {
                 musicProvider.goOffline();

@@ -1,4 +1,4 @@
-import 'dart:typed_data'; // Keep, might be used for local artwork in future
+// Keep, might be used for local artwork in future
 // import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +8,7 @@ import '../providers/music_provider.dart';
 import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import 'playlist_selection_dialog.dart'; // Import the dialog
+import 'glass_options_sheet.dart';
 
 class TrackTile extends StatelessWidget {
   final Track track;
@@ -16,6 +17,7 @@ class TrackTile extends StatelessWidget {
   final String? playlistId; // For contextual actions like "Remove from this playlist"
   final bool dense; // For a more compact tile, e.g., in queues
   final bool isInQueueContext; // New parameter
+  final Color? backgroundColor;
 
   const TrackTile({
     required this.track,
@@ -24,6 +26,7 @@ class TrackTile extends StatelessWidget {
     this.playlistId,
     this.dense = false,
     this.isInQueueContext = false, // Default to false
+    this.backgroundColor,
     super.key,
   });
 
@@ -45,7 +48,7 @@ class TrackTile extends StatelessWidget {
           errorBuilder: (context, error, stackTrace) => Container(
             width: artworkSize,
             height: artworkSize,
-            color: theme.colorScheme.surfaceVariant,
+            color: theme.colorScheme.surfaceContainerHighest,
             child: Icon(Icons.broken_image, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
           ),
           loadingBuilder: (context, child, loadingProgress) {
@@ -53,7 +56,7 @@ class TrackTile extends StatelessWidget {
             return Container(
               width: artworkSize,
               height: artworkSize,
-              color: theme.colorScheme.surfaceVariant,
+              color: theme.colorScheme.surfaceContainerHighest,
               child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null, strokeWidth: 2.0,)),
             );
           },
@@ -65,7 +68,7 @@ class TrackTile extends StatelessWidget {
         height: artworkSize,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(dense ? 4 : 6),
-          color: theme.colorScheme.surfaceVariant,
+          color: theme.colorScheme.surfaceContainerHighest,
         ),
         child: Icon(Icons.music_note, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
       );
@@ -82,12 +85,13 @@ class TrackTile extends StatelessWidget {
     // We can use this for itemExtent optimization in ListView.builder.
 
     return ListTile(
+      tileColor: backgroundColor, // Apply background color
       contentPadding: EdgeInsets.symmetric(horizontal: dense ? 12.0 : 16.0, vertical: dense ? 4.0 : 8.0),
       leading: _buildArtworkWidget(context, theme),
       title: Text(
         track.trackName,
         style: (dense ? theme.textTheme.bodyLarge : theme.textTheme.titleMedium)?.copyWith(
-          color: isPlaying ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+          color: isPlaying ? const Color(0xFFFF1744) : theme.colorScheme.onSurface,
           fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal,
         ),
         maxLines: dense ? 1 : 2,
@@ -103,13 +107,20 @@ class TrackTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             )
           : null,
-      trailing: PopupMenuButton<String>(
-        icon: Icon(Icons.more_vert_outlined, color: theme.iconTheme.color?.withOpacity(0.7)),
-        tooltip: "More options",
-        onSelected: (value) => _handleMenuSelection(context, value, musicProvider, theme),
-        itemBuilder: (BuildContext context) => _buildMenuItems(context, musicProvider, theme),
-        color: theme.colorScheme.surfaceVariant, // Themed background for dropdown
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      trailing: IconButton(
+        icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withOpacity(0.7)),
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            isScrollControlled: true,
+            builder: (context) => GlassOptionsSheet(
+              track: track,
+              playlistId: playlistId,
+              isInQueueContext: isInQueueContext,
+            ),
+          );
+        },
       ),
       onTap: onTap ??
           () async {
@@ -138,7 +149,7 @@ class TrackTile extends StatelessWidget {
     final bool isLiked = musicProvider.isSongLiked(track.id);
 
     // Helper to create styled ListTiles for PopupMenuItems
-    Widget _menuItemContent(String title, IconData icon, {Color? iconColor}) {
+    Widget menuItemContent(String title, IconData icon, {Color? iconColor}) {
       return Row(
         children: [
           Icon(icon, size: 20, color: iconColor ?? theme.iconTheme.color?.withOpacity(0.8)),
@@ -150,7 +161,7 @@ class TrackTile extends StatelessWidget {
 
     items.add(PopupMenuItem(
       value: 'toggle_like',
-      child: _menuItemContent(
+      child: menuItemContent(
         isLiked ? 'Unlike' : 'Like Song',
         isLiked ? Icons.favorite : Icons.favorite_border_outlined,
         iconColor: isLiked ? theme.colorScheme.primary : null,
@@ -159,9 +170,9 @@ class TrackTile extends StatelessWidget {
 
     items.add(const PopupMenuDivider());
 
-    items.add(PopupMenuItem(value: 'add_queue', child: _menuItemContent('Add to Queue', Icons.queue_music_outlined)));
-    items.add(PopupMenuItem(value: 'play_next', child: _menuItemContent('Play Next', Icons.playlist_play_outlined)));
-    items.add(PopupMenuItem(value: 'add_playlist', child: _menuItemContent('Add to Playlist', Icons.playlist_add_outlined)));
+    items.add(PopupMenuItem(value: 'add_queue', child: menuItemContent('Add to Queue', Icons.queue_music_outlined)));
+    items.add(PopupMenuItem(value: 'play_next', child: menuItemContent('Play Next', Icons.playlist_play_outlined)));
+    items.add(PopupMenuItem(value: 'add_playlist', child: menuItemContent('Add to Playlist', Icons.playlist_add_outlined)));
 
     bool isArtistValid = track.artistName.isNotEmpty && track.artistName != 'Unknown Artist';
     bool isAlbumValid = track.albumName.isNotEmpty && track.albumName != 'Unknown Album' && track.albumName != 'YouTube';
@@ -169,10 +180,10 @@ class TrackTile extends StatelessWidget {
     if (isArtistValid || isAlbumValid) {
       items.add(const PopupMenuDivider());
       if (isArtistValid) {
-        items.add(PopupMenuItem(value: 'goto_artist', child: _menuItemContent('Go to Artist', Icons.person_outline)));
+        items.add(PopupMenuItem(value: 'goto_artist', child: menuItemContent('Go to Artist', Icons.person_outline)));
       }
       if (isAlbumValid) {
-        items.add(PopupMenuItem(value: 'goto_album', child: _menuItemContent('Go to Album', Icons.album_outlined)));
+        items.add(PopupMenuItem(value: 'goto_album', child: menuItemContent('Go to Album', Icons.album_outlined)));
       }
     }
 
@@ -194,13 +205,13 @@ class TrackTile extends StatelessWidget {
 
 
     items.add(const PopupMenuDivider());
-    items.add(PopupMenuItem(value: 'share', child: _menuItemContent('Share', Icons.share_outlined)));
+    items.add(PopupMenuItem(value: 'share', child: menuItemContent('Share', Icons.share_outlined)));
 
     if (playlistId != null) {
       items.add(const PopupMenuDivider());
       items.add(PopupMenuItem(
         value: 'remove_from_playlist',
-        child: _menuItemContent('Remove from Playlist', Icons.remove_circle_outline_outlined, iconColor: theme.colorScheme.error),
+        child: menuItemContent('Remove from Playlist', Icons.remove_circle_outline_outlined, iconColor: theme.colorScheme.error),
       ));
     }
 
@@ -208,7 +219,7 @@ class TrackTile extends StatelessWidget {
       items.add(const PopupMenuDivider());
       items.add(PopupMenuItem(
         value: 'remove_from_queue',
-        child: _menuItemContent('Remove from Queue', Icons.delete_sweep_outlined, iconColor: theme.colorScheme.error),
+        child: menuItemContent('Remove from Queue', Icons.delete_sweep_outlined, iconColor: theme.colorScheme.error),
       ));
     }
     return items;

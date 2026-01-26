@@ -9,7 +9,7 @@ import 'album_screen.dart'; // For navigating to album screen
 class ArtistScreen extends StatelessWidget {
   final String artistName;
 
-  const ArtistScreen({required this.artistName, Key? key}) : super(key: key);
+  const ArtistScreen({required this.artistName, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +129,7 @@ class ArtistScreen extends StatelessWidget {
                       isPlaying: isPlaying,
                       onTap: () => musicProvider.playTrack(track, playlistTracks: artist.topTracks),
                     );
-                  }).toList(), // Convert map result to list
+                  }), // Convert map result to list
 
 
                 // Albums Section

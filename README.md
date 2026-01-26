@@ -1,99 +1,114 @@
 # 🎵 Music Streaming App
 
-A modern, cross-platform **Music Streaming App** built with [Flutter](https://flutter.dev/).  
-Stream, discover, and enjoy your favorite tunes with a beautiful and responsive UI.
+A state-of-the-art, cross-platform **Music Streaming App** built with [Flutter](https://flutter.dev/).  
+Experience instant playback, beautiful glassmorphism UI, and seamless audio streaming from multiple sources.
+
+![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter)
+![Dart](https://img.shields.io/badge/Dart-3.0-0175C2?style=for-the-badge&logo=dart)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 ---
 
-## 🚀 Features
+## 🚀 Key Features
 
-- 🎧 Stream music from YouTube and local files  
-- 🗂️ Browse and search songs, albums, and artists  
-- 🎵 Playlist management (create, edit, delete)  
-- ❤️ Mark favorites and recently played tracks  
-- 🔊 Background playback support  
-- 🌙 **Dark theme support only**  
-- 📶 Offline/online connectivity awareness  
-- 📱 Works on Android and iOS  
+### 🎧 High-Performance Audio Engine
+*   **Hybrid Fetching System**: Prioritizes direct streams for **instant start (<500ms)** while falling back to a robust proxy (YoutubeExplode) for restricted content.
+*   **Low-Latency Buffering**: Custom-tuned `AndroidLoadControl` ensures music starts playing the moment the first chunk arrives.
+*   **Background Playback**: Full support for background audio and lock screen controls via `just_audio_background`.
+
+### 🎨 Stunning UI/UX
+*   **Glassmorphism Design**: Modern, translucent UI elements using `glassmorphism` and `flutter_animate`.
+*   **Dynamic Theming**: Color palettes generated from album art for an immersive experience.
+*   **Responsive**: Optimized for both Android and iOS devices.
+
+### 🛠️ Core Functionality
+*   **Universal Search**: Find songs, artists, and albums from YouTube.
+*   **Local Playback**: Play files stored on your device with full metadata support.
+*   **Playlist Management**: Create, edit, and share custom playlists.
+*   **Lyrics Support**: Real-time synchronized lyrics (where available).
+*   **Chromecast Support**: Cast your music to big screens.
+*   **Offline Support**: Smart caching and offline mode for low-data environments.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Framework:** [Flutter](https://flutter.dev/)  
-- **Language:** Dart  
-- **State Management:** [Provider](https://pub.dev/packages/provider)  
-- **Audio Playback:** [just_audio](https://pub.dev/packages/just_audio), [just_audio_background](https://pub.dev/packages/just_audio_background)  
-- **YouTube Streaming:** [youtube_explode_dart](https://pub.dev/packages/youtube_explode_dart)  
-- **Cloud Sync:** [cloud_firestore](https://pub.dev/packages/cloud_firestore), [firebase_core](https://pub.dev/packages/firebase_core)  
-- **Connectivity:** [connectivity_plus](https://pub.dev/packages/connectivity_plus), [internet_connection_checker](https://pub.dev/packages/internet_connection_checker)  
-- **Preferences & Storage:** [shared_preferences](https://pub.dev/packages/shared_preferences), [path_provider](https://pub.dev/packages/path_provider), [file_picker](https://pub.dev/packages/file_picker)  
-- **UI & Utilities:**  
-  [cached_network_image](https://pub.dev/packages/cached_network_image),  
-  [audio_video_progress_bar](https://pub.dev/packages/audio_video_progress_bar),  
-  [permission_handler](https://pub.dev/packages/permission_handler),  
-  [device_info_plus](https://pub.dev/packages/device_info_plus),  
-  [rxdart](https://pub.dev/packages/rxdart),  
-  [collection](https://pub.dev/packages/collection),  
-  [on_audio_query](https://pub.dev/packages/on_audio_query),  
-  [share_plus](https://pub.dev/packages/share_plus),  
-  [dio](https://pub.dev/packages/dio),  
-  [http](https://pub.dev/packages/http),  
-  [url_launcher](https://pub.dev/packages/url_launcher),  
-  [flutter_web_auth_2](https://pub.dev/packages/flutter_web_auth_2),  
-  [audio_session](https://pub.dev/packages/audio_session)
-
----
-
-## 🚦 Getting Started
-
-### 1. Clone the repository:
-```bash
-git clone https://github.com/KESPREME/music_streaming_app.git
-cd music_streaming_app
-```
-
-### 2. Install dependencies:
-```bash
-flutter pub get
-```
-
-### 3. Run the app:
-```bash
-flutter run
-```
-
-> *Requires Flutter SDK 3.x. For setup instructions, see the [Flutter documentation](https://flutter.dev/docs/get-started/install).*
+*   **Framework**: Flutter & Dart
+*   **State Management**: `provider`
+*   **Audio Core**: `just_audio`, `audio_service`, `youtube_explode_dart`
+*   **Backend/Sync**: Firebase (Firestore, Auth)
+*   **UI Libraries**: `glassmorphism`, `flutter_animate`, `palette_generator`, `cached_network_image`
+*   **Connectivity**: `connectivity_plus`, `internet_connection_checker`
+*   **Storage**: `shared_preferences`, `path_provider`
 
 ---
 
 ## 📂 Project Structure
 
-```
+```text
 lib/
-├── main.dart
-├── models/
-├── screens/
-├── widgets/
-├── services/
-└── utils/
-assets/
-├── images/
-└── audio/
+├── main.dart               # App Entry Point
+├── providers/              # State Management (MVVM-style Providers)
+│   └── music_provider.dart # Core logic for playback, queue, and fetching
+├── services/               # Backend & Hardware Services
+│   ├── audio_service.dart  # Low-level audio player wrapper & config
+│   ├── innertube/          # YouTube/InnerTube API handlers
+│   ├── auth_service.dart   # Firebase Auth
+│   └── ...
+├── screens/                # UI Screens (Home, Player, Library, Search)
+├── widgets/                # Reusable UI Components (Cards, Bars, Glass Containers)
+├── models/                 # Data Models (Track, Album, Playlist)
+└── utils/                  # Constants, Theme, Helpers
 ```
+
+---
+
+## 🚦 Getting Started
+
+### Prerequisites
+*   [Flutter SDK](https://docs.flutter.dev/get-started/install) (Version 3.10+)
+*   Dart SDK (Version 3.0+)
+
+### Installation
+
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/KESPREME/music_streaming_app.git
+    cd music_streaming_app
+    ```
+
+2.  **Install dependencies**:
+    ```bash
+    flutter pub get
+    ```
+
+3.  **Run the app**:
+    *   For performance testing, use Profile mode:
+        ```bash
+        flutter run --profile
+        ```
+    *   For development:
+        ```bash
+        flutter run
+        ```
 
 ---
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome!  
-Feel free to [open an issue](https://github.com/KESPREME/music_streaming_app/issues) or submit a pull request.
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
@@ -101,8 +116,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Nipun Gupta**  
 [GitHub](https://github.com/KESPREME) | [LinkedIn](https://www.linkedin.com/in/nipun-gupta-198b90175)
-
----
 
 <p align="center">
   Made with ❤️ using Flutter by <a href="https://github.com/KESPREME">KESPREME</a>

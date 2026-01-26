@@ -5,7 +5,7 @@ import 'providers/music_provider.dart';
 import 'now_playing_screen.dart';
 
 class ModernPlaybackBar extends StatelessWidget {
-  const ModernPlaybackBar({Key? key}) : super(key: key);
+  const ModernPlaybackBar({super.key});
 
   @override
   Widget build(BuildContext context) {

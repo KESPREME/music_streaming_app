@@ -10,6 +10,7 @@ class Track {
   final String albumArtUrl; // URL or empty (local art needs separate handling)
   final String source; // 'youtube', 'spotify', 'local'
   final Duration? duration; // Added duration
+  final int? _durationMs; // Duration in milliseconds (from InnerTube)
 
   Track({
     required this.id,
@@ -17,10 +18,19 @@ class Track {
     required this.artistName,
     required this.albumName,
     required this.previewUrl,
-    required this.albumArtUrl,
+    String? albumArtUrl,
+    String? albumArt, // Alias for albumArtUrl (InnerTube uses this)
     this.source = 'youtube',
-    this.duration, // Added
-  });
+    this.duration,
+    int? durationMs,
+  }) : albumArtUrl = albumArtUrl ?? albumArt ?? '',
+       _durationMs = durationMs;
+  
+  /// Duration in milliseconds (for InnerTube/lyrics compatibility)
+  int? get durationMs => _durationMs ?? duration?.inMilliseconds;
+  
+  /// Alias for albumArtUrl (InnerTube compatibility)
+  String get albumArt => albumArtUrl;
 
   factory Track.fromJson(Map<String, dynamic> json) {
     return Track(

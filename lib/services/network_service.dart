@@ -1,6 +1,5 @@
 // lib/services/network_service.dart
 import 'dart:async';
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -41,7 +40,7 @@ class NetworkService {
   ));
 
   final Connectivity _connectivity = Connectivity();
-  final InternetConnectionChecker _connectionChecker = InternetConnectionChecker();
+  final InternetConnectionChecker _connectionChecker = InternetConnectionChecker.instance;
   final DefaultCacheManager _cacheManager = DefaultCacheManager();
 
   StreamSubscription? _connectivitySubscription;
@@ -87,7 +86,7 @@ class NetworkService {
       final connectivityResult = await _connectivity.checkConnectivity();
 
       // If on mobile network, check if it's Jio (known problematic network)
-      if (connectivityResult == ConnectivityResult.mobile) {
+      if (connectivityResult.contains(ConnectivityResult.mobile)) {
         final isJio = await _isJioNetwork();
         if (isJio) {
           // Jio networks often have connectivity issues, so treat as poor by default
@@ -118,7 +117,7 @@ class NetworkService {
       // Determine network quality based on speed and connection type
       NetworkQuality quality;
 
-      if (connectivityResult == ConnectivityResult.wifi) {
+      if (connectivityResult.contains(ConnectivityResult.wifi)) {
         if (speedKbps < 50) {
           quality = NetworkQuality.poor;
         } else if (speedKbps < 200) {
@@ -266,7 +265,7 @@ class NetworkService {
         }
 
         return response.data;
-      } on DioException catch (e) {
+      } on DioException {
         attempts++;
 
         // If it's the last attempt, rethrow
@@ -404,7 +403,7 @@ class NetworkService {
         );
 
         return response.data;
-      } on DioException catch (e) {
+      } on DioException {
         attempts++;
 
         // If it's the last attempt, rethrow
@@ -456,8 +455,8 @@ class NetworkService {
     // Set up options with range header for resume
     final options = Options(
       headers: startBytes > 0 ? {'Range': 'bytes=$startBytes-'} : null,
-      sendTimeout: timeout ?? Duration(minutes: 30),
-      receiveTimeout: timeout ?? Duration(minutes: 30),
+      sendTimeout: timeout ?? const Duration(minutes: 30),
+      receiveTimeout: timeout ?? const Duration(minutes: 30),
     );
 
     // Implement retry logic with exponential backoff
@@ -466,7 +465,7 @@ class NetworkService {
       try {
         await _dio.download(
           url,
-          startBytes > 0 ? savePath + '.temp' : savePath,
+          startBytes > 0 ? '$savePath.temp' : savePath,
           cancelToken: cancelToken,
           onReceiveProgress: (received, total) {
             if (total != -1) {
@@ -481,7 +480,7 @@ class NetworkService {
 
         // If we were resuming, append the temp file to the original
         if (startBytes > 0) {
-          final tempFile = File(savePath + '.temp');
+          final tempFile = File('$savePath.temp');
           if (await tempFile.exists()) {
             final raf = await file.open(mode: FileMode.append);
             await raf.writeFrom(await tempFile.readAsBytes());
@@ -491,7 +490,7 @@ class NetworkService {
         }
 
         return savePath;
-      } on DioException catch (e) {
+      } on DioException {
         // Don't retry if canceled
         if (cancelToken?.isCancelled ?? false) {
           throw Exception('Download canceled');

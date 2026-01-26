@@ -1,12 +1,15 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../services/spotify_service.dart';
-import '../services/api_service.dart';
-import '../models/playlist.dart';
+import '../services/spotify_service.dart';
+import 'spotify_playlist_selection_screen.dart';
+import '../widgets/liquid_snackbar.dart';
 
 class PlaylistImportScreen extends StatefulWidget {
-  const PlaylistImportScreen({Key? key}) : super(key: key);
+  const PlaylistImportScreen({super.key});
 
   @override
   State<PlaylistImportScreen> createState() => _PlaylistImportScreenState();
@@ -14,25 +17,10 @@ class PlaylistImportScreen extends StatefulWidget {
 
 class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
   bool _isLoading = false;
-  String _selectedService = "Spotify"; // Default service
+  String _selectedService = "Spotify"; 
   final TextEditingController _playlistUrlController = TextEditingController();
-
-  // Use late keyword to initialize after constructor
-  final ApiService _apiService = ApiService();
-  late final SpotifyService _spotifyService;
-
-  final List<String> _supportedServices = [
-    "Spotify",
-    "YouTube Music",
-    "Amazon Music"
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize SpotifyService in initState
-    _spotifyService = SpotifyService(_apiService);
-  }
+  final SpotifyService _spotifyService = SpotifyService();
+  final List<String> _supportedServices = ["Spotify", "YouTube Music", "Amazon Music"];
 
   @override
   void dispose() {
@@ -42,116 +30,194 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1D1D1D),
-        title: const Text('Import Playlists'),
+      extendBodyBehindAppBar: true,
+      body: Container(
+         decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark 
+              ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+          ),
+        ),
+        child: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                surfaceTintColor: Colors.transparent,
+                backgroundColor: Colors.transparent,
+                floating: true,
+                pinned: true,
+                elevation: 0,
+                expandedHeight: 100,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                  color: isDark ? Colors.white : Colors.black,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                flexibleSpace: ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.5),
+                      child: FlexibleSpaceBar(
+                        titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
+                        title: Text(
+                          'Import Playlists',
+                          style: GoogleFonts.splineSans(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                            fontSize: 20,
+                          ),
+                        ),
+                        background: Container(color: Colors.transparent),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildGlassContainer(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Import from URL',
+                              style: GoogleFonts.splineSans(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            
+                            // Service Dropdown
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  dropdownColor: const Color(0xFF2C2C2C),
+                                  value: _selectedService,
+                                  isExpanded: true,
+                                  style: GoogleFonts.splineSans(color: Colors.white),
+                                  icon: const Icon(Icons.expand_more_rounded, color: Colors.white70),
+                                  items: _supportedServices.map((service) {
+                                    return DropdownMenuItem(
+                                      value: service,
+                                      child: Text(service),
+                                    );
+                                  }).toList(),
+                                  onChanged: (value) => setState(() => _selectedService = value!),
+                                ),
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 16),
+                            
+                            // URL Field
+                            TextField(
+                              controller: _playlistUrlController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.08),
+                                hintText: 'Paste playlist URL here',
+                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(color: Colors.white24),
+                                ),
+                                prefixIcon: const Icon(Icons.link_rounded, color: Colors.white54),
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 24),
+                            
+                            // Action Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context).primaryColor,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  elevation: 0,
+                                ),
+                                onPressed: _isLoading ? null : _importPlaylistFromUrl,
+                                child: _isLoading 
+                                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : Text('Import Playlist', style: GoogleFonts.splineSans(fontWeight: FontWeight.bold, color: Colors.white)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        'Quick Connect',
+                        style: GoogleFonts.splineSans(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildServiceButton('Spotify', Icons.music_note_rounded, const Color(0xFF1DB954)),
+                          _buildServiceButton('YouTube', Icons.play_arrow_rounded, const Color(0xFFFF0000)),
+                          _buildServiceButton('Amazon', Icons.shopping_cart_rounded, const Color(0xFF232F3E)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Import from music services',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
+    );
+  }
 
-            // Service selection dropdown
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: Colors.grey[800],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              value: _selectedService,
-              dropdownColor: Colors.grey[800],
-              style: TextStyle(color: Colors.white),
-              items: _supportedServices.map((service) {
-                return DropdownMenuItem(
-                  value: service,
-                  child: Text(service),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedService = value!;
-                });
-              },
-            ),
-
-            const SizedBox(height: 24),
-            Text(
-              'Playlist URL',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Playlist URL input
-            TextField(
-              controller: _playlistUrlController,
-              style: TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: Colors.grey[800],
-                hintText: 'Paste playlist URL here',
-                hintStyle: TextStyle(color: Colors.grey[400]),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Import button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                onPressed: _isLoading ? null : _importPlaylistFromUrl,
-                child: _isLoading
-                    ? CircularProgressIndicator(color: Colors.white)
-                    : Text('Import Playlist'),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Alternative import methods
-            Text(
-              'Or connect directly to your account',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Service connection buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildServiceButton('Spotify', Icons.music_note, Colors.green),
-                _buildServiceButton('YouTube', Icons.play_arrow, Colors.red),
-                _buildServiceButton('Amazon', Icons.shopping_cart, Colors.blue),
-              ],
-            ),
-          ],
+  Widget _buildGlassContainer({required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: child,
         ),
       ),
     );
@@ -160,22 +226,28 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
   Widget _buildServiceButton(String service, IconData icon, Color color) {
     return InkWell(
       onTap: () => _connectToService(service),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              shape: BoxShape.circle,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              service,
+              style: GoogleFonts.splineSans(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 12, 
+                fontWeight: FontWeight.w600
+              ),
             ),
-            child: Icon(icon, color: color, size: 30),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            service,
-            style: TextStyle(color: Colors.white),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -183,22 +255,15 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
   Future<void> _importPlaylistFromUrl() async {
     final url = _playlistUrlController.text.trim();
     if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter a playlist URL')),
-      );
+      showLiquidSnackBar(context, 'Please enter a URL', isError: true);
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // Extract playlist ID from URL
       String? playlistId;
-
       if (_selectedService == 'Spotify' && url.contains('spotify.com/playlist/')) {
-        // Example: https://open.spotify.com/playlist/37i9dQZF1DX0XUsuxWHRQd
         final uri = Uri.parse(url);
         final pathSegments = uri.pathSegments;
         final playlistIndex = pathSegments.indexOf('playlist');
@@ -207,200 +272,90 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
         }
       }
 
-      if (playlistId == null) {
-        throw Exception('Could not extract playlist ID from URL');
+      if (playlistId == null) throw Exception('Could not extract playlist ID from URL');
+
+      if (playlistId == null) throw Exception('Could not extract playlist ID from URL');
+
+      // Efficiently fetch ONLY the target playlist metadata
+      final playlistInfo = await _spotifyService.getPlaylistMetadata(playlistId);
+
+      final imageUrl = (playlistInfo['images'] as List).isNotEmpty 
+          ? playlistInfo['images'][0]['url'] 
+          : '';
+          
+      final playlist = await _spotifyService.getPlaylistWithTracks(playlistId, playlistInfo['name'], imageUrl);
+      
+      if(mounted) {
+         await Provider.of<MusicProvider>(context, listen: false).importPlaylist(playlist);
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Playlist imported successfully!')));
+         _playlistUrlController.clear();
       }
 
-      // Get playlist details
-      final playlists = await _spotifyService.getUserPlaylists();
-      final playlistInfo = playlists.firstWhere(
-            (p) => p['id'] == playlistId,
-        orElse: () => {
-          'id': playlistId,
-          'name': 'Imported Playlist',
-          'images': [{'url': ''}]
-        },
-      );
-
-      final name = playlistInfo['name'];
-      final imageUrl = playlistInfo['images'].isNotEmpty
-          ? playlistInfo['images'][0]['url']
-          : '';
-
-      // Get playlist with tracks
-      final playlist = await _spotifyService.getPlaylistWithTracks(
-          playlistId,
-          name,
-          imageUrl
-      );
-
-      // Save to provider
-      final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-      await musicProvider.importPlaylist(playlist);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Playlist imported successfully!')),
-      );
-
-      // Clear input
-      _playlistUrlController.clear();
-
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error importing playlist: $e')),
-      );
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if(mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _connectToService(String service) async {
     if (service != 'Spotify') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$service import is not implemented yet')),
-      );
+      showLiquidSnackBar(context, '$service coming soon', isError: true);
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
+    
     try {
-      // Get user's playlists from Spotify
+      // 1. Fetch User Playlists
       final playlists = await _spotifyService.getUserPlaylists();
-
-      // Show playlist selection dialog
-      final selectedPlaylists = await Navigator.push<List<String>>(
+      
+      if (!mounted) return;
+      setState(() => _isLoading = false); // Stop loading before nav
+      
+      // 2. Navigate to Selection Screen
+      Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PlaylistSelectionScreen(playlists: playlists),
+          builder: (context) => SpotifyPlaylistSelectionScreen(
+            playlists: playlists,
+            onPlaylistSelected: (playlistMap) {
+               Navigator.pop(context); // Close selection screen
+               _importSpotifyPlaylist(playlistMap); // Start import
+            },
+          ),
         ),
       );
 
-      if (selectedPlaylists != null && selectedPlaylists.isNotEmpty) {
-        final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-
-        // Import each selected playlist
-        for (final playlistId in selectedPlaylists) {
-          final playlistInfo = playlists.firstWhere((p) => p['id'] == playlistId);
-          final name = playlistInfo['name'];
-          final imageUrl = playlistInfo['images'].isNotEmpty
-              ? playlistInfo['images'][0]['url']
-              : '';
-
-          // Get playlist with tracks
-          final playlist = await _spotifyService.getPlaylistWithTracks(
-              playlistId,
-              name,
-              imageUrl
-          );
-
-          // Save to provider
-          await musicProvider.importPlaylist(playlist);
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${selectedPlaylists.length} playlists imported!')),
-        );
-      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error connecting to $service: $e')),
-      );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if(mounted) {
+         setState(() => _isLoading = false);
+         showLiquidSnackBar(context, 'Error connecting: $e', isError: true);
+      }
     }
   }
-}
 
-// Playlist Selection Screen
-class PlaylistSelectionScreen extends StatefulWidget {
-  final List<Map<String, dynamic>> playlists;
-
-  const PlaylistSelectionScreen({Key? key, required this.playlists}) : super(key: key);
-
-  @override
-  State<PlaylistSelectionScreen> createState() => _PlaylistSelectionScreenState();
-}
-
-class _PlaylistSelectionScreenState extends State<PlaylistSelectionScreen> {
-  final Set<String> _selectedPlaylistIds = {};
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1D1D1D),
-        title: const Text('Select Playlists'),
-      ),
-      body: ListView.builder(
-        itemCount: widget.playlists.length,
-        itemBuilder: (context, index) {
-          final playlist = widget.playlists[index];
-          final isSelected = _selectedPlaylistIds.contains(playlist['id']);
-
-          return CheckboxListTile(
-            title: Text(
-              playlist['name'],
-              style: TextStyle(color: Colors.white),
-            ),
-            subtitle: Text(
-              '${playlist['tracks']['total']} tracks',
-              style: TextStyle(color: Colors.grey),
-            ),
-            secondary: playlist['images'] != null && playlist['images'].isNotEmpty
-                ? ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Image.network(
-                playlist['images'][0]['url'],
-                width: 50,
-                height: 50,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  width: 50,
-                  height: 50,
-                  color: Colors.grey[800],
-                  child: Icon(Icons.music_note, color: Colors.white),
-                ),
-              ),
-            )
-                : null,
-            value: isSelected,
-            onChanged: (value) {
-              setState(() {
-                if (value == true) {
-                  _selectedPlaylistIds.add(playlist['id']);
-                } else {
-                  _selectedPlaylistIds.remove(playlist['id']);
-                }
-              });
-            },
-            checkColor: Colors.black,
-            activeColor: Colors.deepPurple,
-          );
-        },
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepPurple,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-          onPressed: _selectedPlaylistIds.isEmpty
-              ? null
-              : () {
-            Navigator.pop(context, _selectedPlaylistIds.toList());
-          },
-          child: Text('Import ${_selectedPlaylistIds.length} Playlists'),
-        ),
-      ),
-    );
+  Future<void> _importSpotifyPlaylist(Map<String, dynamic> playlistInfo) async {
+     setState(() => _isLoading = true);
+     
+     try {
+       final playlistId = playlistInfo['id'];
+       final name = playlistInfo['name'];
+       final images = playlistInfo['images'] as List;
+       final imageUrl = images.isNotEmpty ? images[0]['url'] : '';
+       
+       showLiquidSnackBar(context, 'Importing playlist...');
+       
+       final playlist = await _spotifyService.getPlaylistWithTracks(playlistId, name, imageUrl);
+       
+       if(mounted) {
+          await Provider.of<MusicProvider>(context, listen: false).importPlaylist(playlist);
+          showLiquidSnackBar(context, 'Imported "${playlist.name}"');
+       }
+     } catch (e) {
+       if(mounted) showLiquidSnackBar(context, 'Import Error: $e', isError: true);
+     } finally {
+       if(mounted) setState(() => _isLoading = false);
+     }
   }
 }

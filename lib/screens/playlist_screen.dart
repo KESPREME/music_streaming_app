@@ -9,7 +9,7 @@ import 'package:collection/collection.dart';
 class PlaylistScreen extends StatelessWidget {
   final String playlistId;
 
-  const PlaylistScreen({required this.playlistId, Key? key}) : super(key: key);
+  const PlaylistScreen({required this.playlistId, super.key});
 
   @override
   Widget build(BuildContext context) {

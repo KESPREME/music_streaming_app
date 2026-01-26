@@ -1,6 +1,7 @@
 // lib/services/audio_service.dart
 import 'dart:io';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 // import 'package:path_provider/path_provider.dart'; // Unused import
 import 'package:flutter/foundation.dart';
@@ -10,48 +11,54 @@ import 'dart:math';
 
 
 class AudioService {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  // Initialize player with aggressive buffer settings directly
+  final AudioPlayer _audioPlayer = AudioPlayer(
+    audioLoadConfiguration: const AudioLoadConfiguration(
+       androidLoadControl: AndroidLoadControl(
+         minBufferDuration: Duration(milliseconds: 2000), // 2s (was 15s)
+         maxBufferDuration: Duration(milliseconds: 15000), // 15s (was 60s)
+         bufferForPlaybackDuration: Duration(milliseconds: 500), // 0.5s (was 2.5s)
+         bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 1000),
+         prioritizeTimeOverSizeThresholds: true,
+         backBufferDuration: Duration(seconds: 30),
+       ),
+       darwinLoadControl: DarwinLoadControl(
+         preferredForwardBufferDuration: Duration(seconds: 15),
+         automaticallyWaitsToMinimizeStalling: false,
+       ),
+    ),
+  );
+  
   final NetworkService _networkService = NetworkService();
   bool _isInitialized = false;
   String? _currentUrl;
-  String? _currentFilePath; // Reinstated: Used in playLocalFile
+  String? _currentFilePath;
   bool _isLocalFile = false;
-  // AudioLoadConfiguration? _currentLoadConfiguration; // Store current load config - REMOVED
 
   // Streams
-  Stream<Duration> get onPositionChanged => _audioPlayer.positionStream.map((position) => position ?? Duration.zero);
+  Stream<Duration> get onPositionChanged => _audioPlayer.positionStream.map((position) => position); // removed null check as it's non-nullable usually or handled
   Stream<Duration> get onDurationChanged => _audioPlayer.durationStream.map((duration) => duration ?? Duration.zero);
   Stream<bool> get onPlaybackStateChanged => _audioPlayer.playingStream;
-  Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream; // Expose the full player state
+  Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream; 
   Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
       .map((state) => state == ProcessingState.completed);
 
   AudioService() {
-    // Apply a default load configuration when service is initialized
-    // configureBufferSettings( // Commented out call
-    //   bufferDuration: const Duration(seconds: 30), // Default overall buffer hint
-    //   minBufferDuration: const Duration(milliseconds: 15000), // Android specific
-    //   maxBufferDuration: const Duration(milliseconds: 60000), // Android specific
-    // );
-
     _initAudioSession();
-
-    // Listen for network quality changes
-    // _networkService.onNetworkQualityChanged.listen((quality) { // Commented out listener
-    //   _handleNetworkQualityChange(quality);
-    // });
   }
+
+
 
   Future<void> _initAudioSession() async {
     if (_isInitialized) return;
 
     try {
       final session = await AudioSession.instance;
-      await session.configure(AudioSessionConfiguration(
+      await session.configure(const AudioSessionConfiguration(
         avAudioSessionCategory: AVAudioSessionCategory.playback,
         avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.duckOthers,
         avAudioSessionMode: AVAudioSessionMode.defaultMode,
-        androidAudioAttributes: const AndroidAudioAttributes(
+        androidAudioAttributes: AndroidAudioAttributes(
           contentType: AndroidAudioContentType.music,
           usage: AndroidAudioUsage.media,
           flags: AndroidAudioFlags.none,
@@ -75,42 +82,133 @@ class AudioService {
     }
   }
 
-  Future<void> play(String url) async {
+  Future<void> play(String? url, {
+    bool isLocal = false, 
+    AudioSource? customSource,
+    String? title,
+    String? artist,
+    String? artUri,
+    String? id,
+  }) async {
     try {
+      if (kDebugMode) {
+        print('AudioService: play() called with URL: $url, customSource: ${customSource != null}');
+      }
+      
+      // Validate inputs
+      if (url == null && customSource == null) {
+        throw Exception('Cannot play: Both URL and source are null');
+      }
+      
       await _initAudioSession();
-      await _audioPlayer.stop();
+      
+      // Stop current playback
+      if (_audioPlayer.playing) {
+        if (kDebugMode) print('AudioService: Stopping current playback');
+        await _audioPlayer.stop();
+      }
 
       _currentUrl = url;
       _isLocalFile = false;
 
-      // Create audio source from URL
-      AudioSource audioSource;
-      if (url == _preloadedUrl && _preloadedSource != null) {
-        if (kDebugMode) print("AudioService: Using preloaded source for $url");
-        audioSource = _preloadedSource!;
-        _preloadedSource = null; // Consume the preloaded source
-        _preloadedUrl = null;
+      // Initialize AudioSource
+      AudioSource audioSource; // Fix: Declare variable here
+      
+      if (customSource != null) {
+         if (kDebugMode) print('AudioService: Using custom AudioSource (Stream Proxy)');
+         audioSource = customSource;
       } else {
-        if (kDebugMode) print("AudioService: Creating new AudioSource.uri for $url. Preloaded URL was $_preloadedUrl");
-        // If a different track is played than preloaded, clear preloaded info
-        _preloadedSource = null;
-        _preloadedUrl = null;
-        audioSource = AudioSource.uri(Uri.parse(url));
+        // ... (Source from URL logic) ...
+        // Only run this if we rely on the URL
+        
+        // Check preloaded source
+        if (url == _preloadedUrl && _preloadedSource != null) {
+            audioSource = _preloadedSource!;
+            _preloadedSource = null;
+            _preloadedUrl = null;
+        } else {
+            // New URL based source
+             _preloadedSource = null;
+             _preloadedUrl = null;
+             
+            Uri uri;
+            try {
+              if (isLocal && url != null) {
+                 uri = Uri.file(url);
+              } else if (url != null) {
+                 uri = Uri.parse(url);
+              } else {
+                 throw Exception('URL required if customSource is null');
+              }
+            } catch (e) {
+               throw Exception('Invalid URL: $e');
+            }
+            
+            final headers = <String, String>{
+              'Accept-Encoding': 'gzip',
+            };
+            
+            if (url.contains('c=ANDROID')) {
+               headers['User-Agent'] = 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
+            } else if (url.contains('c=IOS')) {
+               headers['User-Agent'] = 'com.google.ios.youtube/19.29.1 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X)';
+            }
+            
+            
+            // Create MediaItem tag for Lock Screen / Notification
+            MediaItem? tag;
+            if (title != null) {
+              tag = MediaItem(
+                id: id ?? url ?? 'unknown',
+                title: title ?? 'Unknown Track',
+                artist: artist ?? 'Unknown Artist',
+                artUri: artUri != null ? Uri.parse(artUri) : null,
+              );
+            }
+
+            if (isLocal) {
+               audioSource = AudioSource.uri(uri, tag: tag);
+            } else {
+               audioSource = AudioSource.uri(uri, headers: headers.isNotEmpty ? headers : null, tag: tag);
+            }
+        }
       }
 
-      // Set the audio source and play
-      await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
+      if (kDebugMode) print('AudioService: Setting audio source...');
+      
+      // Set the audio source
+      await _audioPlayer.setAudioSource(audioSource);
+      
+      if (kDebugMode) print('AudioService: Starting playback...');
+      
+      // Start playback
       await _audioPlayer.play();
+      
+      if (kDebugMode) print('AudioService: Playback started successfully');
+      
     } on PlayerException catch (e) {
-      print('just_audio PlayerException during play: ${e.message}');
-      throw Exception('Failed to play audio: ${e.message}');
-    } catch (e) {
-      print('Error playing audio: $e');
+      if (kDebugMode) {
+        print('AudioService: PlayerException during play');
+        print('Error code: ${e.code}');
+        print('Error message: ${e.message}');
+      }
+      throw Exception('Audio player error: ${e.message}');
+    } catch (e, s) {
+      if (kDebugMode) {
+        print('AudioService: Error playing audio');
+        print('Error: $e');
+        print('Stack: $s');
+      }
       throw Exception('Failed to play audio: $e');
     }
   }
 
-  Future<void> playLocalFile(String filePath) async {
+  Future<void> playLocalFile(String filePath, {
+    String? title,
+    String? artist,
+    String? artUri,
+    String? id,
+  }) async {
     try {
       await _initAudioSession();
       await _audioPlayer.stop();
@@ -124,8 +222,19 @@ class AudioService {
       _currentFilePath = filePath;
       _isLocalFile = true;
 
-      // Create audio source from local file
-      final audioSource = AudioSource.uri(Uri.file(filePath));
+      // Create metadata tag
+      MediaItem? tag;
+      if (title != null) {
+        tag = MediaItem(
+          id: id ?? filePath,
+          title: title,
+          artist: artist,
+          artUri: artUri != null ? Uri.parse(artUri) : null, 
+        );
+      }
+
+      // Create audio source from local file with tag
+      final audioSource = AudioSource.uri(Uri.file(filePath), tag: tag);
 
       // Set the audio source and play
       await _audioPlayer.setAudioSource(audioSource); // Removed initialConfiguration
@@ -252,8 +361,22 @@ class AudioService {
         // Get current position
         final position = _audioPlayer.position;
 
-        // Try to play again
-        final audioSource = AudioSource.uri(Uri.parse(_currentUrl!));
+        // Try to play again with proper headers
+        final headers = <String, String>{
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'DNT': '1',
+        };
+        
+        if (_currentUrl!.contains('googlevideo.com') || _currentUrl!.contains('youtube.com')) {
+          headers['Referer'] = 'https://www.youtube.com/';
+          headers['Origin'] = 'https://www.youtube.com';
+        }
+        
+        final audioSource = AudioSource.uri(Uri.parse(_currentUrl!), headers: headers);
         await _audioPlayer.setAudioSource(audioSource);
 
         // Seek to previous position if needed
@@ -289,7 +412,20 @@ class AudioService {
       // Dispose previous preloaded source if any
       // await _preloadedSource?.dispose(); // LockCachingAudioSource doesn't have dispose directly, it's managed by player
 
-      _preloadedSource = LockCachingAudioSource(Uri.parse(url));
+      final headers = <String, String>{
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'DNT': '1',
+      };
+      
+      if (url.contains('googlevideo.com') || url.contains('youtube.com')) {
+        headers['Referer'] = 'https://www.youtube.com/';
+        headers['Origin'] = 'https://www.youtube.com';
+      }
+      _preloadedSource = LockCachingAudioSource(Uri.parse(url), headers: headers);
       // Pre-buffering happens implicitly when the source is set or by calling load.
       // We don't want to play it, just have it ready.
       // `just_audio` often starts buffering when setAudioSource is called.
@@ -313,43 +449,7 @@ class AudioService {
     }
   }
 
-  // Future<void> configureBufferSettings({ // Commented out entire method
-  //   Duration? bufferDuration,
-  //   Duration? minBufferDuration,
-  //   Duration? maxBufferDuration,
-  // }) async {
-  //   try {
-  //     // Define effective durations, falling back to sensible defaults if null
-  //     // These names match the parameters of AndroidLoadControl and DarwinLoadControl
-  //     final Duration androidMinBufferDur = minBufferDuration ?? const Duration(milliseconds: 15000);
-  //     final Duration androidMaxBufferDur = maxBufferDuration ?? const Duration(milliseconds: 60000);
-  //     final Duration androidBufferForPlaybackDur = bufferDuration ?? const Duration(milliseconds: 2500);
 
-  //     final Duration darwinPreferredForwardBufferDur = bufferDuration ?? const Duration(seconds: 30);
-
-  //     final audioLoadConfiguration = AudioLoadConfiguration(
-  //       androidLoadControl: AndroidLoadControl(
-  //         minBufferDur: androidMinBufferDur,
-  //         maxBufferDur: androidMaxBufferDur,
-  //         bufferForPlaybackDur: androidBufferForPlaybackDur,
-  //         prioritizeTimeOverSizeThresholds: true,
-  //       ),
-  //       darwinLoadControl: DarwinLoadControl(
-  //         preferredForwardBufferDuration: darwinPreferredForwardBufferDur,
-  //       ),
-  //     );
-
-  //     await _audioPlayer.setAudioLoadConfiguration(audioLoadConfiguration);
-
-  //     if (kDebugMode) {
-  //       print("AudioService: Buffer settings configured - Android(min:$androidMinBufferDur, max:$androidMaxBufferDur, playback:$androidBufferForPlaybackDur), Darwin(forward:$darwinPreferredForwardBufferDur)");
-  //     }
-  //   } catch (e) {
-  //     if (kDebugMode) {
-  //       print("AudioService: Error configuring buffer settings: $e");
-  //     }
-  //   }
-  // }
 
   void dispose() {
     _audioPlayer.dispose();
