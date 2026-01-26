@@ -138,6 +138,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                           return TrackTile(
                             track: track,
                             isPlaying: isPlaying,
+                            isRecentlyPlayedContext: true,
                           );
                         },
                         childCount: recentlyPlayedTracks.length,

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../models/album.dart'; // Import Album
+import '../widgets/liquid_play_button.dart'; // Import LiquidPlayButton
 import '../widgets/track_tile.dart';
 import 'playlist_detail_screen.dart'; // Reuse for Album view
 
@@ -65,13 +66,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
-      floatingActionButton: _topSongs.isNotEmpty ? FloatingActionButton(
-        backgroundColor: const Color(0xFFFF1744),
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.play_arrow_rounded, size: 32),
+      floatingActionButton: _topSongs.isNotEmpty ? LiquidPlayButton(
         onPressed: () {
-           final provider = Provider.of<MusicProvider>(context, listen: false);
-           provider.playTrack(_topSongs.first, playlistTracks: _topSongs);
+            final provider = Provider.of<MusicProvider>(context, listen: false);
+            provider.playTrack(_topSongs.first, playlistTracks: _topSongs);
         },
       ) : null,
       body: CustomScrollView(

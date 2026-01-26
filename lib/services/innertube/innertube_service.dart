@@ -58,6 +58,47 @@ class InnerTubeService {
   final CobaltService _cobaltService = CobaltService();
   final YoutubeExplode _yt = YoutubeExplode(); // Persistent instance optimization
   
+  // --- URL Cache ---
+  static final Map<String, _CachedUrlEntry> _urlCache = {};
+  static const Duration _cacheDuration = Duration(minutes: 90);
+
+  /// Prefetch a song's URL and cache it
+  Future<void> prefetch(String videoId) async {
+    if (_urlCache.containsKey(videoId)) {
+      final entry = _urlCache[videoId]!;
+      if (!entry.isExpired(_cacheDuration)) return;
+    }
+    
+    if (kDebugMode) print('InnerTubeService: Prefetching $videoId...');
+    try {
+      // Just call getAudioStreamUrl, it will handle fetching and caching
+      await getAudioStreamUrl(videoId);
+    } catch (e) {
+      if (kDebugMode) print('InnerTubeService: Prefetch failed for $videoId: $e');
+    }
+  }
+  
+  /// Helper to get cached URL if valid
+  Future<String?> _getCachedUrl(String videoId) async {
+    if (!_urlCache.containsKey(videoId)) return null;
+    
+    final entry = _urlCache[videoId]!;
+    if (entry.isExpired(_cacheDuration)) {
+      _urlCache.remove(videoId);
+      return null;
+    }
+    
+    // Optional: Validate if the URL is still accessible (HEAD request)
+    // This adds latency, so maybe skip for very recent entries (e.g. < 10 mins)
+    // For now, trusting the 90m expiration as Musify does.
+    return entry.url;
+  }
+  
+  void _cacheUrl(String videoId, String url) {
+    _urlCache[videoId] = _CachedUrlEntry(url, DateTime.now());
+  }
+
+  
   /// Build the context object required for all InnerTube requests
   Map<String, dynamic> _buildContext({YouTubeClientType clientType = YouTubeClientType.webRemix}) {
     switch (clientType) {
@@ -503,8 +544,19 @@ class InnerTubeService {
   /// Get audio stream URL (Legacy/Download support)
   /// Always returns a String URL.
   Future<String> getAudioStreamUrl(String videoId, {int preferredBitrate = 128}) async {
+    // 1. Check Cache
+    final cached = await _getCachedUrl(videoId);
+    if (cached != null) {
+      if (kDebugMode) print('InnerTubeService: Cache HIT for $videoId');
+      return cached;
+    }
+
     final result = await _getAudioStreamInternal(videoId, preferredBitrate, returnSource: false);
-    if (result is String) return result;
+    if (result is String) {
+      // 2. Update Cache
+      _cacheUrl(videoId, result);
+      return result;
+    }
     // If internal returned a Source (shouldn't happen if returnSource=false), throw
     throw Exception('Failed to get URL string');
   }
@@ -528,19 +580,23 @@ class InnerTubeService {
         );
         final audioStream = manifest.audioOnly.withHighestBitrate();
         
-        if (returnSource) {
-           // ROBUSTNESS FIX: Return the stream proxy source directly.
-           // Inject Auth headers (Cookies + Auth)
-           final headers = AuthService().getHeaders();
-           if (kDebugMode) print('InnerTubeService: Using YoutubeExplode Stream Proxy (Fix 403) with Auth: ${headers.isNotEmpty}');
-           return YoutubeExplodeSource(audioStream, headers: headers);
-        } else {
-           // For downloads: Return the URL string
-           final url = audioStream.url.toString();
-           if (await _validateStreamUrl(url)) {
-              return url;
-           }
-        }
+          if (returnSource) {
+             // ROBUSTNESS FIX: Return the stream proxy source directly.
+             // Inject Auth headers (Cookies + Auth)
+             final headers = AuthService().getHeaders();
+             if (kDebugMode) print('InnerTubeService: Using YoutubeExplode Stream Proxy (Fix 403) with Auth: ${headers.isNotEmpty}');
+             
+             // Cache the URL even if using Proxy Source, so parallel/future calls can benefit
+             _cacheUrl(videoId, audioStream.url.toString());
+             
+             return YoutubeExplodeSource(audioStream, headers: headers);
+          } else {
+             // For downloads: Return the URL string
+             final url = audioStream.url.toString();
+             if (await _validateStreamUrl(url)) {
+                return url;
+             }
+          }
         
       } catch (e) {
           // _yt.close(); // Do not close shared instance
@@ -1425,5 +1481,16 @@ class InnerTubeService {
   
   void dispose() {
     _httpClient.close();
+  }
+}
+
+class _CachedUrlEntry {
+  final String url;
+  final DateTime timestamp;
+
+  _CachedUrlEntry(this.url, this.timestamp);
+
+  bool isExpired(Duration duration) {
+    return DateTime.now().difference(timestamp) > duration;
   }
 }

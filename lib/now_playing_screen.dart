@@ -10,10 +10,13 @@ import 'dart:math' as math;
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/playlist_selection_dialog.dart';
-import '../screens/album_screen.dart';
-import '../screens/artist_screen.dart';
+import '../screens/playlist_detail_screen.dart'; // Unified for Album View
+import '../screens/artist_detail_screen.dart'; // Unified Screen
 import '../screens/queue_screen.dart';
 import '../screens/lyrics_screen.dart';
+import '../widgets/glass_snackbar.dart';
+
+import '../widgets/wavy_progress_bar.dart'; // Import shared widget
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -60,7 +63,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         }
 
         final isPlaying = musicProvider.isPlaying;
-        final duration = musicProvider.duration;
 
         return Scaffold(
           extendBodyBehindAppBar: true,
@@ -317,9 +319,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     return IconButton(
                       onPressed: () async {
                         if (isDownloaded) {
-                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Track already downloaded')),
-                          );
+                           showGlassSnackBar(context, 'Track already downloaded');
                         } else {
                           await provider.downloadTrack(track);
                         }
@@ -573,8 +573,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                      onTap: () async {
                        Navigator.pop(context);
                        await musicProvider.navigateToAlbum(track.albumName, track.artistName);
-                       if (context.mounted && musicProvider.currentAlbumDetails != null) {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumScreen(albumName: track.albumName, artistName: track.artistName)));
+                       if (context.mounted) {
+                          if (musicProvider.currentAlbumDetails != null) {
+                             Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
+                               playlistId: musicProvider.currentAlbumDetails!.id,
+                               playlistName: musicProvider.currentAlbumDetails!.name,
+                               playlistImage: musicProvider.currentAlbumDetails!.imageUrl,
+                               cachedTracks: musicProvider.currentAlbumDetails!.tracks,
+                             )));
+                          } else {
+                             showGlassSnackBar(context, 'Could not load album: ${track.albumName}');
+                          }
                        }
                      }
                    ),
@@ -584,8 +593,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                      onTap: () async {
                        Navigator.pop(context);
                        await musicProvider.navigateToArtist(track.artistName);
-                       if (context.mounted && musicProvider.currentArtistDetails != null) {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artistName: track.artistName)));
+                       if (context.mounted) {
+                          if (musicProvider.currentArtistDetails != null) {
+                             Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(
+                               artistId: musicProvider.currentArtistDetails!.id,
+                               artistName: musicProvider.currentArtistDetails!.name,
+                               artistImage: musicProvider.currentArtistDetails!.imageUrl,
+                             )));
+                          } else {
+                             showGlassSnackBar(context, 'Could not load artist: ${track.artistName}');
+                          }
                        }
                      }
                    ),
@@ -616,20 +633,61 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   void _showSleepTimerDialog(BuildContext context, MusicProvider musicProvider) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          title: Text('Sleep Timer', style: GoogleFonts.plusJakartaSans(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTimerOption(context, musicProvider, '15 Minutes', 15),
-              _buildTimerOption(context, musicProvider, '30 Minutes', 30),
-              _buildTimerOption(context, musicProvider, '1 Hour', 60),
-              _buildTimerOption(context, musicProvider, 'End of Track', 0),
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E).withOpacity(0.7),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+            boxShadow: [
+               BoxShadow(
+                 color: Colors.black.withOpacity(0.3),
+                 blurRadius: 20,
+                 offset: const Offset(0, -5),
+               ),
             ],
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: BackdropFilter(
+               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+               child: SafeArea(
+                 child: Column(
+                   mainAxisSize: MainAxisSize.min,
+                   children: [
+                      Container(
+                        margin: const EdgeInsets.only(top: 12, bottom: 8),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          "Sleep Timer", 
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white, 
+                            fontSize: 18, 
+                            fontWeight: FontWeight.bold
+                          )
+                        ),
+                      ),
+                      _buildTimerOption(context, musicProvider, '15 Minutes', 15),
+                      _buildTimerOption(context, musicProvider, '30 Minutes', 30),
+                      _buildTimerOption(context, musicProvider, '1 Hour', 60),
+                      _buildTimerOption(context, musicProvider, 'End of Track', 0), // 0 means end of track
+                      const SizedBox(height: 20),
+                   ],
+                 ),
+               ),
+            ),
           ),
         );
       },
@@ -747,190 +805,4 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 }
 
-// -----------------------------------------------------------------------------
-// WAVY PROGRESS BAR IMPLEMENTATION
-// -----------------------------------------------------------------------------
 
-class WavyProgressBar extends StatefulWidget {
-  final MusicProvider provider;
-  final Color accentColor;
-
-  const WavyProgressBar({required this.provider, required this.accentColor, super.key});
-
-  @override
-  State<WavyProgressBar> createState() => _WavyProgressBarState();
-}
-
-class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  bool _isDragging = false;
-  double _dragValue = 0.0;
-
-  @override
-  void initState() {
-    super.initState();
-    // Continuous animation for the wave phase
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<Duration>(
-      stream: widget.provider.positionStream,
-      builder: (context, snapshot) {
-        final duration = widget.provider.duration;
-        final position = _isDragging ? Duration(seconds: _dragValue.toInt()) : (snapshot.data ?? Duration.zero);
-        final maxSeconds = duration.inSeconds > 0 ? duration.inSeconds.toDouble() : 1.0;
-        final currentSeconds = position.inSeconds.toDouble().clamp(0.0, maxSeconds);
-        final progress = currentSeconds / maxSeconds;
-
-        return Column(
-          children: [
-             SizedBox(
-              height: 40,
-              child: GestureDetector(
-                onHorizontalDragStart: (details) {
-                  setState(() { _isDragging = true; _dragValue = currentSeconds; });
-                },
-                onHorizontalDragUpdate: (details) {
-                  final RenderBox box = context.findRenderObject() as RenderBox;
-                  final width = box.size.width;
-                  final dx = details.localPosition.dx.clamp(0.0, width);
-                  final newProgress = dx / width;
-                  setState(() { _dragValue = newProgress * maxSeconds; });
-                },
-                onHorizontalDragEnd: (details) {
-                  widget.provider.seekTo(Duration(seconds: _dragValue.toInt()));
-                  setState(() { _isDragging = false; });
-                },
-                onTapDown: (details) {
-                   final RenderBox box = context.findRenderObject() as RenderBox;
-                   final width = box.size.width;
-                   final dx = details.localPosition.dx.clamp(0.0, width);
-                   final newProgress = dx / width;
-                   widget.provider.seekTo(Duration(seconds: (newProgress * maxSeconds).toInt()));
-                },
-                child: AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return CustomPaint(
-                      painter: WavySliderPainter(
-                        progress: progress,
-                        color: widget.accentColor,
-                        phase: widget.provider.isPlaying ? _controller.value * 2 * math.pi : 0, 
-                      ),
-                      size: Size.infinite,
-                    );
-                  },
-                ),
-              ),
-            ),
-             // Time Labels
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _formatDuration(position),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    _formatDuration(duration),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class WavySliderPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  final double phase;
-
-  WavySliderPainter({required this.progress, required this.color, required this.phase});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
-
-    final centerY = size.height / 2;
-    
-    // Config
-    const double waveAmplitude = 4.0;
-    const double waveFrequency = 0.05; 
-
-    // Draw Inactive Line (Straight & Gray)
-    // Starts from the current progress point to the end
-    // Logic: In the reference, the "remaining" part is a straight line.
-    
-    final activeWidth = size.width * progress;
-    
-    // Inactive Path (Straight Line)
-    paint.color = Colors.white.withOpacity(0.2);
-    final inactivePath = Path();
-    inactivePath.moveTo(activeWidth, centerY);
-    inactivePath.lineTo(size.width, centerY);
-    canvas.drawPath(inactivePath, paint);
-
-    // active Path (Wavy Line)
-    final activePath = Path();
-    paint.color = color;
-    activePath.moveTo(0, centerY);
-    
-    double lastX = 0;
-    double lastY = centerY;
-
-    // Draw waves only up to the active width
-    for (double x = 0; x <= activeWidth; x++) {
-      final y = centerY + math.sin((x * waveFrequency) + phase) * waveAmplitude;
-      activePath.lineTo(x, y);
-      lastX = x;
-      lastY = y;
-    }
-    canvas.drawPath(activePath, paint);
-
-    // Draw Thumb at the tip of the wave
-    final thumbPaint = Paint()..color = color..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(lastX, lastY), 8.0, thumbPaint);
-    
-    // Thumb Glow
-    final glowPaint = Paint()..color = color.withOpacity(0.4)..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(lastX, lastY), 16.0, glowPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant WavySliderPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.phase != phase || oldDelegate.color != color;
-  }
-}

@@ -9,6 +9,7 @@ import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import 'playlist_selection_dialog.dart'; // Import the dialog
 import 'glass_options_sheet.dart';
+import 'glass_snackbar.dart';
 
 class TrackTile extends StatelessWidget {
   final Track track;
@@ -17,6 +18,7 @@ class TrackTile extends StatelessWidget {
   final String? playlistId; // For contextual actions like "Remove from this playlist"
   final bool dense; // For a more compact tile, e.g., in queues
   final bool isInQueueContext; // New parameter
+  final bool isRecentlyPlayedContext;
   final Color? backgroundColor;
 
   const TrackTile({
@@ -26,6 +28,7 @@ class TrackTile extends StatelessWidget {
     this.playlistId,
     this.dense = false,
     this.isInQueueContext = false, // Default to false
+    this.isRecentlyPlayedContext = false,
     this.backgroundColor,
     super.key,
   });
@@ -118,6 +121,7 @@ class TrackTile extends StatelessWidget {
               track: track,
               playlistId: playlistId,
               isInQueueContext: isInQueueContext,
+              isRecentlyPlayedContext: isRecentlyPlayedContext,
             ),
           );
         },
@@ -132,201 +136,11 @@ class TrackTile extends StatelessWidget {
               }
             } catch (e) {
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Error playing: ${e.toString().split(':').last.trim()}'),
-                  backgroundColor: theme.colorScheme.error,
-                ));
+                showGlassSnackBar(context, 'Error playing: ${e.toString().split(':').last.trim()}');
               }
             }
           },
     );
   }
-
-  List<PopupMenuEntry<String>> _buildMenuItems(BuildContext context, MusicProvider musicProvider, ThemeData theme) {
-    final items = <PopupMenuEntry<String>>[];
-    // Use a Consumer or Selector if isLiked needs to be reactive within the menu itself upon opening.
-    // For simplicity, this uses the state at the time of menu build.
-    final bool isLiked = musicProvider.isSongLiked(track.id);
-
-    // Helper to create styled ListTiles for PopupMenuItems
-    Widget menuItemContent(String title, IconData icon, {Color? iconColor}) {
-      return Row(
-        children: [
-          Icon(icon, size: 20, color: iconColor ?? theme.iconTheme.color?.withOpacity(0.8)),
-          const SizedBox(width: 12),
-          Text(title, style: theme.textTheme.bodyMedium),
-        ],
-      );
-    }
-
-    items.add(PopupMenuItem(
-      value: 'toggle_like',
-      child: menuItemContent(
-        isLiked ? 'Unlike' : 'Like Song',
-        isLiked ? Icons.favorite : Icons.favorite_border_outlined,
-        iconColor: isLiked ? theme.colorScheme.primary : null,
-      ),
-    ));
-
-    items.add(const PopupMenuDivider());
-
-    items.add(PopupMenuItem(value: 'add_queue', child: menuItemContent('Add to Queue', Icons.queue_music_outlined)));
-    items.add(PopupMenuItem(value: 'play_next', child: menuItemContent('Play Next', Icons.playlist_play_outlined)));
-    items.add(PopupMenuItem(value: 'add_playlist', child: menuItemContent('Add to Playlist', Icons.playlist_add_outlined)));
-
-    bool isArtistValid = track.artistName.isNotEmpty && track.artistName != 'Unknown Artist';
-    bool isAlbumValid = track.albumName.isNotEmpty && track.albumName != 'Unknown Album' && track.albumName != 'YouTube';
-
-    if (isArtistValid || isAlbumValid) {
-      items.add(const PopupMenuDivider());
-      if (isArtistValid) {
-        items.add(PopupMenuItem(value: 'goto_artist', child: menuItemContent('Go to Artist', Icons.person_outline)));
-      }
-      if (isAlbumValid) {
-        items.add(PopupMenuItem(value: 'goto_album', child: menuItemContent('Go to Album', Icons.album_outlined)));
-      }
-    }
-
-    // Future-based download status for menu item (can be complex for sync update)
-    // Consider a simpler approach or ensure provider state is efficiently updated for this
-    // For now, a basic check:
-    // bool isDownloaded = musicProvider.downloadedTracksMetadata.containsKey(track.id); // Simplified check
-    // if (track.source != 'local') {
-    //   items.add(const PopupMenuDivider());
-    //   if (isDownloaded) {
-    //     items.add(PopupMenuItem(value: 'remove_download', child: _menuItemContent('Remove Download', Icons.download_done_outlined, iconColor: theme.colorScheme.primary)));
-    //   } else if (musicProvider.isDownloading[track.id] ?? false) {
-    //      items.add(PopupMenuItem(value: 'cancel_download', child: _menuItemContent('Cancel Download', Icons.cancel_outlined, iconColor: Colors.orangeAccent)));
-    //   }
-    //   else {
-    //     items.add(PopupMenuItem(value: 'download', child: _menuItemContent('Download', Icons.download_outlined)));
-    //   }
-    // }
-
-
-    items.add(const PopupMenuDivider());
-    items.add(PopupMenuItem(value: 'share', child: menuItemContent('Share', Icons.share_outlined)));
-
-    if (playlistId != null) {
-      items.add(const PopupMenuDivider());
-      items.add(PopupMenuItem(
-        value: 'remove_from_playlist',
-        child: menuItemContent('Remove from Playlist', Icons.remove_circle_outline_outlined, iconColor: theme.colorScheme.error),
-      ));
-    }
-
-    if (isInQueueContext) {
-      items.add(const PopupMenuDivider());
-      items.add(PopupMenuItem(
-        value: 'remove_from_queue',
-        child: menuItemContent('Remove from Queue', Icons.delete_sweep_outlined, iconColor: theme.colorScheme.error),
-      ));
-    }
-    return items;
-  }
-
-  void _handleMenuSelection(BuildContext context, String value, MusicProvider provider, ThemeData theme) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-
-    bool isArtistValid = track.artistName.isNotEmpty && track.artistName != 'Unknown Artist';
-    bool isAlbumValid = track.albumName.isNotEmpty && track.albumName != 'Unknown Album' && track.albumName != 'YouTube';
-
-    switch (value) {
-      case 'toggle_like':
-        provider.toggleLike(track);
-        // Feedback can be handled by observing provider state elsewhere or with a SnackBar
-        // messenger.showSnackBar(SnackBar(content: Text(provider.isSongLiked(track.id) ? 'Added to Liked Songs' : 'Removed from Liked Songs'), duration: const Duration(seconds: 1)));
-        break;
-      case 'add_playlist':
-        // Use the new dialog
-        await showPlaylistSelectionDialog(context, track);
-        break;
-      case 'add_queue':
-        provider.addToQueue(track);
-        messenger.showSnackBar(SnackBar(content: Text('Added "${track.trackName}" to queue'), duration: const Duration(seconds: 1)));
-        break;
-      case 'play_next':
-        provider.playNext(track);
-        messenger.showSnackBar(SnackBar(content: Text('Playing "${track.trackName}" next'), duration: const Duration(seconds: 1)));
-        break;
-      case 'goto_artist':
-        if (!isArtistValid) {
-          messenger.showSnackBar(const SnackBar(content: Text('Artist details not available')));
-          return;
-        }
-        await provider.navigateToArtist(track.artistName);
-        if (!context.mounted) return;
-        if (provider.currentArtistDetails != null) {
-          navigator.push(MaterialPageRoute(builder: (_) => ArtistScreen(artistName: track.artistName)));
-        } else {
-          messenger.showSnackBar(SnackBar(content: Text(provider.errorMessage ?? 'Could not load artist'), backgroundColor: theme.colorScheme.error));
-        }
-        break;
-      case 'goto_album':
-        if (!isAlbumValid) {
-          messenger.showSnackBar(const SnackBar(content: Text('Album details not available')));
-          return;
-        }
-        await provider.navigateToAlbum(track.albumName, track.artistName);
-        if (!context.mounted) return;
-        if (provider.currentAlbumDetails != null) {
-          navigator.push(MaterialPageRoute(builder: (_) => AlbumScreen(albumName: track.albumName, artistName: track.artistName)));
-        } else {
-          messenger.showSnackBar(SnackBar(content: Text(provider.errorMessage ?? 'Could not load album'), backgroundColor: theme.colorScheme.error));
-        }
-        break;
-      case 'share':
-        String shareText = 'Listening to: ${track.trackName} by ${track.artistName}';
-        // Try to get a shareable link. For YouTube, the video URL is good.
-        // For Spotify, a Spotify track URL would be ideal if we had it.
-        // For local files, there's no direct shareable link.
-        String? shareableLink;
-        if (track.source == 'youtube' && track.previewUrl.startsWith('http')) {
-          shareableLink = track.previewUrl;
-        } else if (track.source == 'spotify') {
-          // Ideally, Track model would store the Spotify track URL if available
-          // For now, we don't have it, so we'll just share text.
-          // shareableLink = 'https://open.spotify.com/track/${track.id}'; // Example if ID is Spotify ID
-        }
-
-        if (shareableLink != null) {
-          shareText += '\n\n$shareableLink';
-        }
-
-        try {
-          await Share.share(shareText, subject: 'Check out this track: ${track.trackName}');
-        } catch (e) {
-          print('Error sharing track: $e');
-          messenger.showSnackBar(const SnackBar(content: Text('Could not share track.')));
-        }
-        break;
-      case 'remove_from_playlist':
-        if (playlistId != null) {
-          provider.removeTrackFromPlaylist(playlistId!, track.id);
-          // SnackBar feedback is often handled in the provider or calling screen
-        }
-        break;
-      case 'remove_from_queue':
-        provider.removeFromQueue(track); // Pass the track object
-        messenger.showSnackBar(SnackBar(content: Text('Removed "${track.trackName}" from queue'), duration: const Duration(seconds: 1)));
-        break;
-      // case 'download':
-      //   if (!(await provider.isTrackDownloaded(track.id)) && !(provider.isDownloading[track.id] ?? false)) {
-      //     provider.downloadTrack(track);
-      //     messenger.showSnackBar(SnackBar(content: Text('Downloading ${track.trackName}...')));
-      //   } else if (await provider.isTrackDownloaded(track.id)) {
-      //      messenger.showSnackBar(SnackBar(content: Text('${track.trackName} is already downloaded.')));
-      //   }
-      //   break;
-      // case 'remove_download':
-      //   provider.deleteDownloadedTrack(track.id);
-      //   messenger.showSnackBar(SnackBar(content: Text('Removed download for ${track.trackName}')));
-      //   break;
-      // case 'cancel_download':
-      //   provider.cancelDownload(track.id);
-      //   messenger.showSnackBar(SnackBar(content: Text('Download cancelled for ${track.trackName}')));
-      //   break;
-    }
-  }
 }
+

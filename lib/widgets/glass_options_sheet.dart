@@ -5,20 +5,23 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../screens/artist_screen.dart';
-import '../screens/album_screen.dart';
+import '../screens/playlist_detail_screen.dart'; // Unified for Album View
+import '../screens/artist_detail_screen.dart'; // Unified
 import 'playlist_selection_dialog.dart';
+import 'glass_snackbar.dart';
 
 class GlassOptionsSheet extends StatelessWidget {
   final Track track;
   final String? playlistId;
   final bool isInQueueContext;
+  final bool isRecentlyPlayedContext; // New context
 
   const GlassOptionsSheet({
     super.key,
     required this.track,
     this.playlistId,
     this.isInQueueContext = false,
+    this.isRecentlyPlayedContext = false,
   });
 
   @override
@@ -139,7 +142,7 @@ class GlassOptionsSheet extends StatelessWidget {
                               onTap: () {
                                 provider.addToQueue(track);
                                 Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added to Queue')));
+                                showGlassSnackBar(context, 'Added to Queue');
                               },
                               isDark: isDark,
                             ),
@@ -150,7 +153,7 @@ class GlassOptionsSheet extends StatelessWidget {
                               onTap: () {
                                 provider.playNext(track);
                                 Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing Next')));
+                                showGlassSnackBar(context, 'Playing Next');
                               },
                               isDark: isDark,
                             ),
@@ -226,6 +229,20 @@ class GlassOptionsSheet extends StatelessWidget {
                                 isDark: isDark,
                               ),
                               
+                            if (isRecentlyPlayedContext)
+                              _buildOption(
+                                context,
+                                icon: Icons.history_toggle_off_rounded,
+                                label: 'Remove from History',
+                                color: Colors.redAccent,
+                                onTap: () {
+                                  provider.removeFromRecentlyPlayed(track.id);
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from Recently Played')));
+                                },
+                                isDark: isDark,
+                              ),
+
                             const SizedBox(height: 20),
                           ],
                         ),
@@ -264,18 +281,27 @@ class GlassOptionsSheet extends StatelessWidget {
 
   Future<void> _navigateToArtist(BuildContext context, MusicProvider provider, String artistName) async {
     // Show loading indicator
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Loading artist...'), duration: Duration(milliseconds: 500)));
+    showGlassSnackBar(context, 'Loading artist...', duration: const Duration(milliseconds: 500));
     await provider.navigateToArtist(artistName);
      if (context.mounted && provider.currentArtistDetails != null) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artistName: artistName)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(
+            artistId: provider.currentArtistDetails!.id,
+            artistName: provider.currentArtistDetails!.name,
+            artistImage: provider.currentArtistDetails!.imageUrl,
+        )));
      }
   }
 
   Future<void> _navigateToAlbum(BuildContext context, MusicProvider provider, String albumName, String artistName) async {
-     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Loading album...'), duration: Duration(milliseconds: 500)));
+     showGlassSnackBar(context, 'Loading album...', duration: const Duration(milliseconds: 500));
     await provider.navigateToAlbum(albumName, artistName);
     if (context.mounted && provider.currentAlbumDetails != null) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumScreen(albumName: albumName, artistName: artistName)));
+      Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
+        playlistId: provider.currentAlbumDetails!.id,
+        playlistName: provider.currentAlbumDetails!.name,
+        playlistImage: provider.currentAlbumDetails!.imageUrl,
+        cachedTracks: provider.currentAlbumDetails!.tracks,
+      )));
     }
   }
 }

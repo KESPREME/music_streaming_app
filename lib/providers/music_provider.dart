@@ -95,7 +95,6 @@ class MusicProvider with ChangeNotifier {
   List<Track> _shuffledPlaylist = [];
   int _currentIndex = -1;
   final List<Track> _queue = []; // Added queue
-  int _queueIndex = -1; // Added queue index tracking
   int _wifiBitrate = NetworkConfig.goodNetworkBitrate;
   int _cellularBitrate = NetworkConfig.moderateNetworkBitrate;
   bool _isOfflineMode = false;
@@ -158,11 +157,11 @@ class MusicProvider with ChangeNotifier {
   bool get hasSyncedLyrics => _currentLyrics != null && _currentLyrics!.isNotEmpty;
   
   // Method to fetch lyrics
-  Future<void> fetchLyrics() async {
+  Future<void> fetchLyrics({bool forceRefresh = false}) async {
     if (_currentTrack == null) return;
     
-    // Return if already loaded for this track
-    if (_lyricsTrackId == _currentTrack!.id && _currentLyrics != null) {
+    // Return if already loaded for this track AND not forcing refresh
+    if (!forceRefresh && _lyricsTrackId == _currentTrack!.id && _currentLyrics != null) {
       if (kDebugMode) print("MusicProvider: Using cached lyrics for ${_currentTrack!.trackName}");
       return; 
     }
@@ -174,7 +173,7 @@ class MusicProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      if (kDebugMode) print("MusicProvider: Fetching lyrics for ${_currentTrack!.trackName}");
+      if (kDebugMode) print("MusicProvider: Fetching lyrics for ${_currentTrack!.trackName} (Force: $forceRefresh)");
       final entries = await _lyricsService.getParsedLyrics(
         title: _currentTrack!.trackName,
         artist: _currentTrack!.artistName,
@@ -433,7 +432,7 @@ class MusicProvider with ChangeNotifier {
     _shufflePlaylist();
   } else {
     _updateCurrentIndex();
-  } _handlePlaybackOrContextChangeForPreloading();} else { _updateCurrentIndex(); } _updateCombinedQueueIndex();  }
+  } _handlePlaybackOrContextChangeForPreloading();} else { _updateCurrentIndex(); }  }
   void _onTrackComplete() {
     print('Track completion: ${_currentTrack?.trackName}');
     if (_currentTrack == null) { stopTrack(); return; }
@@ -467,17 +466,16 @@ class MusicProvider with ChangeNotifier {
     } catch(e) { 
       print("Error in _playTrackInternal: $e"); 
     } 
-    _updateCombinedQueueIndex(); 
   }
   Future<bool> _shouldPlayOffline(Track track) async => track.source == 'local' || await isTrackDownloaded(track.id);
   Future<void> skipToNext() async { print('SkipNext requested.'); if (_currentTrack == null) return; if (_queue.isNotEmpty) { final next = _queue.removeAt(0); print("Skipping to next from queue: ${next.trackName}"); await _playTrackInternal(next, setContext: false, clearQueue: false); notifyListeners(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list[0]); return; } int next = _currentIndex + 1; if (next < list.length) { await _playTrackInternal(list[next]); } else { if (_repeatMode != RepeatMode.off) {
     await _playTrackInternal(list[0]);
   } else {
     await stopTrack();
-  } } _updateCombinedQueueIndex(); /* Preload handled by playTrackInternal if it plays */ }
+  } } /* Preload handled by playTrackInternal if it plays */ }
   Future<void> skipToPrevious() async { print('SkipPrevious requested.'); if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
     await _playTrackInternal(list.last);
-  } else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); } } _updateCombinedQueueIndex(); /* Preload handled by playTrackInternal if it plays */ }
+  } else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); } } /* Preload handled by playTrackInternal if it plays */ }
 
   // --- Core Playback Methods ---
   Future<void> playTrack(
@@ -685,7 +683,6 @@ class MusicProvider with ChangeNotifier {
       _currentTrack = effectiveTrack;
       _updateRecentlyPlayed(effectiveTrack);
       _updateCurrentIndex();
-      _updateCombinedQueueIndex();
       notifyListeners();
       
       // Start fetching lyrics in PARALLEL (don't wait)
@@ -693,7 +690,13 @@ class MusicProvider with ChangeNotifier {
         unawaited(fetchLyrics()); 
       }
       
-      // Preload next track
+      // Preload next track (Audio + Lyrics)
+      _prefetchNextTrack();
+
+      // Prefetch Metadata (Artist & Album) for Instant Navigation
+      prefetchMetadata(effectiveTrack);
+      
+      // Preload next track (Legacy call - can remove or keep for safety if it does something else)
       _handlePlaybackOrContextChangeForPreloading();
       
       // Palette updated earlier in parallel
@@ -853,7 +856,7 @@ class MusicProvider with ChangeNotifier {
       notifyListeners();
       return;
     }
-    try { await _audioService.stop(); } catch (e) { print('Error stopping service: $e'); } finally { _isPlaying = false; _currentTrack = null; _isOfflineTrack = false; _position = Duration.zero; _duration = Duration.zero; _currentIndex = -1; _currentPlayingTracks = null; _currentPlaylistId = null; _shuffledPlaylist = []; _queue.clear(); _queueIndex = -1; notifyListeners(); }
+    try { await _audioService.stop(); } catch (e) { print('Error stopping service: $e'); } finally { _isPlaying = false; _currentTrack = null; _isOfflineTrack = false; _position = Duration.zero; _duration = Duration.zero; _currentIndex = -1; _currentPlayingTracks = null; _currentPlaylistId = null; _shuffledPlaylist = []; _queue.clear(); notifyListeners(); }
   }
   
   // --- Casting Methods ---
@@ -915,10 +918,10 @@ class MusicProvider with ChangeNotifier {
   Future<void> _handlePlaybackError(String message) async { print("Playback Error: $message"); _errorMessage = message.length > 150 ? '${message.substring(0, 147)}...' : message; await stopTrack(); }
 
   // --- Queue Management ---
-  void addToQueue(Track track) { _queue.add(track); print("Added to queue: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); print("Added ${tracks.length} to queue. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void playNext(Track track) { _queue.insert(0, track); print("Play next: ${track.trackName}. Size: ${_queue.length}"); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void addToQueue(Track track) { _queue.add(track); print("Added to queue: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); print("Added ${tracks.length} to queue. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void playNext(Track track) { _queue.insert(0, track); print("Play next: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
 
   // Updated to accept Track object or index
   void removeFromQueue(dynamic item) {
@@ -945,18 +948,13 @@ class MusicProvider with ChangeNotifier {
 
 
     if (removed) {
-      _updateCombinedQueueIndex();
       notifyListeners();
       _handlePlaybackOrContextChangeForPreloading(); // Also call after removing from queue
     }
   }
 
-  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); print("Queue cleared."); _updateCombinedQueueIndex(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void _updateCombinedQueueIndex() { if (_currentTrack == null) { _queueIndex = -1; return; } int indexInQueue = _queue.indexWhere((t) => t.id == _currentTrack!.id); if (indexInQueue != -1) {
-    _queueIndex = indexInQueue;
-  } else {
-    _queueIndex = -1;
-  } }
+  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); print("Queue cleared."); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+
 
   // --- Preloading Logic ---
   Track? _getActualNextTrack() {
@@ -1016,44 +1014,105 @@ class MusicProvider with ChangeNotifier {
   }
 
 
-  // --- Placeholder Navigation Methods ---
-  Future<void> navigateToArtist(String artistName) async { 
-    if (kDebugMode) print("PROVIDER ACTION: Navigate to Artist: $artistName");
-    _isLoadingArtist = true;
-    _currentArtistDetails = null;
-    _errorMessage = null; 
-    notifyListeners(); 
+  // --- Internal Metadata Fetchers (with Caching) ---
+  final Map<String, Artist> _artistCache = {};
+  final Map<String, Album> _albumCache = {};
 
-    try { 
-      // 1. Search for the artist to get the Browse ID
+  Future<Artist?> _fetchArtistInternal(String artistName) async {
+    // 1. Check Cache
+    if (_artistCache.containsKey(artistName)) {
+      if (kDebugMode) print("MusicProvider: Cache hit for artist $artistName");
+      return _artistCache[artistName];
+    }
+    
+    try {
+      // 2. Fetch Logic
       final searchResults = await _innerTubeService.searchArtists(artistName, limit: 1);
-      
-      if (searchResults.isEmpty) {
-        throw Exception("Artist not found.");
-      }
+      if (searchResults.isEmpty) return null;
       
       final artistInfo = searchResults.first;
-      final browseId = artistInfo.id;
+      final detailsMap = await _innerTubeService.getArtistDetails(artistInfo.id);
       
-      if (kDebugMode) print("PROVIDER: Found artist ID: $browseId for $artistName");
-
-      // 2. Fetch full artist details using the ID
-      final detailsMap = await _innerTubeService.getArtistDetails(browseId);
-      
-      // 3. Construct the Artist object
-      _currentArtistDetails = Artist(
-        id: browseId,
+      final artist = Artist(
+        id: artistInfo.id,
         name: artistInfo.artistName.isNotEmpty ? artistInfo.artistName : artistName,
         imageUrl: artistInfo.albumArtUrl,
         topTracks: (detailsMap['tracks'] as List?)?.cast<Track>(),
         topAlbums: (detailsMap['albums'] as List?)?.cast<Album>(),
       );
       
-      print("PROVIDER: Artist info loaded for ${_currentArtistDetails?.name}");
+      // 3. Cache Result
+      _artistCache[artistName] = artist;
+      return artist;
+    } catch (e) {
+      if (kDebugMode) print("MusicProvider: Internal artist fetch error: $e");
+      return null;
+    }
+  }
+
+  Future<Album?> _fetchAlbumInternal(String albumName, String artistName) async {
+    final key = '$albumName|$artistName';
+    
+    // 1. Check Cache
+    if (_albumCache.containsKey(key)) {
+       if (kDebugMode) print("MusicProvider: Cache hit for album $albumName");
+       return _albumCache[key];
+    }
+
+    try {
+      // 2. Fetch Logic (Legacy implementation for valid tracks)
+      final tracks = await _innerTubeService.searchSongs('$albumName $artistName', limit: 30);
       
+      if (tracks.isNotEmpty) {
+         final first = tracks.first;
+         final album = Album(
+           id: 'album_${first.artistName}_${first.albumName}'.replaceAll(' ', '_'),
+           name: first.albumName.isNotEmpty ? first.albumName : albumName,
+           artistName: first.artistName.isNotEmpty ? first.artistName : artistName,
+           imageUrl: first.albumArtUrl,
+           tracks: tracks,
+         );
+         
+         // 3. Cache Result
+         _albumCache[key] = album;
+         return album;
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) print("MusicProvider: Internal album fetch error: $e");
+      return null;
+    }
+  }
+  
+  // --- Public Prefetcher ---
+  Future<void> prefetchMetadata(Track track) async {
+     if (track.artistName.isEmpty) return;
+     
+     // Fire and forget - don't await in UI thread
+     _fetchArtistInternal(track.artistName);
+     
+     if (track.albumName.isNotEmpty) {
+       _fetchAlbumInternal(track.albumName, track.artistName);
+     }
+  }
+
+  // --- Optimized Navigation Methods ---
+  Future<void> navigateToArtist(String artistName) async { 
+    if (kDebugMode) print("PROVIDER ACTION: Navigate to Artist: $artistName");
+    _isLoadingArtist = true;
+    _currentArtistDetails = null; // Clear old
+    _errorMessage = null; 
+    notifyListeners(); 
+
+    try { 
+      final artist = await _fetchArtistInternal(artistName);
+      if (artist != null) {
+        _currentArtistDetails = artist;
+      } else {
+        throw Exception("Artist not found");
+      }
     } catch (e) { 
       _errorMessage = "Could not load artist details.";
-      if (kDebugMode) print("PROVIDER ERROR: $e");
       _currentArtistDetails = null; 
     } finally { 
       _isLoadingArtist = false; 
@@ -1070,6 +1129,13 @@ class MusicProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Check cache first using name
+      if (_artistCache.containsKey(artistTrack.trackName)) {
+        _currentArtistDetails = _artistCache[artistTrack.trackName];
+        if (kDebugMode) print("MusicProvider: Cache hit for artist object ${artistTrack.trackName}");
+        return;
+      }
+      
       // 1. Use ID directly
       final browseId = artistTrack.id;
       
@@ -1079,12 +1145,14 @@ class MusicProvider with ChangeNotifier {
       // 3. Construct Artist
       _currentArtistDetails = Artist(
         id: browseId,
-        name: artistTrack.trackName, // In Artist Search, trackName IS the Artist Name
+        name: artistTrack.trackName, 
         imageUrl: artistTrack.albumArtUrl,
         topTracks: (detailsMap['tracks'] as List?)?.cast<Track>(),
         topAlbums: (detailsMap['albums'] as List?)?.cast<Album>(),
-        // bio: detailsMap['bio'],
       );
+      
+      // Cache it
+      _artistCache[artistTrack.trackName] = _currentArtistDetails!;
       
        print("PROVIDER: Artist info loaded for ${_currentArtistDetails?.name}");
     } catch (e) {
@@ -1096,7 +1164,7 @@ class MusicProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   Future<void> navigateToAlbum(String albumName, String artistName) async { 
     if (kDebugMode) print("PROVIDER ACTION: Navigate to Album: $albumName by $artistName");
     _isLoadingAlbum = true;
@@ -1105,42 +1173,12 @@ class MusicProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      // 1. Search for album
-      final query = '$albumName $artistName';
-      final results = await _innerTubeService.searchSongs(query, limit: 1); // searchSongs might return tracks, need searchAlbums if available?
-      // InnerTubeService usually has generic search or we search songs and try to finding album ID from track?
-      // Actually standard search usually returns albums if we filter?
-      // For now, let's assume we search for songs to get the tracks.
-      // Ideally we should implement a proper album fetch.
-      
-      // Temporary fallback: Search songs and pretend it's an album list? 
-      // NO, let's use the same logic: Search -> Get ID -> Get Details.
-      // But we don't have searchAlbums exposed easily yet in searchSongs logic?
-      // Let's stick to existing logic for Album but fix it if broken later.
-      // The user specifically complained about ARTIST.
-      
-      // Legacy simple implementation for now to avoid breaking changes if searchAlbums isn't ready:
-      final tracks = await _innerTubeService.searchSongs('$albumName $artistName', limit: 30);
-      
-      // Construct a fake Album object since we don't have getAlbumDetails?
-      // Wait, AlbumScreen likely expects _currentAlbumDetails?
-      // MusicProvider has `Album? _currentAlbumDetails`
-      
-      if (tracks.isNotEmpty) {
-         final first = tracks.first;
-         _currentAlbumDetails = Album(
-           // Track doesn't have albumId. Use a generated ID or artist/album combo as rudimentary ID.
-           id: 'album_${first.artistName}_${first.albumName}'.replaceAll(' ', '_'),
-           name: first.albumName.isNotEmpty ? first.albumName : albumName,
-           artistName: first.artistName.isNotEmpty ? first.artistName : artistName,
-           imageUrl: first.albumArtUrl,
-           tracks: tracks,
-         );
+      final album = await _fetchAlbumInternal(albumName, artistName);
+      if (album != null) {
+        _currentAlbumDetails = album;
       } else {
-         throw Exception("Album tracks not found");
+        throw Exception("Album not found");
       }
-      
-      print("PROVIDER: Album tracks fetched for $albumName"); 
     } catch (e) { 
       _errorMessage = "Could not load album details."; 
       _currentAlbumDetails = null; 
@@ -1273,7 +1311,7 @@ class MusicProvider with ChangeNotifier {
   // --- Downloading ---
   Future<Directory> _getDownloadsDirectory() async { try { final d = await getApplicationSupportDirectory(); final dl = Directory('${d.path}/offline_music'); if (!await dl.exists()) await dl.create(recursive: true); return dl; } catch (e) { throw Exception("Could not access downloads directory."); } }
   Future<String> _buildDownloadFilePath(String trackId) async { final d = await _getDownloadsDirectory(); return '${d.path}/$trackId.mp3'; }
-  Future<void> downloadTrack(Track track) async { final id = track.id; if (await isTrackDownloaded(id)) { _errorMessage = "${track.trackName} downloaded."; notifyListeners(); return; } if (_isDownloading[id] == true) { _errorMessage = "${track.trackName} downloading."; notifyListeners(); return; } if (track.source == 'local') { _errorMessage = "Cannot download local files."; notifyListeners(); return; } if (_isOfflineMode || !_networkService.isConnected) { _errorMessage = 'Offline: Cannot download.'; notifyListeners(); return; } if (_concurrentDownloads >= NetworkConfig.maxConcurrentDownloads) { _addToDownloadQueue(track); return; } CancelToken cT = CancelToken(); _isDownloading[id] = true; _downloadProgress[id] = 0.0; _downloadCancelTokens[id] = cT; _concurrentDownloads++; if (!_currentlyDownloadingTracks.any((t)=> t.id == id)) _currentlyDownloadingTracks.add(track); notifyListeners(); String fP = ''; try { String sId = id; if (track.source == 'spotify') { final yt = await _spotifyService.findYouTubeTrack(track); if (yt != null) {
+  Future<void> downloadTrack(Track track) async { final id = track.id; if (await isTrackDownloaded(id)) { _errorMessage = "${track.trackName} downloaded."; notifyListeners(); return; } if (_isDownloading[id] == true) { _errorMessage = "${track.trackName} downloading."; notifyListeners(); return; } if (track.source == 'local') { _errorMessage = "Cannot download local files."; notifyListeners(); return; } if (_isOfflineMode || !_networkService.isConnected) { _errorMessage = 'Offline: Cannot download.'; notifyListeners(); return; } if (_concurrentDownloads >= 6) { _addToDownloadQueue(track); return; } CancelToken cT = CancelToken(); _isDownloading[id] = true; _downloadProgress[id] = 0.0; _downloadCancelTokens[id] = cT; _concurrentDownloads++; if (!_currentlyDownloadingTracks.any((t)=> t.id == id)) _currentlyDownloadingTracks.add(track); notifyListeners(); String fP = ''; try { String sId = id; if (track.source == 'spotify') { final yt = await _spotifyService.findYouTubeTrack(track); if (yt != null) {
     sId = yt.id;
   } else {
     throw Exception("No playable version.");
@@ -1292,7 +1330,7 @@ class MusicProvider with ChangeNotifier {
   Future<void> _saveDownloadedTracksMetadataInternal() async { final l = _downloadedTracksMetadata.values.map((m) => {'id': (m['track'] as Track).id, 'filePath': m['filePath'], 'downloadDate': (m['downloadDate'] as DateTime?)?.millisecondsSinceEpoch, 'track': (m['track'] as Track).toJson()}).toList(); try { final p = await SharedPreferences.getInstance(); await p.setString('downloadedTracks', jsonEncode(l)); } catch (e) { _addToRetryQueue(_RetryOperation('Save dl meta', _saveDownloadedTracksMetadataInternal)); } }
   Future<void> _handleMissingOfflineFile(String trackId, String expectedPath) async { bool mRem = _downloadedTracksMetadata.remove(trackId) != null; if (mRem) await _saveDownloadedTracksMetadataInternal(); int cB = _localTracks.length; _localTracks.removeWhere((t) => t.id == expectedPath); bool lRem = _localTracks.length < cB; if (mRem || lRem) notifyListeners(); }
   void _addToDownloadQueue(Track track) { if (_isDownloading[track.id]==true || _downloadQueue.any((t)=>t.id==track.id) || _downloadedTracksMetadata.containsKey(track.id)) return; _downloadQueue.add(track); _errorMessage = '${track.trackName} queued.'; notifyListeners(); _processDownloadQueue(); }
-  Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= NetworkConfig.maxConcurrentDownloads) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
+  Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= 6) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
   void pauseAllDownloads({bool clearQueue = false}) { final ids = List<String>.from(_downloadCancelTokens.keys); int c = 0; for (final id in ids) { _downloadCancelTokens[id]?.cancel("Downloads paused"); c++; } if (c > 0) print("Paused $c downloads."); if (clearQueue && _downloadQueue.isNotEmpty) { _downloadQueue.clear(); notifyListeners(); } }
 
   // --- Spotify Integration ---
@@ -1700,6 +1738,52 @@ class MusicProvider with ChangeNotifier {
     _downloadCancelTokens.clear();
     print('MusicProvider: Disposed.');
     super.dispose();
+  }
+
+
+  // --- Preloading Logic ---
+  Future<void> _prefetchNextTrack() async {
+    if (_queue.isEmpty) return;
+
+    Track? nextTrack;
+
+    // 1. Determine Next Track based on Shuffle/Repeat/Queue
+    if (_queue.isNotEmpty) {
+      nextTrack = _queue.first;
+    } else {
+      final list = _getActivePlaylist();
+      if (list.isNotEmpty) {
+        int nextIndex = _currentIndex + 1;
+        if (nextIndex >= list.length) {
+          nextIndex = (_repeatMode == RepeatMode.all) ? 0 : -1;
+        }
+        if (nextIndex >= 0 && nextIndex < list.length) {
+          nextTrack = list[nextIndex];
+        }
+      }
+    }
+
+    if (nextTrack == null) return;
+    if (nextTrack.id == _currentTrack?.id) return;
+
+    if (kDebugMode) print('MusicProvider: Prefetching next track: ${nextTrack.trackName}');
+
+    if (!_isOfflineMode && !_isOfflineTrack && nextTrack.source != 'spotify') {
+        // Audio Prefetch through InnerTubeService
+        _innerTubeService.prefetch(nextTrack.id);
+        
+        // Lyrics Prefetch through LyricsService
+        _lyricsService.getParsedLyrics(
+          title: nextTrack.trackName,
+          artist: nextTrack.artistName,
+          durationMs: nextTrack.durationMs,
+          videoId: nextTrack.id
+        ).then((_) {
+           if (kDebugMode) print('MusicProvider: Lyrics prefetch complete for ${nextTrack!.trackName}');
+        }).catchError((e) {
+           if (kDebugMode) print('MusicProvider: Lyrics prefetch failed: $e');
+        });
+    }
   }
 
 } // End of MusicProvider class

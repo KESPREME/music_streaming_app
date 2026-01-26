@@ -12,6 +12,7 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../models/lyrics_entry.dart';
 import '../utils/lyrics_utils.dart';
+import '../widgets/glass_playback_bar.dart';
 
 class LyricsScreen extends StatefulWidget {
   const LyricsScreen({super.key});
@@ -32,6 +33,9 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
   
   // Animation controllers
   late AnimationController _fadeController;
+  
+  // Keys for robust scrolling
+  final List<GlobalKey> _itemKeys = [];
   
   @override
   void initState() {
@@ -68,7 +72,19 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
        // If no synced lyrics or track changed, fetch
        if (!provider.hasSyncedLyrics || provider.currentLyrics == null) {
           provider.fetchLyrics(); // Fetch if not cached
+       } else {
+         // Ensure keys are initialized if lyrics exist
+         _ensureKeys(provider.currentLyrics!.length);
        }
+    }
+  }
+
+  void _ensureKeys(int count) {
+    if (_itemKeys.length != count) {
+      _itemKeys.clear();
+      for (var i = 0; i < count; i++) {
+        _itemKeys.add(GlobalKey());
+      }
     }
   }
 
@@ -90,6 +106,8 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
             setState(() {
               _isUserScrolling = false;
               _autoScrollEnabled = true;
+              // Re-align when auto-scroll resumes
+              if (_autoScrollEnabled) _scrollToCurrentLine();
             });
           }
         });
@@ -111,6 +129,9 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
     
     if (lyrics == null || lyrics.isEmpty) return;
 
+    // Sync keys length
+    _ensureKeys(lyrics.length);
+
     final positionMs = musicProvider.position.inMilliseconds;
     
     final newIndex = LyricsUtils.findCurrentLineIndex(lyrics, positionMs);
@@ -121,12 +142,12 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
       });
       
       if (_autoScrollEnabled && !_isUserScrolling) {
-        _scrollToCurrentLine();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+           if (mounted) _scrollToCurrentLine();
+        });
       }
     }
   }
-  
-
   
   void _onLineTap(int index, List<LyricsEntry> lyrics) {
     if (index < 0 || index >= lyrics.length) return;
@@ -145,10 +166,14 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
       _autoScrollEnabled = true;
       _isUserScrolling = false;
     });
+    
+    // Scroll to it
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrentLine());
   }
   
   @override
   Widget build(BuildContext context) {
+    // ... [Same build setup codes]
     final theme = Theme.of(context);
     final musicProvider = Provider.of<MusicProvider>(context);
     final track = musicProvider.currentTrack;
@@ -159,9 +184,30 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
        WidgetsBinding.instance.addPostFrameCallback((_) => musicProvider.fetchLyrics());
     }
 
-    // Get colors from palette
-    final Color domColor = musicProvider.paletteGenerator?.dominantColor?.color ?? const Color(0xFF1E1E1E);
-    final Color darkColor = musicProvider.paletteGenerator?.darkMutedColor?.color ?? Colors.black;
+    // Dynamic Color Extraction (Matching NowPlayingScreen)
+    final palette = musicProvider.paletteGenerator;
+    
+    List<Color> bgColors = [
+       const Color(0xFF1E1B4B), // Top default
+       const Color(0xFF111827), // Mid default
+       const Color(0xFF0A0A0A), // Bot default
+    ];
+    Color accentColor = const Color(0xFF6200EE);
+
+    if (palette != null) {
+        final darkVibrant = palette.darkVibrantColor?.color;
+        final vibrant = palette.vibrantColor?.color;
+        final muted = palette.mutedColor?.color;
+        final darkMuted = palette.darkMutedColor?.color;
+        final dominant = palette.dominantColor?.color;
+
+        final topColor = darkVibrant ?? darkMuted ?? dominant ?? const Color(0xFF1E1B4B);
+        final middleColor = vibrant?.withOpacity(0.4) ?? muted?.withOpacity(0.4) ?? const Color(0xFF111827);
+        const bottomColor = Color(0xFF0A0A0A);
+
+        bgColors = [topColor, middleColor, bottomColor];
+        accentColor = vibrant ?? dominant ?? const Color(0xFF6200EE);
+    }
     
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -175,11 +221,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  domColor.withOpacity(0.6),
-                  darkColor.withOpacity(0.8),
-                  Colors.black,
-                ],
+                colors: bgColors,
                 stops: const [0.0, 0.6, 1.0],
               ),
             ),
@@ -197,13 +239,26 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
                 child: BackdropFilter(
                    filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                    child: Container(
-                      color: Colors.black.withOpacity(0.4), // Semi-transparent background
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.15),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.6),
+                            accentColor.withOpacity(0.05),
+                          ],
+                        ),
+                        border: Border(
+                          bottom: BorderSide(color: Colors.white.withOpacity(0.1), width: 0.5),
+                        ),
+                      ),
                       child: SafeArea(
                         bottom: false,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const SizedBox(height: 8), // Extra breathing room below notch
+                            // Header matching NowPlayingScreen height/padding
                             _buildHeader(context, track, musicProvider),
                           ],
                         ),
@@ -212,14 +267,27 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
                 ),
              ),
           ),
+          
+          // 4. Glass Playback Bar (Bottom)
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: track != null ? GlassPlaybackBar(
+              track: track,
+              provider: musicProvider,
+              accentColor: accentColor, // Use dynamic color
+            ) : const SizedBox(),
+          ),
         ],
       ),
     );
   }
 
+  // ... [Header widget code remains same, skipping for brevity in this tool call context logic if I could, but I must replace contiguous block]
+  // Ideally, I should preserve _buildHeader unchanged, but let's re-include it concisely to be safe.
+  
   Widget _buildHeader(BuildContext context, Track? track, MusicProvider provider) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(20, 32, 20, 16), // Increased top padding as requested
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -265,7 +333,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
             ),
           ),
           
-          // Auto-scroll toggle or Loading indicator
+          // Auto-scroll toggle
           if (provider.isLoadingLyrics)
              const SizedBox(
                width: 32, height: 32,
@@ -298,7 +366,8 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
     }
     
     if (provider.lyricsError != null || provider.currentLyrics == null || provider.currentLyrics!.isEmpty) {
-      // Error view (centered, needs padding for header)
+      if (provider.currentLyrics == null) return const SizedBox(); // Wait for fetch
+      
       return Center(
         child: Padding(
           padding: const EdgeInsets.only(top: 100), // Avoid header
@@ -313,7 +382,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
               ),
               const SizedBox(height: 20),
               OutlinedButton(
-                 onPressed: () => provider.fetchLyrics(),
+                 onPressed: () => provider.fetchLyrics(forceRefresh: true),
                  style: OutlinedButton.styleFrom(
                    foregroundColor: Colors.white,
                    side: BorderSide(color: Colors.white.withOpacity(0.3)),
@@ -332,7 +401,6 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
 
   Widget _buildLyricsList(BuildContext context, List<LyricsEntry> lyrics) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final topPadding = MediaQuery.of(context).padding.top + 80; // Header height approx
 
     return ShaderMask(
       shaderCallback: (Rect bounds) {
@@ -340,7 +408,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
-          stops: const [0.0, 0.15, 0.8, 1.0], // Increased top fade zone
+          stops: const [0.0, 0.15, 0.8, 1.0], 
         ).createShader(bounds);
       },
       blendMode: BlendMode.dstIn,
@@ -349,10 +417,10 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
         child: ListView.builder(
           controller: _scrollController,
           padding: EdgeInsets.only(
-             top: screenHeight * 0.4, // Start lower down (Apple Music style)
-             bottom: screenHeight * 0.5,
-             left: 24,
-             right: 24
+             top: screenHeight * 0.45, // Deeper start
+             bottom: screenHeight * 0.5 + 160, // Extra padding for playback bar
+             left: 20,
+             right: 20
           ),
           physics: const BouncingScrollPhysics(),
           itemCount: lyrics.length,
@@ -364,32 +432,40 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
     );
   }
   
-  // Adjusted scroll logic
+  // ROBUST SCROLL LOGIC
   void _scrollToCurrentLine() {
-    if (!_scrollController.hasClients) return;
-    
-    final screenHeight = MediaQuery.of(context).size.height;
-    
-    // Heuristic: Estimate line height + spacing. 
-    // Large font (34) + Spacing (16) + Wrapping factor (~1.5 lines avg) ~= 80px
-    const double estimatedLineHeight = 80.0; 
-    
-    // Target offset:
-    // We want the current line to be roughly at 30% of screen height.
-    // The list has large top padding (40% of screen).
-    
-    // Exact calculation is hard without keys, but let's tune the offset.
-    // If we simply scroll to (index * height), the large top padding pushes it down.
-    // We want scrollOffset = (index * height) roughly?
-    
-    final offset = (double.parse(_currentLineIndex.toString()) * estimatedLineHeight); 
-    
-    // Soft constraint
-    _scrollController.animateTo(
-      offset.clamp(0.0, _scrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 800), // Slower, smoother
-      curve: Curves.linearToEaseOut, // Very smooth deceleration
-    );
+    if (_currentLineIndex >= 0 && _currentLineIndex < _itemKeys.length) {
+      final key = _itemKeys[_currentLineIndex];
+      final keyContext = key.currentContext;
+      
+      if (keyContext != null) {
+        // Precise centering using Scrollable.ensureVisible
+        Scrollable.ensureVisible(
+          keyContext,
+          alignment: 0.5, // Center vertically
+          duration: const Duration(milliseconds: 350), // Snappier scroll for better sync
+          curve: Curves.easeInOutCubic,
+        );
+      } else {
+        // Fallback if item not rendered yet (e.g. far jump)
+        if (_scrollController.hasClients) {
+             final screenHeight = MediaQuery.of(context).size.height;
+             final paddingTop = screenHeight * 0.45;
+             const double estimatedItemHeight = 120.0; // Better average for large text
+             
+             // Calculate target offset to center the item
+             // Offset = (ItemTop) - (HalfScreen) + (HalfItem)
+             final itemTop = paddingTop + (_currentLineIndex * estimatedItemHeight);
+             final targetOffset = itemTop - (screenHeight / 2) + (estimatedItemHeight / 2);
+             
+             _scrollController.animateTo(
+               targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent), 
+               duration: const Duration(milliseconds: 350), 
+               curve: Curves.easeInOutCubic
+             );
+        }
+      }
+    }
   }
   
   Widget _buildLyricLine(int index, List<LyricsEntry> lyrics) {
@@ -399,44 +475,82 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
     
     if (entry.text.trim().isEmpty) return const SizedBox(height: 40);
     
+    // Assign Key
+    Key? key;
+    if (index < _itemKeys.length) {
+      key = _itemKeys[index];
+    }
+    
     return GestureDetector(
+      key: key, // Attach GlobalKey
       onTap: () => _onLineTap(index, lyrics),
       behavior: HitTestBehavior.translucent, 
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.symmetric(vertical: 12), // More spacing
-        alignment: Alignment.center, // Enforce center
-        child: ConstrainedBox( // Fixed width constraint for readability
-          constraints: const BoxConstraints(maxWidth: 340), // "Fixed width" requested
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 700),
-            curve: Curves.easeOutCubic,
-            style: GoogleFonts.splineSans(
-              fontSize: isCurrentLine ? 34 : 24, // Bigger fonts as requested
-              fontWeight: isCurrentLine ? FontWeight.w800 : FontWeight.w600,
-              color: isCurrentLine
-                  ? Colors.white
-                  : isPastLine
-                      ? Colors.white38
-                      : Colors.white60,
-              height: 1.3,
-              shadows: isCurrentLine ? [
-                 Shadow(
-                   color: Colors.black.withOpacity(0.5), // Stronger shadow for contrast
-                   blurRadius: 30,
-                   offset: const Offset(0, 4),
-                 ),
-                 Shadow(
-                   color: Colors.white.withOpacity(0.2), // Glow
-                   blurRadius: 10,
-                   offset: const Offset(0, 0),
-                 )
-              ] : [],
-            ),
-            child: Text(
-              entry.text,
-              textAlign: TextAlign.center,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOutCubic, // Liquid feel
+        margin: const EdgeInsets.symmetric(
+           vertical: 16, // Fixed vertical spacing to PREVENT layout jumps
+           horizontal: 12, 
+        ), 
+        alignment: Alignment.center,
+        child: AnimatedScale(
+          scale: isCurrentLine ? 1.05 : 0.95, // Subtle, fluid scale
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+          child: TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOutCubic,
+            tween: Tween<double>(begin: 0, end: isCurrentLine ? 12.0 : 0.0),
+            builder: (context, sigma, child) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInOutCubic,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(32),
+                      color: isCurrentLine 
+                          ? Colors.white.withOpacity(0.06) // Very translucent
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: isCurrentLine 
+                            ? Colors.white.withOpacity(0.12) 
+                            : Colors.transparent,
+                        width: 1.0,
+                      ),
+                      gradient: isCurrentLine 
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withOpacity(0.1),
+                                Colors.white.withOpacity(0.02),
+                              ],
+                            )
+                          : null,
+                    ),
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOutCubic,
+              opacity: isCurrentLine ? 1.0 : (isPastLine ? 0.4 : 0.5),
+              child: Text(
+                entry.text,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.splineSans(
+                   fontSize: 26, // Slightly clearer text
+                   fontWeight: isCurrentLine ? FontWeight.w800 : FontWeight.w600,
+                   color: Colors.white,
+                   height: 1.4,
+                ),
+              ),
             ),
           ),
         ),
