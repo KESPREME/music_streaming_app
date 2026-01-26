@@ -12,9 +12,10 @@ Experience instant playback, beautiful glassmorphism UI, and seamless audio stre
 ## 🚀 Key Features
 
 ### 🎧 High-Performance Audio Engine
-*   **Hybrid Fetching System**: Prioritizes direct streams for **instant start (<500ms)** while falling back to a robust proxy (YoutubeExplode) for restricted content.
-*   **Low-Latency Buffering**: Custom-tuned `AndroidLoadControl` ensures music starts playing the moment the first chunk arrives.
-*   **Background Playback**: Full support for background audio and lock screen controls via `just_audio_background`.
+*   **Robust Stream Fetching**: utilizing a multi-provider strategy (YoutubeExplode, Piped, Cobalt) to ensure music plays even if one source is blocked.
+*   **Smart Proxy System**: Integrated **SOCKS5 proxy support** to bypass region locks and IP blocks seamlessly.
+*   **Hybrid Buffering**: Custom-tuned `AndroidLoadControl` ensures music starts playing the moment the first chunk arrives (<500ms start time).
+*   **Background Playback**: Full support for background audio, lock screen controls, and headset media keys via `just_audio_background`.
 
 ### 🎨 Stunning UI/UX
 *   **Glassmorphism Design**: Modern, translucent UI elements using `glassmorphism` and `flutter_animate`.
@@ -82,7 +83,20 @@ lib/
     flutter pub get
     ```
 
-3.  **Run the app**:
+3.  **Platform Specific Setup**:
+
+    *   **iOS** (Mac only):
+        ```bash
+        cd ios
+        pod install
+        cd ..
+        ```
+        *Note: You will need to open `ios/Runner.xcworkspace` in Xcode to configure code signing.*
+
+    *   **Android**:
+        *   No extra steps usually required. Ensure you have the Android SDK installed.
+
+4.  **Run the app**:
     *   For performance testing, use Profile mode:
         ```bash
         flutter run --profile
