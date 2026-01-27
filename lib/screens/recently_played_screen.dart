@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/global_music_overlay.dart';
 
 class RecentlyPlayedScreen extends StatefulWidget {
   const RecentlyPlayedScreen({super.key});
@@ -47,7 +48,8 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
       builder: (context, musicProvider, child) {
         final recentlyPlayedTracks = musicProvider.recentlyPlayed;
 
-        return Scaffold(
+        return PlayerAwarePopScope(
+          child: Scaffold(
           extendBodyBehindAppBar: true,
           body: Container(
              decoration: BoxDecoration(
@@ -139,6 +141,12 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                             track: track,
                             isPlaying: isPlaying,
                             isRecentlyPlayedContext: true,
+                            onTap: () {
+                              musicProvider.playTrack(
+                                track,
+                                playlistTracks: recentlyPlayedTracks,
+                              );
+                            },
                           );
                         },
                         childCount: recentlyPlayedTracks.length,
@@ -147,6 +155,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                   const SliverPadding(padding: EdgeInsets.only(bottom: 120)), // Bottom padding
                 ],
               ),
+            ),
             ),
           ),
         );

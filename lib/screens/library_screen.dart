@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
+import '../widgets/global_music_overlay.dart';
 
 import 'liked_songs_screen.dart';
 import 'recently_played_screen.dart';
@@ -159,7 +160,8 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
       },
     ];
 
-    return Scaffold(
+    return PlayerAwarePopScope(
+      child: Scaffold(
       extendBodyBehindAppBar: true, 
       body: Container(
         decoration: BoxDecoration(
@@ -302,6 +304,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           ),
         ),
       ),
+    ),
     );
   }
 

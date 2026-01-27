@@ -17,6 +17,7 @@ import '../screens/lyrics_screen.dart';
 import '../widgets/glass_snackbar.dart';
 
 import '../widgets/wavy_progress_bar.dart'; // Import shared widget
+import '../main.dart'; // Import rootNavigatorKey
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -406,21 +407,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         ),
         
         // Previous
-        IconButton(
-          onPressed: provider.skipToPrevious,
-          icon: const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 40),
+        _buildGlassActionButton(
+          icon: Icons.skip_previous_rounded,
+          onTap: provider.skipToPrevious,
         ),
 
         // Play/Pause FAB
-        // Play/Pause FAB (Refined Liquid Glass)
+        // Play/Pause FAB (Refined Liquid Glass - Slightly Smaller)
         ClipRRect(
-          borderRadius: BorderRadius.circular(40),
+          borderRadius: BorderRadius.circular(35), // Adjusted radius
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16), // Slightly reduced blur for sharpness
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              height: 72,
-              width: 72,
+              height: 64, // Reduced from 72
+              width: 64,  // Reduced from 72
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -431,13 +432,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   ],
                 ),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.2), // Thinner border
                 boxShadow: [
                   BoxShadow(
                     color: accentColor.withOpacity(0.2),
-                    blurRadius: 25,
+                    blurRadius: 20,
                     spreadRadius: -5,
-                    offset: const Offset(0, 10),
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
@@ -452,7 +453,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 icon: Icon(
                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   color: Colors.white.withOpacity(0.95),
-                  size: 36,
+                  size: 32, // Reduced from 36
                 ),
               ),
             ),
@@ -460,9 +461,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         ),
 
         // Next
-        IconButton(
-          onPressed: provider.skipToNext,
-          icon: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 40),
+        _buildGlassActionButton(
+          icon: Icons.skip_next_rounded,
+          onTap: provider.skipToNext,
         ),
 
         // Repeat
@@ -471,10 +472,40 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           icon: Icon(
             provider.repeatMode == RepeatMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
              color: provider.repeatMode != RepeatMode.off ? accentColor : Colors.white.withOpacity(0.6),
-             size: 26,
+             size: 24, // Slightly smaller Icon
             ),
         ),
       ],
+    );
+  }
+
+  Widget _buildGlassActionButton({required IconData icon, required VoidCallback onTap}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24), // Adjusted radius
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          height: 48, // Reduced from 56
+          width: 48,  // Reduced from 56
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.12), // Slightly more transparent
+                Colors.white.withOpacity(0.04),
+              ],
+            ),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.15), width: 0.8), // Thinner border
+          ),
+          child: IconButton(
+            onPressed: onTap,
+            icon: Icon(icon, color: Colors.white, size: 26), // Reduced from 30
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
     );
   }
 
@@ -581,11 +612,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                      icon: Icons.album_rounded, 
                      title: 'Go to Album', 
                      onTap: () async {
-                       Navigator.pop(context);
+                       Navigator.pop(context); // Close sheet (Local)
+                       
+                       // Minimize Player First
+                       if (widget.onMinimize != null) widget.onMinimize!(); // Trigger collapse
+
                        await musicProvider.navigateToAlbum(track.albumName, track.artistName);
                        if (context.mounted) {
                           if (musicProvider.currentAlbumDetails != null) {
-                             Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
+                             // Use Root Navigator to push screen over Main App
+                             rootNavigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
                                playlistId: musicProvider.currentAlbumDetails!.id,
                                playlistName: musicProvider.currentAlbumDetails!.name,
                                playlistImage: musicProvider.currentAlbumDetails!.imageUrl,
@@ -601,11 +637,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                      icon: Icons.person_rounded, 
                      title: 'Go to Artist', 
                      onTap: () async {
-                       Navigator.pop(context);
+                       Navigator.pop(context); // Close sheet (Local)
+                       
+                       // Minimize Player First
+                       if (widget.onMinimize != null) widget.onMinimize!();
+
                        await musicProvider.navigateToArtist(track.artistName);
                        if (context.mounted) {
                           if (musicProvider.currentArtistDetails != null) {
-                             Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(
+                             // Use Root Navigator
+                             rootNavigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => ArtistDetailScreen(
                                artistId: musicProvider.currentArtistDetails!.id,
                                artistName: musicProvider.currentArtistDetails!.name,
                                artistImage: musicProvider.currentArtistDetails!.imageUrl,

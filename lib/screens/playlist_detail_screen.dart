@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/global_music_overlay.dart';
 
 import '../widgets/liquid_play_button.dart';
 
@@ -65,7 +66,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PlayerAwarePopScope(
+      child: Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
       floatingActionButton: _tracks.isNotEmpty ? LiquidPlayButton(
@@ -90,7 +92,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             _buildTracksList(),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildSliverAppBar() {

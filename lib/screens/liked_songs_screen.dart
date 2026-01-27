@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/global_music_overlay.dart';
 
 class LikedSongsScreen extends StatefulWidget {
   const LikedSongsScreen({super.key});
@@ -47,7 +48,8 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
       builder: (context, musicProvider, child) {
         final likedSongs = musicProvider.likedSongs;
 
-        return Scaffold(
+        return PlayerAwarePopScope(
+          child: Scaffold(
           extendBodyBehindAppBar: true,
           body: Container(
             decoration: BoxDecoration(
@@ -186,6 +188,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                 ],
               ),
             ),
+          ),
           ),
         );
       },

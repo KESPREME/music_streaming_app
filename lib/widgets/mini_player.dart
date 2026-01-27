@@ -48,10 +48,10 @@ class MiniPlayer extends StatelessWidget {
              }
           },
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 8.0), // Floating pill - narrower
-            height: 60,
+            margin: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 8.0), // Floating pill - Narrower (Restored)
+            height: 60, 
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E).withOpacity(0.85), // Liquid dark glass
+              color: const Color(0xFF1E1E1E).withOpacity(0.9), 
               borderRadius: BorderRadius.circular(30),
               boxShadow: [
                  BoxShadow(
@@ -65,29 +65,29 @@ class MiniPlayer extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0), // Liquid blur effect
+                filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0), 
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end, 
                   children: [
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0), // Increased inner padding
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0), 
                         child: Row(
                           children: [
                             // Album Art
                             Hero(
                               tag: 'currentArtwork',
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8), // Less rounded for compact look
+                                borderRadius: BorderRadius.circular(8), 
                                 child: currentTrack.albumArtUrl.isNotEmpty
                                     ? Image.network( 
                                         currentTrack.albumArtUrl,
-                                        width: 40, 
-                                        height: 40,
+                                        width: 42, 
+                                        height: 42,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_,__,___) => Container(width: 40, height: 40, color: Colors.grey[900]),
+                                        errorBuilder: (_,__,___) => Container(width: 42, height: 42, color: Colors.grey[900]),
                                       )
-                                    : Container(width: 40, height: 40, color: Colors.grey[900]),
+                                    : Container(width: 42, height: 42, color: Colors.grey[900]),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -99,12 +99,12 @@ class MiniPlayer extends StatelessWidget {
                                 children: [
                                   Text(
                                     currentTrack.trackName,
-                                    style: GoogleFonts.splineSans(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13),
+                                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13), 
                                     maxLines: 1, overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
                                     currentTrack.artistName,
-                                    style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.6), fontSize: 11),
+                                    style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.7), fontSize: 12), 
                                     maxLines: 1, overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
@@ -115,7 +115,7 @@ class MiniPlayer extends StatelessWidget {
                               icon: Icon(
                                 musicProvider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                 color: Colors.white,
-                                size: 30, // Restored size
+                                size: 32, 
                               ),
                               padding: EdgeInsets.zero,
                               onPressed: () {
@@ -130,7 +130,7 @@ class MiniPlayer extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Progress Bar (Dynamic Color)
+                    // Progress Bar
                     StreamBuilder<Duration>(
                       stream: musicProvider.positionStream,
                       builder: (context, snapshot) {
@@ -144,10 +144,10 @@ class MiniPlayer extends StatelessWidget {
                         final dynamicColor = musicProvider.paletteGenerator?.dominantColor?.color ?? const Color(0xFFFF1744);
                         
                         return SizedBox(
-                          height: 3, 
+                          height: 2, // Thinner (2px)
                           child: LinearProgressIndicator(
                             value: progress,
-                            backgroundColor: Colors.transparent, 
+                            backgroundColor: Colors.transparent, // Hidden container
                             valueColor: AlwaysStoppedAnimation<Color>(dynamicColor),
                           ),
                         );

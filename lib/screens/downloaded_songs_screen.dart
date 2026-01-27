@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
+import '../widgets/global_music_overlay.dart';
 
 class DownloadedSongsScreen extends StatefulWidget {
   const DownloadedSongsScreen({super.key});
@@ -69,7 +70,8 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
+    return PlayerAwarePopScope(
+      child: Scaffold(
       extendBodyBehindAppBar: true,
       body: Container(
         decoration: BoxDecoration(
@@ -222,7 +224,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                 ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildDownloadingItem(Track track, double progress, MusicProvider musicProvider) {
@@ -311,7 +313,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
            IconButton(
             icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
             onPressed: () {
-              musicProvider.playOfflineTrack(track); // Assuming this method handles setting the queue properly for offline
+              musicProvider.playOfflineTrack(track, contextList: _downloadedTracks); // Assuming this method handles setting the queue properly for audio
             },
           ),
           IconButton(
@@ -324,7 +326,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
           ),
         ],
       ),
-      onTap: () => musicProvider.playOfflineTrack(track),
+      onTap: () => musicProvider.playOfflineTrack(track, contextList: _downloadedTracks),
     );
   }
 }

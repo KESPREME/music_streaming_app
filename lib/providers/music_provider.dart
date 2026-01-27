@@ -65,6 +65,7 @@ bool listEquals<T>(List<T>? a, List<T>? b) {
 }
 
 class MusicProvider with ChangeNotifier {
+  final GlobalKey<NavigatorState> playerNavigatorKey = GlobalKey<NavigatorState>();
   // --- State Properties ---
   List<Track> _tracks = [];
   List<Track> _trendingTracks = [];
@@ -79,9 +80,13 @@ class MusicProvider with ChangeNotifier {
   List<Track> _localTracks = [];
   SortCriteria _localTracksSortCriteria = SortCriteria.nameAsc;
   
+  bool _isOfflineContext = false; // Explicit flag for offline playback context
+
   // Search State
   List<Track> _playlistSearchResults = []; 
   List<Track> get playlistSearchResults => List.unmodifiable(_playlistSearchResults);
+  
+  // Getters
   
   Track? _currentTrack;
   bool _isPlaying = false;
@@ -98,6 +103,18 @@ class MusicProvider with ChangeNotifier {
   int _wifiBitrate = NetworkConfig.goodNetworkBitrate;
   int _cellularBitrate = NetworkConfig.moderateNetworkBitrate;
   bool _isOfflineMode = false;
+
+  // Navigation State
+  bool _isPlayerExpanded = false;
+  bool get isPlayerExpanded => _isPlayerExpanded;
+  
+  void setPlayerExpanded(bool expanded) {
+    if (_isPlayerExpanded != expanded) {
+      _isPlayerExpanded = expanded;
+      notifyListeners();
+    }
+  }
+
   bool _userManuallySetOffline = false;
   bool _isLowDataMode = false;
   bool _isAutoBitrate = true; // Default to Auto
@@ -447,7 +464,70 @@ class MusicProvider with ChangeNotifier {
       return;
     }
 
-    if (_repeatMode == RepeatMode.one) { seekTo(Duration.zero); if(!_isPlaying) resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } if (_queue.isNotEmpty) { final next = _queue.removeAt(0); print("Playing next from queue: ${next.trackName}"); _playTrackInternal(next, setContext: false, clearQueue: false); notifyListeners(); /* Preload handled by playTrackInternal -> playTrack */ return; } final list = _getActivePlaylist(); if (list.isEmpty) { stopTrack(); return; } _updateCurrentIndex(); int nextIdx = _currentIndex + 1; if (nextIdx < list.length) { print('Playing next from context index $nextIdx'); _playTrackInternal(list[nextIdx], setContext: true, clearQueue: false); } else { if (_repeatMode == RepeatMode.all) { print('Looping context to start.'); _playTrackInternal(list[0], setContext: true, clearQueue: false); } else { print('End of context, Repeat off, stopping.'); stopTrack(); } } /* Preload handled by playTrackInternal if it plays */ }
+    // Check Repeat One
+    if (_repeatMode == RepeatMode.one) {
+       seekTo(Duration.zero);
+       if(!_isPlaying) resumeTrack();
+       _handlePlaybackOrContextChangeForPreloading();
+       return;
+    }
+
+    // Check Queue
+    if (_queue.isNotEmpty) {
+       final next = _queue.removeAt(0);
+       print("Playing next from queue: ${next.trackName}");
+       _playTrackInternal(next, setContext: false, clearQueue: false);
+       notifyListeners(); 
+       return;
+    }
+
+    // Check Context (Playlist/Album/Local)
+    final list = _getActivePlaylist();
+    if (list.isEmpty) {
+       stopTrack();
+       return;
+    }
+
+    _updateCurrentIndex();
+    int nextIdx = _currentIndex + 1;
+
+    // Standard Next Track
+    if (nextIdx < list.length) {
+       print('Playing next from context index $nextIdx');
+       _playTrackInternal(list[nextIdx], setContext: true, clearQueue: false);
+       return;
+    }
+    
+    // End of List Handling
+    if (_repeatMode == RepeatMode.all) {
+       // Standard Loop
+       print('Looping context to start.');
+       _playTrackInternal(list[0], setContext: true, clearQueue: false);
+    } else {
+       // Smart Autoplay / Loop for Downloaded Music
+       // If we are offline/downloaded, we loop instead of crashing.
+       // Check if current context is 'local' or 'downloaded'
+       bool isListNotEmpty = list.isNotEmpty;
+       bool isFirstLocal = isListNotEmpty && list.first.source == 'local';
+       bool isFirstDownloaded = isListNotEmpty && _downloadedTracksMetadata.containsKey(list.first.id);
+       bool isOfflineContext = isListNotEmpty && (isFirstLocal || isFirstDownloaded || _isOfflineTrack || _isOfflineContext);
+       
+       if (kDebugMode) {
+          print('MusicProvider: End of Context Reached.');
+          print('List check: NotEmpty=$isListNotEmpty, FirstLocal=$isFirstLocal, FirstDown=$isFirstDownloaded');
+          print('Offline Context: $isOfflineContext, Is Offline Track: $_isOfflineTrack');
+       }
+
+       if (isOfflineContext) {
+           print('End of Downloaded List -> Looping to start (Smart Autoplay)');
+           // CALL INTERNAL DIRECTLY to avoid "Toggle Pause" logic in wrapper if 1 song
+           _playOfflineTrackInternal(list[0], setContext: true, clearQueue: false);
+       } else {
+           print('End of context, Repeat off, stopping.');
+           stopTrack();
+       }
+    }
+  }
   Future<void> _playTrackInternal(Track track, {bool setContext = true, bool clearQueue = true}) async { 
     if (setContext) {
       _setPlaybackContext(_currentPlayingTracks, playlistId: _currentPlaylistId, clearQueue: clearQueue);
@@ -504,6 +584,14 @@ class MusicProvider with ChangeNotifier {
       await resumeTrack();
       return;
     }
+
+    _isOfflineContext = false; // Reset offline flag for online playback
+    
+    // Resume audio service if it was stopped
+    // await _audioService.resume(); // (Not needed, play() handles it)
+    
+    // Clear error
+    _clearError();
 
     _clearError();
     
@@ -720,11 +808,11 @@ class MusicProvider with ChangeNotifier {
     }
   }
 
-  Future<void> playOfflineTrack(Track track, {bool setContext = true, bool clearQueue = true}) async {
+  Future<void> playOfflineTrack(Track track, {bool setContext = true, bool clearQueue = true, List<Track>? contextList}) async {
     bool knownOffline = track.source == 'local' || _downloadedTracksMetadata.containsKey(track.id);
     
     if (!knownOffline) {
-      await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue);
+      await playTrack(track, playlistTracks: contextList ?? _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue);
       return;
     }
     
@@ -738,6 +826,15 @@ class MusicProvider with ChangeNotifier {
       return;
     }
     
+    _isOfflineContext = true; // Set explicit offline flag
+    await _playOfflineTrackInternal(track, setContext: setContext, clearQueue: clearQueue);
+    
+    if (setContext && contextList != null) {
+       _setPlaybackContext(contextList, clearQueue: clearQueue);
+    }
+  }
+
+  Future<void> _playOfflineTrackInternal(Track track, {bool setContext = true, bool clearQueue = true}) async {
     _clearError();
     
     try {
@@ -779,6 +876,7 @@ class MusicProvider with ChangeNotifier {
           contextTracks = _localTracks;
           contextDesc = "Local Tracks";
         }
+        
         _setPlaybackContext(contextTracks, clearQueue: clearQueue);
         if (kDebugMode) {
           print("MusicProvider: Set playback context to $contextDesc");
@@ -819,6 +917,8 @@ class MusicProvider with ChangeNotifier {
       await _handlePlaybackError('Failed to play offline track: ${e.toString()}');
     }
   }
+    
+
 
   // --- Player Controls ---
   Future<void> pauseTrack() async {
