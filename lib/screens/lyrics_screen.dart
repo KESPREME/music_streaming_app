@@ -209,75 +209,78 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
         accentColor = vibrant ?? dominant ?? const Color(0xFF6200EE);
     }
     
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: Colors.black, // Fallback
-      body: Stack(
-        children: [
-          // 1. Background Gradient
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 800),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: bgColors,
-                stops: const [0.0, 0.6, 1.0],
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Colors.black, // Fallback
+        body: Stack(
+          children: [
+            // 1. Background Gradient
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 800),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: bgColors,
+                  stops: const [0.0, 0.6, 1.0],
+                ),
               ),
             ),
-          ),
-          
-          // 2. Lyrics List (Behind Header)
-          Positioned.fill(
-             child: _buildBody(context, musicProvider),
-          ),
+            
+            // 2. Lyrics List (Behind Header)
+            Positioned.fill(
+               child: _buildBody(context, musicProvider),
+            ),
 
-          // 3. Header (Overlay with Blur)
-          Positioned(
-             top: 0, left: 0, right: 0,
-             child: ClipRect(
-                child: BackdropFilter(
-                   filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                   child: Container(
-                      decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.15),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.6),
-                            accentColor.withOpacity(0.05),
-                          ],
+            // 3. Header (Overlay with Blur)
+            Positioned(
+               top: 0, left: 0, right: 0,
+               child: ClipRect(
+                  child: BackdropFilter(
+                     filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                     child: Container(
+                        decoration: BoxDecoration(
+                          color: accentColor.withOpacity(0.15),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.6),
+                              accentColor.withOpacity(0.05),
+                            ],
+                          ),
+                          border: Border(
+                            bottom: BorderSide(color: Colors.white.withOpacity(0.1), width: 0.5),
+                          ),
                         ),
-                        border: Border(
-                          bottom: BorderSide(color: Colors.white.withOpacity(0.1), width: 0.5),
+                        child: SafeArea(
+                          bottom: false,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Header matching NowPlayingScreen height/padding
+                              _buildHeader(context, track, musicProvider),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: SafeArea(
-                        bottom: false,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Header matching NowPlayingScreen height/padding
-                            _buildHeader(context, track, musicProvider),
-                          ],
-                        ),
-                      ),
-                   ),
-                ),
-             ),
-          ),
-          
-          // 4. Glass Playback Bar (Bottom)
-          Positioned(
-            left: 0, right: 0, bottom: 0,
-            child: track != null ? GlassPlaybackBar(
-              track: track,
-              provider: musicProvider,
-              accentColor: accentColor, // Use dynamic color
-            ) : const SizedBox(),
-          ),
-        ],
+                     ),
+                  ),
+               ),
+            ),
+            
+            // 4. Glass Playback Bar (Bottom)
+            Positioned(
+              left: 0, right: 0, bottom: 0,
+              child: track != null ? GlassPlaybackBar(
+                track: track,
+                provider: musicProvider,
+                accentColor: accentColor, // Use dynamic color
+              ) : const SizedBox(),
+            ),
+          ],
+        ),
       ),
     );
   }

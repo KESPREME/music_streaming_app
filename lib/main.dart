@@ -221,6 +221,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  List<int> _navigationHistory = [0]; // History stack starting at Home
 
   final List<Widget> _screens = [
     const HomeScreen(),
@@ -230,86 +231,118 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   void _onItemTapped(int index) {
+    if (_selectedIndex == index) return;
+    
     setState(() {
+      _historyAdd(index);
       _selectedIndex = index;
     });
+  }
+
+  void _historyAdd(int index) {
+    // Optional: if (index == 0) _navigationHistory.clear(); // Uncomment if hitting Home should clear history (Spotify behavior)
+    // But user asked for "3rd fallback to 2nd", implying full stack.
+    
+    // Avoid duplicates at the top of the stack
+    if (_navigationHistory.last != index) {
+      _navigationHistory.add(index);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context);
 
-    return Scaffold(
-      extendBody: true, // Allow floating items to sit above transparently if needed
-      body: Stack(
-        children: [
-          // 1. Main Content Layer
-          // We add bottom padding to avoid content being hidden behind the floating nav bar
-          Padding(
-            padding: const EdgeInsets.only(bottom: 0), // Full height, let lists handle padding
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: _screens,
+    return PopScope(
+      canPop: _navigationHistory.length == 1 && _selectedIndex == 0,
+      onPopInvoked: (didPop) {
+        if (didPop) {
+          return;
+        }
+        
+        setState(() {
+          if (_navigationHistory.length > 1) {
+            _navigationHistory.removeLast();
+            _selectedIndex = _navigationHistory.last;
+          } else if (_selectedIndex != 0) {
+             // Fallback if history is empty but we aren't on home (shouldn't happen with correct logic)
+             _selectedIndex = 0;
+             _navigationHistory = [0];
+          }
+        });
+      },
+      child: Scaffold(
+        extendBody: true, // Allow floating items to sit above transparently if needed
+        body: Stack(
+          children: [
+            // 1. Main Content Layer
+            // We add bottom padding to avoid content being hidden behind the floating nav bar
+            Padding(
+              padding: const EdgeInsets.only(bottom: 0), // Full height, let lists handle padding
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: _screens,
+              ),
             ),
-          ),
-          
-          // 2. Floating UI Layer (MiniPlayer + NavBar)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // MiniPlayer (Floating above nav bar)
-                if (musicProvider.currentTrack != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                    child: Container(
-                       decoration: BoxDecoration(
-                         boxShadow: [
-                           BoxShadow(
-                             color: Colors.black.withOpacity(0.3),
-                             blurRadius: 15,
-                             offset: const Offset(0, 5),
-                           ),
-                         ],
-                       ),
-                       child: const MiniPlayer()
+            
+            // 2. Floating UI Layer (MiniPlayer + NavBar)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // MiniPlayer (Floating above nav bar)
+                  if (musicProvider.currentTrack != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Container(
+                         decoration: BoxDecoration(
+                           boxShadow: [
+                             BoxShadow(
+                               color: Colors.black.withOpacity(0.3),
+                               blurRadius: 15,
+                               offset: const Offset(0, 5),
+                             ),
+                           ],
+                         ),
+                         child: const MiniPlayer()
+                      ),
                     ),
+                  
+                  // Custom Glass Nav Bar
+                  GlassNavBar(
+                    currentIndex: _selectedIndex,
+                    onTap: _onItemTapped,
+                    items: const [
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.home_outlined),
+                        activeIcon: Icon(Icons.home_rounded),
+                        label: 'Home',
+                      ),
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.search_rounded),
+                        activeIcon: Icon(Icons.search_rounded),
+                        label: 'Search',
+                      ),
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.people_outline_rounded),
+                        activeIcon: Icon(Icons.people_rounded),
+                        label: 'Social',
+                      ),
+                      BottomNavigationBarItem(
+                        icon: Icon(Icons.library_music_outlined),
+                        activeIcon: Icon(Icons.library_music_rounded),
+                        label: 'Library',
+                      ),
+                    ],
                   ),
-                
-                // Custom Glass Nav Bar
-                GlassNavBar(
-                  currentIndex: _selectedIndex,
-                  onTap: _onItemTapped,
-                  items: const [
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.home_outlined),
-                      activeIcon: Icon(Icons.home_rounded),
-                      label: 'Home',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.search_rounded),
-                      activeIcon: Icon(Icons.search_rounded),
-                      label: 'Search',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.people_outline_rounded),
-                      activeIcon: Icon(Icons.people_rounded),
-                      label: 'Social',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.library_music_outlined),
-                      activeIcon: Icon(Icons.library_music_rounded),
-                      label: 'Library',
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

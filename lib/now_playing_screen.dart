@@ -64,62 +64,65 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
 
         final isPlaying = musicProvider.isPlaying;
 
-        return Scaffold(
-          extendBodyBehindAppBar: true,
-          backgroundColor: const Color(0xFF121212), // Fallback dark
-          body: Stack(
-            children: [
-              // 1. Immersive Gradient Background
-              AnimatedContainer(
-                duration: const Duration(seconds: 1),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: bgColors,
-                    stops: const [0.0, 0.7, 1.0],
+        return PopScope(
+          canPop: true, // Allow system back gesture
+          child: Scaffold(
+            extendBodyBehindAppBar: true,
+            backgroundColor: const Color(0xFF121212), // Fallback dark
+            body: Stack(
+              children: [
+                // 1. Immersive Gradient Background
+                AnimatedContainer(
+                  duration: const Duration(seconds: 1),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: bgColors,
+                      stops: const [0.0, 0.7, 1.0],
+                    ),
                   ),
                 ),
-              ),
-              
-              // 2. Blurred Ambient Globs
-              _buildAmbientGlows(bgColors, accentColor),
+                
+                // 2. Blurred Ambient Globs
+                _buildAmbientGlows(bgColors, accentColor),
 
-              // 3. Main Content
-              SafeArea(
-                child: Column(
-                  children: [
-                    // Header
-                    _buildHeader(context, currentTrack, musicProvider),
-                    
-                    // Body (Art + Controls)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildAlbumArt(currentTrack),
-                            const SizedBox(height: 24),
-                            _buildNowPlayingInfo(context, currentTrack, musicProvider, accentColor),
-                            
-                            // Wavy Progress Bar
-                            WavyProgressBar(
-                              provider: musicProvider,
-                              accentColor: accentColor,
-                            ),
+                // 3. Main Content
+                SafeArea(
+                  child: Column(
+                    children: [
+                      // Header
+                      _buildHeader(context, currentTrack, musicProvider),
+                      
+                      // Body (Art + Controls)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildAlbumArt(currentTrack),
+                              const SizedBox(height: 24),
+                              _buildNowPlayingInfo(context, currentTrack, musicProvider, accentColor),
+                              
+                              // Wavy Progress Bar
+                              WavyProgressBar(
+                                provider: musicProvider,
+                                accentColor: accentColor,
+                              ),
 
-                            _buildPlayerControls(context, musicProvider, isPlaying, accentColor),
-                            _buildFooterActions(context, musicProvider, accentColor),
-                          ],
+                              _buildPlayerControls(context, musicProvider, isPlaying, accentColor),
+                              _buildFooterActions(context, musicProvider, accentColor),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                      const SizedBox(height: 16),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },

@@ -155,10 +155,13 @@ class WavySliderPainter extends CustomPainter {
     // active Path (Wavy Line)
     final activePath = Path();
     paint.color = color;
-    activePath.moveTo(0, centerY);
+    
+    // Calculate initial Y to avoid "hook"
+    double startY = centerY + math.sin((0 * waveFrequency) + phase) * waveAmplitude;
+    activePath.moveTo(0, startY);
     
     double lastX = 0;
-    double lastY = centerY;
+    double lastY = startY;
 
     // Draw waves only up to the active width
     for (double x = 0; x <= activeWidth; x++) {
