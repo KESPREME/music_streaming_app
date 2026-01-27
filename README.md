@@ -1,4 +1,4 @@
-# 🎵 Music Streaming App
+# 🎵 Mine Music - Music Streaming App
 
 A state-of-the-art, cross-platform **Music Streaming App** built with [Flutter](https://flutter.dev/).  
 Experience instant playback, beautiful glassmorphism UI, and seamless audio streaming from multiple sources.
