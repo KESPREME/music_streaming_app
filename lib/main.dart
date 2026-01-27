@@ -13,6 +13,8 @@ import 'screens/social_screen.dart';
 import 'screens/library_screen.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/glass_nav_bar.dart';
+import 'now_playing_screen.dart'; // Import NowPlayingScreen
+import 'dart:ui'; // Import dart:ui for lerpDouble
 
 class AppColors {
   static const Color primary = Color(0xFF6200EE); // Deep Purple
@@ -219,20 +221,39 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   List<int> _navigationHistory = [0]; // History stack starting at Home
+  
+  late AnimationController _panelController;
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const SearchScreen(), // Assuming SearchScreen doesn't require parameters
+    const SearchScreen(), 
     const SocialScreen(),
     const LibraryScreen(),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _panelController = AnimationController(
+       vsync: this,
+       duration: const Duration(milliseconds: 500), 
+    );
+  }
+
+  @override
+  void dispose() {
+    _panelController.dispose();
+    super.dispose();
+  }
+
   void _onItemTapped(int index) {
     if (_selectedIndex == index) return;
-    
+    // Collapse panel if navigating tabs
+    if (_panelController.value > 0) _animatePanelTo(0.0);
+
     setState(() {
       _historyAdd(index);
       _selectedIndex = index;
@@ -240,106 +261,183 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _historyAdd(int index) {
-    // Optional: if (index == 0) _navigationHistory.clear(); // Uncomment if hitting Home should clear history (Spotify behavior)
-    // But user asked for "3rd fallback to 2nd", implying full stack.
-    
-    // Avoid duplicates at the top of the stack
     if (_navigationHistory.last != index) {
       _navigationHistory.add(index);
+    }
+  }
+
+  // --- Panel Animation Logic ---
+  
+  void _animatePanelTo(double target) {
+    _panelController.animateTo(
+      target, 
+      duration: const Duration(milliseconds: 400), 
+      curve: Curves.easeOutCubic // Liquid feel - corrected from springOut
+    );
+  }
+
+  void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final double delta = -details.primaryDelta! / screenHeight;
+    _panelController.value += delta;
+  }
+
+  void _handleVerticalDragEnd(DragEndDetails details) {
+    final velocity = -details.primaryVelocity! / MediaQuery.of(context).size.height; 
+    
+    if (velocity > 0.5) {
+      _animatePanelTo(1.0); // Fling Up
+    } else if (velocity < -0.5) {
+      _animatePanelTo(0.0); // Fling Down
+    } else {
+      if (_panelController.value > 0.4) {
+        _animatePanelTo(1.0);
+      } else {
+        _animatePanelTo(0.0);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context);
+    final hasTrack = musicProvider.currentTrack != null;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return PopScope(
-      canPop: _navigationHistory.length == 1 && _selectedIndex == 0,
+      canPop: (_navigationHistory.length == 1 && _selectedIndex == 0 && _panelController.value == 0),
       onPopInvoked: (didPop) {
-        if (didPop) {
+        if (didPop) return;
+        
+        if (_panelController.value > 0.1) {
+          _animatePanelTo(0.0);
           return;
         }
-        
+
         setState(() {
           if (_navigationHistory.length > 1) {
             _navigationHistory.removeLast();
             _selectedIndex = _navigationHistory.last;
           } else if (_selectedIndex != 0) {
-             // Fallback if history is empty but we aren't on home (shouldn't happen with correct logic)
              _selectedIndex = 0;
              _navigationHistory = [0];
           }
         });
       },
       child: Scaffold(
-        extendBody: true, // Allow floating items to sit above transparently if needed
+        extendBody: true, 
         body: Stack(
           children: [
             // 1. Main Content Layer
-            // We add bottom padding to avoid content being hidden behind the floating nav bar
-            Padding(
-              padding: const EdgeInsets.only(bottom: 0), // Full height, let lists handle padding
+            Positioned.fill(
               child: IndexedStack(
                 index: _selectedIndex,
                 children: _screens,
               ),
             ),
             
-            // 2. Floating UI Layer (MiniPlayer + NavBar)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // MiniPlayer (Floating above nav bar)
-                  if (musicProvider.currentTrack != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: Container(
-                         decoration: BoxDecoration(
-                           boxShadow: [
-                             BoxShadow(
-                               color: Colors.black.withOpacity(0.3),
-                               blurRadius: 15,
-                               offset: const Offset(0, 5),
-                             ),
-                           ],
-                         ),
-                         child: const MiniPlayer()
+            // 2. Panel Layer (MiniPlayer & NowPlaying)
+            if (hasTrack)
+              AnimatedBuilder(
+                animation: _panelController,
+                builder: (context, child) {
+                  final value = _panelController.value;
+                  final topOffset = lerpDouble(screenHeight, 0, value)!;
+                  final miniPlayerOpacity = (1.0 - (value * 3)).clamp(0.0, 1.0); 
+
+                  return Stack(
+                    children: [
+                      // A. Mini Player (Fades out)
+                      Positioned(
+                        left: 0, right: 0,
+                        bottom: 0, 
+                        child: Opacity(
+                          opacity: miniPlayerOpacity,
+                          child: IgnorePointer(
+                            ignoring: miniPlayerOpacity < 0.1,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onVerticalDragUpdate: _handleVerticalDragUpdate,
+                                  onVerticalDragEnd: _handleVerticalDragEnd,
+                                  child: MiniPlayer(
+                                    onExpand: () => _animatePanelTo(1.0),
+                                  ),
+                                ),
+                                const SizedBox(height: 100), // Height 65 + Margin 25 + Padding 10 
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  
-                  // Custom Glass Nav Bar
-                  GlassNavBar(
-                    currentIndex: _selectedIndex,
-                    onTap: _onItemTapped,
-                    items: const [
-                      BottomNavigationBarItem(
-                        icon: Icon(Icons.home_outlined),
-                        activeIcon: Icon(Icons.home_rounded),
-                        label: 'Home',
-                      ),
-                      BottomNavigationBarItem(
-                        icon: Icon(Icons.search_rounded),
-                        activeIcon: Icon(Icons.search_rounded),
-                        label: 'Search',
-                      ),
-                      BottomNavigationBarItem(
-                        icon: Icon(Icons.people_outline_rounded),
-                        activeIcon: Icon(Icons.people_rounded),
-                        label: 'Social',
-                      ),
-                      BottomNavigationBarItem(
-                        icon: Icon(Icons.library_music_outlined),
-                        activeIcon: Icon(Icons.library_music_rounded),
-                        label: 'Library',
+                      
+                      // B. Now Playing Screen (Slides Up)
+                      Positioned(
+                        top: topOffset,
+                        left: 0, right: 0,
+                        height: screenHeight,
+                        child: Opacity(
+                          opacity: (value > 0.01) ? 1.0 : 0.0, 
+                          child: GestureDetector(
+                            onVerticalDragUpdate: _handleVerticalDragUpdate,
+                            onVerticalDragEnd: _handleVerticalDragEnd,
+                            child: Material( 
+                              elevation: 0,
+                              color: Colors.transparent, 
+                              child: NowPlayingScreen(
+                                track: musicProvider.currentTrack!,
+                                onMinimize: () => _animatePanelTo(0.0),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
-                  ),
-                ],
+                  );
+                }
               ),
+
+            // 3. Navigation Bar (Only visible when panel is collapsed)
+            AnimatedBuilder(
+              animation: _panelController,
+              builder: (context, child) {
+                return Positioned(
+                  left: 0, right: 0, bottom: 0,
+                  child: Transform.translate(
+                    offset: Offset(0, _panelController.value * kBottomNavigationBarHeight),
+                    child: Opacity(
+                      opacity: (1.0 - _panelController.value).clamp(0.0, 1.0),
+                      child: GlassNavBar(
+                        currentIndex: _selectedIndex,
+                        onTap: _onItemTapped,
+                         items: const [
+                          BottomNavigationBarItem(
+                            icon: Icon(Icons.home_outlined),
+                            activeIcon: Icon(Icons.home_rounded),
+                            label: 'Home',
+                          ),
+                          BottomNavigationBarItem(
+                            icon: Icon(Icons.search_rounded),
+                            activeIcon: Icon(Icons.search_rounded),
+                            label: 'Search',
+                          ),
+                          BottomNavigationBarItem(
+                            icon: Icon(Icons.people_outline_rounded),
+                            activeIcon: Icon(Icons.people_rounded),
+                            label: 'Social',
+                          ),
+                          BottomNavigationBarItem(
+                            icon: Icon(Icons.library_music_outlined),
+                            activeIcon: Icon(Icons.library_music_rounded),
+                            label: 'Library',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
             ),
           ],
         ),

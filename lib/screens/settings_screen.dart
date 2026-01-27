@@ -355,84 +355,119 @@ class SettingsScreen extends StatelessWidget {
     final currentSource = musicProvider.currentMusicSource;
     final accentColor = const Color(0xFF00E5FF); // Cyan
     
-    return _buildGlassContainer(
-      isDark,
-      child: Column(
-        children: [
-          Row(
-            children: [
-               Container(
-                 padding: const EdgeInsets.all(12),
-                 decoration: BoxDecoration(
-                   color: accentColor.withOpacity(0.1),
-                   borderRadius: BorderRadius.circular(16),
-                 ),
-                 child: Icon(
-                   currentSource == MusicSource.youtube ? Icons.cloud_queue_rounded : Icons.folder_open_rounded,
-                   color: accentColor,
-                   size: 28,
-                 ),
-               ),
-               const SizedBox(width: 16),
-               Expanded(
-                 child: Column(
-                   crossAxisAlignment: CrossAxisAlignment.start,
-                   children: [
-                     Text(
-                       currentSource.displayName,
-                       style: GoogleFonts.splineSans(
-                         color: isDark ? Colors.white : Colors.black,
-                         fontWeight: FontWeight.bold,
-                         fontSize: 16
-                       ),
-                     ),
-                     const SizedBox(height: 2),
-                     Text(
-                       currentSource.description,
-                       style: GoogleFonts.splineSans(
-                         color: isDark ? Colors.white54 : Colors.black54,
-                         fontSize: 12
-                       ),
-                     ),
-                   ],
-                 ),
-               ),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Pill Toggle
+        Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08)),
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: MusicSource.values.map((source) {
-              final isSelected = source == currentSource;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => musicProvider.setMusicSource(source),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: EdgeInsets.only(right: source != MusicSource.values.last ? 12 : 0),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Stack(
+            children: [
+              // Animated Background Pill
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                alignment: currentSource == MusicSource.youtube ? Alignment.centerLeft : Alignment.centerRight,
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  child: Container(
+                    margin: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: isSelected ? accentColor.withOpacity(0.2) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected ? accentColor : (isDark ? Colors.white12 : Colors.black12),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        source == MusicSource.youtube ? 'Stream' : 'Local',
-                         style: GoogleFonts.splineSans(
-                           color: isSelected ? accentColor : (isDark ? Colors.white : Colors.black),
-                           fontWeight: FontWeight.bold,
-                         ),
-                      ),
+                      color: accentColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(26),
+                      border: Border.all(color: accentColor.withOpacity(0.5)),
+                      boxShadow: [
+                         BoxShadow(
+                           color: accentColor.withOpacity(0.15),
+                           blurRadius: 8,
+                           spreadRadius: 0,
+                         )
+                      ]
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+              ),
+              // Content Row
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => musicProvider.setMusicSource(MusicSource.youtube),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.cloud_queue_rounded, 
+                              size: 18, 
+                              color: currentSource == MusicSource.youtube ? accentColor : (isDark ? Colors.white54 : Colors.black54)
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Stream',
+                              style: GoogleFonts.splineSans(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: currentSource == MusicSource.youtube ? accentColor : (isDark ? Colors.white54 : Colors.black54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => musicProvider.setMusicSource(MusicSource.local),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.folder_open_rounded, 
+                              size: 18, 
+                              color: currentSource == MusicSource.local ? accentColor : (isDark ? Colors.white54 : Colors.black54)
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Local',
+                              style: GoogleFonts.splineSans(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: currentSource == MusicSource.local ? accentColor : (isDark ? Colors.white54 : Colors.black54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        
+        // Description Text (Optional, keeping it subtle below)
+        Padding(
+          padding: const EdgeInsets.only(left: 16, top: 12, right: 16),
+          child: Text(
+            currentSource == MusicSource.youtube 
+              ? 'Streaming from YouTube Music (InnerTube).'
+              : 'Playing files from your device storage.',
+            style: GoogleFonts.splineSans(
+              color: isDark ? Colors.white38 : Colors.black38,
+              fontSize: 12,
+              fontStyle: FontStyle.italic
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -519,31 +554,59 @@ class SettingsScreen extends StatelessWidget {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E), // Fixed dark bg for consistency for now
-        title: Text('${isWifi ? "Wi-Fi" : "Cellular"} Quality', style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options.map((bitrate) {
-            final isSelected = bitrate == currentBitrate;
-            return ListTile(
-              title: Text('$bitrate kbps', style: GoogleFonts.splineSans(color: Colors.white)),
-              leading: Icon(
-                isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                color: isSelected ? const Color(0xFFEA80FC) : Colors.white54,
+      builder: (context) {
+        // Rebuild dialog when provider notifies to update selection state if needed
+        return Consumer<MusicProvider>(
+          builder: (context, provider, _) { 
+            final currentBitrate = isWifi ? provider.wifiBitrate : provider.cellularBitrate;
+            final isAuto = provider.isAutoBitrate;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E), 
+              title: Text('${isWifi ? "Wi-Fi" : "Cellular"} Quality', style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Auto Option
+                  ListTile(
+                    title: Text('Auto', style: GoogleFonts.splineSans(color: Colors.white)),
+                    subtitle: isAuto ? Text('Adjusts automatically based on network', style: GoogleFonts.splineSans(color: Colors.white38, fontSize: 12)) : null,
+                    leading: Icon(
+                      isAuto ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                      color: isAuto ? const Color(0xFFEA80FC) : Colors.white54,
+                    ),
+                    onTap: () {
+                      provider.setAutoBitrate(true);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  const Divider(color: Colors.white12),
+                  
+                  // Manual Options
+                  ...options.map((bitrate) {
+                    final isSelected = !isAuto && bitrate == currentBitrate;
+                    return ListTile(
+                      title: Text('$bitrate kbps', style: GoogleFonts.splineSans(color: Colors.white)),
+                      leading: Icon(
+                        isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                        color: isSelected ? const Color(0xFFEA80FC) : Colors.white54,
+                      ),
+                      onTap: () {
+                        if (isWifi) {
+                          provider.setWifiBitrate(bitrate);
+                        } else {
+                          provider.setCellularBitrate(bitrate);
+                        }
+                        Navigator.pop(context);
+                      },
+                    );
+                  }),
+                ],
               ),
-              onTap: () {
-                if (isWifi) {
-                  musicProvider.setWifiBitrate(bitrate);
-                } else {
-                  musicProvider.setCellularBitrate(bitrate);
-                }
-                Navigator.pop(context);
-              },
             );
-          }).toList(),
-        ),
-      ),
+          }
+        );
+      },
     );
   }
 }

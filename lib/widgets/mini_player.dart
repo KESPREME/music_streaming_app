@@ -7,7 +7,8 @@ import '../providers/music_provider.dart';
 import '../now_playing_screen.dart'; // Ensure this is the updated NowPlayingScreen
 
 class MiniPlayer extends StatelessWidget {
-  const MiniPlayer({super.key});
+  final VoidCallback? onExpand;
+  const MiniPlayer({this.onExpand, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,34 +24,35 @@ class MiniPlayer extends StatelessWidget {
 
         return GestureDetector(
           onTap: () {
-            // Navigate to the full NowPlayingScreen
-            Navigator.push(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => NowPlayingScreen(track: currentTrack),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  const begin = Offset(0.0, 1.0);
-                  const end = Offset.zero;
-                  const curve = Curves.easeOutQuad; // Smoother curve
-                  var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-                  return SlideTransition(
-                    position: animation.drive(tween),
-                    child: child,
-                  );
-                },
-                transitionDuration: const Duration(milliseconds: 300), // Faster transition
-              ),
-            ).then((_) {
-              // Optional: Force rebuild if needed, though Provider should handle state updates
-              // (context as Element).markNeedsBuild();
-            });
+             if (onExpand != null) {
+               onExpand!();
+             } else {
+                // Fallback (though MainScreen should always provide callback)
+                Navigator.push(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) => NowPlayingScreen(track: currentTrack),
+                    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      const begin = Offset(0.0, 1.0);
+                      const end = Offset.zero;
+                      const curve = Curves.easeOutQuad;
+                      var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                      return SlideTransition(
+                        position: animation.drive(tween),
+                        child: child,
+                      );
+                    },
+                    transitionDuration: const Duration(milliseconds: 300),
+                  ),
+                );
+             }
           },
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), // Floating pill
-            height: 65,
+            margin: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 8.0), // Floating pill - narrower
+            height: 60,
             decoration: BoxDecoration(
               color: const Color(0xFF1E1E1E).withOpacity(0.85), // Liquid dark glass
-              borderRadius: BorderRadius.circular(35),
+              borderRadius: BorderRadius.circular(30),
               boxShadow: [
                  BoxShadow(
                    color: Colors.black.withOpacity(0.4),
@@ -61,7 +63,7 @@ class MiniPlayer extends StatelessWidget {
               border: Border.all(color: Colors.white.withOpacity(0.1)),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(35),
+              borderRadius: BorderRadius.circular(30),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0), // Liquid blur effect
                 child: Column(
@@ -69,23 +71,23 @@ class MiniPlayer extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0), // Increased inner padding
                         child: Row(
                           children: [
                             // Album Art
                             Hero(
                               tag: 'currentArtwork',
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20), // Rounder for liquid feel
+                                borderRadius: BorderRadius.circular(8), // Less rounded for compact look
                                 child: currentTrack.albumArtUrl.isNotEmpty
                                     ? Image.network( 
                                         currentTrack.albumArtUrl,
-                                        width: 42, 
-                                        height: 42,
+                                        width: 40, 
+                                        height: 40,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_,__,___) => Container(width: 42, height: 42, color: Colors.grey[900]),
+                                        errorBuilder: (_,__,___) => Container(width: 40, height: 40, color: Colors.grey[900]),
                                       )
-                                    : Container(width: 42, height: 42, color: Colors.grey[900]),
+                                    : Container(width: 40, height: 40, color: Colors.grey[900]),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -97,12 +99,12 @@ class MiniPlayer extends StatelessWidget {
                                 children: [
                                   Text(
                                     currentTrack.trackName,
-                                    style: GoogleFonts.splineSans(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 14),
+                                    style: GoogleFonts.splineSans(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13),
                                     maxLines: 1, overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
                                     currentTrack.artistName,
-                                    style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                                    style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.6), fontSize: 11),
                                     maxLines: 1, overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
@@ -113,7 +115,7 @@ class MiniPlayer extends StatelessWidget {
                               icon: Icon(
                                 musicProvider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                 color: Colors.white,
-                                size: 34,
+                                size: 30, // Restored size
                               ),
                               padding: EdgeInsets.zero,
                               onPressed: () {

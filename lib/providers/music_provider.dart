@@ -100,6 +100,7 @@ class MusicProvider with ChangeNotifier {
   bool _isOfflineMode = false;
   bool _userManuallySetOffline = false;
   bool _isLowDataMode = false;
+  bool _isAutoBitrate = true; // Default to Auto
   bool _isReconnecting = false;
   Timer? _reconnectionTimer;
   String? _errorMessage;
@@ -234,6 +235,7 @@ class MusicProvider with ChangeNotifier {
   int get cellularBitrate => _cellularBitrate;
   bool get isOfflineMode => _isOfflineMode;
   bool get isLowDataMode => _isLowDataMode;
+  bool get isAutoBitrate => _isAutoBitrate;
   bool get shuffleEnabled => _shuffleEnabled;
   RepeatMode get repeatMode => _repeatMode;
   String? get currentPlaylistId => _currentPlaylistId;
@@ -367,6 +369,7 @@ class MusicProvider with ChangeNotifier {
       _isOfflineMode = p.getBool('offlineMode') ?? false; 
       _userManuallySetOffline = p.getBool('userManuallySetOffline') ?? false; 
       _isLowDataMode = p.getBool('lowDataMode') ?? false; 
+      _isAutoBitrate = p.getBool('isAutoBitrate') ?? true;
       _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; 
       
       final sourceValue = p.getString('musicSource') ?? 'youtube'; 
@@ -404,6 +407,7 @@ class MusicProvider with ChangeNotifier {
       await p.setBool('offlineMode', _isOfflineMode); 
       await p.setBool('userManuallySetOffline', _userManuallySetOffline); 
       await p.setBool('lowDataMode', _isLowDataMode); 
+      await p.setBool('isAutoBitrate', _isAutoBitrate);
       await p.setBool('shuffleEnabled', _shuffleEnabled); 
       await p.setString('musicSource', _currentMusicSource.value); 
       await p.setInt('repeatMode', _repeatMode.index); 
@@ -1193,7 +1197,8 @@ class MusicProvider with ChangeNotifier {
 
   void _handleNetworkQualityChange(NetworkQuality quality) {
     // Adjust bitrates based on network quality (existing logic)
-    if (!_isLowDataMode) {
+    // Adjust bitrates based on network quality ONLY if Auto Mode is enabled
+    if (!_isLowDataMode && _isAutoBitrate) {
       int nW = _wifiBitrate, nC = _cellularBitrate;
       switch (quality) {
         case NetworkQuality.poor: nW = nC = NetworkConfig.poorNetworkBitrate; break;
@@ -1206,7 +1211,7 @@ class MusicProvider with ChangeNotifier {
         _wifiBitrate = nW;
         _cellularBitrate = nC;
         _saveSettings(); // Save bitrate settings
-        // notifyListeners(); // Notifying for bitrate change might be too frequent if UI doesn't directly show it
+        if (kDebugMode) print("MusicProvider: Auto-adjusted bitrate to Wifi:$_wifiBitrate, Cell:$_cellularBitrate");
       }
     }
 
@@ -1248,9 +1253,36 @@ class MusicProvider with ChangeNotifier {
   Future<void> _saveRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); await p.setString('recentlyPlayed', jsonEncode(_recentlyPlayed.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save recent', _saveRecentlyPlayed)); } }
 
   // --- Bitrate Settings ---
-  void setWifiBitrate(int bitrate) { if (_wifiBitrate != bitrate) { _wifiBitrate = bitrate; _saveSettings(); notifyListeners(); } }
-  void setCellularBitrate(int bitrate) { if (_cellularBitrate != bitrate) { _cellularBitrate = bitrate; _saveSettings(); notifyListeners(); } }
+  // --- Bitrate Settings ---
+  void setWifiBitrate(int bitrate) { 
+    if (_wifiBitrate != bitrate || _isAutoBitrate) { 
+      _wifiBitrate = bitrate; 
+      _isAutoBitrate = false; // Manual override disables Auto
+      _saveSettings(); 
+      notifyListeners(); 
+    } 
+  }
+  void setCellularBitrate(int bitrate) { 
+    if (_cellularBitrate != bitrate || _isAutoBitrate) { 
+      _cellularBitrate = bitrate; 
+      _isAutoBitrate = false; // Manual override disables Auto
+      _saveSettings(); 
+      notifyListeners(); 
+    } 
+  }
   
+  void setAutoBitrate(bool enable) {
+    if (_isAutoBitrate != enable) {
+      _isAutoBitrate = enable;
+      if (enable) {
+         // Trigger immediate check to apply auto settings
+         _handleNetworkQualityChange(_networkService.networkQuality);
+      }
+      _saveSettings();
+      notifyListeners();
+    }
+  }
+
   void setMusicSource(MusicSource source) {
     if (_currentMusicSource != source) {
       if (kDebugMode) {
@@ -1265,10 +1297,16 @@ class MusicProvider with ChangeNotifier {
       _trendingTracks = [];
       _fullTrendingTracks = [];
       
-      notifyListeners();
+      notifyListeners(); // Immediate update for UI switch
       
-      // Reload content with new source if online
-      if (source != MusicSource.local && _networkService.isConnected && !_isOfflineMode) {
+      // OPTIMIZED RELOAD LOGIC
+      if (source == MusicSource.local) {
+         // Immediately load local files if empty
+         if (_localTracks.isEmpty) {
+           loadLocalMusicFiles();
+         }
+      } else if (_networkService.isConnected && !_isOfflineMode) {
+        // Only fetch if online
         fetchTracks(forceRefresh: true);
         fetchTrendingTracks(forceRefresh: true);
       }

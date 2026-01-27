@@ -20,8 +20,9 @@ import '../widgets/wavy_progress_bar.dart'; // Import shared widget
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
+  final VoidCallback? onMinimize;
 
-  const NowPlayingScreen({required this.track, super.key});
+  const NowPlayingScreen({required this.track, this.onMinimize, super.key});
 
   @override
   State<NowPlayingScreen> createState() => _NowPlayingScreenState();
@@ -64,9 +65,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
 
         final isPlaying = musicProvider.isPlaying;
 
-        return PopScope(
-          canPop: true, // Allow system back gesture
-          child: Scaffold(
+        // If onMinimize is provided, we assume we are managed by a parent stack (MainScreen), 
+        // effectively disabling the PopScope's ability to block system back unless we handle it upstream.
+        // For now, allowPop is true to let system back work if not managed.
+        return Scaffold(
             extendBodyBehindAppBar: true,
             backgroundColor: const Color(0xFF121212), // Fallback dark
             body: Stack(
@@ -79,7 +81,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: bgColors,
-                      stops: const [0.0, 0.7, 1.0],
+                       stops: const [0.0, 0.7, 1.0],
                     ),
                   ),
                 ),
@@ -123,8 +125,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 ),
               ],
             ),
-          ),
-        );
+          );
       },
     );
   }
@@ -177,7 +178,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              if (widget.onMinimize != null) {
+                widget.onMinimize!();
+              } else {
+                if (Navigator.canPop(context)) Navigator.pop(context);
+              }
+            },
             icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 32),
             style: IconButton.styleFrom(
               backgroundColor: Colors.white.withOpacity(0.1),
