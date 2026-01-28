@@ -276,6 +276,30 @@ class LocalMusicService {
     }
     return sortedTracks;
   }
+
+  // --- Artwork Resolution ---
+
+  Future<Uint8List?> getTrackArtwork(String path) async {
+    try {
+      // Query songs to find the ID associated with this path
+      final List<SongModel> songs = await _audioQuery.querySongs(
+        path: path,
+        uriType: UriType.EXTERNAL,
+      );
+
+      if (songs.isNotEmpty) {
+        return await _audioQuery.queryArtwork(
+          songs.first.id,
+          ArtworkType.AUDIO,
+          format: ArtworkFormat.JPEG,
+          size: 200, // Sufficient for palette generation
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) print('LocalMusicService: Error fetching artwork for $path: $e');
+    }
+    return null;
+  }
 }
 
 // Update SortCriteria Enum to include new options

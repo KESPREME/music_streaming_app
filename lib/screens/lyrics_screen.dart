@@ -8,11 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../models/lyrics_entry.dart';
 import '../utils/lyrics_utils.dart';
 import '../widgets/glass_playback_bar.dart';
+import '../utils/color_utils.dart';
 
 class LyricsScreen extends StatefulWidget {
   const LyricsScreen({super.key});
@@ -184,30 +186,10 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
        WidgetsBinding.instance.addPostFrameCallback((_) => musicProvider.fetchLyrics());
     }
 
-    // Dynamic Color Extraction (Matching NowPlayingScreen)
+    // Dynamic Color Extraction (Synchronized via ColorUtils)
     final palette = musicProvider.paletteGenerator;
-    
-    List<Color> bgColors = [
-       const Color(0xFF1E1B4B), // Top default
-       const Color(0xFF111827), // Mid default
-       const Color(0xFF0A0A0A), // Bot default
-    ];
-    Color accentColor = const Color(0xFF6200EE);
-
-    if (palette != null) {
-        final darkVibrant = palette.darkVibrantColor?.color;
-        final vibrant = palette.vibrantColor?.color;
-        final muted = palette.mutedColor?.color;
-        final darkMuted = palette.darkMutedColor?.color;
-        final dominant = palette.dominantColor?.color;
-
-        final topColor = darkVibrant ?? darkMuted ?? dominant ?? const Color(0xFF1E1B4B);
-        final middleColor = vibrant?.withOpacity(0.4) ?? muted?.withOpacity(0.4) ?? const Color(0xFF111827);
-        const bottomColor = Color(0xFF0A0A0A);
-
-        bgColors = [topColor, middleColor, bottomColor];
-        accentColor = vibrant ?? dominant ?? const Color(0xFF6200EE);
-    }
+    final bgColors = ColorUtils.getLiquidBgColors(palette);
+    final accentColor = ColorUtils.getVibrantAccent(palette, const Color(0xFF6200EE));
     
     return PopScope(
       canPop: true,

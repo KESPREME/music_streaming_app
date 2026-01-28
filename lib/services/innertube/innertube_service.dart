@@ -1481,6 +1481,7 @@ class InnerTubeService {
   
   void dispose() {
     _httpClient.close();
+    _yt.close(); // FIX: Close YoutubeExplode instance to prevent memory leaks
   }
 }
 

@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'dart:ui'; // For ImageFilter
 import 'package:google_fonts/google_fonts.dart'; // For GoogleFonts
 import '../providers/music_provider.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../now_playing_screen.dart'; // Ensure this is the updated NowPlayingScreen
+import '../utils/color_utils.dart';
 
 class MiniPlayer extends StatelessWidget {
   final VoidCallback? onExpand;
@@ -140,8 +142,9 @@ class MiniPlayer extends StatelessWidget {
                         if (duration.inSeconds > 0) {
                           progress = (position.inSeconds / duration.inSeconds).clamp(0.0, 1.0);
                         }
-                        // Dynamic Color
-                        final dynamicColor = musicProvider.paletteGenerator?.dominantColor?.color ?? const Color(0xFFFF1744);
+                        // Dynamic Color: Synchronized via ColorUtils
+                        final palette = musicProvider.paletteGenerator;
+                        final dynamicColor = ColorUtils.getVibrantAccent(palette, const Color(0xFFFF1744));
                         
                         return SizedBox(
                           height: 2, // Thinner (2px)

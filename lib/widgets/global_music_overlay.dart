@@ -16,6 +16,8 @@ class GlobalMusicOverlay extends StatefulWidget {
 
 class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTickerProviderStateMixin {
   late AnimationController _panelController;
+  // FIX: Add HeroController for nested Navigator to prevent null check errors
+  late HeroController _heroController;
   
   // Height of the phone screen
   double get screenHeight => MediaQuery.of(context).size.height;
@@ -25,11 +27,15 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
     super.initState();
     _panelController = AnimationController(
         vsync: this,
-        duration: const Duration(milliseconds: 0), 
+        // FIX: Changed from 0ms to 300ms for smooth panel animations
+        duration: const Duration(milliseconds: 300), 
         lowerBound: 0.0,
         upperBound: 1.0,
         value: 0.0 
     );
+    
+    // FIX: Initialize HeroController for nested Navigator
+    _heroController = HeroController();
     
     // Sync with Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -72,6 +78,31 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
     _animatePanelTo(target);
   }
 
+  // Track last synced state to prevent animation loops
+  bool? _lastSyncedExpanded;
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // FIX: Moved sync logic from build() to prevent rebuild loops
+    // Use post-frame callback to avoid triggering during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final provider = Provider.of<MusicProvider>(context, listen: false);
+      final isExpanded = provider.isPlayerExpanded;
+      
+      // Only animate if state changed and not already at target
+      if (_lastSyncedExpanded != isExpanded) {
+        _lastSyncedExpanded = isExpanded;
+        if (isExpanded && _panelController.value < 0.9 && !_panelController.isAnimating) {
+          _animatePanelTo(1.0);
+        } else if (!isExpanded && _panelController.value > 0.1 && !_panelController.isAnimating) {
+          _animatePanelTo(0.0);
+        }
+      }
+    });
+  }
+
   void _animatePanelTo(double target) {
     _panelController.animateTo(
       target, 
@@ -86,12 +117,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
     final musicProvider = Provider.of<MusicProvider>(context);
     final hasTrack = musicProvider.currentTrack != null;
     
-    // Listen for external collapse requests (e.g. Back Button)
-    if (!musicProvider.isPlayerExpanded && _panelController.value > 0.1 && !_panelController.isAnimating) {
-        _animatePanelTo(0.0);
-    } else if (musicProvider.isPlayerExpanded && _panelController.value < 0.9 && !_panelController.isAnimating) {
-        _animatePanelTo(1.0);
-    }
+    // FIX: Removed animation sync logic from build() - now in didChangeDependencies()
 
     return Stack(
       children: [
@@ -150,13 +176,22 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
                         onVerticalDragEnd: _handleVerticalDragEnd,
                         child: Navigator(
                           key: musicProvider.playerNavigatorKey, // Assign Key
+                          // FIX: Add HeroController observer to prevent null check errors
+                          observers: [_heroController],
                           onGenerateRoute: (settings) {
+                            // FIX: Added null check for currentTrack
+                            final track = musicProvider.currentTrack;
+                            if (track == null) {
+                              return MaterialPageRoute(
+                                builder: (context) => const SizedBox.shrink(),
+                              );
+                            }
                             return MaterialPageRoute(
                               builder: (context) => Material( 
                                 elevation: 0,
                                 color: Colors.transparent, 
                                 child: NowPlayingScreen(
-                                  track: musicProvider.currentTrack!,
+                                  track: track,
                                   onMinimize: () => _animatePanelTo(0.0),
                                 ),
                               ),

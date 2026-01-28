@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
+import 'package:palette_generator/palette_generator.dart';
+import '../utils/color_utils.dart';
 
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
@@ -15,9 +17,9 @@ class QueueScreen extends StatelessWidget {
     final queue = musicProvider.queue;
     final currentTrack = musicProvider.currentTrack;
     
-    // palette
-    final Color domColor = musicProvider.paletteGenerator?.dominantColor?.color ?? const Color(0xFF1E1E1E);
-    final Color darkColor = musicProvider.paletteGenerator?.darkMutedColor?.color ?? Colors.black;
+    // Unified Palette Logic
+    final palette = musicProvider.paletteGenerator;
+    final bgColors = ColorUtils.getLiquidBgColors(palette);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -56,8 +58,8 @@ class QueueScreen extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  domColor.withOpacity(0.8),
-                  darkColor.withOpacity(0.9),
+                  bgColors[0],
+                  bgColors[1],
                   Colors.black,
                 ],
               ),

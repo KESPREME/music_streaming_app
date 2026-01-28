@@ -157,7 +157,7 @@ class SettingsScreen extends StatelessWidget {
                         _buildSettingTile(
                           icon: Icons.info_outline_rounded,
                           title: 'Version',
-                          subtitle: '1.0.1 (Mine Music)',
+                          subtitle: '1.0.2 (Mine Music)',
                           isDark: isDark,
                         ),
                         _buildDivider(isDark),

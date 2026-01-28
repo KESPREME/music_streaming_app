@@ -1,10 +1,11 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-// import 'package:palette_generator/palette_generator.dart'; // Removed: Handled by Provider
+import 'package:palette_generator/palette_generator.dart';
 import 'dart:math' as math;
 
 import '../models/track.dart';
@@ -18,6 +19,7 @@ import '../widgets/glass_snackbar.dart';
 
 import '../widgets/wavy_progress_bar.dart'; // Import shared widget
 import '../main.dart'; // Import rootNavigatorKey
+import '../utils/color_utils.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -41,28 +43,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         
         // Colors from Provider Palette
         final palette = musicProvider.paletteGenerator;
-        
-        List<Color> bgColors = [
-           const Color(0xFF1E1B4B), // Top default
-           const Color(0xFF111827), // Mid default
-           const Color(0xFF0A0A0A), // Bot default
-        ];
-        Color accentColor = _defaultPrimaryColor;
-
-        if (palette != null) {
-            final darkVibrant = palette.darkVibrantColor?.color;
-            final vibrant = palette.vibrantColor?.color;
-            final muted = palette.mutedColor?.color;
-            final darkMuted = palette.darkMutedColor?.color;
-            final dominant = palette.dominantColor?.color;
-
-            final topColor = darkVibrant ?? darkMuted ?? dominant ?? const Color(0xFF1E1B4B);
-            final middleColor = vibrant?.withOpacity(0.4) ?? muted?.withOpacity(0.4) ?? const Color(0xFF111827);
-            const bottomColor = Color(0xFF0A0A0A);
-
-            bgColors = [topColor, middleColor, bottomColor];
-            accentColor = vibrant ?? dominant ?? _defaultPrimaryColor;
-        }
+        final bgColors = ColorUtils.getLiquidBgColors(palette);
+        final accentColor = ColorUtils.getVibrantAccent(palette, _defaultPrimaryColor);
 
         final isPlaying = musicProvider.isPlaying;
 
@@ -131,41 +113,47 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildAmbientGlows(List<Color> bgColors, Color accentColor) {
+  Widget _buildAmbientGlows(List<Color> colors, Color accent) {
+    // Generate derived harmonized colors for the "liquid" feel
+    final highlight = ColorUtils.boostColor(accent, hueShift: 30, saturation: 0.2);
+    final secondary = ColorUtils.boostColor(colors[0], hueShift: -20, saturation: 0.1);
+
     return Stack(
       children: [
+        // Top Left Glob
         Positioned(
-          top: -100,
+          top: -150,
           left: -100,
-          child: AnimatedContainer(
-             duration: const Duration(seconds: 1),
-            width: 300,
-            height: 300,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: bgColors.first.withOpacity(0.4), 
-            ),
-          )
-          .animate(onPlay: (controller) => controller.repeat(reverse: true))
-          .scale(duration: 4.seconds, begin: const Offset(1,1), end: const Offset(1.2,1.2)),
+          child: _LiquidGlob(
+            color: colors[0].withOpacity(0.4),
+            size: 450,
+            duration: 15.seconds,
+          ),
         ),
+        
+        // Bottom Right Glob
         Positioned(
-          bottom: -100,
+          bottom: -150,
           right: -100,
-          child: AnimatedContainer(
-             duration: const Duration(seconds: 1),
-            width: 350,
-            height: 350,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: accentColor.withOpacity(0.2),
-            ),
-          )
-          .animate(onPlay: (controller) => controller.repeat(reverse: true))
-          .scale(duration: 5.seconds, begin: const Offset(1,1), end: const Offset(1.1,1.1)),
+          child: _LiquidGlob(
+            color: highlight?.withOpacity(0.2) ?? accent.withOpacity(0.2),
+            size: 500,
+            duration: 20.seconds,
+          ),
         ),
+
+        // Center Floating Glob (Subtle)
+        Center(
+          child: _LiquidGlob(
+            color: secondary?.withOpacity(0.1) ?? colors[1].withOpacity(0.1),
+            size: 600,
+            duration: 25.seconds,
+          ),
+        ),
+
+        // Deep Blur Layer
         BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+          filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
           child: Container(color: Colors.transparent),
         ),
       ],
@@ -255,11 +243,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           child: Hero(
             tag: 'albumArt_${track.id}',
             child: track.albumArtUrl.isNotEmpty
-                ? Image.network(track.albumArtUrl, fit: BoxFit.cover)
-                : Container(
-                    color: Colors.grey[900],
-                    child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white24),
-                  ),
+                ? (File(track.albumArtUrl).existsSync() 
+                    ? Image.file(File(track.albumArtUrl), fit: BoxFit.cover)
+                    : Image.network(track.albumArtUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildArtPlaceholder()))
+                : _buildArtPlaceholder(),
           ),
         ),
       ),
@@ -852,6 +839,78 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         provider.setSleepTimer(minutes);
         Navigator.pop(context);
       },
+    );
+  }
+
+  // --- UI Helpers ---
+
+  Color middleColorForPalette(PaletteGenerator palette) {
+    final darkMuted = palette.darkMutedColor?.color;
+    final muted = palette.mutedColor?.color;
+    final dominant = palette.dominantColor?.color;
+
+    return darkMuted?.withOpacity(0.5) ?? 
+           muted?.withOpacity(0.3) ?? 
+           dominant?.withOpacity(0.2) ?? 
+           const Color(0xFF020617);
+  }
+
+  Widget _buildArtPlaceholder() {
+    return Container(
+      color: Colors.grey[900],
+      child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white24),
+    );
+  }
+}
+
+/// A custom widget that renders a slow-moving, liquid-like glob.
+class _LiquidGlob extends StatefulWidget {
+  final Color color;
+  final double size;
+  final Duration duration;
+
+  const _LiquidGlob({required this.color, required this.size, required this.duration});
+
+  @override
+  State<_LiquidGlob> createState() => _LiquidGlobState();
+}
+
+class _LiquidGlobState extends State<_LiquidGlob> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration)..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.9, end: 1.2).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine)
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _animation,
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              widget.color,
+              widget.color.withOpacity(0),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

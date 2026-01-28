@@ -474,8 +474,8 @@ class NetworkService {
             }
           },
           options: options,
-          // Use chunked download for large files
-          deleteOnError: false,
+          // FIX: Delete file on error to avoid corrupt/partial files
+          deleteOnError: true,
         );
 
         // If we were resuming, append the temp file to the original
