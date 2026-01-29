@@ -371,6 +371,17 @@ class InnerTubeService {
       // If still null, return null (item not usable)
       if (videoId == null) return null;
       
+      // FIX: Filter out non-playable items (artists, playlists, albums)
+      // These IDs start with specific prefixes and can't be streamed directly
+      if (videoId.startsWith('UC') ||    // Artist/Channel
+          videoId.startsWith('VL') ||    // Playlist
+          videoId.startsWith('PL') ||    // Playlist  
+          videoId.startsWith('OLAK') ||  // Album
+          videoId.startsWith('MPREb')) { // Album browse ID
+        if (kDebugMode) print('InnerTubeService: Skipping non-playable ID: $videoId');
+        return null;
+      }
+      
       // Get flex columns for title and artist
       final flexColumns = renderer['flexColumns'] as List?;
       if (flexColumns == null || flexColumns.isEmpty) return null;
@@ -984,6 +995,91 @@ class InnerTubeService {
     }
   }
 
+  /// Get Album Tracks (for browsing from artist detail screen)
+  /// Album browseIds typically start with 'MPREb_' for music albums
+  Future<List<Track>> getAlbumTracks(String browseId) async {
+    try {
+      if (kDebugMode) print('InnerTubeService: Getting album tracks for $browseId');
+      
+      final body = jsonEncode({
+        'context': _buildContext(),
+        'browseId': browseId,
+      });
+
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: body,
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Album browse failed: ${response.statusCode}');
+      }
+      
+      final data = jsonDecode(response.body);
+      final tracks = <Track>[];
+      
+      // Album Structure: 
+      // contents -> twoColumnBrowseResultsRenderer -> secondaryContents -> 
+      //   sectionListRenderer -> contents -> musicShelfRenderer -> contents
+      // OR singleColumnBrowseResultsRenderer for some albums
+      
+      // Try twoColumn first (standard album layout)
+      final secondaryContents = data['contents']?['twoColumnBrowseResultsRenderer']
+                                ?['secondaryContents']?['sectionListRenderer']?['contents'];
+                                
+      if (secondaryContents != null) {
+         for (final section in secondaryContents) {
+           final shelf = section['musicShelfRenderer'];
+           if (shelf != null) {
+             final contents = shelf['contents'] as List?;
+             if (contents != null) {
+               for (final item in contents) {
+                  final renderer = item['musicResponsiveListItemRenderer'];
+                  if (renderer != null) {
+                    final track = _parseTrackFromRenderer(renderer);
+                    if (track != null) tracks.add(track);
+                  }
+               }
+             }
+           }
+         }
+      }
+      
+      // Fallback: Try singleColumn (for some album formats)
+      if (tracks.isEmpty) {
+        final tabs = data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
+        if (tabs != null && (tabs as List).isNotEmpty) {
+          final sections = tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'] as List?;
+          if (sections != null) {
+            for (final section in sections) {
+              final shelf = section['musicShelfRenderer'];
+              if (shelf != null) {
+                final contents = shelf['contents'] as List?;
+                if (contents != null) {
+                  for (final item in contents) {
+                    final renderer = item['musicResponsiveListItemRenderer'];
+                    if (renderer != null) {
+                      final track = _parseTrackFromRenderer(renderer);
+                      if (track != null) tracks.add(track);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      if (kDebugMode) print('InnerTubeService: Found ${tracks.length} tracks in album');
+      return tracks;
+      
+    } catch (e) {
+      if (kDebugMode) print('InnerTubeService: Album tracks error: $e');
+      return [];
+    }
+  }
+
   Track? _parseTrackFromTwoRowRenderer(Map<String, dynamic> renderer) {
     try {
       // Get video ID or Browse ID
@@ -1005,29 +1101,21 @@ class InnerTubeService {
         // Check if this is an Artist or Playlist card based on subtitle text or ID
         final firstRun = subtitleRuns[0]['text'];
         final isArtist = firstRun == 'Artist' || (videoId.startsWith('UC'));
-        final isPlaylist = firstRun == 'Playlist' || (videoId.startsWith('VL') || videoId.startsWith('PL'));
+        final isPlaylist = firstRun == 'Playlist' || (videoId.startsWith('VL') || videoId.startsWith('PL') || videoId.startsWith('OLAK'));
         
-        if (isArtist) {
-           // For Artist cards, the Title IS the Artist Name.
-           artist = title;
-           album = 'Artist'; // Use album field to store type for now?
-        } else if (isPlaylist) {
-           // For Playlists, Title is Playlist Name, Subtitle usually has Owner
-           // e.g. "Playlist • Owner"
-           if (subtitleRuns.length > 2) {
-             artist = subtitleRuns[2]['text']; // Owner
-           } else {
-             artist = 'Playlist';
-           }
-           album = 'Playlist';
-        } else {
-           // Normal Song
-           artist = subtitleRuns
-            .where((r) => r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
-            .map((r) => r['text'])
-            .take(2)
-            .join(', ');
+        // FIX: Skip non-playable items entirely - they can't be played as tracks
+        // Artists and Playlists need to be navigated to, not played directly
+        if (isArtist || isPlaylist) {
+           if (kDebugMode) print('InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
+           return null;
         }
+        
+        // Normal Song
+        artist = subtitleRuns
+          .where((r) => r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
+          .map((r) => r['text'])
+          .take(2)
+          .join(', ');
       }
       
       // Thumbnail

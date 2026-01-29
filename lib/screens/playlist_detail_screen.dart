@@ -14,6 +14,8 @@ class PlaylistDetailScreen extends StatefulWidget {
   final String playlistName;
   final String? playlistImage;
   final List<Track>? cachedTracks;
+  final bool searchAlbumByName; // New: search for album by name instead of ID
+  final String? artistNameHint; // New: artist name to help narrow album search
 
   const PlaylistDetailScreen({
     super.key,
@@ -21,6 +23,8 @@ class PlaylistDetailScreen extends StatefulWidget {
     required this.playlistName,
     this.playlistImage,
     this.cachedTracks,
+    this.searchAlbumByName = false,
+    this.artistNameHint,
   });
 
   @override
@@ -46,13 +50,43 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   Future<void> _fetchDetails() async {
     try {
       final provider = Provider.of<MusicProvider>(context, listen: false);
-      final tracks = await provider.fetchPlaylistDetails(widget.playlistId);
+      List<Track> tracks = [];
+      
+      // Handle search-by-album-name mode
+      if (widget.searchAlbumByName && widget.playlistId.isEmpty) {
+        // Search for album by name + artist hint
+        final searchQuery = widget.artistNameHint != null 
+            ? '${widget.playlistName} ${widget.artistNameHint}'
+            : widget.playlistName;
+        
+        // Use navigateToAlbum to search and get album details
+        await provider.navigateToAlbum(widget.playlistName, widget.artistNameHint ?? '');
+        
+        if (provider.currentAlbumDetails != null) {
+          tracks = provider.currentAlbumDetails!.tracks;
+        }
+      } else if (widget.playlistId.isNotEmpty) {
+        // Normal mode: fetch by ID
+        // Check if it's an album ID (starts with MPREb_ or OLAK)
+        if (widget.playlistId.startsWith('MPREb_') || widget.playlistId.startsWith('OLAK')) {
+          tracks = await provider.fetchAlbumTracks(widget.playlistId);
+        } else {
+          tracks = await provider.fetchPlaylistDetails(widget.playlistId);
+        }
+      }
       
       if (mounted) {
-        setState(() {
-          _tracks = tracks;
-          _isLoading = false;
-        });
+        if (tracks.isEmpty && widget.searchAlbumByName) {
+          setState(() {
+            _error = 'Could not find album: ${widget.playlistName}';
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _tracks = tracks;
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {

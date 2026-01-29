@@ -228,12 +228,14 @@ class MusicProvider with ChangeNotifier {
         }
       }
     } catch (e) {
-      if (_lyricsTrackId == _currentTrack!.id) {
+      // FIX: Use null-safe check to prevent crash if currentTrack becomes null
+      if (_currentTrack != null && _lyricsTrackId == _currentTrack!.id) {
         _lyricsError = "Failed to load lyrics";
         print("Lyrics Fetch Error: $e");
       }
     } finally {
-      if (_lyricsTrackId == _currentTrack!.id) {
+      // FIX: Use null-safe check to prevent crash if currentTrack becomes null
+      if (_currentTrack != null && _lyricsTrackId == _currentTrack!.id) {
         _isLoadingLyrics = false;
         notifyListeners();
       }
@@ -347,11 +349,14 @@ class MusicProvider with ChangeNotifier {
     // FIX: Store all subscriptions for proper cleanup
     // Position stream
     _audioSubscriptions.add(_audioService.onPositionChanged.listen((pos) {
+      // FIX: Skip position updates when not playing to save battery
+      if (!_isPlaying) return;
+      
       if (_position != pos) {
         _position = pos;
-        // THROTTLE: Only notify at most every 500ms to save UI
+        // THROTTLE: Only notify at most every 1000ms to save battery/UI
         final now = DateTime.now();
-        if (_lastPositionNotify == null || now.difference(_lastPositionNotify!) > const Duration(milliseconds: 500)) {
+        if (_lastPositionNotify == null || now.difference(_lastPositionNotify!) > const Duration(milliseconds: 1000)) {
              _debouncedNotify();
              _lastPositionNotify = now;
         }
@@ -393,13 +398,21 @@ class MusicProvider with ChangeNotifier {
       if (kDebugMode) print("MusicProvider: Playback state stream error: $e");
     }));
     
-    // Note: onPlaybackComplete listener REMOVED (transitions handled by onSkipToNext)
-    
-    // Listen to player state for more detailed debugging
+    // FIX: Restore track completion handling via playerStateStream
+    // This listener handles both debugging AND track completion detection
     _audioSubscriptions.add(_audioService.playerStateStream.listen((state) {
       if (kDebugMode) {
         print('MusicProvider: Player state: ${state.playing ? "PLAYING" : "PAUSED"}, '
               'Processing: ${state.processingState}');
+      }
+      
+      // FIX: Detect track completion and advance to next track
+      // ProcessingState.completed means the current track finished playing
+      if (state.processingState == ProcessingState.completed && 
+          _currentTrack != null && 
+          !_isStopping) {
+        if (kDebugMode) print('MusicProvider: Track completed naturally, calling _onTrackComplete');
+        _onTrackComplete();
       }
     }, onError: (e) {
       if (kDebugMode) print("MusicProvider: Player state stream error: $e");
@@ -693,6 +706,19 @@ class MusicProvider with ChangeNotifier {
     
     _clearError();
     
+    // FIX: Early validation for non-playable track IDs
+    // Playlist/Album/Channel IDs cannot be streamed - they need to be browsed first
+    final trackId = track.id;
+    if (trackId.startsWith('UC') ||     // Artist/Channel
+        trackId.startsWith('VL') ||     // Playlist
+        trackId.startsWith('PL') ||     // Playlist
+        trackId.startsWith('OLAK') ||   // Album
+        trackId.startsWith('MPREb')) {  // Album browse ID
+      if (kDebugMode) print('MusicProvider: Skipping non-playable track: ${track.trackName} (ID: $trackId)');
+      _errorMessage = 'Cannot play ${track.trackName} - it is a ${trackId.startsWith("UC") ? "channel" : "playlist/album"}, not a song.';
+      notifyListeners();
+      return; // Don't try to play, don't skip - just return early
+    }    
     try {
       // Stop current playback if any
       if (_isPlaying) {
@@ -2036,6 +2062,11 @@ class MusicProvider with ChangeNotifier {
 
   Future<List<Track>> fetchPlaylistDetails(String browseId) async {
     return _innerTubeService.getPlaylistDetails(browseId);
+  }
+
+  /// Fetch album tracks for displaying album contents
+  Future<List<Track>> fetchAlbumTracks(String albumBrowseId) async {
+    return _innerTubeService.getAlbumTracks(albumBrowseId);
   }
 
   Future<void> fetchGenreTracks(String genre, {bool forceRefresh = false}) async { 

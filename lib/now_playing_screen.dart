@@ -598,50 +598,45 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                    _buildOptionTile(
                      icon: Icons.album_rounded, 
                      title: 'Go to Album', 
-                     onTap: () async {
-                       Navigator.pop(context); // Close sheet (Local)
+                     onTap: () {
+                       Navigator.pop(context); // Close sheet
                        
                        // Minimize Player First
-                       if (widget.onMinimize != null) widget.onMinimize!(); // Trigger collapse
+                       if (widget.onMinimize != null) widget.onMinimize!();
 
-                       await musicProvider.navigateToAlbum(track.albumName, track.artistName);
-                       if (context.mounted) {
-                          if (musicProvider.currentAlbumDetails != null) {
-                             // Use Root Navigator to push screen over Main App
-                             rootNavigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
-                               playlistId: musicProvider.currentAlbumDetails!.id,
-                               playlistName: musicProvider.currentAlbumDetails!.name,
-                               playlistImage: musicProvider.currentAlbumDetails!.imageUrl,
-                               cachedTracks: musicProvider.currentAlbumDetails!.tracks,
-                             )));
-                          } else {
-                             showGlassSnackBar(context, 'Could not load album: ${track.albumName}');
-                          }
-                       }
+                       // Navigate immediately - PlaylistDetailScreen will fetch data
+                       // FIX: No await, single tap navigation
+                       final albumName = track.albumName.isNotEmpty ? track.albumName : track.trackName;
+                       rootNavigatorKey.currentState?.push(MaterialPageRoute(
+                         builder: (_) => PlaylistDetailScreen(
+                           playlistId: '', // Will search by name
+                           playlistName: albumName,
+                           playlistImage: track.albumArtUrl,
+                           searchAlbumByName: true, // New flag to indicate search-by-name mode
+                           artistNameHint: track.artistName,
+                         ),
+                       ));
                      }
                    ),
                     _buildOptionTile(
                      icon: Icons.person_rounded, 
                      title: 'Go to Artist', 
-                     onTap: () async {
-                       Navigator.pop(context); // Close sheet (Local)
+                     onTap: () {
+                       Navigator.pop(context); // Close sheet
                        
                        // Minimize Player First
                        if (widget.onMinimize != null) widget.onMinimize!();
 
-                       await musicProvider.navigateToArtist(track.artistName);
-                       if (context.mounted) {
-                          if (musicProvider.currentArtistDetails != null) {
-                             // Use Root Navigator
-                             rootNavigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => ArtistDetailScreen(
-                               artistId: musicProvider.currentArtistDetails!.id,
-                               artistName: musicProvider.currentArtistDetails!.name,
-                               artistImage: musicProvider.currentArtistDetails!.imageUrl,
-                             )));
-                          } else {
-                             showGlassSnackBar(context, 'Could not load artist: ${track.artistName}');
-                          }
-                       }
+                       // Navigate immediately - ArtistDetailScreen will fetch data
+                       // FIX: No await, single tap navigation
+                       rootNavigatorKey.currentState?.push(MaterialPageRoute(
+                         builder: (_) => ArtistDetailScreen(
+                           artistId: '', // Will search by name
+                           artistName: track.artistName,
+                           artistImage: track.albumArtUrl,
+                           searchByName: true, // New flag to indicate search mode
+                         ),
+                       ));
                      }
                    ),
                    _buildOptionTile(

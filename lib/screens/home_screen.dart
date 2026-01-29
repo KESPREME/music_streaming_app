@@ -206,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                 child: InkWell(
-                  onTap: () => musicProvider.playTrack(track),
+                  onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.recommendedTracks),
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     padding: const EdgeInsets.all(10),

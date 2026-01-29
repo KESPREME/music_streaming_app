@@ -13,12 +13,14 @@ class ArtistDetailScreen extends StatefulWidget {
   final String artistId;
   final String artistName;
   final String? artistImage;
+  final bool searchByName; // New: search for artist by name instead of using ID
 
   const ArtistDetailScreen({
     super.key,
     required this.artistId,
     required this.artistName,
     this.artistImage,
+    this.searchByName = false,
   });
 
   @override
@@ -31,6 +33,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   List<dynamic> _albums = []; // Using dynamic/Album
   List<dynamic> _singles = [];
   String? _error;
+  String? _resolvedArtistId; // For search-by-name mode
 
   @override
   void initState() {
@@ -41,7 +44,30 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   Future<void> _fetchDetails() async {
     try {
       final provider = Provider.of<MusicProvider>(context, listen: false);
-      final details = await provider.fetchArtistDetails(widget.artistId);
+      
+      String artistIdToFetch = widget.artistId;
+      
+      // If search-by-name mode and no valid ID, search for artist first
+      if (widget.searchByName && widget.artistId.isEmpty) {
+        // Use artist search to find the browse ID
+        await provider.fetchArtistTracks(widget.artistName);
+        final results = provider.artistTracks;
+        if (results.isNotEmpty) {
+          // First result should be the best match
+          artistIdToFetch = results.first.id;
+          _resolvedArtistId = artistIdToFetch;
+        }
+      }
+      
+      if (artistIdToFetch.isEmpty) {
+        setState(() {
+          _error = 'Could not find artist: ${widget.artistName}';
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      final details = await provider.fetchArtistDetails(artistIdToFetch);
       
       if (mounted) {
         setState(() {
@@ -164,7 +190,13 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
              final id = item.id;
              
              return GestureDetector(
-               onTap: () {
+               onTap: () async {
+                 // Fetch album tracks before navigating
+                 final provider = Provider.of<MusicProvider>(context, listen: false);
+                 final tracks = await provider.fetchAlbumTracks(id);
+                 
+                 if (!context.mounted) return;
+                 
                  Navigator.push(
                    context,
                    MaterialPageRoute(
@@ -172,6 +204,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                        playlistId: id,
                        playlistName: name,
                        playlistImage: imageUrl,
+                       cachedTracks: tracks, // Pass fetched album tracks
                      ),
                    ),
                  );
