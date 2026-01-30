@@ -594,7 +594,9 @@ class MusicProvider with ChangeNotifier {
        if (kDebugMode) print('MusicProvider: Looping context to start.');
        _playTrackInternal(list[0], setContext: false, clearQueue: false);
     } else {
-       // Smart Autoplay / Loop for Downloaded Music
+       // FIX: Smart Autoplay - Loop back to start for ANY playlist context
+       // This ensures artist tracks, album tracks, search results all loop
+       // instead of abruptly stopping (which disrupts UI/UX)
        bool isListNotEmpty = list.isNotEmpty;
        bool isFirstLocal = isListNotEmpty && list.first.source == 'local';
        bool isFirstDownloaded = isListNotEmpty && _downloadedTracksMetadata.containsKey(list.first.id);
@@ -603,6 +605,10 @@ class MusicProvider with ChangeNotifier {
        if (isOfflineContext) {
            if (kDebugMode) print('MusicProvider: End of Downloaded List -> Looping to start (Smart Autoplay)');
            _playOfflineTrackInternal(list[0], setContext: false, clearQueue: false);
+       } else if (isListNotEmpty && _currentPlayingTracks != null && _currentPlayingTracks!.length > 1) {
+           // FIX: For online playlists (artist, album, etc.), loop to start for seamless experience
+           if (kDebugMode) print('MusicProvider: End of Online Playlist -> Looping to start (Smart Autoplay)');
+           _playTrackInternal(list[0], setContext: false, clearQueue: false);
        } else {
            if (kDebugMode) print('MusicProvider: End of context, Repeat off, stopping.');
            stopTrack();
