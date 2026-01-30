@@ -12,23 +12,10 @@ import 'dart:math';
 
 
 class AudioService {
-  // Initialize player with aggressive buffer settings directly
-  final AudioPlayer _audioPlayer = AudioPlayer(
-    audioLoadConfiguration: const AudioLoadConfiguration(
-       androidLoadControl: AndroidLoadControl(
-         minBufferDuration: Duration(milliseconds: 1000), // 1s (was 2s)
-         maxBufferDuration: Duration(milliseconds: 15000), // 15s
-         bufferForPlaybackDuration: Duration(milliseconds: 200), // 0.2s (was 0.5s)
-         bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 800),
-         prioritizeTimeOverSizeThresholds: true,
-         backBufferDuration: Duration(seconds: 30),
-       ),
-       darwinLoadControl: DarwinLoadControl(
-         preferredForwardBufferDuration: Duration(seconds: 15),
-         automaticallyWaitsToMinimizeStalling: false,
-       ),
-    ),
-  );
+  // FIX: Create equalizer first, then pass to audio pipeline
+  late final AndroidEqualizer _equalizer;
+  late final AndroidLoudnessEnhancer _loudnessEnhancer;
+  late final AudioPlayer _audioPlayer;
   
   final NetworkService _networkService = NetworkService();
   bool _isInitialized = false;
@@ -37,6 +24,10 @@ class AudioService {
   bool _isLocalFile = false;
   bool _hasPrevious = false; // State to persist window
   bool _hasNext = false;     // State to persist window
+  
+  // Public getters for EQ access
+  AndroidEqualizer get equalizer => _equalizer;
+  AndroidLoudnessEnhancer get loudnessEnhancer => _loudnessEnhancer;
   
   // Subscription management for proper cleanup
   final List<StreamSubscription> _subscriptions = [];
@@ -61,6 +52,31 @@ class AudioService {
   Stream<String> get onPlaybackError => _onPlaybackErrorController.stream;
 
   AudioService() {
+    // Initialize audio effects
+    _equalizer = AndroidEqualizer();
+    _loudnessEnhancer = AndroidLoudnessEnhancer();
+    
+    // Create audio player with effects pipeline
+    _audioPlayer = AudioPlayer(
+      audioPipeline: AudioPipeline(
+        androidAudioEffects: [_equalizer, _loudnessEnhancer],
+      ),
+      audioLoadConfiguration: const AudioLoadConfiguration(
+         androidLoadControl: AndroidLoadControl(
+           minBufferDuration: Duration(milliseconds: 1000),
+           maxBufferDuration: Duration(milliseconds: 15000),
+           bufferForPlaybackDuration: Duration(milliseconds: 200),
+           bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 800),
+           prioritizeTimeOverSizeThresholds: true,
+           backBufferDuration: Duration(seconds: 30),
+         ),
+         darwinLoadControl: DarwinLoadControl(
+           preferredForwardBufferDuration: Duration(seconds: 15),
+           automaticallyWaitsToMinimizeStalling: false,
+         ),
+      ),
+    );
+    
     _initAudioSession();
     _monitorIndexChanges();
   }

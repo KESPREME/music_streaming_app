@@ -115,6 +115,17 @@ class MusicProvider with ChangeNotifier {
     }
   }
 
+  // Mini player visibility (for bottom sheets)
+  bool _hideMiniPlayer = false;
+  bool get hideMiniPlayer => _hideMiniPlayer;
+  
+  void setHideMiniPlayer(bool hide) {
+    if (_hideMiniPlayer != hide) {
+      _hideMiniPlayer = hide;
+      notifyListeners();
+    }
+  }
+
   bool _userManuallySetOffline = false;
   bool _isLowDataMode = false;
   bool _isAutoBitrate = true; // Default to Auto
@@ -178,6 +189,9 @@ class MusicProvider with ChangeNotifier {
   bool get isSearchingDevices => _isSearchingDevices;
   List<CastDevice> get castDevices => _castDevices;
   CastService get castService => _castService;
+  
+  // Audio Service getter (for equalizer access)
+  AudioService get audioService => _audioService;
   
   // Download Status Check (sync for UI)
   bool isTrackDownloadedSync(String trackId) => _downloadedTracksMetadata.containsKey(trackId);
@@ -1346,13 +1360,15 @@ class MusicProvider with ChangeNotifier {
       final artistInfo = searchResults.first;
       final detailsMap = await _innerTubeService.getArtistDetails(artistInfo.id);
       
+      // FIX: For artist search results, the artist's name is in trackName, not artistName
       final artist = Artist(
         id: artistInfo.id,
-        name: artistInfo.artistName.isNotEmpty ? artistInfo.artistName : artistName,
+        name: artistInfo.trackName.isNotEmpty ? artistInfo.trackName : artistName,
         imageUrl: artistInfo.albumArtUrl,
         topTracks: (detailsMap['tracks'] as List?)?.cast<Track>(),
         topAlbums: (detailsMap['albums'] as List?)?.cast<Album>(),
       );
+
       
       // 3. Cache Result
       _artistCache[artistName] = artist;

@@ -124,12 +124,16 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-       if (mounted && _searchController.text != _searchQuery) {
+       if (mounted) {
+        final newQuery = _searchController.text;
+        // FIX: Always trigger search if text is not empty
+        // Use forceRefresh when searching same query again (user wants fresh results)
+        final bool isSameQuery = newQuery == _searchQuery;
         setState(() {
-          _searchQuery = _searchController.text;
+          _searchQuery = newQuery;
         });
         if (_searchQuery.isNotEmpty) {
-           _performSearch(_searchQuery);
+           _performSearch(_searchQuery, forceRefresh: isSameQuery);
         } else {
           Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
         }
@@ -137,11 +141,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     });
   }
 
-  void _performSearch(String query) {
+  void _performSearch(String query, {bool forceRefresh = false}) {
     if (query.trim().isEmpty) return;
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     if (_tabController.index == 0) {
-        musicProvider.searchTracks(query);
+        musicProvider.searchTracks(query, forceRefresh: forceRefresh);
     } else if (_tabController.index == 1) {
         musicProvider.fetchArtistTracks(query);
     } else if (_tabController.index == 2) {

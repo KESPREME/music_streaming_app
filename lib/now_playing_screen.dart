@@ -16,10 +16,12 @@ import '../screens/artist_detail_screen.dart'; // Unified Screen
 import '../screens/queue_screen.dart';
 import '../screens/lyrics_screen.dart';
 import '../widgets/glass_snackbar.dart';
+import '../widgets/artist_picker_sheet.dart'; // Multi-artist selection
 
 import '../widgets/wavy_progress_bar.dart'; // Import shared widget
 import '../main.dart'; // Import rootNavigatorKey
 import '../utils/color_utils.dart';
+import '../screens/equalizer_screen.dart'; // Equalizer
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -278,15 +280,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    track.artistName,
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
+                  // FIX: Make artist name tappable to navigate to artist
+                  GestureDetector(
+                    onTap: () async {
+                      if (track.artistName.isNotEmpty && track.artistName != 'Unknown Artist') {
+                        await ArtistPickerSheet.showIfNeeded(context, provider, track.artistName);
+                      }
+                    },
+                    child: Text(
+                      track.artistName,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Colors.white.withOpacity(0.3),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -621,22 +633,38 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     _buildOptionTile(
                      icon: Icons.person_rounded, 
                      title: 'Go to Artist', 
-                     onTap: () {
+                     onTap: () async {
                        Navigator.pop(context); // Close sheet
                        
                        // Minimize Player First
                        if (widget.onMinimize != null) widget.onMinimize!();
 
-                       // Navigate immediately - ArtistDetailScreen will fetch data
-                       // FIX: No await, single tap navigation
-                       rootNavigatorKey.currentState?.push(MaterialPageRoute(
-                         builder: (_) => ArtistDetailScreen(
-                           artistId: '', // Will search by name
-                           artistName: track.artistName,
-                           artistImage: track.albumArtUrl,
-                           searchByName: true, // New flag to indicate search mode
-                         ),
-                       ));
+                       // FIX: Use the static method which handles mini player hiding
+                       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+                       if (rootNavigatorKey.currentContext != null) {
+                         await ArtistPickerSheet.showIfNeeded(
+                           rootNavigatorKey.currentContext!,
+                           musicProvider,
+                           track.artistName,
+                         );
+                       }
+                     }
+                   ),
+                   _buildOptionTile(
+                     icon: Icons.graphic_eq_rounded, 
+                     title: 'Equalizer', 
+                     onTap: () async {
+                       Navigator.pop(context); // Close the menu sheet
+                       
+                       // Small delay to let sheet close, then navigate
+                       await Future.delayed(const Duration(milliseconds: 100));
+                       
+                       // FIX: Push to local navigator (not root) for proper back handling
+                       if (context.mounted) {
+                         Navigator.of(context, rootNavigator: false).push(
+                           MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                         );
+                       }
                      }
                    ),
                    _buildOptionTile(

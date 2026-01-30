@@ -9,6 +9,7 @@ import '../screens/playlist_detail_screen.dart'; // Unified for Album View
 import '../screens/artist_detail_screen.dart'; // Unified
 import 'playlist_selection_dialog.dart';
 import 'glass_snackbar.dart';
+import 'artist_picker_sheet.dart'; // Multi-artist selection
 
 class GlassOptionsSheet extends StatelessWidget {
   final Track track;
@@ -222,7 +223,8 @@ class GlassOptionsSheet extends StatelessWidget {
                                 label: 'Go to Artist',
                                 onTap: () async {
                                   Navigator.pop(context);
-                                  await _navigateToArtist(context, provider, track.artistName);
+                                  // FIX: Use ArtistPickerSheet for multi-artist tracks
+                                  await ArtistPickerSheet.showIfNeeded(context, provider, track.artistName);
                                 },
                                 isDark: isDark,
                               ),

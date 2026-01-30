@@ -131,7 +131,10 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
             builder: (context, child) {
               final value = _panelController.value;
               final double topOffset = lerpDouble(screenHeight, 0, value)!;
-              final double miniPlayerOpacity = (1.0 - (value * 3)).clamp(0.0, 1.0); 
+              // FIX: Also hide mini player when bottom sheet flag is set
+              final double miniPlayerOpacity = musicProvider.hideMiniPlayer 
+                  ? 0.0 
+                  : (1.0 - (value * 3)).clamp(0.0, 1.0); 
 
               return Stack(
                 children: [

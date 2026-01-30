@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +8,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 
 import 'providers/music_provider.dart';
 import 'services/auth_service.dart';
+import 'services/equalizer_service.dart'; // Equalizer
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/social_screen.dart';
@@ -40,6 +42,9 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // FIX: Request high refresh rate for smoother 120Hz animations
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  
   try {
     await Firebase.initializeApp();
     
@@ -49,6 +54,9 @@ void main() async {
       androidNotificationChannelName: 'Music Playback',
       androidNotificationOngoing: true,
     );
+    
+    // Initialize Equalizer Service
+    await EqualizerService().initialize();
   } catch (e) {
     print("Initialization Error: $e");
   }
