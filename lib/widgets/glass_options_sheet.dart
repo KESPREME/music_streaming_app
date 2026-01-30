@@ -168,6 +168,53 @@ class GlassOptionsSheet extends StatelessWidget {
                               isDark: isDark,
                             ),
                             
+                            // Download Option with status indicator
+                            Builder(
+                              builder: (context) {
+                                final isDownloaded = provider.isTrackDownloadedSync(track.id);
+                                final isDownloading = provider.isDownloading[track.id] == true;
+                                final isQueued = provider.downloadQueue.any((t) => t.id == track.id);
+                                final progress = provider.downloadProgress[track.id] ?? 0.0;
+                                
+                                String label = 'Download';
+                                IconData icon = Icons.download_rounded;
+                                Color? color;
+                                
+                                if (isDownloaded) {
+                                  label = 'Downloaded';
+                                  icon = Icons.download_done_rounded;
+                                  color = Colors.green;
+                                } else if (isDownloading) {
+                                  label = 'Downloading... ${(progress * 100).toInt()}%';
+                                  icon = Icons.downloading_rounded;
+                                  color = const Color(0xFFFF1744);
+                                } else if (isQueued) {
+                                  label = 'Queued';
+                                  icon = Icons.hourglass_top_rounded;
+                                }
+                                
+                                return _buildOption(
+                                  context,
+                                  icon: icon,
+                                  label: label,
+                                  color: color,
+                                  onTap: isDownloaded || isDownloading || isQueued ? () {
+                                    Navigator.pop(context);
+                                    if (isDownloaded) {
+                                      showGlassSnackBar(context, '${track.trackName} already downloaded');
+                                    } else {
+                                      showGlassSnackBar(context, 'Download in progress');
+                                    }
+                                  } : () async {
+                                    Navigator.pop(context);
+                                    showGlassSnackBar(context, 'Starting download: ${track.trackName}');
+                                    await provider.downloadTrack(track);
+                                  },
+                                  isDark: isDark,
+                                );
+                              },
+                            ),
+                            
                             if (track.artistName.isNotEmpty && track.artistName != 'Unknown Artist')
                               _buildOption(
                                 context,

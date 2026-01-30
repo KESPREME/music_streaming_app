@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // For HapticFeedback
 
 class LiquidCard extends StatefulWidget {
   final String imageUrl;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress; // NEW: Long-press callback for options
   final double width;
   final double height;
   final bool isCircle; // For artists or specific circles
@@ -15,6 +17,7 @@ class LiquidCard extends StatefulWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.onLongPress, // Optional
     this.width = 160,
     this.height = 160,
     this.isCircle = false,
@@ -57,6 +60,11 @@ class _LiquidCardState extends State<LiquidCard> with SingleTickerProviderStateM
          widget.onTap();
       },
       onTapCancel: () => _controller.reverse(),
+      onLongPress: widget.onLongPress != null ? () {
+        HapticFeedback.mediumImpact(); // Premium haptic feedback
+        _controller.reverse();
+        widget.onLongPress!();
+      } : null,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
         builder: (context, child) {

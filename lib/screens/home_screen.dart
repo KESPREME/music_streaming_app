@@ -1,10 +1,12 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // For HapticFeedback
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../widgets/liquid_card.dart'; 
+import '../widgets/glass_options_sheet.dart'; // For long-press options
 import '../home_tab_content.dart';
 import 'trending_now_screen.dart'; 
 import 'all_genres_screen.dart';   
@@ -191,6 +193,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       width: 140, 
                       height: 140,
                       onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.recentlyPlayed),
+                      onLongPress: () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (_) => GlassOptionsSheet(
+                            track: item,
+                            isRecentlyPlayedContext: true,
+                          ),
+                        );
+                      },
                     );
                  },
                ),
@@ -207,6 +220,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                 child: InkWell(
                   onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.recommendedTracks),
+                  onLongPress: () {
+                    HapticFeedback.mediumImpact(); // Premium haptic feedback
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: Colors.transparent,
+                      isScrollControlled: true,
+                      builder: (_) => GlassOptionsSheet(track: track),
+                    );
+                  },
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     padding: const EdgeInsets.all(10),

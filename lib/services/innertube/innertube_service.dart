@@ -244,11 +244,9 @@ class InnerTubeService {
       if (response.statusCode != 200) throw Exception('Search failed: ${response.statusCode}');
       final data = jsonDecode(response.body);
       
-      // Parse Logic (Similar to _parseSearchResults but generic)
-      // Note: Layout might differ for artists/playlists (TwoRowItemRenderer often)
-      // I'll reuse _parseSearchResults or create a unified one.
-      // Actually standard _parseSearchResults handles ResponsiveList and TwoRow.
-      return _parseSearchResults(data, limit);
+      // Parse Logic - pass allowBrowseIds: true for artist/playlist search
+      // This allows UC/VL/PL browse IDs to be returned for navigation purposes
+      return _parseSearchResults(data, limit, allowBrowseIds: true);
     } catch (e) {
       if (kDebugMode) print('InnerTubeService: Search error: $e');
       rethrow;
@@ -268,8 +266,8 @@ class InnerTubeService {
   }
   
   /// Parse search results into Track objects
-  /// Parse search results into Track objects
-  List<Track> _parseSearchResults(Map<String, dynamic> data, int limit) {
+  /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
+  List<Track> _parseSearchResults(Map<String, dynamic> data, int limit, {bool allowBrowseIds = false}) {
     final tracks = <Track>[];
     
     try {
@@ -289,12 +287,12 @@ class InnerTubeService {
             
             // Try responsive list item
             if (item['musicResponsiveListItemRenderer'] != null) {
-               final track = _parseTrackFromRenderer(item['musicResponsiveListItemRenderer']);
+               final track = _parseTrackFromRenderer(item['musicResponsiveListItemRenderer'], allowBrowseIds: allowBrowseIds);
                if (track != null) tracks.add(track);
             }
             // Try multi-row item (sometimes used)
             else if (item['musicTwoRowItemRenderer'] != null) {
-               final track = _parseTrackFromTwoRowRenderer(item['musicTwoRowItemRenderer']);
+               final track = _parseTrackFromTwoRowRenderer(item['musicTwoRowItemRenderer'], allowBrowseIds: allowBrowseIds);
                if (track != null) tracks.add(track);
             }
           }
@@ -351,7 +349,8 @@ class InnerTubeService {
   }
   
   /// Parse a track from MusicResponsiveListItemRenderer
-  Track? _parseTrackFromRenderer(Map<String, dynamic> renderer) {
+  /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
+  Track? _parseTrackFromRenderer(Map<String, dynamic> renderer, {bool allowBrowseIds = false}) {
     try {
       // Get video ID or Browse ID (for playlists/artists)
       String? videoId = renderer['playlistItemData']?['videoId'];
@@ -371,13 +370,14 @@ class InnerTubeService {
       // If still null, return null (item not usable)
       if (videoId == null) return null;
       
-      // FIX: Filter out non-playable items (artists, playlists, albums)
+      // Filter out non-playable items (artists, playlists, albums) when NOT in browse mode
       // These IDs start with specific prefixes and can't be streamed directly
-      if (videoId.startsWith('UC') ||    // Artist/Channel
+      if (!allowBrowseIds && (
+          videoId.startsWith('UC') ||    // Artist/Channel
           videoId.startsWith('VL') ||    // Playlist
           videoId.startsWith('PL') ||    // Playlist  
           videoId.startsWith('OLAK') ||  // Album
-          videoId.startsWith('MPREb')) { // Album browse ID
+          videoId.startsWith('MPREb'))) { // Album browse ID
         if (kDebugMode) print('InnerTubeService: Skipping non-playable ID: $videoId');
         return null;
       }
@@ -1080,7 +1080,8 @@ class InnerTubeService {
     }
   }
 
-  Track? _parseTrackFromTwoRowRenderer(Map<String, dynamic> renderer) {
+  /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
+  Track? _parseTrackFromTwoRowRenderer(Map<String, dynamic> renderer, {bool allowBrowseIds = false}) {
     try {
       // Get video ID or Browse ID
       final navEndpoint = renderer['navigationEndpoint'];
@@ -1103,14 +1104,14 @@ class InnerTubeService {
         final isArtist = firstRun == 'Artist' || (videoId.startsWith('UC'));
         final isPlaylist = firstRun == 'Playlist' || (videoId.startsWith('VL') || videoId.startsWith('PL') || videoId.startsWith('OLAK'));
         
-        // FIX: Skip non-playable items entirely - they can't be played as tracks
+        // Skip non-playable items ONLY when NOT in browse mode
         // Artists and Playlists need to be navigated to, not played directly
-        if (isArtist || isPlaylist) {
+        if (!allowBrowseIds && (isArtist || isPlaylist)) {
            if (kDebugMode) print('InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
            return null;
         }
         
-        // Normal Song
+        // Normal Song or browse mode
         artist = subtitleRuns
           .where((r) => r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
           .map((r) => r['text'])

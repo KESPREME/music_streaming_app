@@ -178,6 +178,9 @@ class MusicProvider with ChangeNotifier {
   bool get isSearchingDevices => _isSearchingDevices;
   List<CastDevice> get castDevices => _castDevices;
   CastService get castService => _castService;
+  
+  // Download Status Check (sync for UI)
+  bool isTrackDownloadedSync(String trackId) => _downloadedTracksMetadata.containsKey(trackId);
 
   // Audio State // YouTube Music InnerTube API
   final LyricsService _lyricsService = LyricsService(); // Multi-provider lyrics service
@@ -1762,6 +1765,25 @@ class MusicProvider with ChangeNotifier {
   void _addToDownloadQueue(Track track) { if (_isDownloading[track.id]==true || _downloadQueue.any((t)=>t.id==track.id) || _downloadedTracksMetadata.containsKey(track.id)) return; _downloadQueue.add(track); _errorMessage = '${track.trackName} queued.'; notifyListeners(); _processDownloadQueue(); }
   Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= 6) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
   void pauseAllDownloads({bool clearQueue = false}) { final ids = List<String>.from(_downloadCancelTokens.keys); int c = 0; for (final id in ids) { _downloadCancelTokens[id]?.cancel("Downloads paused"); c++; } if (c > 0) print("Paused $c downloads."); if (clearQueue && _downloadQueue.isNotEmpty) { _downloadQueue.clear(); notifyListeners(); } }
+  
+  /// Batch download multiple tracks - adds to queue efficiently
+  Future<void> downloadTracks(List<Track> tracks, {bool skipDownloaded = true}) async {
+    int added = 0;
+    for (final track in tracks) {
+      if (skipDownloaded && await isTrackDownloaded(track.id)) continue;
+      if (_isDownloading[track.id] == true) continue;
+      if (_downloadQueue.any((t) => t.id == track.id)) continue;
+      if (track.source == 'local') continue;
+      _downloadQueue.add(track);
+      added++;
+    }
+    if (added > 0) {
+      _errorMessage = 'Queued $added tracks for download';
+      notifyListeners();
+      // Start processing queue (will respect concurrent limit)
+      _processDownloadQueue();
+    }
+  }
 
   // --- Spotify Integration ---
   Future<void> importSpotifyPlaylist(String spotifyPlaylistId, String playlistName, String imageUrl) async { if (_isOfflineMode) { _errorMessage = 'Cannot import offline.'; notifyListeners(); return; } _errorMessage = 'Importing Spotify playlist...'; notifyListeners(); try { final playlist = await _spotifyService.getPlaylistWithTracks(spotifyPlaylistId, playlistName, imageUrl); await importPlaylist(playlist); _errorMessage = "Imported '${playlist.name}'."; } catch (e) { _errorMessage = 'Failed to import Spotify: ${e.toString()}'; _addToRetryQueue(_RetryOperation('Import Spotify: $playlistName', () => importSpotifyPlaylist(spotifyPlaylistId, playlistName, imageUrl))); } finally { notifyListeners(); } }
