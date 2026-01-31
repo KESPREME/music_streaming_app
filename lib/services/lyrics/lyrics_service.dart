@@ -1,9 +1,10 @@
 // lib/services/lyrics/lyrics_service.dart
+// Enhanced lyrics service with disk caching, deduplication, and prefetching
 
-// Supports: LrcLib, YouTube Transcripts
-
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'lrclib_provider.dart';
+import 'lyrics_cache_db.dart';
 import '../innertube/innertube_service.dart';
 import '../../models/lyrics_entry.dart';
 import '../../utils/lyrics_utils.dart';
@@ -15,17 +16,34 @@ enum LyricsProvider {
 }
 
 /// Main lyrics service that orchestrates multiple providers
-
+/// with two-tier caching (memory + disk), deduplication, and prefetching
 class LyricsService {
   final LrcLibProvider _lrcLibProvider = LrcLibProvider();
   final InnerTubeService _innerTubeService = InnerTubeService();
+  final LyricsCacheDb _diskCache = LyricsCacheDb();
   
-  // LRU-style cache for lyrics
-  final Map<String, CachedLyrics> _cache = {};
-  static const int _maxCacheSize = 50;
+  // Memory cache (session-based, no expiry during session)
+  final Map<String, LyricsResult> _memCache = {};
+  static const int _maxMemCacheSize = 100;
   
-  /// Get lyrics with fallback through multiple providers
-  /// Returns raw lyrics string (LRC format for synced, plain text otherwise)
+  // In-flight request deduplication
+  final Map<String, Future<LyricsResult?>> _inFlightRequests = {};
+  
+  // Prefetch queue
+  final List<_PrefetchTask> _prefetchQueue = [];
+  bool _isPrefetching = false;
+  
+  bool _isInitialized = false;
+  
+  /// Initialize the service (call once on app start)
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+    await _diskCache.initialize();
+    _isInitialized = true;
+    if (kDebugMode) print('LyricsService: Initialized with disk cache');
+  }
+  
+  /// Get lyrics with two-tier cache and deduplication
   Future<LyricsResult?> getLyrics({
     required String title,
     required String artist,
@@ -36,21 +54,58 @@ class LyricsService {
       LyricsProvider.youtubeTranscript,
     ],
   }) async {
-    // Check cache first
     final cacheKey = _buildCacheKey(title, artist);
-    if (_cache.containsKey(cacheKey)) {
-      final cached = _cache[cacheKey]!;
-      if (!cached.isExpired) {
-        if (kDebugMode) {
-          print('LyricsService: Cache hit for "$title"');
-        }
-        return cached.result;
-      } else {
-        _cache.remove(cacheKey);
-      }
+    
+    // 1. Check memory cache (fastest)
+    if (_memCache.containsKey(cacheKey)) {
+      if (kDebugMode) print('LyricsService: Memory cache hit for "$title"');
+      return _memCache[cacheKey];
     }
     
-    // Try each provider in order
+    // 2. Check disk cache
+    final diskEntry = await _diskCache.get(cacheKey);
+    if (diskEntry != null) {
+      if (kDebugMode) print('LyricsService: Disk cache hit for "$title"');
+      final result = LyricsResult(
+        lyrics: diskEntry.lyrics,
+        isSynced: diskEntry.isSynced,
+        provider: LyricsProvider.values.firstWhere(
+          (p) => p.name == diskEntry.provider,
+          orElse: () => LyricsProvider.lrclib,
+        ),
+      );
+      _addToMemCache(cacheKey, result);
+      return result;
+    }
+    
+    // 3. Deduplicate in-flight requests
+    if (_inFlightRequests.containsKey(cacheKey)) {
+      if (kDebugMode) print('LyricsService: Deduplicating request for "$title"');
+      return _inFlightRequests[cacheKey];
+    }
+    
+    // 4. Fetch from providers
+    _inFlightRequests[cacheKey] = _fetchFromProviders(
+      cacheKey, title, artist, durationMs, videoId, providerOrder,
+    );
+    
+    try {
+      final result = await _inFlightRequests[cacheKey];
+      return result;
+    } finally {
+      _inFlightRequests.remove(cacheKey);
+    }
+  }
+  
+  /// Internal fetch with fallback chain
+  Future<LyricsResult?> _fetchFromProviders(
+    String cacheKey,
+    String title,
+    String artist,
+    int? durationMs,
+    String? videoId,
+    List<LyricsProvider> providerOrder,
+  ) async {
     for (final provider in providerOrder) {
       try {
         LyricsResult? result;
@@ -71,8 +126,11 @@ class LyricsService {
             print('LyricsService: Found lyrics via ${provider.name} for "$title"');
           }
           
-          // Cache the result
-          _addToCache(cacheKey, result);
+          // Cache in memory
+          _addToMemCache(cacheKey, result);
+          
+          // Cache to disk (fire and forget)
+          _diskCache.put(cacheKey, result.lyrics, result.isSynced, provider.name);
           
           return result;
         }
@@ -80,13 +138,10 @@ class LyricsService {
         if (kDebugMode) {
           print('LyricsService: ${provider.name} failed: $e');
         }
-        // Continue to next provider
       }
     }
     
-    if (kDebugMode) {
-      print('LyricsService: No lyrics found for "$title"');
-    }
+    if (kDebugMode) print('LyricsService: No lyrics found for "$title"');
     return null;
   }
   
@@ -107,7 +162,8 @@ class LyricsService {
     if (result == null) return [];
     
     if (result.isSynced) {
-      return LyricsUtils.parseLrc(result.lyrics);
+      // Parse in isolate for performance
+      return compute(_parseLrcInIsolate, result.lyrics);
     } else {
       // Convert plain lyrics to entries without timestamps
       return result.lyrics
@@ -122,84 +178,184 @@ class LyricsService {
     }
   }
   
-  /// Try to get lyrics from LrcLib
-  Future<LyricsResult?> _tryLrcLib(String title, String artist, int? durationMs) async {
-    // 1. Try exact match
-    var result = await _lrcLibProvider.getLyrics(
-      title: title,
-      artist: artist,
-      durationSeconds: durationMs != null ? durationMs ~/ 1000 : null,
-    );
-    
-    // 2. If not found, try varying title and artist cleaning
-    if (result == null) {
-       final cleanTitle = _cleanTitle(title);
-       final cleanArtist = _cleanArtist(artist);
-       
-       // Try Clean Title + Clean Artist (Best Chance)
-       if (cleanTitle != title || cleanArtist != artist) {
-         if (kDebugMode) print('LyricsService: Retrying with cleaned metadata: "$cleanTitle" by "$cleanArtist"');
-         result = await _lrcLibProvider.getLyrics(
-            title: cleanTitle,
-            artist: cleanArtist,
-            durationSeconds: durationMs != null ? durationMs ~/ 1000 : null,
-         );
-       }
-       
-       // Try Original Title + Clean Artist (Check if Artist was the issue)
-       if (result == null && cleanArtist != artist) {
-          if (kDebugMode) print('LyricsService: Retrying with clean artist only: "$title" by "$cleanArtist"');
-          result = await _lrcLibProvider.getLyrics(
-            title: title,
-            artist: cleanArtist,
-            durationSeconds: durationMs != null ? durationMs ~/ 1000 : null,
-         );
-       }
+  /// Static function for isolate parsing
+  static List<LyricsEntry> _parseLrcInIsolate(String lrcContent) {
+    return LyricsUtils.parseLrc(lrcContent);
+  }
+  
+  /// Prefetch lyrics for upcoming tracks (call with next 3 tracks)
+  void prefetchLyrics(List<Map<String, String>> tracks) {
+    for (final track in tracks) {
+      final title = track['title'] ?? '';
+      final artist = track['artist'] ?? '';
+      final videoId = track['videoId'];
+      
+      if (title.isEmpty || artist.isEmpty) continue;
+      
+      final cacheKey = _buildCacheKey(title, artist);
+      
+      // Skip if already cached or in queue
+      if (_memCache.containsKey(cacheKey)) continue;
+      if (_prefetchQueue.any((t) => t.cacheKey == cacheKey)) continue;
+      
+      _prefetchQueue.add(_PrefetchTask(
+        cacheKey: cacheKey,
+        title: title,
+        artist: artist,
+        videoId: videoId,
+      ));
     }
-
-    if (result != null) {
-      // Check if it's synced (starts with [)
-      final isSynced = result.trimLeft().startsWith('[');
-      return LyricsResult(
-        lyrics: result,
-        isSynced: isSynced,
-        provider: LyricsProvider.lrclib,
+    
+    _processPrefetchQueue();
+  }
+  
+  /// Process prefetch queue in background
+  Future<void> _processPrefetchQueue() async {
+    if (_isPrefetching || _prefetchQueue.isEmpty) return;
+    
+    _isPrefetching = true;
+    
+    while (_prefetchQueue.isNotEmpty) {
+      final task = _prefetchQueue.removeAt(0);
+      
+      try {
+        // Check if already cached (may have been fetched while in queue)
+        final diskEntry = await _diskCache.get(task.cacheKey);
+        if (diskEntry != null) continue;
+        
+        // Low-priority fetch (don't block UI)
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        await getLyrics(
+          title: task.title,
+          artist: task.artist,
+          videoId: task.videoId,
+        );
+        
+        if (kDebugMode) print('LyricsService: Prefetched lyrics for "${task.title}"');
+      } catch (e) {
+        if (kDebugMode) print('LyricsService: Prefetch failed for "${task.title}": $e');
+      }
+    }
+    
+    _isPrefetching = false;
+  }
+  
+  /// Try to get lyrics from LrcLib with enhanced metadata normalization
+  Future<LyricsResult?> _tryLrcLib(String title, String artist, int? durationMs) async {
+    // Strategy: Try multiple normalized variants
+    final variants = _generateSearchVariants(title, artist);
+    
+    for (final variant in variants) {
+      final result = await _lrcLibProvider.getLyrics(
+        title: variant.title,
+        artist: variant.artist,
+        durationSeconds: durationMs != null ? durationMs ~/ 1000 : null,
       );
+      
+      if (result != null) {
+        final isSynced = result.trimLeft().startsWith('[');
+        return LyricsResult(
+          lyrics: result,
+          isSynced: isSynced,
+          provider: LyricsProvider.lrclib,
+        );
+      }
     }
     
     return null;
   }
-
+  
+  /// Generate search variants for better matching
+  List<_SearchVariant> _generateSearchVariants(String title, String artist) {
+    final variants = <_SearchVariant>[];
+    
+    // Original
+    variants.add(_SearchVariant(title, artist));
+    
+    // Clean both
+    final cleanTitle = _cleanTitle(title);
+    final cleanArtist = _cleanArtist(artist);
+    
+    if (cleanTitle != title || cleanArtist != artist) {
+      variants.add(_SearchVariant(cleanTitle, cleanArtist));
+    }
+    
+    // Clean title only
+    if (cleanTitle != title) {
+      variants.add(_SearchVariant(cleanTitle, artist));
+    }
+    
+    // Clean artist only
+    if (cleanArtist != artist) {
+      variants.add(_SearchVariant(title, cleanArtist));
+    }
+    
+    // Aggressive clean (remove more patterns)
+    final aggressiveTitle = _aggressiveCleanTitle(title);
+    final aggressiveArtist = _aggressiveCleanArtist(artist);
+    
+    if (aggressiveTitle != cleanTitle || aggressiveArtist != cleanArtist) {
+      variants.add(_SearchVariant(aggressiveTitle, aggressiveArtist));
+    }
+    
+    return variants;
+  }
+  
+  /// Standard title cleaning
   String _cleanTitle(String title) {
-    // Remove (feat. ...), [feat. ...], (ft. ...), [ft. ...]
-    // Remove (Remastered...), [Remastered...]
-    // Remove - Live, (Live)
     return title
-        .replaceAll(RegExp(r'[\(\[]\s*(feat|ft|featuring)\.?\s+.*?[\)\]]', caseSensitive: false), '')
-        .replaceAll(RegExp(r'[\(\[]\s*(remaster|remastered|mix|remix).*?[\)\]]', caseSensitive: false), '')
-        .replaceAll(RegExp(r'[\(\[]\s*live.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?feat.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?ft\.?.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?remaster.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?remix.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?mix.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?live.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?version.*?[\)\]]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\(\[].*?edit.*?[\)\]]', caseSensitive: false), '')
         .replaceAll(RegExp(r'-\s*live.*', caseSensitive: false), '')
         .trim();
   }
   
+  /// Aggressive title cleaning
+  String _aggressiveCleanTitle(String title) {
+    return _cleanTitle(title)
+        .replaceAll(RegExp(r'[\(\[].*?[\)\]]'), '') // Remove all parentheticals
+        .replaceAll(RegExp(r'\s*-\s*[^-]+$'), '') // Remove trailing " - ..." 
+        .replaceAll(RegExp(r"[''`]"), "'") // Normalize quotes
+        .replaceAll(RegExp(r'[""❝❞]'), '"')
+        .trim();
+  }
+  
+  /// Standard artist cleaning  
   String _cleanArtist(String artist) {
-    // 1. Remove " - Topic" (YouTube auto-generated)
     var cleaned = artist.replaceAll(' - Topic', '').trim();
     
-    // 2. If valid comma exists (e.g. "Ed Sheeran, Shape of You, 3:54"), take first part
-    // But be careful of "Earth, Wind & Fire" -> check if 2nd part looks like a song title matching our title?
-    // Heuristic: If comma exists, and the string is long/complex, try taking the first chunk.
+    // Take first artist if multiple
     if (cleaned.contains(',')) {
-       final parts = cleaned.split(',');
-       if (parts.isNotEmpty) {
-         cleaned = parts.first.trim();
-       }
+      cleaned = cleaned.split(',').first.trim();
     }
     
-    // 3. Remove "Vevo" etc.
+    // Remove VEVO
     cleaned = cleaned.replaceAll(RegExp(r'\s*VEVO', caseSensitive: false), '');
     
     return cleaned.trim();
+  }
+  
+  /// Aggressive artist cleaning
+  String _aggressiveCleanArtist(String artist) {
+    var cleaned = _cleanArtist(artist);
+    
+    // Handle common separators for collaborations
+    final separators = [' & ', ' x ', ' X ', ' and ', ' with ', ' feat ', ' ft '];
+    for (final sep in separators) {
+      if (cleaned.contains(sep)) {
+        cleaned = cleaned.split(sep).first.trim();
+        break;
+      }
+    }
+    
+    return cleaned;
   }
   
   /// Try to get lyrics from YouTube transcript
@@ -209,7 +365,7 @@ class LyricsService {
     if (transcript != null && transcript.isNotEmpty) {
       return LyricsResult(
         lyrics: transcript,
-        isSynced: true, // Transcripts are always synced
+        isSynced: true,
         provider: LyricsProvider.youtubeTranscript,
       );
     }
@@ -222,25 +378,36 @@ class LyricsService {
     return '${title.toLowerCase().trim()}_${artist.toLowerCase().trim()}';
   }
   
-  /// Add result to cache with LRU eviction
-  void _addToCache(String key, LyricsResult result) {
-    // Evict oldest if at capacity
-    if (_cache.length >= _maxCacheSize) {
-      final oldest = _cache.entries
-          .reduce((a, b) => a.value.timestamp.isBefore(b.value.timestamp) ? a : b);
-      _cache.remove(oldest.key);
+  /// Add result to memory cache with LRU eviction
+  void _addToMemCache(String key, LyricsResult result) {
+    if (_memCache.length >= _maxMemCacheSize) {
+      // Remove first (oldest) entry
+      _memCache.remove(_memCache.keys.first);
     }
-    
-    _cache[key] = CachedLyrics(result);
+    _memCache[key] = result;
   }
   
-  /// Clear the lyrics cache
-  void clearCache() {
-    _cache.clear();
+  /// Clear all caches
+  Future<void> clearCache() async {
+    _memCache.clear();
+    await _diskCache.clear();
+    if (kDebugMode) print('LyricsService: All caches cleared');
+  }
+  
+  /// Get cache statistics
+  Future<Map<String, dynamic>> getCacheStats() async {
+    final diskStats = await _diskCache.getStats();
+    return {
+      'memoryCount': _memCache.length,
+      'diskCount': diskStats['count'],
+      'inFlightCount': _inFlightRequests.length,
+      'prefetchQueueLength': _prefetchQueue.length,
+    };
   }
   
   void dispose() {
     _innerTubeService.dispose();
+    _diskCache.close();
   }
 }
 
@@ -257,14 +424,25 @@ class LyricsResult {
   });
 }
 
-/// Cached lyrics with expiration
-class CachedLyrics {
-  final LyricsResult result;
-  final DateTime timestamp;
+/// Internal prefetch task
+class _PrefetchTask {
+  final String cacheKey;
+  final String title;
+  final String artist;
+  final String? videoId;
   
-  CachedLyrics(this.result) : timestamp = DateTime.now();
+  _PrefetchTask({
+    required this.cacheKey,
+    required this.title,
+    required this.artist,
+    this.videoId,
+  });
+}
+
+/// Internal search variant
+class _SearchVariant {
+  final String title;
+  final String artist;
   
-  // Cache for 1 hour
-  bool get isExpired => 
-      DateTime.now().difference(timestamp) > const Duration(hours: 1);
+  _SearchVariant(this.title, this.artist);
 }

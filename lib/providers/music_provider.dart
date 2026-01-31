@@ -37,6 +37,7 @@ import '../services/innertube/innertube_service.dart';
 import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
 import '../services/lyrics/lyrics_service.dart'; // Multi-provider lyrics service
+import '../services/recommendation_service.dart'; // AI recommendation engine
 import '../models/lyrics_entry.dart'; // Lyrics data model
 // import '../services/firestore_service.dart'; // Uncomment if used
 
@@ -198,6 +199,7 @@ class MusicProvider with ChangeNotifier {
 
   // Audio State // YouTube Music InnerTube API
   final LyricsService _lyricsService = LyricsService(); // Multi-provider lyrics service
+  final RecommendationService _recommendationService = RecommendationService(); // AI recommendations
   MusicSource _currentMusicSource = MusicSource.youtube; // Default to YouTube (InnerTube)
   
   // Lyrics state
@@ -323,6 +325,13 @@ class MusicProvider with ChangeNotifier {
     await _loadRecentlyPlayed();
     await loadUserPlaylists();
     await _loadDownloadedTracksMetadata();
+    await _loadRecentlyShownIds(); // For You diversity persistence
+    
+    // Initialize lyrics service (disk cache)
+    await _lyricsService.initialize();
+    
+    // Initialize recommendation engine
+    await _recommendationService.initialize();
     
     _setupAudioListeners();
     _startRetryTimer();
@@ -556,6 +565,13 @@ class MusicProvider with ChangeNotifier {
   void _onTrackComplete() {
     if (kDebugMode) print('MusicProvider: _onTrackComplete event for ${_currentTrack?.trackName}');
     
+    // Record play signal for recommendations (track finished = positive signal)
+    if (_currentTrack != null) {
+      final listenTime = _position.inMilliseconds;
+      final isSkip = listenTime < 30000; // Less than 30 seconds = skip
+      _recommendationService.recordPlay(_currentTrack!, isSkip: isSkip, listenTimeMs: listenTime);
+    }
+    
     if (_stopAfterCurrentTrack) {
       _stopAfterCurrentTrack = false;
       stopTrack();
@@ -608,25 +624,92 @@ class MusicProvider with ChangeNotifier {
        if (kDebugMode) print('MusicProvider: Looping context to start.');
        _playTrackInternal(list[0], setContext: false, clearQueue: false);
     } else {
-       // FIX: Smart Autoplay - Loop back to start for ANY playlist context
-       // This ensures artist tracks, album tracks, search results all loop
-       // instead of abruptly stopping (which disrupts UI/UX)
+       // Check playback context type
        bool isListNotEmpty = list.isNotEmpty;
        bool isFirstLocal = isListNotEmpty && list.first.source == 'local';
        bool isFirstDownloaded = isListNotEmpty && _downloadedTracksMetadata.containsKey(list.first.id);
        bool isOfflineContext = isListNotEmpty && (isFirstLocal || isFirstDownloaded || _isOfflineTrack || _isOfflineContext);
        
        if (isOfflineContext) {
-           if (kDebugMode) print('MusicProvider: End of Downloaded List -> Looping to start (Smart Autoplay)');
+           // Local/downloaded playlists loop
+           if (kDebugMode) print('MusicProvider: End of Downloaded List -> Looping to start');
            _playOfflineTrackInternal(list[0], setContext: false, clearQueue: false);
        } else if (isListNotEmpty && _currentPlayingTracks != null && _currentPlayingTracks!.length > 1) {
-           // FIX: For online playlists (artist, album, etc.), loop to start for seamless experience
-           if (kDebugMode) print('MusicProvider: End of Online Playlist -> Looping to start (Smart Autoplay)');
+           // Multi-track playlists loop
+           if (kDebugMode) print('MusicProvider: End of Online Playlist -> Looping to start');
            _playTrackInternal(list[0], setContext: false, clearQueue: false);
        } else {
-           if (kDebugMode) print('MusicProvider: End of context, Repeat off, stopping.');
-           stopTrack();
+           // ENHANCED: Single track or For You context -> Smart Autoplay with recommendations
+           _startAutoplayFromRecommendations();
        }
+    }
+  }
+  
+  /// Start autoplay with AI-recommended tracks based on current track
+  Future<void> _startAutoplayFromRecommendations() async {
+    if (_currentTrack == null) {
+      stopTrack();
+      return;
+    }
+    
+    if (kDebugMode) print('MusicProvider: Starting autoplay recommendations for ${_currentTrack!.trackName}');
+    
+    try {
+      // Get recommendations based on current track
+      final List<Track> recommendations;
+      
+      if (_currentTrack!.source == 'youtube' && _currentTrack!.id.length == 11) {
+        // Use current track as seed for related content
+        recommendations = await _innerTubeService.getSuggestions(_currentTrack!.id, limit: 20);
+      } else {
+        // Fallback: use recently played seeds
+        recommendations = await _fetchPersonalizedForYou();
+      }
+      
+      if (recommendations.isEmpty) {
+        if (kDebugMode) print('MusicProvider: No recommendations found, stopping.');
+        stopTrack();
+        return;
+      }
+      
+      // Filter and rank recommendations
+      final filtered = recommendations.where((t) {
+        final id = t.id;
+        if (id.length != 11) return false;
+        if (id.startsWith('PL') || id.startsWith('VL') || id.startsWith('UC')) return false;
+        if (t.id == _currentTrack!.id) return false; // Exclude current
+        return true;
+      }).toList();
+      
+      if (filtered.isEmpty) {
+        if (kDebugMode) print('MusicProvider: No valid recommendations after filtering.');
+        stopTrack();
+        return;
+      }
+      
+      // Use recommendation service to rank
+      final ranked = _recommendationService.getAutoplayRecommendations(
+        _currentTrack!.id,
+        filtered,
+        limit: 15,
+      );
+      
+      if (ranked.isEmpty) {
+        stopTrack();
+        return;
+      }
+      
+      // Set new context and play first recommendation
+      final nextTrack = ranked.first;
+      if (kDebugMode) print('MusicProvider: Autoplay -> ${nextTrack.trackName}');
+      
+      // Set remaining as new playlist context
+      _setPlaybackContext(ranked, clearQueue: false);
+      await _playTrackInternal(nextTrack, setContext: false, clearQueue: false);
+      
+    } catch (e) {
+      if (kDebugMode) print('MusicProvider: Autoplay error: $e');
+      stopTrack();
     }
   }
   Future<void> _playTrackInternal(Track track, {bool setContext = true, bool clearQueue = true}) async { 
@@ -1338,6 +1421,46 @@ class MusicProvider with ChangeNotifier {
 
     // Then try to preload the new next track
     _preloadNextTrack();
+    
+    // Also prefetch lyrics for upcoming tracks
+    _prefetchUpcomingLyrics();
+  }
+  
+  /// Prefetch lyrics for the next 3 tracks in the playlist/queue
+  void _prefetchUpcomingLyrics() {
+    if (_currentIndex < 0) return;
+    
+    final playlist = _getActivePlaylist();
+    if (playlist.isEmpty) return;
+    
+    final upcoming = <Map<String, String>>[];
+    
+    // Add next 3 tracks from playlist
+    for (int i = 1; i <= 3; i++) {
+      final nextIndex = _currentIndex + i;
+      if (nextIndex < playlist.length) {
+        final track = playlist[nextIndex];
+        upcoming.add({
+          'title': track.trackName,
+          'artist': track.artistName,
+          'videoId': track.source == 'youtube' ? track.id : null,
+        }.map((key, value) => MapEntry(key, value ?? '')));
+      }
+    }
+    
+    // Also add queue items
+    for (int i = 0; i < 3 && i < _queue.length; i++) {
+      final track = _queue[i];
+      upcoming.add({
+        'title': track.trackName,
+        'artist': track.artistName,
+        'videoId': track.source == 'youtube' ? track.id : null,
+      }.map((key, value) => MapEntry(key, value ?? '')));
+    }
+    
+    if (upcoming.isNotEmpty) {
+      _lyricsService.prefetchLyrics(upcoming);
+    }
   }
 
 
@@ -1878,6 +2001,11 @@ class MusicProvider with ChangeNotifier {
   }
 
   // --- API Content Fetching ---
+  
+  // Recently shown track IDs for diversity (persisted)
+  final List<String> _recentlyShownTrackIds = [];
+  static const int _maxRecentlyShown = 200;
+  
   Future<List<Track>> fetchTracks({bool forceRefresh = false}) async { 
     const k = 'popular_music'; 
     final now = DateTime.now();
@@ -1895,10 +2023,14 @@ class MusicProvider with ChangeNotifier {
       return _tracks; 
     } 
     try { 
-      // Use InnerTube for home/popular tracks
-      final fetched = await _innerTubeService.getHomeTracks(limit: 20);
-      _tracks = fetched;
-      _recommendedTracks = fetched; // Populate for you section as well 
+      // ENHANCED: Fetch personalized content based on recently played seeds
+      final personalized = await _fetchPersonalizedForYou();
+      
+      // PHASE 2 FIX: Filter and apply diversity + AI ranking
+      final processed = _processForYouTracks(personalized, 20);
+      
+      _tracks = processed;
+      _recommendedTracks = processed; 
       _cachedTracks[k] = _tracks; 
       _discoveryCacheTimes[k] = now;
       notifyListeners(); 
@@ -1909,6 +2041,150 @@ class MusicProvider with ChangeNotifier {
       notifyListeners(); 
       return _tracks; 
     } 
+  }
+  
+  /// Fetch personalized For You content using recently played as seeds
+  Future<List<Track>> _fetchPersonalizedForYou() async {
+    final allTracks = <Track>[];
+    final seenIds = <String>{};
+    
+    // Get recently played tracks as seeds (up to 5)
+    final seeds = _recentlyPlayed.take(5).where((t) => 
+      t.source == 'youtube' && t.id.length == 11
+    ).toList();
+    
+    if (seeds.isNotEmpty) {
+      // Fetch related tracks from multiple seeds for variety
+      for (final seed in seeds.take(3)) {
+        try {
+          final related = await _innerTubeService.getSuggestions(seed.id, limit: 15);
+          for (final track in related) {
+            if (!seenIds.contains(track.id)) {
+              seenIds.add(track.id);
+              allTracks.add(track);
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) print('MusicProvider: Error fetching related for ${seed.trackName}: $e');
+        }
+      }
+      
+      // Also fetch from liked songs if available
+      final likedSeeds = _likedSongs.take(2).where((t) => 
+        t.source == 'youtube' && t.id.length == 11 && !seenIds.contains(t.id)
+      );
+      
+      for (final seed in likedSeeds) {
+        try {
+          final related = await _innerTubeService.getSuggestions(seed.id, limit: 10);
+          for (final track in related) {
+            if (!seenIds.contains(track.id)) {
+              seenIds.add(track.id);
+              allTracks.add(track);
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) print('MusicProvider: Error fetching related for liked ${seed.trackName}: $e');
+        }
+      }
+    }
+    
+    // Always include some home tracks for discovery of new artists
+    try {
+      final homeTracks = await _innerTubeService.getHomeTracks(limit: 20);
+      for (final track in homeTracks) {
+        if (!seenIds.contains(track.id)) {
+          seenIds.add(track.id);
+          allTracks.add(track);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('MusicProvider: Error fetching home tracks: $e');
+    }
+    
+    // If no seeds available, just use home tracks
+    if (allTracks.isEmpty) {
+      return await _innerTubeService.getHomeTracks(limit: 50);
+    }
+    
+    return allTracks;
+  }
+  
+  /// Process For You tracks: filter, diversify, and rank with AI
+  List<Track> _processForYouTracks(List<Track> raw, int limit) {
+    // 1. FILTER: Only tracks (not albums/playlists)
+    // Valid YouTube video IDs are 11 characters and don't start with PL/VL/UC
+    final tracks = raw.where((t) {
+      final id = t.id;
+      if (id.length != 11) return false;
+      if (id.startsWith('PL') || id.startsWith('VL') || id.startsWith('UC')) return false;
+      if (t.trackName.isEmpty || t.artistName.isEmpty) return false;
+      return true;
+    }).toList();
+    
+    if (tracks.isEmpty) return raw.take(limit).toList();
+    
+    // 2. DIVERSITY: Filter out recently shown tracks first
+    final recentSet = _recentlyShownTrackIds.toSet();
+    final notRecentlyShown = tracks.where((t) => !recentSet.contains(t.id)).toList();
+    final recentlyShown = tracks.where((t) => recentSet.contains(t.id)).toList();
+    
+    // 3. AI RANKING: Apply hybrid recommendation scoring
+    final rankedFresh = _recommendationService.rankTracks(notRecentlyShown, limit: limit);
+    
+    // 4. If we don't have enough fresh tracks, add from recently shown
+    List<Track> result;
+    if (rankedFresh.length >= limit) {
+      result = rankedFresh.take(limit).toList();
+    } else {
+      final remaining = limit - rankedFresh.length;
+      final rankedRecent = _recommendationService.rankTracks(recentlyShown, limit: remaining);
+      result = [...rankedFresh, ...rankedRecent];
+    }
+    
+    // 5. Record shown
+    _recordShownTracks(result);
+    
+    return result;
+  }
+  
+  /// Record shown tracks for diversity penalty
+  void _recordShownTracks(List<Track> tracks) {
+    for (final track in tracks) {
+      if (!_recentlyShownTrackIds.contains(track.id)) {
+        _recentlyShownTrackIds.add(track.id);
+      }
+    }
+    
+    // Trim to max size (LRU-style)
+    while (_recentlyShownTrackIds.length > _maxRecentlyShown) {
+      _recentlyShownTrackIds.removeAt(0);
+    }
+    
+    // Persist asynchronously
+    _saveRecentlyShownIds();
+  }
+  
+  /// Load recently shown IDs from SharedPreferences
+  Future<void> _loadRecentlyShownIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = prefs.getStringList('recently_shown_track_ids') ?? [];
+      _recentlyShownTrackIds.clear();
+      _recentlyShownTrackIds.addAll(ids);
+    } catch (e) {
+      if (kDebugMode) print('MusicProvider: Error loading recently shown IDs: $e');
+    }
+  }
+  
+  /// Save recently shown IDs to SharedPreferences
+  Future<void> _saveRecentlyShownIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('recently_shown_track_ids', _recentlyShownTrackIds);
+    } catch (e) {
+      if (kDebugMode) print('MusicProvider: Error saving recently shown IDs: $e');
+    }
   }
   Future<List<Track>> fetchTrendingTracks({bool forceRefresh = false}) async { 
     const k = 'trending_music'; 
