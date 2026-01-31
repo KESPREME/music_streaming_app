@@ -31,7 +31,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
   bool _autoScrollEnabled = true;
   Timer? _scrollResumeTimer;
   Timer? _positionUpdateTimer;
-  Track? _currentTrack;
+  String? _currentTrackId; // Track by ID for reliable change detection
   
   // Animation controllers
   late AnimationController _fadeController;
@@ -59,6 +59,31 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
   }
   
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Check for track change after dependencies are ready
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    final track = provider.currentTrack;
+    
+    if (track != null && _currentTrackId != track.id) {
+      final wasNull = _currentTrackId == null;
+      _currentTrackId = track.id;
+      
+      // Reset state for new track
+      _currentLineIndex = 0;
+      _itemKeys.clear();
+      
+      // Fetch lyrics for new track (force if not initial)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          provider.fetchLyrics(forceRefresh: !wasNull);
+        }
+      });
+    }
+  }
+  
+  @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -71,7 +96,8 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
   void _checkLyrics() {
     final provider = Provider.of<MusicProvider>(context, listen: false);
     if (provider.currentTrack != null) {
-       // If no synced lyrics or track changed, fetch
+       _currentTrackId = provider.currentTrack!.id;
+       // If no synced lyrics, fetch
        if (!provider.hasSyncedLyrics || provider.currentLyrics == null) {
           provider.fetchLyrics(); // Fetch if not cached
        } else {
@@ -175,16 +201,11 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
   
   @override
   Widget build(BuildContext context) {
-    // ... [Same build setup codes]
     final theme = Theme.of(context);
     final musicProvider = Provider.of<MusicProvider>(context);
     final track = musicProvider.currentTrack;
     
-    // If track changed while screen open, trigger fetch
-    if (track != null && _currentTrack?.id != track.id) {
-       _currentTrack = track;
-       WidgetsBinding.instance.addPostFrameCallback((_) => musicProvider.fetchLyrics());
-    }
+    // Track change detection moved to didChangeDependencies() for reliability
 
     // Dynamic Color Extraction (Synchronized via ColorUtils)
     final palette = musicProvider.paletteGenerator;

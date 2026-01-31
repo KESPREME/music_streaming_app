@@ -65,8 +65,14 @@ bool listEquals<T>(List<T>? a, List<T>? b) {
   return true;
 }
 
-class MusicProvider with ChangeNotifier {
+class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   final GlobalKey<NavigatorState> playerNavigatorKey = GlobalKey<NavigatorState>();
+  
+  // BATTERY FIX: App lifecycle management
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
+  bool get isInBackground => _appLifecycleState == AppLifecycleState.paused || 
+                              _appLifecycleState == AppLifecycleState.inactive;
+  
   // --- State Properties ---
   List<Track> _tracks = [];
   List<Track> _trendingTracks = [];
@@ -90,6 +96,7 @@ class MusicProvider with ChangeNotifier {
   // Getters
   
   Track? _currentTrack;
+  Track? _previousTrack; // For sequence transition learning
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -337,6 +344,9 @@ class MusicProvider with ChangeNotifier {
     _startRetryTimer();
     _setupConnectivityMonitoring();
     
+    // BATTERY FIX: Register lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+    
     final isConnected = _networkService.isConnected;
     if (isConnected && !_isOfflineMode) {
       try {
@@ -367,6 +377,33 @@ class MusicProvider with ChangeNotifier {
       _notifyPending = false;
       notifyListeners();
     });
+  }
+  
+  // BATTERY FIX: Handle app lifecycle to pause background work
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+    
+    if (kDebugMode) print('MusicProvider: App lifecycle changed to $state');
+    
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        // App going to background - reduce work
+        // Audio continues via foreground service (just_audio_background)
+        // Note: Palette generation is now skipped in updatePalette() via isInBackground check
+        break;
+      case AppLifecycleState.resumed:
+        // App returning to foreground - resume normal operation
+        // Force refresh palette if track changed while in background
+        if (_currentTrack != null && _paletteGenerator == null) {
+          updatePalette();
+        }
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        break;
+    }
   }
   
   void _setupAudioListeners() {
@@ -565,11 +602,30 @@ class MusicProvider with ChangeNotifier {
   void _onTrackComplete() {
     if (kDebugMode) print('MusicProvider: _onTrackComplete event for ${_currentTrack?.trackName}');
     
-    // Record play signal for recommendations (track finished = positive signal)
+    // Record enhanced play signal for recommendation agent
     if (_currentTrack != null) {
-      final listenTime = _position.inMilliseconds;
-      final isSkip = listenTime < 30000; // Less than 30 seconds = skip
-      _recommendationService.recordPlay(_currentTrack!, isSkip: isSkip, listenTimeMs: listenTime);
+      final listenTimeMs = _position.inMilliseconds;
+      final durationMs = _duration.inMilliseconds;
+      
+      // Calculate completion rate (0-1)
+      final completionRate = durationMs > 0 
+          ? (listenTimeMs / durationMs).clamp(0.0, 1.0) 
+          : 1.0;
+      
+      // Skip timing if skipped early
+      final skipTimingMs = completionRate < 0.5 ? listenTimeMs : null;
+      
+      _recommendationService.recordPlay(
+        _currentTrack!,
+        completionRate: completionRate,
+        listenTimeMs: listenTimeMs,
+        skipTimingMs: skipTimingMs,
+      );
+      
+      // Record transition for sequence learning
+      if (_previousTrack != null) {
+        _recommendationService.recordTransition(_previousTrack!, _currentTrack!);
+      }
     }
     
     if (_stopAfterCurrentTrack) {
@@ -687,9 +743,9 @@ class MusicProvider with ChangeNotifier {
         return;
       }
       
-      // Use recommendation service to rank
+      // Use recommendation agent for sequence-planned autoplay
       final ranked = _recommendationService.getAutoplayRecommendations(
-        _currentTrack!.id,
+        _currentTrack!,
         filtered,
         limit: 15,
       );
@@ -2112,9 +2168,19 @@ class MusicProvider with ChangeNotifier {
   
   /// Process For You tracks: filter, diversify, and rank with AI
   List<Track> _processForYouTracks(List<Track> raw, int limit) {
+    // 0. DEDUPLICATE: Remove duplicate track IDs (keep first occurrence)
+    final seenIds = <String>{};
+    final deduped = <Track>[];
+    for (final track in raw) {
+      if (!seenIds.contains(track.id)) {
+        seenIds.add(track.id);
+        deduped.add(track);
+      }
+    }
+    
     // 1. FILTER: Only tracks (not albums/playlists)
     // Valid YouTube video IDs are 11 characters and don't start with PL/VL/UC
-    final tracks = raw.where((t) {
+    final tracks = deduped.where((t) {
       final id = t.id;
       if (id.length != 11) return false;
       if (id.startsWith('PL') || id.startsWith('VL') || id.startsWith('UC')) return false;
@@ -2142,10 +2208,20 @@ class MusicProvider with ChangeNotifier {
       result = [...rankedFresh, ...rankedRecent];
     }
     
-    // 5. Record shown
-    _recordShownTracks(result);
+    // 5. Record shown and ensure absolute uniqueness
+    final finalResult = <Track>[];
+    final finalSeen = <String>{};
     
-    return result;
+    for (final track in result) {
+      if (!finalSeen.contains(track.id)) {
+        finalSeen.add(track.id);
+        finalResult.add(track);
+      }
+    }
+    
+    _recordShownTracks(finalResult);
+    
+    return finalResult;
   }
   
   /// Record shown tracks for diversity penalty
@@ -2496,6 +2572,12 @@ class MusicProvider with ChangeNotifier {
        return;
     }
 
+    // BATTERY FIX: Skip expensive palette generation if app is in background
+    if (isInBackground) {
+      if (kDebugMode) print('MusicProvider: Skipping palette generation (background)');
+      return; 
+    }
+
     final trackId = track.id;
     
     // 1. Check Cache first for instant update
@@ -2606,6 +2688,7 @@ class MusicProvider with ChangeNotifier {
   @override
   void dispose() {
     print('MusicProvider: Disposing...');
+    WidgetsBinding.instance.removeObserver(this); // Stop lifecycle updates
     
     // FIX: Cancel all audio subscriptions to prevent memory leaks
     for (final sub in _audioSubscriptions) {

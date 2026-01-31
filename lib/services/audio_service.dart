@@ -101,16 +101,50 @@ class AudioService {
           flags: AndroidAudioFlags.none,
         ),
         androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
-        androidWillPauseWhenDucked: false, // Fix: Don't stop music on notifications
+        androidWillPauseWhenDucked: false, // Don't stop music on notifications
       ));
 
+      // BATTERY FIX: Handle audio interruptions (calls, other apps, etc.)
+      _subscriptions.add(
+        session.interruptionEventStream.listen((event) {
+          if (event.begin) {
+            // Interruption started
+            switch (event.type) {
+              case AudioInterruptionType.duck:
+                // Lower volume temporarily (handled by system)
+                break;
+              case AudioInterruptionType.pause:
+              case AudioInterruptionType.unknown:
+                // Pause playback, will resume when interruption ends
+                _audioPlayer.pause();
+                break;
+            }
+          } else {
+            // Interruption ended - resume if we were playing
+            if (_audioPlayer.processingState != ProcessingState.idle) {
+              _audioPlayer.play();
+            }
+          }
+        }),
+      );
+
+      // BATTERY FIX: Handle becoming noisy (headphones unplugged)
+      _subscriptions.add(
+        session.becomingNoisyEventStream.listen((_) {
+          // Pause when headphones unplugged (standard behavior)
+          _audioPlayer.pause();
+        }),
+      );
+
       // Set up error handling
-      _audioPlayer.playbackEventStream.listen(
-            (event) {},
-        onError: (Object e, StackTrace st) {
-          print('Audio player error: $e');
-          _handlePlaybackError(e);
-        },
+      _subscriptions.add(
+        _audioPlayer.playbackEventStream.listen(
+          (event) {},
+          onError: (Object e, StackTrace st) {
+            print('Audio player error: $e');
+            _handlePlaybackError(e);
+          },
+        ),
       );
 
       _isInitialized = true;
