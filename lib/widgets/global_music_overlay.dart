@@ -2,8 +2,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
-import '../widgets/mini_player.dart';
-import '../now_playing_screen.dart';
+import '../providers/theme_provider.dart'; // Add theme provider
+import '../widgets/mini_player.dart'; // Glass mini player
+import '../widgets/material_you_playback_bar.dart'; // Material You playback bar
+import '../screens/themed_now_playing_screen.dart';
+import '../utils/color_utils.dart';
 
 class GlobalMusicOverlay extends StatefulWidget {
   final Widget child;
@@ -115,7 +118,9 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
   @override
   Widget build(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context); // Get theme provider
     final hasTrack = musicProvider.currentTrack != null;
+    final isGlassTheme = themeProvider.isGlassmorphism; // Check if glass theme
     
     // FIX: Removed animation sync logic from build() - now in didChangeDependencies()
 
@@ -138,7 +143,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
 
               return Stack(
                 children: [
-                   // A. Mini Player (Fades out)
+                   // A. Mini Player (Fades out) - Switch based on theme
                   Positioned(
                     left: 0, right: 0,
                     bottom: 0, 
@@ -154,9 +159,18 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
                               GestureDetector(
                                 onVerticalDragUpdate: _handleVerticalDragUpdate,
                                 onVerticalDragEnd: _handleVerticalDragEnd,
-                                child: MiniPlayer(
-                                  onExpand: () => _animatePanelTo(1.0),
-                                ),
+                                child: isGlassTheme
+                                    ? MiniPlayer(
+                                        onExpand: () => _animatePanelTo(1.0),
+                                      )
+                                    : MaterialYouPlaybackBar(
+                                        track: musicProvider.currentTrack!,
+                                        provider: musicProvider,
+                                        accentColor: ColorUtils.getVibrantAccent(
+                                          musicProvider.paletteGenerator,
+                                          const Color(0xFF00B4D8), // Light blue accent
+                                        ),
+                                      ),
                               ),
                               // Keeps the MiniPlayer floating above NavBars
                               const SizedBox(height: 100), 
@@ -193,7 +207,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
                               builder: (context) => Material( 
                                 elevation: 0,
                                 color: Colors.transparent, 
-                                child: NowPlayingScreen(
+                                child: ThemedNowPlayingScreen(
                                   track: track,
                                   onMinimize: () => _animatePanelTo(0.0),
                                 ),

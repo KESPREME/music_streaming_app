@@ -380,6 +380,11 @@ class RecommendationService {
     
     return result.take(limit).toList();
   }
+
+  /// Get recommended artists from long-term model
+  List<String> getRecommendedArtists({int limit = 20}) {
+    return _longTermModel.getTopArtists(limit: limit);
+  }
   
   /// Calculate multi-objective score for a track
   double _calculateMultiObjectiveScore(

@@ -24,6 +24,8 @@ class GlassPlaybackBar extends StatelessWidget {
     final position = provider.position;
     final duration = provider.duration;
     
+    if (!provider.isMiniPlayerVisible) return const SizedBox.shrink();
+
     return ClipRRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),

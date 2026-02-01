@@ -333,6 +333,9 @@ class GlassOptionsSheet extends StatelessWidget {
     showGlassSnackBar(context, 'Loading artist...', duration: const Duration(milliseconds: 500));
     await provider.navigateToArtist(artistName);
      if (context.mounted && provider.currentArtistDetails != null) {
+        // FIX: Ensure mini player is visible when going to details screen
+        provider.setHideMiniPlayer(false);
+        
         Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(
             artistId: provider.currentArtistDetails!.id,
             artistName: provider.currentArtistDetails!.name,
@@ -345,6 +348,9 @@ class GlassOptionsSheet extends StatelessWidget {
      showGlassSnackBar(context, 'Loading album...', duration: const Duration(milliseconds: 500));
     await provider.navigateToAlbum(albumName, artistName);
     if (context.mounted && provider.currentAlbumDetails != null) {
+      // FIX: Ensure mini player is visible when going to details screen
+      provider.setHideMiniPlayer(false);
+      
       Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
         playlistId: provider.currentAlbumDetails!.id,
         playlistName: provider.currentAlbumDetails!.name,

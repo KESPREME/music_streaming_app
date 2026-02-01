@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
-import '../screens/artist_detail_screen.dart';
+import '../widgets/themed_artist_detail_screen.dart';
 import 'glass_snackbar.dart';
 
 /// A glassmorphic bottom sheet that allows users to select from multiple artists
@@ -86,7 +86,7 @@ class ArtistPickerSheet extends StatelessWidget {
     showGlassSnackBar(context, 'Loading $artistName...', duration: const Duration(milliseconds: 500));
     await provider.navigateToArtist(artistName);
     if (context.mounted && provider.currentArtistDetails != null) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(
+      Navigator.push(context, MaterialPageRoute(builder: (_) => ThemedArtistDetailScreen(
         artistId: provider.currentArtistDetails!.id,
         artistName: provider.currentArtistDetails!.name,
         artistImage: provider.currentArtistDetails!.imageUrl,

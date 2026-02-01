@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
+import '../providers/theme_provider.dart';
 import '../search_tab_content.dart'; 
 import '../models/track.dart';
-import 'artist_detail_screen.dart';
-import 'playlist_detail_screen.dart';
+import '../widgets/themed_card.dart';
+import '../widgets/themed_artist_detail_screen.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
 
 class ArtistSearchTile extends StatelessWidget {
   final String artistName;
@@ -23,71 +25,135 @@ class ArtistSearchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        splashColor: Colors.white.withOpacity(0.1),
-        highlightColor: Colors.white.withOpacity(0.05),
+      child: themeProvider.isGlassmorphism
+          ? _buildGlassmorphismTile(context, colorScheme)
+          : _buildMaterialYouTile(context, colorScheme),
+    );
+  }
+
+  Widget _buildGlassmorphismTile(BuildContext context, ColorScheme colorScheme) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05), // Glassy background
+            color: Colors.white.withOpacity(0.05),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
           ),
-          child: Row(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 3)),
-                  ],
-                  border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.3), width: 1.5),
-                ),
-                child: CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.grey[850],
-                  backgroundImage: artistImageUrl != null && artistImageUrl!.isNotEmpty
-                      ? NetworkImage(artistImageUrl!)
-                      : null,
-                  child: artistImageUrl == null || artistImageUrl!.isEmpty
-                      ? const Icon(Icons.person, color: Colors.white54, size: 30)
-                      : null,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      artistName,
-                      style: GoogleFonts.splineSans(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      "Artist", 
-                      style: GoogleFonts.splineSans(
-                        color: Colors.white54,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500
-                      )
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white30),
-            ],
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: _buildTileContent(context, colorScheme, isGlass: true),
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMaterialYouTile(BuildContext context, ColorScheme colorScheme) {
+    return Material(
+      elevation: 1,
+      surfaceTintColor: colorScheme.surfaceTint,
+      color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: colorScheme.outlineVariant,
+              width: 1,
+            ),
+          ),
+          child: _buildTileContent(context, colorScheme, isGlass: false),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTileContent(BuildContext context, ColorScheme colorScheme, {required bool isGlass}) {
+    return Row(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+            border: Border.all(
+              color: isGlass
+                  ? const Color(0xFFFF1744).withOpacity(0.3)
+                  : colorScheme.primary.withOpacity(0.3),
+              width: 1.5,
+            ),
+          ),
+          child: CircleAvatar(
+            radius: 30,
+            backgroundColor: isGlass ? Colors.grey[850] : colorScheme.surfaceVariant,
+            backgroundImage: artistImageUrl != null && artistImageUrl!.isNotEmpty
+                ? NetworkImage(artistImageUrl!)
+                : null,
+            child: artistImageUrl == null || artistImageUrl!.isEmpty
+                ? Icon(
+                    Icons.person,
+                    color: isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
+                    size: 30,
+                  )
+                : null,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                artistName,
+                style: GoogleFonts.splineSans(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                  color: isGlass ? Colors.white : colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                "Artist",
+                style: GoogleFonts.splineSans(
+                  color: isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Icon(
+          Icons.chevron_right_rounded,
+          color: isGlass
+              ? Colors.white30
+              : colorScheme.onSurfaceVariant.withOpacity(0.5),
+        ),
+      ],
     );
   }
 }
@@ -329,7 +395,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                  Navigator.push(
                    context,
                    MaterialPageRoute(
-                     builder: (_) => ArtistDetailScreen(
+                     builder: (_) => ThemedArtistDetailScreen(
                        artistId: artistTrack.id,
                        artistName: artistName,
                        artistImage: artistTrack.albumArtUrl,
@@ -406,7 +472,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => PlaylistDetailScreen(
+                    builder: (_) => ThemedPlaylistDetailScreen(
                       playlistId: playlist.id,
                       playlistName: playlist.trackName,
                       playlistImage: playlist.albumArtUrl,

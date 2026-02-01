@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
-import 'genre_songs_screen.dart'; // Import this
+import '../widgets/themed_genre_songs_screen.dart';
 import 'home_screen.dart'; // For GenreSongsScreen, assuming it's still there or moved
 
 class AllGenresScreen extends StatelessWidget {
@@ -56,7 +56,7 @@ class AllGenresScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     // Ensure GenreSongsScreen is defined and imported correctly
-                    builder: (context) => GenreSongsScreen(genre: genreName),
+                    builder: (context) => ThemedGenreSongsScreen(genre: genreName),
                   ),
                 );
               }

@@ -120,7 +120,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isEnabled 
-                ? const Color(0xFF6C63FF).withOpacity(0.3) 
+                ? const Color(0xFF00B4D8).withOpacity(0.3) // Light blue
                 : Colors.white.withOpacity(0.05),
           ),
         ),
@@ -141,7 +141,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                 Text(
                   isEnabled ? 'Active' : 'Disabled',
                   style: GoogleFonts.outfit(
-                    color: isEnabled ? const Color(0xFF6C63FF) : Colors.white54,
+                    color: isEnabled ? const Color(0xFF00B4D8) : Colors.white54, // Light blue
                     fontSize: 13,
                   ),
                 ),
@@ -149,8 +149,8 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
             ),
             Switch.adaptive(
               value: isEnabled,
-              activeColor: const Color(0xFF6C63FF),
-              activeTrackColor: const Color(0xFF6C63FF).withOpacity(0.3),
+              activeColor: const Color(0xFF00B4D8), // Light blue
+              activeTrackColor: const Color(0xFF00B4D8).withOpacity(0.3),
               inactiveTrackColor: Colors.grey.withOpacity(0.2),
               onChanged: (val) {
                 HapticFeedback.selectionClick();
@@ -230,7 +230,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                     heightFactor: normalized,
                     child: Container(
                       width: 2,
-                      color: isEnabled ? const Color(0xFF6C63FF) : Colors.white12,
+                      color: isEnabled ? const Color(0xFF00B4D8) : Colors.white12, // Light blue
                     ),
                   ),
                   
@@ -244,7 +244,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                         shape: BoxShape.circle,
                         color: isEnabled ? Colors.white : const Color(0xFF2A2A2A),
                         border: Border.all(
-                          color: isEnabled ? const Color(0xFF6C63FF) : Colors.transparent,
+                          color: isEnabled ? const Color(0xFF00B4D8) : Colors.transparent, // Light blue
                           width: 2,
                         ),
                         boxShadow: isEnabled ? [
@@ -300,7 +300,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
               height: 140,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF6C63FF) : const Color(0xFF141414),
+                color: isSelected ? const Color(0xFF00B4D8) : const Color(0xFF141414), // Light blue
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isSelected ? Colors.transparent : Colors.white.withOpacity(0.05),

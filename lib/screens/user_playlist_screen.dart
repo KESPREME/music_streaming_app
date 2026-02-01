@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/playlist.dart';
-import 'playlist_detail_screen.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
 
 class UserPlaylistScreen extends StatefulWidget {
   const UserPlaylistScreen({super.key});
@@ -187,7 +187,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PlaylistDetailScreen(
+            builder: (context) => ThemedPlaylistDetailScreen(
               playlistId: playlist.id,
               playlistName: playlist.name,
               playlistImage: playlist.imageUrl,

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/music_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../models/music_source.dart';
 import '../screens/login_screen.dart';
@@ -15,6 +16,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final musicProvider = Provider.of<MusicProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final authService = Provider.of<AuthService>(context, listen: false);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -71,6 +73,94 @@ class SettingsScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
+                    // APPEARANCE SECTION
+                    _buildSectionTitle('Appearance', isDark),
+                    const SizedBox(height: 12),
+                    _buildGlassCard(
+                      isDark,
+                      children: [
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.palette_rounded, color: isDark ? Colors.white : Colors.black, size: 20),
+                          ),
+                          title: Text(
+                            'Theme',
+                            style: GoogleFonts.splineSans(
+                              color: isDark ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Text(
+                            themeProvider.getThemeName(),
+                            style: GoogleFonts.splineSans(
+                              color: isDark ? Colors.white54 : Colors.black54,
+                              fontSize: 13,
+                            ),
+                          ),
+                          trailing: Switch(
+                            value: themeProvider.isMaterialYou,
+                            onChanged: (value) {
+                              themeProvider.toggleTheme();
+                            },
+                            activeColor: const Color(0xFFFF1744),
+                          ),
+                        ),
+                        _buildDivider(isDark),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Text(
+                            themeProvider.getThemeDescription(),
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                            ),
+                          ),
+                        ),
+                        _buildDivider(isDark),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.color_lens_rounded, color: isDark ? Colors.white : Colors.black, size: 20),
+                          ),
+                          title: Text(
+                            'Dynamic Colors',
+                            style: GoogleFonts.splineSans(
+                              color: isDark ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Text(
+                            themeProvider.isDynamicColorEnabled ? 'Enabled' : 'Disabled',
+                            style: GoogleFonts.splineSans(
+                              color: isDark ? Colors.white54 : Colors.black54,
+                              fontSize: 13,
+                            ),
+                          ),
+                          trailing: Switch(
+                            value: themeProvider.isDynamicColorEnabled,
+                            onChanged: (value) {
+                              themeProvider.setDynamicColorEnabled(value);
+                            },
+                            activeColor: const Color(0xFFFF1744),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 32),
                     _buildSectionTitle('Music Source', isDark),
                     const SizedBox(height: 12),
                     _buildMusicSourceCard(context, musicProvider, isDark),
@@ -157,7 +247,7 @@ class SettingsScreen extends StatelessWidget {
                         _buildSettingTile(
                           icon: Icons.info_outline_rounded,
                           title: 'Version',
-                          subtitle: '1.0.3 (Mine Music)',
+                          subtitle: '1.0.4 (Mine Music)',
                           isDark: isDark,
                         ),
                         _buildDivider(isDark),

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/themed_album_screen.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
-import 'album_screen.dart'; // For navigating to album screen
 
 class ArtistScreen extends StatelessWidget {
   final String artistName;
@@ -181,7 +181,7 @@ class ArtistScreen extends StatelessWidget {
                 // Fetch full album details and navigate
                 await musicProvider.navigateToAlbum(album.name, album.artistName);
                 if (context.mounted) {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumScreen(albumName: album.name, artistName: album.artistName)));
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => ThemedAlbumScreen(albumName: album.name, artistName: album.artistName)));
                 }
               },
               child: Column(

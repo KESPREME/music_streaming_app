@@ -5,14 +5,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
-import '../widgets/liquid_card.dart'; 
-import '../widgets/glass_options_sheet.dart'; // For long-press options
+import '../widgets/themed_card.dart';
+import '../widgets/themed_options_sheet.dart';
+import '../widgets/themed_trending_now_screen.dart';
+import '../widgets/themed_all_genres_screen.dart';
+import '../widgets/themed_all_artists_screen.dart';
+import '../widgets/themed_genre_songs_screen.dart';
 import '../home_tab_content.dart';
-import 'trending_now_screen.dart'; 
-import 'all_genres_screen.dart';   
-import 'all_artists_screen.dart';  
-import 'settings_screen.dart';     
-import 'genre_songs_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -186,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                  physics: const BouncingScrollPhysics(),
                  itemBuilder: (context, index) {
                     final item = musicProvider.recentlyPlayed[index];
-                    return LiquidCard(
+                    return ThemedCard(
                       imageUrl: item.albumArtUrl, 
                       title: item.trackName, 
                       subtitle: item.artistName,
@@ -198,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           context: context,
                           backgroundColor: Colors.transparent,
                           isScrollControlled: true,
-                          builder: (_) => GlassOptionsSheet(
+                          builder: (_) => ThemedOptionsSheet(
                             track: item,
                             isRecentlyPlayedContext: true,
                           ),
@@ -226,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       context: context,
                       backgroundColor: Colors.transparent,
                       isScrollControlled: true,
-                      builder: (_) => GlassOptionsSheet(track: track),
+                      builder: (_) => ThemedOptionsSheet(track: track),
                     );
                   },
                   borderRadius: BorderRadius.circular(16),
@@ -294,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         children: [
            // 1. Trending Now
            _buildSectionHeader("What's Hot", onViewAll: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const TrendingNowScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()));
            }),
            SizedBox(
              height: 220,
@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                physics: const BouncingScrollPhysics(),
                itemBuilder: (context, index) {
                   final track = musicProvider.trendingTracks[index];
-                  return LiquidCard(
+                  return ThemedCard(
                     imageUrl: track.albumArtUrl,
                     title: track.trackName,
                     subtitle: track.artistName,
@@ -320,14 +320,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
            // 2. Genres
            const SizedBox(height: 20),
            _buildSectionHeader("Vibe Check", onViewAll: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const AllGenresScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()));
            }),
            _buildGenresSection(context, musicProvider),
            
            // 3. Top Artists
            const SizedBox(height: 20),
            _buildSectionHeader("Top Artists", onViewAll: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const AllArtistsScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedAllArtistsScreen()));
            }),
            _buildTopArtistsSection(context),
            
@@ -399,7 +399,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               child: InkWell(
                 onTap: () {
                    musicProvider.fetchGenreTracks(genre['name'] as String);
-                   Navigator.push(context, MaterialPageRoute(builder: (_) => GenreSongsScreen(genre: genre['name'] as String)));
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => ThemedGenreSongsScreen(genre: genre['name'] as String)));
                 },
                 borderRadius: BorderRadius.circular(20),
                 child: Container(

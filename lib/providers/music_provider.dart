@@ -88,6 +88,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   SortCriteria _localTracksSortCriteria = SortCriteria.nameAsc;
   
   bool _isOfflineContext = false; // Explicit flag for offline playback context
+  bool _isMiniPlayerVisible = true; // Control mini player visibility (e.g. hide when bottom sheet is open)
+  
+  bool get isMiniPlayerVisible => _isMiniPlayerVisible;
+  
+  void setMiniPlayerVisible(bool visible) {
+    _isMiniPlayerVisible = visible;
+    notifyListeners();
+  }
 
   // Search State
   List<Track> _playlistSearchResults = []; 
@@ -590,6 +598,26 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   // --- Playback Control & Context ---
   void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  
+  /// Shuffle and play a list of tracks immediately
+  Future<void> shuffleAndPlay(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    
+    // Enable shuffle if not already enabled
+    if (!_shuffleEnabled) {
+      _shuffleEnabled = true;
+      _saveSettings();
+    }
+    
+    // Set context and shuffle
+    _setPlaybackContext(tracks);
+    
+    // Play first track from shuffled list
+    if (_shuffledPlaylist.isNotEmpty) {
+      await playTrack(_shuffledPlaylist[0], playlistTracks: tracks);
+    }
+  }
+  
   void cycleRepeatMode() { _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length]; _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
   void _shufflePlaylist() { if (_currentPlayingTracks == null || _currentPlayingTracks!.isEmpty) { _shuffledPlaylist = []; _currentIndex = -1; return; } _shuffledPlaylist = List.from(_currentPlayingTracks!)..shuffle(Random()); _updateCurrentIndex(); /* Preload handled by toggleShuffle or setPlaybackContext */ }
   List<Track> _getActivePlaylist() => _shuffleEnabled ? _shuffledPlaylist : (_currentPlayingTracks ?? []);
@@ -938,6 +966,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           );
           _currentTrack = effectiveTrack;
           notifyListeners();
+          updatePalette(); // FIX: Regenerate palette for new track ID
         } else {
           throw Exception("Could not find playable version of '${track.trackName}'.");
         }
@@ -961,6 +990,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
             effectiveTrack = equivalentTrack;
             _currentTrack = effectiveTrack;
             notifyListeners();
+            updatePalette(); // FIX: Regenerate palette for new track ID
           } else {
             // If no equivalent found, use the track's original source for this playback
             if (kDebugMode) {
@@ -2761,6 +2791,35 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
+
+  // --- Smart Artist Recommendations ---
+  Future<List<dynamic>> getSmartLibraryArtists() async {
+    final Set<String> uniqueArtistNames = {};
+    final List<dynamic> smartArtists = [];
+
+    // 1. Get AI Recommended Artists
+    final recommendedNames = _recommendationService.getRecommendedArtists(limit: 10);
+    // Find metadata for these names from recent history/cache if possible
+    
+    // 2. Get Artists from Liked Songs (High priority)
+    for (final track in _likedSongs) {
+      if (!uniqueArtistNames.contains(track.artistName)) {
+        uniqueArtistNames.add(track.artistName);
+        smartArtists.add(track); // Using Track as artist placeholder
+      }
+    }
+
+    // 3. Get Artists from Recently Played
+    for (final track in _recentlyPlayed) {
+      if (!uniqueArtistNames.contains(track.artistName)) {
+        uniqueArtistNames.add(track.artistName);
+        smartArtists.add(track);
+      }
+    }
+
+    // Sort by name or relevance? For now, leave mixed (Recommendation priority order)
+    return smartArtists;
+  }
 } // End of MusicProvider class
 
 // Helper class for retry operations (Keep as is)

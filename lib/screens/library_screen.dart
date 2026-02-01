@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
+import '../providers/theme_provider.dart';
 import '../widgets/global_music_overlay.dart';
+import '../widgets/themed_card.dart';
 
-import 'liked_songs_screen.dart';
-import 'recently_played_screen.dart';
-import 'user_playlist_screen.dart';
-import 'downloaded_songs_screen.dart';
-import 'playlist_import_screen.dart';
-import 'local_music_screen.dart';
+import '../widgets/themed_liked_songs_screen.dart';
+import '../widgets/themed_recently_played_screen.dart';
+import '../widgets/themed_user_playlist_screen.dart';
+import '../widgets/themed_downloaded_songs_screen.dart';
+import '../widgets/themed_playlist_import_screen.dart';
+import '../widgets/themed_local_music_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -34,77 +36,79 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   }
 
   Widget _buildLiquidLibraryCard(BuildContext context, Map<String, dynamic> item) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return InkWell(
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => item['screen']));
       },
       borderRadius: BorderRadius.circular(20),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.03), // Ultra subtle glass
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-              boxShadow: [
-                BoxShadow(
-                   color: Colors.black.withOpacity(0.1),
-                   blurRadius: 10,
-                   offset: const Offset(0, 4),
-                )
-              ]
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: (item['color'] as Color).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: (item['color'] as Color).withOpacity(0.3)),
-                  ),
-                  child: Icon(item['icon'] as IconData, color: item['color'], size: 26),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item['title'],
-                        style: GoogleFonts.splineSans(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 17,
-                          color: Colors.white,
-                        ),
-                      ),
-                      if (item['subtitle'] != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          item['subtitle'],
-                          style: GoogleFonts.splineSans(
-                            color: Colors.white.withOpacity(0.5),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ]
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.05),
-                  ),
-                  child: Icon(Icons.arrow_forward_rounded, color: Colors.white.withOpacity(0.5), size: 16),
-                ),
-              ],
-            ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+        decoration: BoxDecoration(
+          color: themeProvider.isGlassmorphism
+              ? Colors.white.withOpacity(0.05)
+              : colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: themeProvider.isGlassmorphism
+                ? Colors.white.withOpacity(0.1)
+                : colorScheme.outlineVariant,
           ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: (item['color'] as Color).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: (item['color'] as Color).withOpacity(0.3)),
+              ),
+              child: Icon(item['icon'] as IconData, color: item['color'], size: 26),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item['title'],
+                    style: GoogleFonts.splineSans(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  if (item['subtitle'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      item['subtitle'],
+                      style: GoogleFonts.splineSans(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ]
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: themeProvider.isGlassmorphism
+                    ? Colors.white.withOpacity(0.05)
+                    : colorScheme.surfaceVariant,
+              ),
+              child: Icon(
+                Icons.arrow_forward_rounded,
+                color: colorScheme.onSurfaceVariant,
+                size: 16,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -120,42 +124,42 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         'title': 'Liked Songs',
         'icon': Icons.favorite_rounded,
         'color': const Color(0xFFFF1744),
-        'screen': const LikedSongsScreen(),
+        'screen': ThemedLikedSongsScreen(),
         'subtitle': 'Your heavy rotation',
       },
       {
         'title': 'Your Playlists',
         'icon': Icons.queue_music_rounded,
         'color': const Color(0xFF00E5FF),
-        'screen': const UserPlaylistScreen(),
+        'screen': ThemedUserPlaylistScreen(),
         'subtitle': 'Custom collections',
       },
       {
         'title': 'Recently Played',
         'icon': Icons.history_rounded,
         'color': const Color(0xFFFF9100),
-        'screen': const RecentlyPlayedScreen(),
+        'screen': ThemedRecentlyPlayedScreen(),
         'subtitle': 'Jump back in',
       },
       {
         'title': 'Downloaded',
         'icon': Icons.download_done_rounded,
         'color': const Color(0xFF00E676),
-        'screen': const DownloadedSongsScreen(),
+        'screen': ThemedDownloadedSongsScreen(),
         'subtitle': 'Offline music',
       },
       {
         'title': 'Local Files',
         'icon': Icons.folder_open_rounded,
         'color': const Color(0xFFEA80FC),
-        'screen': const LocalMusicScreen(),
+        'screen': ThemedLocalMusicScreen(),
         'subtitle': 'Device storage',
       },
       {
         'title': 'Import Playlists',
         'icon': Icons.playlist_add_check_rounded,
         'color': Colors.grey,
-        'screen': const PlaylistImportScreen(),
+        'screen': ThemedPlaylistImportScreen(),
         'subtitle': 'Sync from Spotify/YT',
       },
     ];
@@ -373,7 +377,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const UserPlaylistScreen(),
+                builder: (context) => ThemedUserPlaylistScreen(),
               ),
             );
           },

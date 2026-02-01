@@ -11,17 +11,18 @@ import 'dart:math' as math;
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/playlist_selection_dialog.dart';
-import '../screens/playlist_detail_screen.dart'; // Unified for Album View
-import '../screens/artist_detail_screen.dart'; // Unified Screen
-import '../screens/queue_screen.dart';
-import '../screens/lyrics_screen.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
+import '../widgets/themed_artist_detail_screen.dart';
+import '../widgets/themed_queue_screen.dart';
+import '../widgets/themed_lyrics_screen.dart';
+import '../widgets/themed_equalizer_screen.dart';
 import '../widgets/glass_snackbar.dart';
-import '../widgets/artist_picker_sheet.dart'; // Multi-artist selection
+import '../widgets/artist_picker_sheet.dart';
 
-import '../widgets/wavy_progress_bar.dart'; // Import shared widget
-import '../main.dart'; // Import rootNavigatorKey
+import '../widgets/wavy_progress_bar.dart';
+import '../main.dart';
 import '../utils/color_utils.dart';
-import '../screens/equalizer_screen.dart'; // Equalizer
+import '../widgets/themed_equalizer_screen.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -201,7 +202,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     context: context,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
-                    builder: (context) => const LyricsScreen(),
+                    builder: (context) => ThemedLyricsScreen(),
                   );
                 },
                 icon: const Icon(Icons.lyrics_rounded, color: Colors.white, size: 24),
@@ -535,7 +536,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             onPressed: () {
               Navigator.push(
                context,
-               MaterialPageRoute(builder: (context) => const QueueScreen()),
+               MaterialPageRoute(builder: (context) => const ThemedQueueScreen()),
              );
             },
             icon: const Icon(Icons.playlist_play_rounded, color: Colors.white60, size: 20),
@@ -620,7 +621,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                        // FIX: No await, single tap navigation
                        final albumName = track.albumName.isNotEmpty ? track.albumName : track.trackName;
                        rootNavigatorKey.currentState?.push(MaterialPageRoute(
-                         builder: (_) => PlaylistDetailScreen(
+                         builder: (_) => ThemedPlaylistDetailScreen(
                            playlistId: '', // Will search by name
                            playlistName: albumName,
                            playlistImage: track.albumArtUrl,
@@ -662,7 +663,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                        // FIX: Push to local navigator (not root) for proper back handling
                        if (context.mounted) {
                          Navigator.of(context, rootNavigator: false).push(
-                           MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                           MaterialPageRoute(builder: (_) => ThemedEqualizerScreen()),
                          );
                        }
                      }

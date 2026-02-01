@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -7,7 +9,7 @@ import '../models/track.dart';
 import '../models/album.dart'; // Import Album
 import '../widgets/liquid_play_button.dart'; // Import LiquidPlayButton
 import '../widgets/track_tile.dart';
-import 'playlist_detail_screen.dart'; // Reuse for Album view
+import '../widgets/themed_playlist_detail_screen.dart'; // Use themed wrapper
 
 class ArtistDetailScreen extends StatefulWidget {
   final String artistId;
@@ -38,49 +40,118 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchDetails();
+    
+    // Capture Flutter errors
+    FlutterError.onError = (FlutterErrorDetails details) {
+      if (kDebugMode) {
+        print('Flutter Error: ${details.exception}');
+        print('Stack trace: ${details.stack}');
+      }
+    };
+    
+    // Delay fetch to ensure widget is fully mounted
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fetchDetails();
+      }
+    });
   }
 
   Future<void> _fetchDetails() async {
+    if (!mounted) return;
+    
     try {
       final provider = Provider.of<MusicProvider>(context, listen: false);
       
       String artistIdToFetch = widget.artistId;
       
-      // If search-by-name mode and no valid ID, search for artist first
-      if (widget.searchByName && widget.artistId.isEmpty) {
-        // Use artist search to find the browse ID
-        await provider.fetchArtistTracks(widget.artistName);
+      // Always search by name if ID is invalid or searchByName is true
+      if (widget.searchByName || 
+          widget.artistId.isEmpty || 
+          widget.artistId.startsWith('artist_') ||
+          !widget.artistId.contains('UC')) { // YouTube channel IDs start with UC
+        
+        if (kDebugMode) {
+          print('Searching for artist: ${widget.artistName}');
+        }
+        
+        await provider.fetchArtistTracks(widget.artistName)
+            .timeout(const Duration(seconds: 10));
+        
         final results = provider.artistTracks;
         if (results.isNotEmpty) {
-          // First result should be the best match
-          artistIdToFetch = results.first.id;
+          // Find the best match - prefer exact name match
+          final exactMatch = results.firstWhere(
+            (track) => track.artistName.toLowerCase() == widget.artistName.toLowerCase(),
+            orElse: () => results.first,
+          );
+          artistIdToFetch = exactMatch.id;
           _resolvedArtistId = artistIdToFetch;
+          
+          if (kDebugMode) {
+            print('Found artist ID: $artistIdToFetch');
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _error = 'Could not find artist: ${widget.artistName}';
+              _isLoading = false;
+            });
+          }
+          return;
         }
       }
       
       if (artistIdToFetch.isEmpty) {
-        setState(() {
-          _error = 'Could not find artist: ${widget.artistName}';
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _error = 'Could not find artist: ${widget.artistName}';
+            _isLoading = false;
+          });
+        }
         return;
       }
       
-      final details = await provider.fetchArtistDetails(artistIdToFetch);
+      if (kDebugMode) {
+        print('Fetching artist details for ID: $artistIdToFetch');
+      }
       
+      final details = await provider.fetchArtistDetails(artistIdToFetch)
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw TimeoutException('Artist details fetch timed out');
+            },
+          );
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _topSongs = (details['tracks'] as List?)?.cast<Track>() ?? [];
+        _albums = details['albums'] ?? [];
+        _singles = details['singles'] ?? [];
+        _isLoading = false;
+        _error = null; // Clear any previous errors
+      });
+    } on TimeoutException catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('Timeout loading artist details: $e');
+        print('Stack trace: $stackTrace');
+      }
       if (mounted) {
         setState(() {
-          _topSongs = (details['tracks'] as List?)?.cast<Track>() ?? [];
-          _albums = details['albums'] ?? [];
-          _singles = details['singles'] ?? [];
+          _error = 'Request timed out. Please try again.';
           _isLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('Error loading artist details: $e');
+        print('Stack trace: $stackTrace');
+      }
       if (mounted) {
         setState(() {
-          _error = 'Failed to load artist details';
+          _error = 'Failed to load artist details.\nPlease check your connection and try again.';
           _isLoading = false;
         });
       }
@@ -89,16 +160,24 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Ensure we have a valid context
+    if (!mounted) {
+      return Container(color: Colors.black);
+    }
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
-      floatingActionButton: _topSongs.isNotEmpty ? LiquidPlayButton(
-        onPressed: () {
-            final provider = Provider.of<MusicProvider>(context, listen: false);
-            provider.playTrack(_topSongs.first, playlistTracks: _topSongs);
-        },
-      ) : null,
-      body: CustomScrollView(
+      floatingActionButton: (!_isLoading && _error == null && _topSongs.isNotEmpty) 
+          ? LiquidPlayButton(
+              onPressed: () {
+                final provider = Provider.of<MusicProvider>(context, listen: false);
+                provider.playTrack(_topSongs.first, playlistTracks: _topSongs);
+              },
+            ) 
+          : null,
+      body: SafeArea(
+        child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           _buildSliverAppBar(context),
@@ -108,7 +187,61 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             )
           else if (_error != null)
              SliverFillRemaining(
-               child: Center(child: Text(_error!, style: GoogleFonts.splineSans(color: Colors.white54))),
+               child: Center(
+                 child: Padding(
+                   padding: const EdgeInsets.all(32.0),
+                   child: Column(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                       Container(
+                         padding: const EdgeInsets.all(20),
+                         decoration: BoxDecoration(
+                           color: Colors.white.withOpacity(0.05),
+                           shape: BoxShape.circle,
+                           border: Border.all(
+                             color: Colors.white.withOpacity(0.1),
+                           ),
+                         ),
+                         child: const Icon(
+                           Icons.error_outline_rounded,
+                           size: 48,
+                           color: Color(0xFFFF1744),
+                         ),
+                       ),
+                       const SizedBox(height: 24),
+                       Text(
+                         _error!,
+                         textAlign: TextAlign.center,
+                         style: GoogleFonts.splineSans(
+                           color: Colors.white70,
+                           fontSize: 16,
+                           height: 1.5,
+                         ),
+                       ),
+                       const SizedBox(height: 32),
+                       ElevatedButton.icon(
+                         onPressed: () {
+                           setState(() {
+                             _isLoading = true;
+                             _error = null;
+                           });
+                           _fetchDetails();
+                         },
+                         icon: const Icon(Icons.refresh_rounded),
+                         label: const Text('Retry'),
+                         style: ElevatedButton.styleFrom(
+                           backgroundColor: const Color(0xFFFF1744),
+                           foregroundColor: Colors.white,
+                           padding: const EdgeInsets.symmetric(
+                             horizontal: 24,
+                             vertical: 12,
+                           ),
+                         ),
+                       ),
+                     ],
+                   ),
+                 ),
+               ),
              )
           else ...[
              if (_topSongs.isNotEmpty) _buildSectionTitle("Popular Songs"),
@@ -120,6 +253,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
              const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
           ]
         ],
+        ),
       ),
     );
   }
@@ -156,13 +290,18 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
-                  child: TrackTile(
-                    track: track,
-                    onTap: () {
-                       final provider = Provider.of<MusicProvider>(context, listen: false);
-                       provider.playTrack(track, playlistTracks: _topSongs);
+                  child: Consumer<MusicProvider>(
+                    builder: (context, provider, child) {
+                      final isPlaying = provider.currentTrack?.id == track.id && provider.isPlaying;
+                      return TrackTile(
+                        track: track,
+                        isPlaying: isPlaying,
+                        onTap: () {
+                          provider.playTrack(track, playlistTracks: _topSongs);
+                        },
+                        backgroundColor: Colors.transparent, // Override to transparent
+                      );
                     },
-                    backgroundColor: Colors.transparent, // Override to transparent
                   ),
                 ),
               ),
@@ -200,7 +339,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                  Navigator.push(
                    context,
                    MaterialPageRoute(
-                     builder: (_) => PlaylistDetailScreen(
+                     builder: (_) => ThemedPlaylistDetailScreen(
                        playlistId: id,
                        playlistName: name,
                        playlistImage: imageUrl,

@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
 import '../models/track.dart';
-import '../screens/artist_detail_screen.dart';
+import '../widgets/themed_artist_detail_screen.dart';
 
 // A simple tile for displaying an artist
 class ArtistListTile extends StatelessWidget {
@@ -220,7 +220,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ArtistDetailScreen(
+            builder: (context) => ThemedArtistDetailScreen(
               artistId: artistTrack.id,
               artistName: artistName,
               artistImage: artistTrack.albumArtUrl,

@@ -5,7 +5,7 @@ import 'dart:ui'; // For ImageFilter
 import 'package:google_fonts/google_fonts.dart'; // For GoogleFonts
 import '../providers/music_provider.dart';
 import 'package:palette_generator/palette_generator.dart';
-import '../now_playing_screen.dart'; // Ensure this is the updated NowPlayingScreen
+import '../screens/themed_now_playing_screen.dart'; // Use themed wrapper
 import '../utils/color_utils.dart';
 
 // FIX: Cache blur filter as a static final for performance (not const - ImageFilter.blur is not const)
@@ -36,7 +36,7 @@ class MiniPlayer extends StatelessWidget {
                   Navigator.push(
                     context,
                     PageRouteBuilder(
-                      pageBuilder: (context, animation, secondaryAnimation) => NowPlayingScreen(track: currentTrack),
+                      pageBuilder: (context, animation, secondaryAnimation) => ThemedNowPlayingScreen(track: currentTrack),
                       transitionsBuilder: (context, animation, secondaryAnimation, child) {
                         const begin = Offset(0.0, 1.0);
                         const end = Offset.zero;

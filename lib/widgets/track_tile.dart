@@ -8,7 +8,7 @@ import '../providers/music_provider.dart';
 import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import 'playlist_selection_dialog.dart'; // Import the dialog
-import 'glass_options_sheet.dart';
+import 'themed_options_sheet.dart';
 import 'glass_snackbar.dart';
 
 class TrackTile extends StatelessWidget {
@@ -117,10 +117,8 @@ class TrackTile extends StatelessWidget {
             context: context,
             backgroundColor: Colors.transparent,
             isScrollControlled: true,
-            builder: (context) => GlassOptionsSheet(
+            builder: (context) => ThemedOptionsSheet(
               track: track,
-              playlistId: playlistId,
-              isInQueueContext: isInQueueContext,
               isRecentlyPlayedContext: isRecentlyPlayedContext,
             ),
           );

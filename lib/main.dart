@@ -7,18 +7,22 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
 import 'providers/music_provider.dart';
+import 'providers/theme_provider.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/social_screen.dart';
 import 'screens/library_screen.dart';
-import 'widgets/glass_nav_bar.dart';
+import 'widgets/themed_nav_bar.dart';
+import 'widgets/themed_home_screen.dart';
+import 'widgets/themed_search_screen.dart';
+import 'widgets/themed_library_screen.dart';
 import 'widgets/global_music_overlay.dart'; // Import Global Overlay
 
 class AppColors {
-  static const Color primary = Color(0xFF6200EE); // Deep Purple
-  static const Color primaryVariant = Color(0xFF3700B3);
+  static const Color primary = Color(0xFF00B4D8); // Light Blue (Material You)
+  static const Color primaryVariant = Color(0xFF0096C7); // Medium Blue
   static const Color secondary = Color(0xFF03DAC6); // Teal Accent
   static const Color secondaryVariant = Color(0xFF018786);
 
@@ -73,14 +77,29 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (context) => MusicProvider()),
         ChangeNotifierProvider(create: (context) => AuthService()),
+        ChangeNotifierProvider(create: (context) => ThemeProvider()),
       ],
       child: const MyApp(),
     ),
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Initialize theme provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ThemeProvider>(context, listen: false).initialize();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,10 +158,10 @@ class _MainScreenState extends State<MainScreen> {
   List<int> _navigationHistory = [0];
 
   final List<Widget> _screens = [
-    const HomeScreen(),
-    const SearchScreen(),
+    const ThemedHomeScreen(),
+    const ThemedSearchScreen(),
     const SocialScreen(),
-    const LibraryScreen(),
+    const ThemedLibraryScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -189,7 +208,7 @@ class _MainScreenState extends State<MainScreen> {
           index: _currentIndex,
           children: _screens,
         ),
-        bottomNavigationBar: GlassNavBar(
+        bottomNavigationBar: ThemedNavBar(
           currentIndex: _currentIndex,
           onTap: _onItemTapped,
           items: const [
