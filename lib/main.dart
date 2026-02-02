@@ -155,7 +155,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  List<int> _navigationHistory = [0];
+  late PageController _pageController;
 
   final List<Widget> _screens = [
     const ThemedHomeScreen(),
@@ -164,14 +164,31 @@ class _MainScreenState extends State<MainScreen> {
     const ThemedLibraryScreen(),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   void _onItemTapped(int index) {
-      if (_currentIndex == index) return;
-      setState(() {
-        if (_navigationHistory.last != index) {
-            _navigationHistory.add(index);
-        }
-        _currentIndex = index;
-      });
+    if (_currentIndex == index) return;
+    setState(() {
+      _currentIndex = index;
+    });
+    // Use jumpToPage to avoid scrolling through intermediate pages
+    _pageController.jumpToPage(index);
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
   }
 
   @override
@@ -181,7 +198,7 @@ class _MainScreenState extends State<MainScreen> {
     final isPanelOpen = musicProvider.isPlayerExpanded;
 
     return PopScope(
-      canPop: (_navigationHistory.length == 1 && _currentIndex == 0 && !isPanelOpen),
+      canPop: (_currentIndex == 0 && !isPanelOpen),
       onPopInvoked: (didPop) {
         if (didPop) return;
 
@@ -191,21 +208,17 @@ class _MainScreenState extends State<MainScreen> {
            return;
         }
 
-        // Priority 2: Navigate Back in Tabs
-        setState(() {
-          if (_navigationHistory.length > 1) {
-            _navigationHistory.removeLast();
-            _currentIndex = _navigationHistory.last;
-          } else if (_currentIndex != 0) {
-             _currentIndex = 0;
-             _navigationHistory = [0];
-          }
-        });
+        // Priority 2: Go to Home Tab if not there
+        if (_currentIndex != 0) {
+           _onItemTapped(0);
+        }
       },
       child: Scaffold(
-        extendBody: true, 
-        body: IndexedStack(
-          index: _currentIndex,
+        extendBody: true,
+        body: PageView(
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          physics: const BouncingScrollPhysics(), // Smooth bounce effect
           children: _screens,
         ),
         bottomNavigationBar: ThemedNavBar(
@@ -214,7 +227,7 @@ class _MainScreenState extends State<MainScreen> {
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: 'Search'),
-            BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Social'), // Social Icon
+            BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Social'),
             BottomNavigationBarItem(icon: Icon(Icons.library_music_rounded), label: 'Library'),
           ],
         ),

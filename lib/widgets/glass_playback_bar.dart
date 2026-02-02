@@ -123,11 +123,7 @@ class GlassPlaybackBar extends StatelessWidget {
                   IconButton(
                     icon: const Icon(Icons.more_vert_rounded, color: Colors.white70),
                     onPressed: () {
-                       showModalBottomSheet(
-                         context: context,
-                         backgroundColor: Colors.transparent,
-                         builder: (_) => GlassOptionsSheet(track: track),
-                       );
+                       GlassOptionsSheet.show(context, track: track);
                     },
                   ),
                 ],

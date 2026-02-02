@@ -9,19 +9,24 @@ import '../theme/material_you_typography.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_album_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
-import 'playlist_selection_dialog.dart';
+import 'material_you_playlist_selection_dialog.dart'; // UPDATED: Use Material You Dialog
 import 'artist_picker_sheet.dart';
+import 'material_you_snackbar.dart';
+import 'material_you_download_selection_sheet.dart';
+import '../screens/material_you_equalizer_screen.dart';
 
 /// Material You options bottom sheet (parallel to GlassOptionsSheet)
 /// Flat design with NO blur - solid Material 3 surface
 /// FULLY FUNCTIONAL with all options working
 class MaterialYouOptionsSheet extends StatelessWidget {
-  final Track? track; // Made optional
+  final Track? track;
   final bool isRecentlyPlayedContext;
   final String? playlistId;
   final String? playlistName;
+  final String? playlistImage;
   final bool isAlbum;
   final bool isArtist;
+  final List<Track>? contextTracks;
 
   const MaterialYouOptionsSheet({
     super.key,
@@ -29,9 +34,49 @@ class MaterialYouOptionsSheet extends StatelessWidget {
     this.isRecentlyPlayedContext = false,
     this.playlistId,
     this.playlistName,
+    this.playlistImage,
     this.isAlbum = false,
     this.isArtist = false,
+    this.contextTracks,
   });
+
+  /// Helper to show the options sheet while hiding the mini player
+  static Future<void> show(BuildContext context, {
+    Track? track,
+    bool isRecentlyPlayedContext = false,
+    String? playlistId,
+    String? playlistName,
+    String? playlistImage,
+    bool isAlbum = false,
+    bool isArtist = false,
+    List<Track>? contextTracks,
+  }) async {
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    
+    // Hide Mini Player
+    provider.setHideMiniPlayer(true);
+    
+    try {
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (context) => MaterialYouOptionsSheet(
+          track: track,
+          isRecentlyPlayedContext: isRecentlyPlayedContext,
+          playlistId: playlistId,
+          playlistName: playlistName,
+          playlistImage: playlistImage,
+          isAlbum: isAlbum,
+          isArtist: isArtist,
+          contextTracks: contextTracks,
+        ),
+      );
+    } finally {
+      // Restore Mini Player
+      provider.setHideMiniPlayer(false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,9 +86,10 @@ class MaterialYouOptionsSheet extends StatelessWidget {
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
 
     // Header Data
+    // Header Data
     final title = track?.trackName ?? playlistName ?? 'Options';
     final subtitle = track?.artistName ?? (isArtist ? 'Artist' : (isAlbum ? 'Album' : 'Playlist'));
-    final imageUrl = track?.albumArtUrl; 
+    final imageUrl = track?.albumArtUrl ?? playlistImage; 
 
     
     return Container(
@@ -129,9 +175,14 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                       context,
                       icon: Icons.playlist_add_rounded,
                       title: 'Add to Playlist',
-                      onTap: () {
+                      onTap: () async {
+                        final rootContext = context;
                         Navigator.pop(context);
-                        showPlaylistSelectionDialog(context, track!);
+                        // Use a small delay to ensure the bottom sheet is fully closed
+                        await Future.delayed(const Duration(milliseconds: 100));
+                        if (rootContext.mounted) {
+                          await showMaterialYouPlaylistSelectionDialog(rootContext, track!);
+                        }
                       },
                     ),
                     _buildOptionTile(
@@ -141,12 +192,10 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                       onTap: () {
                         Navigator.pop(context);
                         musicProvider.addToQueue(track!);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Added "${track!.trackName}" to queue'),
-                            backgroundColor: MaterialYouTokens.primaryVibrant,
-                            duration: const Duration(seconds: 2),
-                          ),
+                        musicProvider.addToQueue(track!);
+                        showMaterialYouSnackBar(
+                          context,
+                          'Added "${track!.trackName}" to queue',
                         );
                       },
                     ),
@@ -175,17 +224,27 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                            if (!isDownloaded) {
                              await musicProvider.downloadTrack(track!);
                              if (context.mounted) {
-                               ScaffoldMessenger.of(context).showSnackBar(
-                                 SnackBar(
-                                   content: Text('Downloading "${track!.trackName}"'),
-                                   backgroundColor: MaterialYouTokens.primaryVibrant,
-                                 ),
+                               showMaterialYouSnackBar(
+                                 context, 
+                                 'Downloading "${track!.trackName}"'
                                );
                              }
                            }
                         } catch (e) {
                           // ignore
                         }
+                      },
+                    ),
+                    _buildOptionTile(
+                      context,
+                      icon: Icons.graphic_eq_rounded,
+                      title: 'Equalizer',
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MaterialYouEqualizerScreen()),
+                        );
                       },
                     ),
                   ],
@@ -251,12 +310,10 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                           Navigator.pop(context);
                           try {
                             musicProvider.removeFromRecentlyPlayed(track!.id);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Removed "${track!.trackName}" from history'),
-                                backgroundColor: MaterialYouTokens.primaryVibrant,
-                                duration: const Duration(seconds: 2),
-                              ),
+                            musicProvider.removeFromRecentlyPlayed(track!.id);
+                            showMaterialYouSnackBar(
+                              context,
+                              'Removed "${track!.trackName}" from history',
                             );
                           } catch (e) {
                              // Ignore safe remove errors
@@ -264,6 +321,63 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                         },
                       ),
                     
+                    // Playlist / Album Options
+                    if (track == null && (playlistId != null || isAlbum) && contextTracks != null && contextTracks!.isNotEmpty) ...[
+                       _buildOptionTile(
+                          context,
+                          icon: Icons.download_rounded,
+                          title: 'Download Playlist',
+                          onTap: () {
+                             Navigator.pop(context);
+                             musicProvider.downloadTracks(contextTracks!);
+                             showMaterialYouSnackBar(context, 'Downloading ${contextTracks!.length} tracks');
+                          },
+                       ),
+                       _buildOptionTile(
+                          context,
+                          icon: Icons.checklist_rounded,
+                          title: 'Select to Download',
+                          onTap: () async {
+                             final rootContext = context;
+                             Navigator.pop(context); // Close options first
+                             await Future.delayed(const Duration(milliseconds: 100)); // Wait for close
+                             if (rootContext.mounted) {
+                                await showModalBottomSheet(
+                                   context: rootContext,
+                                   isScrollControlled: true,
+                                   backgroundColor: Colors.transparent,
+                                   builder: (ctx) => MaterialYouDownloadSelectionSheet(
+                                      tracks: contextTracks!, 
+                                      playlistName: playlistName
+                                   ),
+                                );
+                             }
+                          },
+                       ),
+                       _buildOptionTile(
+                          context,
+                          icon: Icons.queue_music_rounded,
+                          title: 'Add All to Queue',
+                          onTap: () {
+                             Navigator.pop(context);
+                             for (var t in contextTracks!) {
+                               musicProvider.addToQueue(t);
+                             }
+                             showMaterialYouSnackBar(context, 'Added ${contextTracks!.length} tracks to queue');
+                          },
+                       ),
+                       _buildOptionTile(
+                          context,
+                          icon: Icons.shuffle_rounded,
+                          title: 'Shuffle Play',
+                          onTap: () {
+                             Navigator.pop(context);
+                             musicProvider.shuffleAndPlay(contextTracks!);
+                          },
+                       ),
+                       const SizedBox(height: 16),
+                    ],
+
                     // Generic Artist/Playlist Options (when track is null)
                     if (track == null) ...[
                        if (isArtist)
@@ -482,13 +596,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     
     // Show loading feedback immediately
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('Loading $artistName...'),
-        backgroundColor: MaterialYouTokens.primaryVibrant,
-        duration: const Duration(milliseconds: 500),
-      ),
-    );
+    showMaterialYouSnackBar(context, 'Loading $artistName...', duration: const Duration(milliseconds: 500));
     
     // Perform async work
     await provider.navigateToArtist(artistName);
@@ -514,12 +622,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
         ),
       );
     } else {
-       messenger.showSnackBar(
-        SnackBar(
-          content: Text('Could not load artist "$artistName"'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+       showMaterialYouSnackBar(context, 'Could not load artist "$artistName"', isError: true);
     }
   }
   

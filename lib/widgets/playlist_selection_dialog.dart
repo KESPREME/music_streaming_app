@@ -7,6 +7,7 @@ import '../providers/music_provider.dart';
 import 'glass_snackbar.dart';
 
 Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd) async {
+  // FIX: Get provider BEFORE showing dialog to avoid context issues
   final musicProvider = Provider.of<MusicProvider>(context, listen: false);
   final theme = Theme.of(context);
   final isDark = theme.brightness == Brightness.dark;
@@ -77,14 +78,17 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
                               isAccent: true,
                               onTap: () async {
                                 Navigator.pop(bottomSheetContext);
-                                final String? createdPlaylistName = await showDialog<String>(
+                                // Pass musicProvider to the dialog builder
+                                await showDialog(
                                   context: context,
-                                  builder: (BuildContext dialogContext) => _buildGlassInputDialog(context, newPlaylistNameController, isDark),
+                                  builder: (BuildContext dialogContext) => _buildGlassInputDialog(
+                                    dialogContext, 
+                                    newPlaylistNameController, 
+                                    isDark, 
+                                    trackToAdd,
+                                    musicProvider, // Pass provider directly
+                                  ),
                                 );
-
-                                if (createdPlaylistName != null) {
-                                   if (context.mounted) showGlassSnackBar(context, '"${trackToAdd.trackName}" added to "$createdPlaylistName"');
-                                }
                               },
                             ),
                           ),
@@ -210,7 +214,13 @@ Widget _buildGlassOption(BuildContext context, {
   );
 }
 
-Widget _buildGlassInputDialog(BuildContext context, TextEditingController controller, bool isDark) {
+Widget _buildGlassInputDialog(
+  BuildContext context, 
+  TextEditingController controller, 
+  bool isDark, 
+  Track trackToAdd,
+  MusicProvider musicProvider, // Add provider parameter
+) {
   return Dialog(
     backgroundColor: Colors.transparent,
     elevation: 0,
@@ -234,22 +244,65 @@ Widget _buildGlassInputDialog(BuildContext context, TextEditingController contro
                  style: GoogleFonts.splineSans(
                    fontSize: 20, fontWeight: FontWeight.bold,
                    color: isDark ? Colors.white : Colors.black,
+                   decoration: TextDecoration.none,
                  ),
                ),
                const SizedBox(height: 20),
-               TextField(
-                 controller: controller,
-                 autofocus: true,
-                 style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black),
-                 cursorColor: const Color(0xFFFF1744),
-                 decoration: InputDecoration(
-                   hintText: 'Playlist Name',
-                   hintStyle: GoogleFonts.splineSans(color: isDark ? Colors.white38 : Colors.black38),
-                   filled: true,
-                   fillColor: isDark ? Colors.black26 : Colors.black12,
-                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFF1744), width: 1.5)),
-                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+               Material(
+                 color: Colors.transparent,
+                 child: TextField(
+                   controller: controller,
+                   autofocus: true,
+                   style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black),
+                   cursorColor: const Color(0xFFFF1744),
+                   onSubmitted: (value) async {
+                     print('DEBUG: TextField submitted with value: "$value"');
+                     if (value.trim().isEmpty) {
+                       print('DEBUG: Submitted value is empty');
+                       return;
+                     }
+                     
+                     try {
+                       print('DEBUG: Creating playlist from onSubmitted...');
+                       
+                       await musicProvider.createPlaylist(
+                         value.trim(), 
+                         initialTracks: [trackToAdd],
+                         imageUrl: trackToAdd.albumArtUrl, // Use track's album art
+                       );
+                       print('DEBUG: Playlist created from onSubmitted!');
+                       
+                       if (context.mounted) {
+                         Navigator.pop(context);
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(
+                             content: Text('"${trackToAdd.trackName}" added to "${value.trim()}"'),
+                             backgroundColor: const Color(0xFFFF1744),
+                             duration: const Duration(seconds: 2),
+                           ),
+                         );
+                       }
+                     } catch (e) {
+                       print('DEBUG: Error in onSubmitted: $e');
+                       if (context.mounted) {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(
+                             content: Text('Error: $e'),
+                             backgroundColor: Colors.red,
+                           ),
+                         );
+                       }
+                     }
+                   },
+                   decoration: InputDecoration(
+                     hintText: 'Playlist Name',
+                     hintStyle: GoogleFonts.splineSans(color: isDark ? Colors.white38 : Colors.black38),
+                     filled: true,
+                     fillColor: isDark ? Colors.black26 : Colors.black12,
+                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFF1744), width: 1.5)),
+                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                   ),
                  ),
                ),
                const SizedBox(height: 24),
@@ -257,18 +310,69 @@ Widget _buildGlassInputDialog(BuildContext context, TextEditingController contro
                  mainAxisAlignment: MainAxisAlignment.end,
                  children: [
                    TextButton(
-                     onPressed: () => Navigator.pop(context),
+                     onPressed: () {
+                       print('DEBUG: Cancel button pressed');
+                       Navigator.pop(context);
+                     },
                      child: Text('Cancel', style: GoogleFonts.splineSans(color: isDark ? Colors.white60 : Colors.black54)),
                    ),
                    const SizedBox(width: 8),
                    ElevatedButton(
-                     onPressed: () {
-                        final name = controller.text.trim();
-                        if (name.isNotEmpty) {
-                           final provider = Provider.of<MusicProvider>(context, listen: false);
-                           // Placeholder for track arg, handled in callback
-                           provider.createPlaylist(name); // Track added in parent
-                           Navigator.pop(context, name);
+                     onPressed: () async {
+                        print('DEBUG: Create button pressed!');
+                        try {
+                          final name = controller.text.trim();
+                          print('DEBUG: Playlist name: "$name"');
+                          
+                          if (name.isEmpty) {
+                            print('DEBUG: Name is empty, returning');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter a playlist name'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
+                          
+                          print('DEBUG: Creating playlist with provider...');
+                          
+                          // Create playlist AND add the track immediately
+                          // Use the track's thumbnail as the playlist cover
+                          await musicProvider.createPlaylist(
+                            name, 
+                            initialTracks: [trackToAdd],
+                            imageUrl: trackToAdd.albumArtUrl, // Use track's album art
+                          ); 
+                          print('DEBUG: Playlist created successfully!');
+                          
+                          // Close dialog
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            print('DEBUG: Dialog closed');
+                            
+                            // Show success message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('"${trackToAdd.trackName}" added to "$name"'),
+                                backgroundColor: const Color(0xFFFF1744),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                            print('DEBUG: Success message shown');
+                          }
+                        } catch (e, stack) {
+                          print('DEBUG: Error occurred: $e');
+                          print('DEBUG: Stack trace: $stack');
+                          // Show error if something goes wrong
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
                         }
                      },
                      style: ElevatedButton.styleFrom(

@@ -123,13 +123,7 @@ class _MaterialYouRecentlyPlayedScreenState extends State<MaterialYouRecentlyPla
                             );
                           },
                           onOptionsPressed: () {
-                             showModalBottomSheet(
-                                context: context,
-                                backgroundColor: Colors.transparent,
-                                isScrollControlled: true,
-                                elevation: 0,
-                                builder: (context) => MaterialYouOptionsSheet(track: track),
-                              );
+                             MaterialYouOptionsSheet.show(context, track: track);
                           },
                         );
                       },

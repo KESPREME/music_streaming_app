@@ -58,6 +58,14 @@ class MaterialYouPlaybackBar extends StatelessWidget {
                provider.setPlayerExpanded(true);
             }
           },
+          // Added Horizontal Swipe for Next/Prev
+          onHorizontalDragEnd: (details) {
+             if (details.primaryVelocity! < -200) { // Swipe Left -> Next
+               provider.skipToNext();
+             } else if (details.primaryVelocity! > 200) { // Swipe Right -> Prev
+               provider.skipToPrevious();
+             }
+          },
           onTap: () {
             provider.setPlayerExpanded(true);
           },
@@ -68,9 +76,9 @@ class MaterialYouPlaybackBar extends StatelessWidget {
                 // Album Art (Circle or rounded rect inside pill)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(28), // Matches container curve radius roughly or circular
-                  child: track.albumArt != null && track.albumArt!.isNotEmpty
+                  child: track.albumArtUrl.isNotEmpty
                       ? Image.network(
-                          track.albumArt!,
+                          track.albumArtUrl,
                           width: 56, // Slightly larger art
                           height: 56,
                           fit: BoxFit.cover,
@@ -112,7 +120,12 @@ class MaterialYouPlaybackBar extends StatelessWidget {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(2),
                         child: LinearProgressIndicator(
-                           value: (provider.position.inMilliseconds / (track.durationMs ?? 1)).clamp(0.0, 1.0),
+                           // Robust Duration Check: Use provider.duration if track.durationMs is missing
+                           value: (provider.position.inMilliseconds / 
+                                  ((track.durationMs != null && track.durationMs! > 0) 
+                                      ? track.durationMs! 
+                                      : (provider.duration.inMilliseconds > 0 ? provider.duration.inMilliseconds : 1)
+                                  )).clamp(0.0, 1.0),
                            backgroundColor: colorScheme.onSurfaceVariant.withOpacity(0.1),
                            valueColor: AlwaysStoppedAnimation<Color>(vibrantColor),
                            minHeight: 2,

@@ -1863,12 +1863,131 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   // --- Playlist Management ---
   Future<void> loadUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('userPlaylists'); if (s != null) _userPlaylists = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Playlist.fromJson(j)).toList(); } catch (_) { _userPlaylists = []; } }
   Future<void> saveUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); await p.setString('userPlaylists', jsonEncode(_userPlaylists.map((pl) => pl.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save playlists', saveUserPlaylists)); } }
-  Future<void> createPlaylist(String name, {List<Track>? initialTracks, String? imageUrl}) async { if (name.trim().isEmpty) { _errorMessage = "Name empty."; notifyListeners(); return; } try { final pl = Playlist(id: 'pl_${DateTime.now().millisecondsSinceEpoch}', name: name.trim(), imageUrl: imageUrl ?? '', tracks: initialTracks ?? []); _userPlaylists.add(pl); await saveUserPlaylists(); _errorMessage = "Playlist created."; notifyListeners(); } catch (_) { _errorMessage = 'Failed to create.'; notifyListeners(); } }
-  Future<void> deletePlaylist(String playlistId) async { final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) return; try { _userPlaylists.removeAt(i); await saveUserPlaylists(); if (_currentPlaylistId == playlistId) await stopTrack(); _errorMessage = "Playlist deleted."; notifyListeners(); } catch (_) { _errorMessage = 'Failed to delete.'; notifyListeners(); } }
-  Future<void> renamePlaylist(String playlistId, String newName) async { if (newName.trim().isEmpty) { _errorMessage = "Name empty."; notifyListeners(); return; } final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) return; try { _userPlaylists[i] = _userPlaylists[i].copyWith(name: newName.trim()); await saveUserPlaylists(); _errorMessage = "Renamed."; notifyListeners(); } catch (_) { _errorMessage = "Failed to rename."; notifyListeners(); } }
-  Future<void> addTrackToPlaylist(String playlistId, Track track) async { final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) return; final pl = _userPlaylists[i]; if (pl.tracks.any((t) => t.id == track.id)) { _errorMessage = "Already in playlist."; notifyListeners(); return; } try { _userPlaylists[i] = pl.copyWith(tracks: [...pl.tracks, track]); await saveUserPlaylists(); _errorMessage = "Added to ${pl.name}."; notifyListeners(); } catch (_) { _errorMessage = 'Failed to add track.'; notifyListeners(); } }
-  Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async { final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) return; final pl = _userPlaylists[i]; final tN = pl.tracks.firstWhereOrNull((t) => t.id == trackId)?.trackName ?? '?'; try { final uT = pl.tracks.where((t) => t.id != trackId).toList(); if (uT.length < pl.tracks.length) { _userPlaylists[i] = pl.copyWith(tracks: uT); await saveUserPlaylists(); _errorMessage = "Removed '$tN'."; if (_currentPlaylistId == playlistId && _currentTrack?.id == trackId) await skipToNext(); notifyListeners(); } } catch (_) { _errorMessage = 'Failed to remove track.'; notifyListeners(); } }
-  Future<void> reorderTrackInPlaylist(String playlistId, int oldIndex, int newIndex) async { final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) return; final pl = _userPlaylists[i]; if (oldIndex < 0 || oldIndex >= pl.tracks.length || newIndex < 0) return; try { final t = List<Track>.from(pl.tracks); final tr = t.removeAt(oldIndex); int iI = (newIndex > oldIndex) ? newIndex - 1 : newIndex; iI = iI.clamp(0, t.length); t.insert(iI, tr); _userPlaylists[i] = pl.copyWith(tracks: t); await saveUserPlaylists(); notifyListeners(); } catch (_) { _errorMessage = "Failed to reorder."; notifyListeners(); } }
+  Future<void> createPlaylist(String name, {List<Track>? initialTracks, String? imageUrl}) async { 
+    if (name.trim().isEmpty) { 
+      _errorMessage = "Name empty."; 
+      notifyListeners(); 
+      return; 
+    } 
+    try { 
+      final pl = Playlist(
+        id: 'pl_${DateTime.now().millisecondsSinceEpoch}', 
+        name: name.trim(), 
+        imageUrl: imageUrl ?? '', 
+        tracks: initialTracks ?? []
+      ); 
+      _userPlaylists.add(pl); 
+      await saveUserPlaylists(); 
+      _errorMessage = "Playlist created."; 
+      notifyListeners(); 
+    } catch (e, stack) { 
+      debugPrint("Error creating playlist: $e\n$stack");
+      // PROACTIVE FIX: Showing runtimeType to identify "Instance of" errors
+      _errorMessage = 'Failed to create (${e.runtimeType}): $e'; 
+      notifyListeners(); 
+    } 
+  }
+
+  Future<void> deletePlaylist(String playlistId) async { 
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId); 
+    if (i < 0) return; 
+    try { 
+      _userPlaylists.removeAt(i); 
+      await saveUserPlaylists(); 
+      if (_currentPlaylistId == playlistId) await stopTrack(); 
+      _errorMessage = "Playlist deleted."; 
+      notifyListeners(); 
+    } catch (e) { 
+      _errorMessage = 'Failed to delete (${e.runtimeType}): $e'; 
+      notifyListeners(); 
+    } 
+  }
+
+  Future<void> renamePlaylist(String playlistId, String newName) async { 
+    if (newName.trim().isEmpty) { 
+      _errorMessage = "Name empty."; 
+      notifyListeners(); 
+      return; 
+    } 
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId); 
+    if (i < 0) return; 
+    try { 
+      _userPlaylists[i] = _userPlaylists[i].copyWith(name: newName.trim()); 
+      await saveUserPlaylists(); 
+      _errorMessage = "Renamed."; 
+      notifyListeners(); 
+    } catch (e) { 
+      _errorMessage = "Failed to rename (${e.runtimeType}): $e"; 
+      notifyListeners(); 
+    } 
+  }
+
+  Future<void> addTrackToPlaylist(String playlistId, Track track) async { 
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId); 
+    if (i < 0) {
+      _errorMessage = "Playlist not found.";
+      notifyListeners();
+      return;
+    }
+    final pl = _userPlaylists[i]; 
+    if (pl.tracks.any((t) => t.id == track.id)) { 
+      _errorMessage = "Already in playlist."; 
+      notifyListeners(); 
+      return; 
+    } 
+    try { 
+      // Create a clean copy of the track to ensure no transient fields cause issues
+      final cleanTrack = track.copyWith(); 
+      _userPlaylists[i] = pl.copyWith(tracks: [...pl.tracks, cleanTrack]); 
+      await saveUserPlaylists(); 
+      _errorMessage = "Added to ${pl.name}."; 
+      notifyListeners(); 
+    } catch (e, stack) { 
+      debugPrint("Error adding to playlist: $e\n$stack");
+      _errorMessage = 'Failed to add track (${e.runtimeType}): $e'; 
+      notifyListeners(); 
+    } 
+  }
+
+  Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async { 
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId); 
+    if (i < 0) return; 
+    final pl = _userPlaylists[i]; 
+    final tN = pl.tracks.firstWhereOrNull((t) => t.id == trackId)?.trackName ?? '?'; 
+    try { 
+      final uT = pl.tracks.where((t) => t.id != trackId).toList(); 
+      if (uT.length < pl.tracks.length) { 
+        _userPlaylists[i] = pl.copyWith(tracks: uT); 
+        await saveUserPlaylists(); 
+        _errorMessage = "Removed '$tN'."; 
+        if (_currentPlaylistId == playlistId && _currentTrack?.id == trackId) await skipToNext(); 
+        notifyListeners(); 
+      } 
+    } catch (e) { 
+      _errorMessage = 'Failed to remove track: $e'; 
+      notifyListeners(); 
+    } 
+  }
+
+  Future<void> reorderTrackInPlaylist(String playlistId, int oldIndex, int newIndex) async { 
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId); 
+    if (i < 0) return; 
+    final pl = _userPlaylists[i]; 
+    if (oldIndex < 0 || oldIndex >= pl.tracks.length || newIndex < 0) return; 
+    try { 
+      final t = List<Track>.from(pl.tracks); 
+      final tr = t.removeAt(oldIndex); 
+      int iI = (newIndex > oldIndex) ? newIndex - 1 : newIndex; 
+      iI = iI.clamp(0, t.length); 
+      t.insert(iI, tr); 
+      _userPlaylists[i] = pl.copyWith(tracks: t); 
+      await saveUserPlaylists(); 
+      notifyListeners(); 
+    } catch (e) { 
+      _errorMessage = "Failed to reorder: $e"; 
+      notifyListeners(); 
+    } 
+  }
   Future<void> playPlaylist(String playlistId, {int startIndex = 0, bool? shuffle}) async { final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) { _errorMessage = 'Playlist not found.'; notifyListeners(); return; } final pl = _userPlaylists[i]; if (pl.tracks.isEmpty) { _errorMessage = "'${pl.name}' empty."; notifyListeners(); return; } if (shuffle != null && shuffle != _shuffleEnabled) { _shuffleEnabled = shuffle; _saveSettings(); } _setPlaybackContext(pl.tracks, playlistId: playlistId); Track t; if (_shuffleEnabled) {
     t = _shuffledPlaylist.isNotEmpty ? _shuffledPlaylist[0] : pl.tracks[0];
   } else {

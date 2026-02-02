@@ -750,17 +750,8 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
 
   void _showOptionsBottomSheet(BuildContext context, Track track, MusicProvider musicProvider) {
     // FIX 5: Hide mini player when showing options sheet
-    musicProvider.setHideMiniPlayer(true);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      elevation: 0,
-      builder: (context) => MaterialYouOptionsSheet(track: track),
-    ).whenComplete(() {
-      // FIX 5: Show mini player when sheet closes
-      musicProvider.setHideMiniPlayer(false);
-    });
+    // FIX 5: Hide mini player when showing options sheet
+    MaterialYouOptionsSheet.show(context, track: track);
   }
 
   Widget _buildArtPlaceholder(ColorScheme colorScheme) {

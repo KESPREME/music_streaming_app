@@ -17,6 +17,29 @@ class ThemedOptionsSheet extends StatelessWidget {
     this.isRecentlyPlayedContext = false,
   });
 
+  /// Helper to show the appropriate options sheet based on the current theme
+  /// Hides the mini player during the process
+  static Future<void> show(BuildContext context, {
+    required Track track,
+    bool isRecentlyPlayedContext = false,
+  }) async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    
+    if (themeProvider.isGlassmorphism) {
+      await GlassOptionsSheet.show(
+        context, 
+        track: track, 
+        isRecentlyPlayedContext: isRecentlyPlayedContext,
+      );
+    } else {
+      await MaterialYouOptionsSheet.show(
+        context, 
+        track: track, 
+        isRecentlyPlayedContext: isRecentlyPlayedContext,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ThemeProvider>(

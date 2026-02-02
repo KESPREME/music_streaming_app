@@ -6,6 +6,7 @@ import '../widgets/themed_playlist_detail_screen.dart';
 import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 import '../widgets/material_you_elevated_card.dart';
+import '../widgets/material_you_snackbar.dart';
 
 class MaterialYouUserPlaylistScreen extends StatefulWidget {
   const MaterialYouUserPlaylistScreen({super.key});
@@ -305,6 +306,18 @@ class _MaterialYouUserPlaylistScreenState extends State<MaterialYouUserPlaylistS
               onTap: () {
                 Navigator.pop(context);
                 _showRenamePlaylistDialog(context, playlist, colorScheme);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.download_rounded, color: colorScheme.onSurface),
+              title: Text('Download', style: MaterialYouTypography.bodyLarge(colorScheme.onSurface)),
+              onTap: () {
+                Navigator.pop(context);
+                final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+                musicProvider.downloadTracks(playlist.tracks);
+                if (context.mounted) {
+                  showMaterialYouSnackBar(context, 'Downloading ${playlist.tracks.length} tracks');
+                }
               },
             ),
             ListTile(

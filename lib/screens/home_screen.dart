@@ -12,7 +12,7 @@ import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
 import '../home_tab_content.dart';
-import 'settings_screen.dart';
+import '../widgets/themed_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -101,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                  const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFFF1744)), // Red Accent
                  const SizedBox(width: 4),
                  GestureDetector(
-                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedSettingsScreen())),
                    child: const Icon(Icons.settings_outlined, size: 20, color: Colors.white),
                  ),
                ],
@@ -194,15 +194,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       height: 140,
                       onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.recentlyPlayed),
                       onLongPress: () {
-                        showModalBottomSheet(
-                          context: context,
-                          backgroundColor: Colors.transparent,
-                          isScrollControlled: true,
-                          builder: (_) => ThemedOptionsSheet(
-                            track: item,
-                            isRecentlyPlayedContext: true,
-                          ),
-                        );
+                      ThemedOptionsSheet.show(
+                        context,
+                        track: item,
+                        isRecentlyPlayedContext: true,
+                      );
                       },
                     );
                  },
@@ -222,12 +218,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.recommendedTracks),
                   onLongPress: () {
                     HapticFeedback.mediumImpact(); // Premium haptic feedback
-                    showModalBottomSheet(
-                      context: context,
-                      backgroundColor: Colors.transparent,
-                      isScrollControlled: true,
-                      builder: (_) => ThemedOptionsSheet(track: track),
-                    );
+                    ThemedOptionsSheet.show(context, track: track);
                   },
                   borderRadius: BorderRadius.circular(16),
                   child: Container(

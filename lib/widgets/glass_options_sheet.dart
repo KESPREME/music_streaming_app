@@ -10,6 +10,7 @@ import '../screens/artist_detail_screen.dart'; // Unified
 import 'playlist_selection_dialog.dart';
 import 'glass_snackbar.dart';
 import 'artist_picker_sheet.dart'; // Multi-artist selection
+import 'glass_download_selection_sheet.dart';
 
 class GlassOptionsSheet extends StatelessWidget {
   final Track track;
@@ -24,6 +25,36 @@ class GlassOptionsSheet extends StatelessWidget {
     this.isInQueueContext = false,
     this.isRecentlyPlayedContext = false,
   });
+
+  /// Helper to show the options sheet while hiding the mini player
+  static Future<void> show(BuildContext context, {
+    required Track track,
+    String? playlistId,
+    bool isInQueueContext = false,
+    bool isRecentlyPlayedContext = false,
+  }) async {
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    
+    // Hide Mini Player
+    provider.setHideMiniPlayer(true);
+    
+    try {
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (context) => GlassOptionsSheet(
+          track: track,
+          playlistId: playlistId,
+          isInQueueContext: isInQueueContext,
+          isRecentlyPlayedContext: isRecentlyPlayedContext,
+        ),
+      );
+    } finally {
+      // Restore Mini Player
+      provider.setHideMiniPlayer(false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,8 +194,13 @@ class GlassOptionsSheet extends StatelessWidget {
                               icon: Icons.playlist_add_rounded,
                               label: 'Add to Playlist',
                               onTap: () async {
+                                final rootContext = context;
                                 Navigator.pop(context);
-                                await showPlaylistSelectionDialog(context, track);
+                                // Use a small delay to ensure the bottom sheet is fully closed
+                                await Future.delayed(const Duration(milliseconds: 100));
+                                if (rootContext.mounted) {
+                                  await showPlaylistSelectionDialog(rootContext, track);
+                                }
                               },
                               isDark: isDark,
                             ),
@@ -358,5 +394,216 @@ class GlassOptionsSheet extends StatelessWidget {
         cachedTracks: provider.currentAlbumDetails!.tracks,
       )));
     }
+  }
+}
+
+class GlassPlaylistOptionsSheet extends StatelessWidget {
+  final String playlistName;
+  final String? playlistImage;
+  final List<Track> tracks;
+
+  const GlassPlaylistOptionsSheet({
+    super.key,
+    required this.playlistName,
+    this.playlistImage,
+    required this.tracks,
+  });
+
+  static Future<void> show(BuildContext context, {
+    required String playlistName,
+    String? playlistImage,
+    required List<Track> tracks,
+  }) async {
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    provider.setHideMiniPlayer(true);
+    try {
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (_) => GlassPlaylistOptionsSheet(
+          playlistName: playlistName,
+          playlistImage: playlistImage,
+          tracks: tracks,
+        ),
+      );
+    } finally {
+      provider.setHideMiniPlayer(false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withOpacity(0.8),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                
+                // Content
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: playlistImage != null
+                            ? Image.network(
+                                playlistImage!,
+                                width: 56, height: 56,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_,__,___) => Container(color: Colors.grey[900], width: 56, height: 56),
+                              )
+                            : Container(color: Colors.grey[900], width: 56, height: 56, child: const Icon(Icons.music_note, color: Colors.white24)),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          playlistName,
+                          style: GoogleFonts.splineSans(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const Divider(height: 1, thickness: 0.5),
+                
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                         _buildOption(
+                          context,
+                          icon: Icons.download_rounded,
+                          label: 'Download Playlist',
+                          onTap: () {
+                             Navigator.pop(context);
+                             provider.downloadTracks(tracks);
+                             showGlassSnackBar(context, 'Downloading ${tracks.length} tracks');
+                          },
+                          isDark: isDark,
+                        ),
+                        
+                         _buildOption(
+                          context,
+                          icon: Icons.checklist_rounded,
+                          label: 'Select to Download',
+                          onTap: () async {
+                             final rootContext = context;
+                             Navigator.pop(context);
+                             await Future.delayed(const Duration(milliseconds: 100));
+                             if (rootContext.mounted) {
+                               // Import lazily or use the widget reference if available 
+                               // Since it is in a separate file, we need to import it at top of file.
+                               // I'll add the import via another tool call or assume it's added.
+                               // Wait, I can't add imports with this replace call easily.
+                               // I will trust the user to add it? No, I must do it.
+                               // For now, I'll rely on a second edit to add imports.
+                               
+                               // Using dynamic dispatch to avoid compilation error if import missing? No, that fails.
+                               // I will assume I'll add imports in next step.
+                               await showModalBottomSheet(
+                                  context: rootContext,
+                                   isScrollControlled: true,
+                                   backgroundColor: Colors.transparent,
+                                  builder: (c) => GlassDownloadSelectionSheet(tracks: tracks, playlistName: playlistName),
+                               );
+                             }
+                          },
+                          isDark: isDark,
+                        ),
+                        
+                         _buildOption(
+                          context,
+                          icon: Icons.queue_music_rounded,
+                          label: 'Add All to Queue',
+                          onTap: () {
+                             Navigator.pop(context);
+                             for (var t in tracks) {
+                               provider.addToQueue(t);
+                             }
+                             showGlassSnackBar(context, 'Added ${tracks.length} to queue');
+                          },
+                          isDark: isDark,
+                        ),
+                        
+                        _buildOption(
+                          context,
+                          icon: Icons.shuffle_rounded,
+                          label: 'Shuffle Play',
+                          onTap: () {
+                             Navigator.pop(context);
+                             provider.shuffleAndPlay(tracks);
+                          },
+                          isDark: isDark,
+                        ),
+                        
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOption(BuildContext context, {
+    required IconData icon, 
+    required String label, 
+    required VoidCallback onTap,
+    Color? color,
+    required bool isDark,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: color ?? (isDark ? Colors.white : Colors.black)),
+      title: Text(
+        label,
+        style: GoogleFonts.splineSans(
+          color: color ?? (isDark ? Colors.white : Colors.black),
+          fontWeight: FontWeight.w500,
+          fontSize: 16
+        ),
+      ),
+      onTap: onTap,
+    );
   }
 }

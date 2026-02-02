@@ -124,105 +124,109 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay> with SingleTick
     
     // FIX: Removed animation sync logic from build() - now in didChangeDependencies()
 
-    return Stack(
-      children: [
-        // 1. The App Content (Navigator)
-        widget.child,
+    return PlayerAwarePopScope(
+      child: Stack(
+        children: [
+          // 1. The App Content (Navigator)
+          widget.child,
 
-        // Only show player stack if there is a track
-        if (hasTrack)
-          AnimatedBuilder(
-            animation: _panelController,
-            builder: (context, child) {
-              final value = _panelController.value;
-              final double topOffset = lerpDouble(screenHeight, 0, value)!;
-              // FIX: Also hide mini player when bottom sheet flag is set
-              final double miniPlayerOpacity = musicProvider.hideMiniPlayer 
-                  ? 0.0 
-                  : (1.0 - (value * 3)).clamp(0.0, 1.0); 
+          // Only show player stack if there is a track
+          if (hasTrack)
+            AnimatedBuilder(
+              animation: _panelController,
+              builder: (context, child) {
+                final value = _panelController.value;
+                final double topOffset = lerpDouble(screenHeight, 0, value)!;
+                // FIX: Also hide mini player when bottom sheet flag is set
+                final double miniPlayerOpacity = musicProvider.hideMiniPlayer 
+                    ? 0.0 
+                    : (1.0 - (value * 3)).clamp(0.0, 1.0); 
 
-              return Stack(
-                children: [
-                   // A. Mini Player (Fades out) - Switch based on theme
-                  Positioned(
-                    left: 0, right: 0,
-                    bottom: 0, 
-                    child: Opacity(
-                      opacity: miniPlayerOpacity,
-                      child: IgnorePointer(
-                        ignoring: miniPlayerOpacity < 0.1,
-                        child: Material( // Fix: Material widget to prevent underlining
-                          type: MaterialType.transparency,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                onVerticalDragUpdate: _handleVerticalDragUpdate,
-                                onVerticalDragEnd: _handleVerticalDragEnd,
-                                child: isGlassTheme
-                                    ? MiniPlayer(
-                                        onExpand: () => _animatePanelTo(1.0),
-                                      )
-                                    : MaterialYouPlaybackBar(
-                                        track: musicProvider.currentTrack!,
-                                        provider: musicProvider,
-                                        accentColor: ColorUtils.getVibrantAccent(
-                                          musicProvider.paletteGenerator,
-                                          const Color(0xFF00B4D8), // Light blue accent
+                return Stack(
+                  children: [
+                     // A. Mini Player (Fades out) - Switch based on theme
+                    Positioned(
+                      left: 0, right: 0,
+                      bottom: 0, 
+                      child: Opacity(
+                        opacity: miniPlayerOpacity,
+                        child: IgnorePointer(
+                          ignoring: miniPlayerOpacity < 0.1,
+                          child: Material( // Fix: Material widget to prevent underlining
+                            type: MaterialType.transparency,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  // Pass horizontal gestures to child by NOT claiming them here
+                                  // But Claim Vertical here for panel expansion
+                                  onVerticalDragUpdate: _handleVerticalDragUpdate,
+                                  onVerticalDragEnd: _handleVerticalDragEnd,
+                                  child: isGlassTheme
+                                      ? MiniPlayer(
+                                          onExpand: () => _animatePanelTo(1.0),
+                                        )
+                                      : MaterialYouPlaybackBar(
+                                          track: musicProvider.currentTrack!,
+                                          provider: musicProvider,
+                                          accentColor: ColorUtils.getVibrantAccent(
+                                            musicProvider.paletteGenerator,
+                                            const Color(0xFF00B4D8), // Light blue accent
+                                          ),
                                         ),
-                                      ),
-                              ),
-                              // Keeps the MiniPlayer floating above NavBars
-                              const SizedBox(height: 100), 
-                            ],
+                                ),
+                                // Keeps the MiniPlayer floating above NavBars
+                                const SizedBox(height: 100), 
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  
-                  // B. Now Playing Screen (Slides Up)
-                  Positioned(
-                    top: topOffset,
-                    left: 0, right: 0,
-                    height: screenHeight,
-                    child: Opacity(
-                      opacity: (value > 0.01) ? 1.0 : 0.0, 
-                      child: GestureDetector(
-                        onVerticalDragUpdate: _handleVerticalDragUpdate,
-                        onVerticalDragEnd: _handleVerticalDragEnd,
-                        child: Navigator(
-                          key: musicProvider.playerNavigatorKey, // Assign Key
-                          // FIX: Add HeroController observer to prevent null check errors
-                          observers: [_heroController],
-                          onGenerateRoute: (settings) {
-                            // FIX: Added null check for currentTrack
-                            final track = musicProvider.currentTrack;
-                            if (track == null) {
+                    
+                    // B. Now Playing Screen (Slides Up)
+                    Positioned(
+                      top: topOffset,
+                      left: 0, right: 0,
+                      height: screenHeight,
+                      child: Opacity(
+                        opacity: (value > 0.01) ? 1.0 : 0.0, 
+                        child: GestureDetector(
+                          onVerticalDragUpdate: _handleVerticalDragUpdate,
+                          onVerticalDragEnd: _handleVerticalDragEnd,
+                          child: Navigator(
+                            key: musicProvider.playerNavigatorKey, // Assign Key
+                            // FIX: Add HeroController observer to prevent null check errors
+                            observers: [_heroController],
+                            onGenerateRoute: (settings) {
+                              // FIX: Added null check for currentTrack
+                              final track = musicProvider.currentTrack;
+                              if (track == null) {
+                                return MaterialPageRoute(
+                                  builder: (context) => const SizedBox.shrink(),
+                                );
+                              }
                               return MaterialPageRoute(
-                                builder: (context) => const SizedBox.shrink(),
-                              );
-                            }
-                            return MaterialPageRoute(
-                              builder: (context) => Material( 
-                                elevation: 0,
-                                color: Colors.transparent, 
-                                child: ThemedNowPlayingScreen(
-                                  track: track,
-                                  onMinimize: () => _animatePanelTo(0.0),
+                                builder: (context) => Material( 
+                                  elevation: 0,
+                                  color: Colors.transparent, 
+                                  child: ThemedNowPlayingScreen(
+                                    track: track,
+                                    onMinimize: () => _animatePanelTo(0.0),
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            }
-          ),
-      ],
+                  ],
+                );
+              }
+            ),
+        ],
+      ),
     );
   }
 }

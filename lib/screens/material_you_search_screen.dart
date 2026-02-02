@@ -29,7 +29,7 @@ class MaterialYouSearchScreen extends StatefulWidget {
 class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
-  String _selectedFilter = "All";
+  String _selectedFilter = "Songs";
   Timer? _debounce;
   final List<String> _recentSearches = [];
 
@@ -184,7 +184,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
 
   Widget _buildFilterChips(ColorScheme colorScheme) {
     // Reduced options to match Glass UI as requested
-    final filters = ["Songs", "Artists", "Playlists"];
+    final filters = ["Songs", "Artists", "Playlists"]; // "All" removed to focus on "Songs" as default
     
     return MaterialYouFilterChipList(
       options: filters,
@@ -234,6 +234,24 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
               onTap: () {
                 _searchController.text = search;
                 _performSearch(search);
+              },
+              onLongPress: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: colorScheme.surfaceContainer,
+                    title: Text("Remove from history?", style: TextStyle(color: colorScheme.onSurface)),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: colorScheme.onSurfaceVariant))),
+                      TextButton(onPressed: () {
+                        setState(() {
+                          _recentSearches.remove(search);
+                        });
+                        Navigator.pop(context);
+                      }, child: Text("Remove", style: TextStyle(color: colorScheme.error))),
+                    ],
+                  ),
+                );
               },
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
@@ -367,19 +385,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
           color: colorScheme.onSurfaceVariant,
         ),
         onPressed: () {
-          // FIX 5: Hide mini player when showing options sheet
-          final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-          musicProvider.setHideMiniPlayer(true);
-          showModalBottomSheet(
-            context: context,
-            backgroundColor: Colors.transparent,
-            isScrollControlled: true,
-            elevation: 0,
-            builder: (context) => MaterialYouOptionsSheet(track: track),
-          ).whenComplete(() {
-            // FIX 5: Show mini player when sheet closes
-            musicProvider.setHideMiniPlayer(false);
-          });
+          MaterialYouOptionsSheet.show(context, track: track);
         },
       ),
     );

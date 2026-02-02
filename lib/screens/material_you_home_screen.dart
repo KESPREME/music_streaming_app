@@ -197,18 +197,11 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
                     ),
                     onLongPress: () {
                       HapticFeedback.mediumImpact();
-                      musicProvider.setHideMiniPlayer(true);
-                      showModalBottomSheet(
-                        context: context,
-                        backgroundColor: Colors.transparent,
-                        isScrollControlled: true,
-                        builder: (_) => MaterialYouOptionsSheet(
-                          track: item,
-                          isRecentlyPlayedContext: true,
-                        ),
-                      ).whenComplete(() {
-                        musicProvider.setHideMiniPlayer(false);
-                      });
+                      MaterialYouOptionsSheet.show(
+                        context,
+                        track: item,
+                        isRecentlyPlayedContext: true,
+                      );
                     },
                   );
                 },
@@ -239,15 +232,7 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
                 ),
                 onLongPress: () {
                   HapticFeedback.mediumImpact();
-                  musicProvider.setHideMiniPlayer(true);
-                  showModalBottomSheet(
-                    context: context,
-                    backgroundColor: Colors.transparent,
-                    isScrollControlled: true,
-                    builder: (_) => MaterialYouOptionsSheet(track: track), // Use the specific MY sheet
-                  ).whenComplete(() {
-                    musicProvider.setHideMiniPlayer(false);
-                  });
+                  MaterialYouOptionsSheet.show(context, track: track);
                 },
                 trailing: Icon(
                   Icons.play_circle_filled,

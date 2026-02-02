@@ -321,10 +321,25 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.download_rounded, color: Colors.white),
+              title: Text('Download', style: GoogleFonts.splineSans(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+                musicProvider.downloadTracks(playlist.tracks);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Downloading ${playlist.tracks.length} tracks'),
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_rounded, color: Colors.redAccent),
               title: Text('Delete', style: GoogleFonts.splineSans(color: Colors.redAccent)),
               onTap: () {
-                Navigator.pop(context);
                 _showDeleteConfirmation(context, playlist);
               },
             ),

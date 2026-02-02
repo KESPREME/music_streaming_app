@@ -113,14 +113,10 @@ class TrackTile extends StatelessWidget {
       trailing: IconButton(
         icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withOpacity(0.7)),
         onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            backgroundColor: Colors.transparent,
-            isScrollControlled: true,
-            builder: (context) => ThemedOptionsSheet(
-              track: track,
-              isRecentlyPlayedContext: isRecentlyPlayedContext,
-            ),
+          ThemedOptionsSheet.show(
+            context,
+            track: track,
+            isRecentlyPlayedContext: isRecentlyPlayedContext,
           );
         },
       ),

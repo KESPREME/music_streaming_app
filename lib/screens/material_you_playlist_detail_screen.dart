@@ -167,20 +167,15 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
           child: IconButton(
             icon: Icon(Icons.more_vert_rounded, color: colorScheme.onSurface),
             onPressed: () async {
-               final provider = Provider.of<MusicProvider>(context, listen: false);
-               provider.setMiniPlayerVisible(false);
-               await showModalBottomSheet(
-                 context: context,
-                 backgroundColor: Colors.transparent,
-                 isScrollControlled: true,
-                 builder: (context) => MaterialYouOptionsSheet(
-                   track: _tracks.isNotEmpty ? _tracks.first : null, // Fallback if empty
-                   playlistId: widget.playlistId,
-                   playlistName: widget.playlistName,
-                   isAlbum: true,
-                 ),
-               );
-               provider.setMiniPlayerVisible(true);
+                 await MaterialYouOptionsSheet.show(
+                  context,
+                  track: null, // Set to null to trigger Playlist Mode (Download options)
+                  playlistId: widget.playlistId,
+                  playlistName: widget.playlistName,
+                  playlistImage: widget.playlistImage,
+                  isAlbum: true,
+                  contextTracks: _tracks, // Pass full list for download options
+                );
             },
           ),
         ),
@@ -276,6 +271,14 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
               isPlaying: isPlaying,
               onTap: () {
                 provider.playTrack(track, playlistTracks: _tracks);
+              },
+              onOptionsPressed: () async {
+                  await MaterialYouOptionsSheet.show(
+                   context,
+                   track: track,
+                   playlistId: widget.playlistId,
+                   playlistName: widget.playlistName,
+                 );
               },
             ),
           );

@@ -170,6 +170,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
   Timer? _debounce;
+  final List<String> _recentSearches = [];
 
   @override
   void initState() {
@@ -241,16 +242,16 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             headerSliverBuilder: (context, innerBoxIsScrolled) => [
               SliverAppBar(
                 backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent, // Fix purple tint
+                surfaceTintColor: Colors.transparent,
                 elevation: 0,
                 floating: true,
                 pinned: true,
                 toolbarHeight: 90, 
                 flexibleSpace: ClipRRect( 
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // Reduced to match "Liquid Pill"
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
-                      color: Colors.black.withOpacity(0.5), // Unified tint, no gradient
+                      color: Colors.black.withOpacity(0.5),
                     ),
                   ),
                 ),
@@ -263,18 +264,18 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                       hintText: 'Search songs, artists...',
                       hintStyle: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05), // Ultra-translucent glass
+                      fillColor: Colors.white.withOpacity(0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)), // Subtle glass border
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
                       ),
-                      enabledBorder: OutlineInputBorder( // Explicit border state
+                      enabledBorder: OutlineInputBorder(
                          borderRadius: BorderRadius.circular(30),
                          borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: const Color(0xFFFF1744).withOpacity(0.5), width: 1), // Accent on focus
+                        borderSide: BorderSide(color: const Color(0xFFFF1744).withOpacity(0.5), width: 1),
                       ),
                       prefixIcon: const Icon(Icons.search, color: Colors.white54),
                       suffixIcon: _searchQuery.isNotEmpty
@@ -292,7 +293,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                       if (query != _searchQuery) {
                          setState(() => _searchQuery = query);
                       }
-                      _performSearch(query);
+                      if (query.isNotEmpty) {
+                        _addToHistory(query);
+                        _performSearch(query);
+                      }
                     },
                     textInputAction: TextInputAction.search,
                   ),
@@ -302,16 +306,16 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.2), // More subtle container
+                      color: Colors.black.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(25),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)), // Sharper glass edge
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
                     child: TabBar(
                       controller: _tabController,
                       indicator: BoxDecoration(
-                        color: const Color(0xFFFF1744).withOpacity(0.15), // Softer accent fill
+                        color: const Color(0xFFFF1744).withOpacity(0.15),
                         borderRadius: BorderRadius.circular(25),
-                        border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.3)), // Crisp accent border
+                        border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.3)),
                       ),
                       labelColor: const Color(0xFFFF1744),
                       unselectedLabelColor: Colors.white.withOpacity(0.5),
@@ -332,16 +336,44 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             body: TabBarView(
               controller: _tabController,
               children: [
-                const SearchTabContent(), // Needs similar glass update in its own file
-                _buildArtistsTab(context, _searchQuery),
-                _buildPlaylistsTab(context, _searchQuery),
-              ],
-            ),
+                SearchTabContent(
+                  recentSearches: _recentSearches,
+                  onSearchSelected: (query) {
+                        _searchController.text = query;
+                        setState(() => _searchQuery = query);
+                        _performSearch(query);
+                      },
+                      onClearHistory: () {
+                         setState(() {
+                           _recentSearches.clear();
+                         });
+                      },
+                      onRemoveHistoryItem: (query) {
+                        setState(() {
+                          _recentSearches.remove(query);
+                        });
+                      },
+                    ), 
+                    _buildArtistsTab(context, _searchQuery),
+                    _buildPlaylistsTab(context, _searchQuery),
+                  ],
+                ),
           ),
         ),
       ),
     );
   }
+
+  void _addToHistory(String query) {
+    if (!_recentSearches.contains(query)) {
+      setState(() {
+        _recentSearches.insert(0, query);
+        if (_recentSearches.length > 5) _recentSearches.removeLast();
+      });
+    }
+  }
+
+
 
   Widget _buildArtistsTab(BuildContext context, String query) {
     return Consumer<MusicProvider>(

@@ -9,6 +9,7 @@ import '../screens/login_screen.dart';
 import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 import '../widgets/material_you_elevated_card.dart';
+import 'material_you_equalizer_screen.dart';
 
 /// Material You Settings Screen - NO BLUR, solid colors, Material 3 design
 class MaterialYouSettingsScreen extends StatelessWidget {
@@ -111,6 +112,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                     subtitle: '${musicProvider.cellularBitrate} kbps',
                     onTap: () => _showBitrateDialog(context, musicProvider, false, colorScheme),
                   ),
+
                 ],
               ),
             ),

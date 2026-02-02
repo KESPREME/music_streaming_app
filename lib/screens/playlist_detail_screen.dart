@@ -6,6 +6,7 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/global_music_overlay.dart';
+import '../widgets/glass_options_sheet.dart'; // For GlassPlaylistOptionsSheet
 
 import '../widgets/liquid_play_button.dart';
 
@@ -149,6 +150,29 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
+      actions: [
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.3),
+            shape: BoxShape.circle,
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            padding: EdgeInsets.zero,
+            onPressed: () {
+               if (_tracks.isNotEmpty) {
+                  GlassPlaylistOptionsSheet.show(
+                    context, 
+                    playlistName: widget.playlistName, 
+                    playlistImage: widget.playlistImage,
+                    tracks: _tracks
+                  );
+               }
+            },
+          ),
+        ),
+      ],
       flexibleSpace: LayoutBuilder(
         builder: (context, constraints) {
           final double percentage = ((constraints.maxHeight - kToolbarHeight) / (300 - kToolbarHeight)).clamp(0.0, 1.0);

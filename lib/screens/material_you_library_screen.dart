@@ -16,6 +16,7 @@ import '../widgets/themed_playlist_import_screen.dart';
 import '../widgets/themed_local_music_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
+import 'material_you_local_search_screen.dart';
 
 /// Material You Library Screen - Completely different from glassmorphism
 /// Features:
@@ -126,8 +127,9 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
             iconSize: 28,
             color: colorScheme.onSurface,
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Search library')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MaterialYouLocalSearchScreen()),
               );
             },
           ),
