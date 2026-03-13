@@ -6,11 +6,20 @@ import '../screens/material_you_home_screen.dart';
 
 /// Theme-aware wrapper for Home Screen
 /// Switches between HomeScreen (Glassmorphism) and MaterialYouHomeScreen (Material You)
-class ThemedHomeScreen extends StatelessWidget {
+class ThemedHomeScreen extends StatefulWidget {
   const ThemedHomeScreen({super.key});
 
   @override
+  State<ThemedHomeScreen> createState() => _ThemedHomeScreenState();
+}
+
+class _ThemedHomeScreenState extends State<ThemedHomeScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     
     return themeProvider.isMaterialYou

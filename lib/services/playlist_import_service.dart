@@ -26,10 +26,15 @@ class PlaylistImportService {
         );
       }).toList();
 
+      String playlistImageUrl = playlistRaw.thumbnails.highResUrl;
+      if (playlistImageUrl.trim().isEmpty && tracks.isNotEmpty) {
+        playlistImageUrl = 'https://img.youtube.com/vi/${tracks.first.id}/hqdefault.jpg';
+      }
+
       return Playlist(
         id: playlistRaw.id.value,
         name: playlistRaw.title,
-        imageUrl: playlistRaw.thumbnails.highResUrl,
+        imageUrl: playlistImageUrl,
         tracks: tracks,
       );
     } catch (e) {
@@ -146,6 +151,10 @@ class PlaylistImportService {
           // Skip on search error
         }
         count++;
+      }
+
+      if (imageUrl.trim().isEmpty && tracks.isNotEmpty) {
+        imageUrl = tracks.first.albumArtUrl;
       }
 
       return Playlist(

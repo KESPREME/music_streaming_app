@@ -82,7 +82,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   List<Track> _searchedTracks = []; // For generic track search results
   List<Track> _artistTracks = [];
   List<Track> _genreTracks = [];
-  List<Track> _recommendedTracks = []; // New field for "For You"
+  List<Track> _recommendedTracks = []; // Existing general recommendations/fallback
+  
+  // Categorized Recommendations
+  List<Track> _continueListening = [];
+  List<Track> _basedOnRecent = [];
+  List<Track> _artistRecommendations = [];
+  
   List<Playlist> _userPlaylists = [];
   List<Track> _localTracks = [];
   SortCriteria _localTracksSortCriteria = SortCriteria.nameAsc;
@@ -130,6 +136,11 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       notifyListeners();
     }
   }
+
+  // Categorized Recommendations Getters
+  List<Track> get continueListening => _continueListening;
+  List<Track> get basedOnRecent => _basedOnRecent;
+  List<Track> get artistRecommendations => _artistRecommendations;
 
   // Mini player visibility (for bottom sheets)
   bool _hideMiniPlayer = false;
@@ -291,6 +302,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   List<Track> get artistTracks => List.unmodifiable(_artistTracks);
   List<Track> get genreTracks => List.unmodifiable(_genreTracks);
   List<Track> get recommendedTracks => List.unmodifiable(_recommendedTracks); // Getter
+  
+  
   List<Playlist> get userPlaylists => List.unmodifiable(_userPlaylists);
   List<Track> get localTracks => List.unmodifiable(_localTracks);
   SortCriteria get localTracksSortCriteria => _localTracksSortCriteria;
@@ -2228,6 +2241,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       return _tracks; 
     } 
     try { 
+      // Fetch categorized recommendations for Home Screen sections
+      await _fetchCategorizedRecommendations();
+
       // ENHANCED: Fetch personalized content based on recently played seeds
       final personalized = await _fetchPersonalizedForYou();
       
@@ -2246,6 +2262,50 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       notifyListeners(); 
       return _tracks; 
     } 
+  }
+  
+  /// Fetch explicitly categorized recommendations for the Home Screen
+  Future<void> _fetchCategorizedRecommendations() async {
+    // 1. Continue Listening (Jump back in)
+    _continueListening = _recentlyPlayed.take(15).toList();
+
+    // 2. Based on Recent
+    final recentSeeds = _recentlyPlayed.take(3).where((t) => t.source == 'youtube' && t.id.length == 11).toList();
+    final recentRelated = <Track>[];
+    final recentSeen = <String>{};
+    for (final seed in recentSeeds) {
+      try {
+        final related = await _innerTubeService.getSuggestions(seed.id, limit: 10);
+        for (final track in related) {
+          if (!recentSeen.contains(track.id)) {
+            recentSeen.add(track.id);
+            recentRelated.add(track);
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) print('MusicProvider: Error fetching based on recent for ${seed.trackName}: $e');
+      }
+    }
+    _basedOnRecent = _processForYouTracks(recentRelated, 15);
+
+    // 3. Artist Recommendations
+    final topArtists = _recommendationService.getRecommendedArtists(limit: 5);
+    final artistTracks = <Track>[];
+    final artistSeen = <String>{};
+    for (final artist in topArtists) {
+      try {
+        final results = await _innerTubeService.searchSongs(artist);
+        for (final track in results) {
+          if (!artistSeen.contains(track.id) && track.artistName.toLowerCase().contains(artist.toLowerCase())) {
+            artistSeen.add(track.id);
+            artistTracks.add(track);
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) print('MusicProvider: Error fetching artist recommendations for $artist: $e');
+      }
+    }
+    _artistRecommendations = _processForYouTracks(artistTracks, 15);
   }
   
   /// Fetch personalized For You content using recently played as seeds

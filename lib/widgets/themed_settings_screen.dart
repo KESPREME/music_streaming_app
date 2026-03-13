@@ -6,11 +6,20 @@ import '../screens/material_you_settings_screen.dart';
 
 /// Themed Settings Screen Wrapper
 /// Switches between Glass and Material You versions based on theme
-class ThemedSettingsScreen extends StatelessWidget {
+class ThemedSettingsScreen extends StatefulWidget {
   const ThemedSettingsScreen({super.key});
 
   @override
+  State<ThemedSettingsScreen> createState() => _ThemedSettingsScreenState();
+}
+
+class _ThemedSettingsScreenState extends State<ThemedSettingsScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     return themeProvider.isMaterialYou
         ? const MaterialYouSettingsScreen()

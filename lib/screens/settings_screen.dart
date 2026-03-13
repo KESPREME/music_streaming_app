@@ -219,7 +219,7 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       _buildDivider(isDark),
                       _buildSettingTile(
-                        icon: Icons.info_outline_rounded, title: 'Version', subtitle: '1.0.4 (Mine Music)', isDark: isDark,
+                        icon: Icons.info_outline_rounded, title: 'Version', subtitle: '1.0.5 (Mine Music)', isDark: isDark,
                         onTap: () {
                            settingsProvider.toggleDeveloperMode();
                         }

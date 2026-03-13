@@ -14,6 +14,7 @@ import '../theme/material_you_typography.dart';
 import '../theme/material_you_tokens.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/material_you_options_sheet.dart';
+import '../widgets/keep_alive_wrapper.dart';
 
 /// Material You Home Screen - COMPLETELY DIFFERENT from glassmorphism
 /// Features:
@@ -67,8 +68,8 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildFeedTab(context),
-                  _buildExploreTab(context),
+                  KeepAliveWrapper(child: _buildFeedTab(context)),
+                  KeepAliveWrapper(child: _buildExploreTab(context)),
                 ],
               ),
             ),
@@ -173,41 +174,113 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
         padding: const EdgeInsets.only(top: 8, bottom: 180),
         physics: const BouncingScrollPhysics(),
         children: [
-          // Recently Played (Horizontal List)
-          if (musicProvider.recentlyPlayed.isNotEmpty) ...[
+          // 1. Continue Listening (Horizontal List)
+          if (musicProvider.continueListening.isNotEmpty) ...[
             _buildSectionHeader("Jump Back In", null),
             SizedBox(
               height: 220, // Increased height to prevent text clipping
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                scrollDirection: Axis.horizontal,
-                itemCount: musicProvider.recentlyPlayed.length,
-                physics: const BouncingScrollPhysics(),
+              child: RepaintBoundary(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: musicProvider.continueListening.length,
+                  physics: const BouncingScrollPhysics(),
+                  itemBuilder: (context, index) {
+                    final item = musicProvider.continueListening[index];
+                    return MaterialYouAlbumCard(
+                      imageUrl: item.albumArtUrl,
+                      title: item.trackName,
+                      subtitle: item.artistName,
+                      width: 140, // Match glassmorphism dimensions
+                      height: 140,
+                      onTap: () => musicProvider.playTrack(
+                        item,
+                        playlistTracks: musicProvider.continueListening,
+                      ),
+                      onLongPress: () {
+                        HapticFeedback.mediumImpact();
+                        MaterialYouOptionsSheet.show(
+                          context,
+                          track: item,
+                          isRecentlyPlayedContext: true,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
+          // 2. Based on Recent (Horizontal List)
+          if (musicProvider.basedOnRecent.isNotEmpty) ...[
+            const SizedBox(height: 10), // Reduced gap
+            _buildSectionHeader("Based on Your Listening", null, removeTopPadding: true),
+            SizedBox(
+              height: 220,
+              child: RepaintBoundary(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: musicProvider.basedOnRecent.length,
+                  physics: const BouncingScrollPhysics(),
                 itemBuilder: (context, index) {
-                  final item = musicProvider.recentlyPlayed[index];
+                  final item = musicProvider.basedOnRecent[index];
                   return MaterialYouAlbumCard(
                     imageUrl: item.albumArtUrl,
                     title: item.trackName,
                     subtitle: item.artistName,
-                    width: 140, // Match glassmorphism dimensions
+                    width: 140,
                     height: 140,
                     onTap: () => musicProvider.playTrack(
                       item,
-                      playlistTracks: musicProvider.recentlyPlayed,
+                      playlistTracks: musicProvider.basedOnRecent,
                     ),
                     onLongPress: () {
                       HapticFeedback.mediumImpact();
-                      MaterialYouOptionsSheet.show(
-                        context,
-                        track: item,
-                        isRecentlyPlayedContext: true,
-                      );
+                      MaterialYouOptionsSheet.show(context, track: item);
+                    },
+                  );
+                },
+               ),
+              ),
+            ),
+          ],
+
+          // 3. Artist Recommendations (Horizontal List)
+          if (musicProvider.artistRecommendations.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildSectionHeader("Because You Like These Artists", null, removeTopPadding: true),
+            SizedBox(
+              height: 220,
+              child: RepaintBoundary(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: musicProvider.artistRecommendations.length,
+                  physics: const BouncingScrollPhysics(),
+                itemBuilder: (context, index) {
+                  final item = musicProvider.artistRecommendations[index];
+                  return MaterialYouAlbumCard(
+                    imageUrl: item.albumArtUrl,
+                    title: item.trackName,
+                    subtitle: item.artistName,
+                    width: 140,
+                    height: 140,
+                    onTap: () => musicProvider.playTrack(
+                      item,
+                      playlistTracks: musicProvider.artistRecommendations,
+                    ),
+                    onLongPress: () {
+                      HapticFeedback.mediumImpact();
+                      MaterialYouOptionsSheet.show(context, track: item);
                     },
                   );
                 },
               ),
             ),
-          ],
+          ),
+        ],
 
           // For You - Vertical List (No top padding)
           const SizedBox(height: 10), // Reduced gap

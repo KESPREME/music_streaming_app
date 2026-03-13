@@ -17,6 +17,7 @@ import 'recommendation/discovery_controller.dart';
 /// Enhanced track signal with completion rate and context
 class TrackSignal {
   final String trackId;
+  final String trackName;
   final String artistName;
   final String? genre;
   int playCount;
@@ -30,6 +31,7 @@ class TrackSignal {
   
   TrackSignal({
     required this.trackId,
+    required this.trackName,
     required this.artistName,
     this.genre,
     this.playCount = 0,
@@ -44,6 +46,7 @@ class TrackSignal {
   
   Map<String, dynamic> toMap() => {
     'track_id': trackId,
+    'track_name': trackName,
     'artist_name': artistName,
     'genre': genre,
     'play_count': playCount,
@@ -58,6 +61,7 @@ class TrackSignal {
   
   factory TrackSignal.fromMap(Map<String, dynamic> map) => TrackSignal(
     trackId: map['track_id'] as String,
+    trackName: map['track_name'] as String? ?? 'Unknown Track',
     artistName: map['artist_name'] as String,
     genre: map['genre'] as String?,
     playCount: map['play_count'] as int? ?? 0,
@@ -141,7 +145,7 @@ class RecommendationService {
   static const String _dbName = 'recommendations_v2.db';
   static const String _signalsTable = 'track_signals_v2';
   static const String _profileKey = 'recommendation_profile';
-  static const int _dbVersion = 2;
+  static const int _dbVersion = 3;
   
   Database? _database;
   bool _isInitialized = false;
@@ -215,6 +219,7 @@ class RecommendationService {
     await db.execute('''
       CREATE TABLE $_signalsTable (
         track_id TEXT PRIMARY KEY,
+        track_name TEXT NOT NULL,
         artist_name TEXT NOT NULL,
         genre TEXT,
         play_count INTEGER DEFAULT 0,
@@ -244,6 +249,13 @@ class RecommendationService {
         if (kDebugMode) print('RecommendationAgent: Migration error: $e');
       }
     }
+    if (oldVersion < 3) {
+      try {
+        await db.execute('ALTER TABLE $_signalsTable ADD COLUMN track_name TEXT DEFAULT "Unknown Track"');
+      } catch (e) {
+        if (kDebugMode) print('RecommendationAgent: Migration v3 error: $e');
+      }
+    }
   }
   
   /// Record a track play with detailed signals
@@ -262,6 +274,7 @@ class RecommendationService {
     // Get or create signal
     final signal = _signalCache[track.id] ?? TrackSignal(
       trackId: track.id,
+      trackName: track.trackName,
       artistName: track.artistName,
       lastPlayed: DateTime.now(),
     );
@@ -329,6 +342,7 @@ class RecommendationService {
     
     final signal = _signalCache[track.id] ?? TrackSignal(
       trackId: track.id,
+      trackName: track.trackName,
       artistName: track.artistName,
       lastPlayed: DateTime.now(),
     );
@@ -384,6 +398,18 @@ class RecommendationService {
   /// Get recommended artists from long-term model
   List<String> getRecommendedArtists({int limit = 20}) {
     return _longTermModel.getTopArtists(limit: limit);
+  }
+  
+  /// Get recently played tracks for seeding recommendations
+  List<TrackSignal> getRecentlyPlayedSignals({int limit = 10}) {
+    final signals = <TrackSignal>[];
+    for (final id in _recentlyPlayedIds) {
+      if (_signalCache.containsKey(id)) {
+        signals.add(_signalCache[id]!);
+        if (signals.length >= limit) break;
+      }
+    }
+    return signals;
   }
   
   /// Calculate multi-objective score for a track

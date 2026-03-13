@@ -13,6 +13,7 @@ import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
 import '../home_tab_content.dart';
 import '../widgets/themed_settings_screen.dart';
+import '../widgets/keep_alive_wrapper.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -62,8 +63,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                  child: TabBarView(
                    controller: _tabController,
                    children: [
-                      _buildFeedTab(context),
-                      _buildExploreTab(context),
+                      KeepAliveWrapper(child: _buildFeedTab(context)),
+                      KeepAliveWrapper(child: _buildExploreTab(context)),
                    ],
                  ),
                ),
@@ -174,37 +175,101 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         padding: const EdgeInsets.only(top: 10, bottom: 100),
         physics: const BouncingScrollPhysics(),
         children: [
-           // 1. Recently Played (Horizontal)
-           if (musicProvider.recentlyPlayed.isNotEmpty) ...[
+           // 1. Continue Listening (Horizontal)
+           if (musicProvider.continueListening.isNotEmpty) ...[
              _buildSectionHeader("Jump Back In"),
              SizedBox(
                height: 190,
-               child: ListView.builder(
-                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                 scrollDirection: Axis.horizontal,
-                 itemCount: musicProvider.recentlyPlayed.length,
-                 physics: const BouncingScrollPhysics(),
+               child: RepaintBoundary(
+                 child: ListView.builder(
+                   padding: const EdgeInsets.symmetric(horizontal: 20),
+                   scrollDirection: Axis.horizontal,
+                   itemCount: musicProvider.continueListening.length,
+                   physics: const BouncingScrollPhysics(),
                  itemBuilder: (context, index) {
-                    final item = musicProvider.recentlyPlayed[index];
+                    final item = musicProvider.continueListening[index];
                     return ThemedCard(
                       imageUrl: item.albumArtUrl, 
                       title: item.trackName, 
                       subtitle: item.artistName,
                       width: 140, 
                       height: 140,
-                      onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.recentlyPlayed),
+                      onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.continueListening),
                       onLongPress: () {
-                      ThemedOptionsSheet.show(
-                        context,
-                        track: item,
-                        isRecentlyPlayedContext: true,
-                      );
+                        ThemedOptionsSheet.show(
+                          context,
+                          track: item,
+                          isRecentlyPlayedContext: true,
+                        );
                       },
                     );
-                 },
-               ),
-             ),
-           ],
+                  },
+                ),
+              ),
+            ),
+          ],
+
+           // 2. Based on Recent (Horizontal)
+           if (musicProvider.basedOnRecent.isNotEmpty) ...[
+             const SizedBox(height: 10),
+             _buildSectionHeader("Based on Your Listening"),
+             SizedBox(
+               height: 190,
+               child: RepaintBoundary(
+                 child: ListView.builder(
+                   padding: const EdgeInsets.symmetric(horizontal: 20),
+                   scrollDirection: Axis.horizontal,
+                   itemCount: musicProvider.basedOnRecent.length,
+                   physics: const BouncingScrollPhysics(),
+                 itemBuilder: (context, index) {
+                    final item = musicProvider.basedOnRecent[index];
+                    return ThemedCard(
+                      imageUrl: item.albumArtUrl, 
+                      title: item.trackName, 
+                      subtitle: item.artistName,
+                      width: 140, 
+                      height: 140,
+                      onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.basedOnRecent),
+                      onLongPress: () {
+                        ThemedOptionsSheet.show(context, track: item);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
+           // 3. Artist Recommendations (Horizontal)
+           if (musicProvider.artistRecommendations.isNotEmpty) ...[
+             const SizedBox(height: 10),
+             _buildSectionHeader("Because You Like These Artists"),
+             SizedBox(
+               height: 190,
+               child: RepaintBoundary(
+                 child: ListView.builder(
+                   padding: const EdgeInsets.symmetric(horizontal: 20),
+                   scrollDirection: Axis.horizontal,
+                   itemCount: musicProvider.artistRecommendations.length,
+                   physics: const BouncingScrollPhysics(),
+                 itemBuilder: (context, index) {
+                    final item = musicProvider.artistRecommendations[index];
+                    return ThemedCard(
+                      imageUrl: item.albumArtUrl, 
+                      title: item.trackName, 
+                      subtitle: item.artistName,
+                      width: 140, 
+                      height: 140,
+                      onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.artistRecommendations),
+                      onLongPress: () {
+                        ThemedOptionsSheet.show(context, track: item);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
            
            // 2. For You (Vertical List)
            const SizedBox(height: 10),

@@ -228,7 +228,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                    ),
                    _buildDivider(colorScheme),
                   _buildListTile(
-                    context, icon: Icons.info_outline_rounded, title: 'Version', subtitle: '1.0.4 (Mine Music)',
+                    context, icon: Icons.info_outline_rounded, title: 'Version', subtitle: '1.0.5 (Mine Music)',
                     onTap: () {
                        settingsProvider.toggleDeveloperMode();
                     }
