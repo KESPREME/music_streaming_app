@@ -33,6 +33,10 @@ migrate_working_dir/
 .pub/
 /build/
 .kiro
+.firebaserc
+firebase.json
+firestore.indexes.json
+firestore.rules
 
 # Symbolication related
 app.*.symbols

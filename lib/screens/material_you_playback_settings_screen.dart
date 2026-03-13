@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../theme/material_you_tokens.dart';

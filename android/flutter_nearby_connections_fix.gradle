@@ -1,0 +1,4 @@
+
+android {
+    namespace "com.nankai.flutter_nearby_connections"
+}

@@ -9,7 +9,7 @@ import 'dart:math';
 
 // Flutter Foundation & Material
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart'; // Added for NetworkImage
+import 'package:flutter/material.dart' hide RepeatMode; // Added for NetworkImage
 
 // Flutter Packages
 import 'package:connectivity_plus/connectivity_plus.dart';

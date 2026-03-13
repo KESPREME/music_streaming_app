@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:just_audio/just_audio.dart'; // Import for ProcessingState
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';

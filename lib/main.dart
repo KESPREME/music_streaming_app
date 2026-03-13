@@ -8,16 +8,17 @@ import 'package:just_audio_background/just_audio_background.dart';
 
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/settings_provider.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
-import 'screens/social_screen.dart';
 import 'screens/library_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';
 import 'widgets/themed_library_screen.dart';
+import 'widgets/themed_settings_screen.dart'; // Import Settings Screen
 import 'widgets/global_music_overlay.dart'; // Import Global Overlay
 
 class AppColors {
@@ -75,6 +76,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (context) => SettingsProvider()),
         ChangeNotifierProvider(create: (context) => MusicProvider()),
         ChangeNotifierProvider(create: (context) => AuthService()),
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
@@ -160,8 +162,8 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const ThemedHomeScreen(),
     const ThemedSearchScreen(),
-    const SocialScreen(),
     const ThemedLibraryScreen(),
+    const ThemedSettingsScreen(),
   ];
 
   @override
@@ -227,8 +229,8 @@ class _MainScreenState extends State<MainScreen> {
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: 'Search'),
-            BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Social'),
             BottomNavigationBarItem(icon: Icon(Icons.library_music_rounded), label: 'Library'),
+            BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'Settings'),
           ],
         ),
       ),

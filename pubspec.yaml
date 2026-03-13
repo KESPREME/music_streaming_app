@@ -48,6 +48,9 @@ dependencies:
 
 
   flutter_cache_manager: any
+  html: ^0.15.6
+  package_info_plus: ^9.0.0
+  open_file: ^3.5.11
 
 dependency_overrides:
   bonsoir: 5.0.3

@@ -1,5 +1,5 @@
 // lib/screens/playback_settings_screen.dart
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 

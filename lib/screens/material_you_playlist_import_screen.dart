@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
-import '../services/spotify_service.dart';
-import 'spotify_playlist_selection_screen.dart';
+import '../services/playlist_import_service.dart';
+import '../models/playlist.dart';
 import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 
@@ -17,8 +17,8 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
   bool _isLoading = false;
   String _selectedService = "Spotify";
   final TextEditingController _playlistUrlController = TextEditingController();
-  final SpotifyService _spotifyService = SpotifyService();
-  final List<String> _supportedServices = ["Spotify", "YouTube Music", "Amazon Music"];
+  final PlaylistImportService _importService = PlaylistImportService();
+  final List<String> _supportedServices = ["Spotify", "YouTube Music"];
 
   @override
   void dispose() {
@@ -61,8 +61,7 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildServiceButton('Spotify', Icons.music_note_rounded, const Color(0xFF1DB954), colorScheme),
-                _buildServiceButton('YouTube', Icons.play_arrow_rounded, const Color(0xFFFF0000), colorScheme),
-                _buildServiceButton('Amazon', Icons.shopping_cart_rounded, const Color(0xFF232F3E), colorScheme),
+                _buildServiceButton('YouTube Music', Icons.play_arrow_rounded, const Color(0xFFFF0000), colorScheme),
               ],
             ),
           ],
@@ -200,25 +199,14 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
     setState(() => _isLoading = true);
 
     try {
-      String? playlistId;
-      if (_selectedService == 'Spotify' && url.contains('spotify.com/playlist/')) {
-        final uri = Uri.parse(url);
-        final pathSegments = uri.pathSegments;
-        final playlistIndex = pathSegments.indexOf('playlist');
-        if (playlistIndex >= 0 && playlistIndex < pathSegments.length - 1) {
-          playlistId = pathSegments[playlistIndex + 1];
-        }
+      Playlist playlist;
+      if (_selectedService == 'Spotify') {
+        playlist = await _importService.importSpotifyPlaylist(url);
+      } else if (_selectedService == 'YouTube Music') {
+        playlist = await _importService.importYoutubePlaylist(url);
+      } else {
+        throw Exception('Unsupported service');
       }
-
-      if (playlistId == null) throw Exception('Could not extract playlist ID from URL');
-
-      final playlistInfo = await _spotifyService.getPlaylistMetadata(playlistId);
-
-      final imageUrl = (playlistInfo['images'] as List).isNotEmpty 
-          ? playlistInfo['images'][0]['url'] 
-          : '';
-          
-      final playlist = await _spotifyService.getPlaylistWithTracks(playlistId, playlistInfo['name'], imageUrl);
       
       if (mounted) {
         await Provider.of<MusicProvider>(context, listen: false).importPlaylist(playlist);
@@ -239,72 +227,11 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
   }
 
   Future<void> _connectToService(String service) async {
-    if (service != 'Spotify') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$service coming soon')),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    
-    try {
-      final playlists = await _spotifyService.getUserPlaylists();
-      
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SpotifyPlaylistSelectionScreen(
-            playlists: playlists,
-            onPlaylistSelected: (playlistMap) {
-              Navigator.pop(context);
-              _importSpotifyPlaylist(playlistMap);
-            },
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error connecting: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _importSpotifyPlaylist(Map<String, dynamic> playlistInfo) async {
-    setState(() => _isLoading = true);
-    
-    try {
-      final playlistId = playlistInfo['id'];
-      final name = playlistInfo['name'];
-      final images = playlistInfo['images'] as List;
-      final imageUrl = images.isNotEmpty ? images[0]['url'] : '';
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Importing playlist...')),
-      );
-      
-      final playlist = await _spotifyService.getPlaylistWithTracks(playlistId, name, imageUrl);
-      
-      if (mounted) {
-        await Provider.of<MusicProvider>(context, listen: false).importPlaylist(playlist);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported "${playlist.name}"')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import Error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    setState(() {
+      _selectedService = service;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Selected $service. Please enter the playlist URL above.')),
+    );
   }
 }
