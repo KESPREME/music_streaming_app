@@ -283,7 +283,7 @@ class GlassOptionsSheet extends StatelessWidget {
                               label: 'Share',
                               onTap: () {
                                 Navigator.pop(context);
-                                Share.share('Check out this track: ${track.trackName} by ${track.artistName}\n${track.previewUrl}');
+                                SharePlus.instance.share(ShareParams(text: 'Check out this track: ${track.trackName} by ${track.artistName}\n${track.previewUrl}'));
                               },
                               isDark: isDark,
                             ),
@@ -607,3 +607,4 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
     );
   }
 }
+

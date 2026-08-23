@@ -65,16 +65,8 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
-  audio_video_progress_bar:
-    dependency: "direct main"
-    description:
-      name: audio_video_progress_bar
-      sha256: "552b1f73c56c4c88407999e0a8507176f60c56de3e6d63bc20a0eab48467d4c9"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.3"
   bonsoir:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
       name: bonsoir
       sha256: b7e954a89697aeb8617a354a200ff35f4dc9f5a2323b1ec534dd282e5052a0b4
@@ -560,14 +552,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0"
-  glassmorphism:
-    dependency: "direct main"
-    description:
-      name: glassmorphism
-      sha256: c0f65ea2681d4ee6d4125b947946d983335cd44765e835cdc039894b076a6e31
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.0"
   google_fonts:
     dependency: "direct main"
     description:
@@ -969,7 +953,7 @@ packages:
     source: hosted
     version: "6.1.5+1"
   rxdart:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: rxdart
       sha256: "5c3004a4a8dbb94bd4bf5412a4def4acdaa12e12f269737a5751369e12d1a962"

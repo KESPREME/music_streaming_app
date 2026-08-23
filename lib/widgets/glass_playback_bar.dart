@@ -67,7 +67,7 @@ class GlassPlaybackBar extends StatelessWidget {
                   IconButton(
                     icon: const Icon(Icons.share_outlined, color: Colors.white70),
                     onPressed: () {
-                       Share.share('Listening to ${track.trackName} by ${track.artistName}');
+                       SharePlus.instance.share(ShareParams(text: 'Listening to ${track.trackName} by ${track.artistName}'));
                     },
                   ),
                   
@@ -158,3 +158,4 @@ class GlassPlaybackBar extends StatelessWidget {
     );
   }
 }
+

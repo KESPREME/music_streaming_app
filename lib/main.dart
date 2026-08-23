@@ -193,9 +193,12 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Access Provider to check Player Expansion state
-    final musicProvider = Provider.of<MusicProvider>(context);
-    final isPanelOpen = musicProvider.isPlayerExpanded;
+    // Rebuild ONLY when expansion state flips, not on every playback tick
+    // (~1s position updates). Actions still use read.
+    final isPanelOpen = context.select<MusicProvider, bool>(
+      (p) => p.isPlayerExpanded,
+    );
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
 
     return PopScope(
       canPop: (_currentIndex == 0 && !isPanelOpen),

@@ -258,7 +258,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                         onTap: () async {
                           Navigator.pop(context);
                           String shareText = 'Listening to: ${track!.trackName} by ${track!.artistName}';
-                          await Share.share(shareText);
+                          await SharePlus.instance.share(ShareParams(text: shareText));
                         },
                       ),
                       
@@ -632,5 +632,6 @@ class MaterialYouOptionsSheet extends StatelessWidget {
   
 
 }
+
 
 

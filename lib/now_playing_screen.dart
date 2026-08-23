@@ -153,9 +153,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           ),
         ),
 
-        // Deep Blur Layer
+        // Deep Blur Layer (sigma 90 was ~4x the GPU-friendly ceiling)
         BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: Container(color: Colors.transparent),
         ),
       ],
