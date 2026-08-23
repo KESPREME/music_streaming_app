@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart'; // Import fonts
 import 'package:provider/provider.dart';
-import '../providers/music_provider.dart';
-import '../widgets/track_tile.dart';
+import 'package:music_streaming_app/providers/music_provider.dart';
+import 'package:music_streaming_app/widgets/track_tile.dart';
 
 class SearchTabContent extends StatelessWidget {
   final List<String> recentSearches;
