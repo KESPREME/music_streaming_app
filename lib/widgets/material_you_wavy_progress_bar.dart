@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/music_provider.dart';
-import '../theme/material_you_tokens.dart';
+import '../utils/format.dart';
 
 /// Material You Wavy Progress Bar
 /// Features:
@@ -46,12 +46,6 @@ class _MaterialYouWavyProgressBarState extends State<MaterialYouWavyProgressBar>
     super.dispose();
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +115,7 @@ class _MaterialYouWavyProgressBarState extends State<MaterialYouWavyProgressBar>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    _formatDuration(position),
+                    formatDuration(position),
                     style: GoogleFonts.splineSans(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
@@ -129,7 +123,7 @@ class _MaterialYouWavyProgressBarState extends State<MaterialYouWavyProgressBar>
                     ),
                   ),
                   Text(
-                    _formatDuration(duration),
+                    formatDuration(duration),
                     style: GoogleFonts.splineSans(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
@@ -220,5 +214,6 @@ class MaterialYouWavySliderPainter extends CustomPainter {
         oldDelegate.color != color;
   }
 }
+
 
 

@@ -6,7 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
-import '../models/album.dart'; // Import Album
 import '../widgets/liquid_play_button.dart'; // Import LiquidPlayButton
 import '../widgets/track_tile.dart';
 import '../widgets/themed_playlist_detail_screen.dart'; // Use themed wrapper

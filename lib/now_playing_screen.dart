@@ -6,13 +6,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'dart:math' as math;
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/playlist_selection_dialog.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
-import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_queue_screen.dart';
 import '../widgets/themed_lyrics_screen.dart';
 import '../screens/material_you_equalizer_screen.dart';

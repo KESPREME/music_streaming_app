@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
@@ -7,7 +6,6 @@ import '../providers/music_provider.dart';
 import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 import '../widgets/themed_artist_detail_screen.dart';
-import '../widgets/themed_album_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import 'material_you_playlist_selection_dialog.dart'; // UPDATED: Use Material You Dialog
 import 'artist_picker_sheet.dart';

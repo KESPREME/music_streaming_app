@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
-import 'package:palette_generator/palette_generator.dart';
 import '../utils/color_utils.dart';
 
 class QueueScreen extends StatelessWidget {

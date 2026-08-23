@@ -1,7 +1,6 @@
 // lib/services/recommendation/sequence_planner.dart
 // Autoplay sequence planning with energy continuity and flow optimization
 
-import 'dart:math';
 import '../../models/track.dart';
 
 /// Plans optimal track sequences for autoplay

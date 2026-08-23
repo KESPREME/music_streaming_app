@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,10 +9,7 @@ import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
-import 'screens/home_screen.dart';
-import 'screens/search_screen.dart';
 import 'widgets/themed_social_screen.dart';
-import 'screens/library_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';

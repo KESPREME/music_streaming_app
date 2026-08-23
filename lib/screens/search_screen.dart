@@ -6,8 +6,6 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
 import '../search_tab_content.dart'; 
-import '../models/track.dart';
-import '../widgets/themed_card.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 

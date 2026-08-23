@@ -5,7 +5,6 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../widgets/material_you_elevated_card.dart';
 import '../widgets/material_you_tonal_button.dart';
-import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_trending_now_screen.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_all_artists_screen.dart';

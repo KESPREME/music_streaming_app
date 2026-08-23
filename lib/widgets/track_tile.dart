@@ -2,11 +2,8 @@
 // import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../screens/album_screen.dart';
-import 'playlist_selection_dialog.dart'; // Import the dialog
 import 'themed_options_sheet.dart';
 import 'glass_snackbar.dart';
 

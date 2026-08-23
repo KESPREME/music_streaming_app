@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 
 class MaterialYouDownloadSelectionSheet extends StatefulWidget {

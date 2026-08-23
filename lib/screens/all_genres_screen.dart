@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/themed_genre_songs_screen.dart';
-import 'home_screen.dart'; // For GenreSongsScreen, assuming it's still there or moved
 
 class AllGenresScreen extends StatelessWidget {
   const AllGenresScreen({super.key});

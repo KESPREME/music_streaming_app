@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'dart:ui'; // For ImageFilter
 import 'package:google_fonts/google_fonts.dart'; // For GoogleFonts
 import '../providers/music_provider.dart';
-import 'package:palette_generator/palette_generator.dart';
 import '../screens/themed_now_playing_screen.dart'; // Use themed wrapper
 import '../utils/color_utils.dart';
 

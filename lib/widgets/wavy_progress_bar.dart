@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/music_provider.dart';
+import '../utils/format.dart';
 
 class WavyProgressBar extends StatefulWidget {
   final MusicProvider provider;
@@ -31,12 +32,6 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
     super.dispose();
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +92,7 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    _formatDuration(position),
+                    formatDuration(position),
                     style: GoogleFonts.plusJakartaSans(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
@@ -105,7 +100,7 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
                     ),
                   ),
                   Text(
-                    _formatDuration(duration),
+                    formatDuration(duration),
                     style: GoogleFonts.plusJakartaSans(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
@@ -186,4 +181,5 @@ class WavySliderPainter extends CustomPainter {
     return oldDelegate.progress != progress || oldDelegate.phase != phase || oldDelegate.color != color;
   }
 }
+
 

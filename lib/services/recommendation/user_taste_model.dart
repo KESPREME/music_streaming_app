@@ -2,7 +2,6 @@
 // Long-term and short-term user taste modeling for the recommendation agent
 
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 
 /// Long-term stable taste preferences (artist clusters, genre, energy)
 /// Updated slowly, requires consistent evidence
