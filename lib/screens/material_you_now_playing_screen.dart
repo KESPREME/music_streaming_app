@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
