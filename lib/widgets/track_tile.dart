@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import 'playlist_selection_dialog.dart'; // Import the dialog
 import 'themed_options_sheet.dart';

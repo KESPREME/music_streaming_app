@@ -15,14 +15,13 @@ import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_queue_screen.dart';
 import '../widgets/themed_lyrics_screen.dart';
-import '../widgets/themed_equalizer_screen.dart';
+import '../screens/material_you_equalizer_screen.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/artist_picker_sheet.dart';
 
 import '../widgets/wavy_progress_bar.dart';
 import '../main.dart';
 import '../utils/color_utils.dart';
-import '../widgets/themed_equalizer_screen.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -663,7 +662,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                        // FIX: Push to local navigator (not root) for proper back handling
                        if (context.mounted) {
                          Navigator.of(context, rootNavigator: false).push(
-                           MaterialPageRoute(builder: (_) => ThemedEqualizerScreen()),
+                           MaterialPageRoute(builder: (_) => const MaterialYouEqualizerScreen()),
                          );
                        }
                      }
@@ -938,5 +937,6 @@ class _LiquidGlobState extends State<_LiquidGlob> with SingleTickerProviderState
     );
   }
 }
+
 
 

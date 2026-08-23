@@ -12,7 +12,7 @@ import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
-import 'screens/social_screen.dart';
+import 'widgets/themed_social_screen.dart';
 import 'screens/library_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
@@ -160,7 +160,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const ThemedHomeScreen(),
     const ThemedSearchScreen(),
-    const SocialScreen(),
+    const ThemedSocialScreen(),
     const ThemedLibraryScreen(),
   ];
 
