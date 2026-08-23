@@ -217,21 +217,23 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                       icon: Icons.download_rounded,
                       title: 'Download',
                       onTap: () async {
+                        // Capture messenger BEFORE popping the sheet: the
+                        // sheet's context is dead after pop.
+                        final messenger = ScaffoldMessenger.maybeOf(context);
                         Navigator.pop(context);
                         // Safe check for track download
                         try {
                            final isDownloaded = await musicProvider.isTrackDownloaded(track!.id);
                            if (!isDownloaded) {
                              await musicProvider.downloadTrack(track!);
-                             if (context.mounted) {
-                               showMaterialYouSnackBar(
-                                 context, 
-                                 'Downloading "${track!.trackName}"'
-                               );
-                             }
+                             messenger?.showSnackBar(
+                               buildMaterialYouSnackBar('Downloading "${track!.trackName}"')
+                             );
                            }
                         } catch (e) {
-                          // ignore
+                          messenger?.showSnackBar(
+                            buildMaterialYouSnackBar('Download failed. Please try again.')
+                          );
                         }
                       },
                     ),
@@ -622,73 +624,13 @@ class MaterialYouOptionsSheet extends StatelessWidget {
         ),
       );
     } else {
-       showMaterialYouSnackBar(context, 'Could not load artist "$artistName"', isError: true);
+       messenger.showSnackBar(
+         buildMaterialYouSnackBar('Could not load artist "$artistName"', isError: true)
+       );
     }
   }
   
-  // FIX: Accept NavigatorState and ScaffoldMessengerState directly to ensure safety after pop
-  void _navigateToAlbum(
-    NavigatorState navigator, 
-    ScaffoldMessengerState messenger, 
-    MusicProvider musicProvider, 
-    String albumName, 
-    String artistName
-  ) async {
-    // Show loading feedback
-    messenger.showSnackBar(
-      SnackBar(
-        content: const Text('Loading album...'),
-        backgroundColor: MaterialYouTokens.primaryVibrant,
-        duration: const Duration(milliseconds: 500),
-      ),
-    );
-    
-    // Fetch album details
-    print('DEBUG: MaterialYouOptionsSheet._navigateToAlbum: Navigating to album: "$albumName" by "$artistName"');
-    
-    try {
-      print('DEBUG: calling musicProvider.navigateToAlbum...');
-      await musicProvider.navigateToAlbum(albumName, artistName);
-      print('DEBUG: musicProvider.navigateToAlbum returned.');
-      
-      // Navigate if successful
-      if (musicProvider.currentAlbumDetails != null) {
-        debugPrint('MaterialYouOptionsSheet: Album loaded successfully: ${musicProvider.currentAlbumDetails!.name}');
-        
-        // FIX: Ensure mini player is visible when going to details screen
-        musicProvider.setHideMiniPlayer(false);
-        
-        navigator.push(
-          MaterialPageRoute(
-            builder: (_) => ThemedPlaylistDetailScreen(
-              playlistId: musicProvider.currentAlbumDetails!.id,
-              playlistName: musicProvider.currentAlbumDetails!.name,
-              playlistImage: musicProvider.currentAlbumDetails!.imageUrl,
-              cachedTracks: musicProvider.currentAlbumDetails!.tracks,
-            ),
-          ),
-        );
-      } else {
-        debugPrint('MaterialYouOptionsSheet: Failed to load album details (null)');
-        // Show error if album not found
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Could not load album "$albumName"'),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e, stack) {
-       debugPrint('MaterialYouOptionsSheet: Navigation error: $e\n$stack');
-       messenger.showSnackBar(
-        SnackBar(
-          content: Text('Error loading album "$albumName"'),
-          backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
+
 }
+
 

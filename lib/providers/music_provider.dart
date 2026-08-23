@@ -494,7 +494,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     // --- Navigation Listeners ---
     _audioSubscriptions.add(_audioService.onSkipToNext.listen((_) {
       if (kDebugMode) print("MusicProvider: External SkipNext triggered (Notification/LockScreen)");
-      skipToNext();
+      _handleAutoSkipToNext();
     }));
     
     _audioSubscriptions.add(_audioService.onSkipToPrevious.listen((_) {
@@ -622,12 +622,62 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   void _shufflePlaylist() { if (_currentPlayingTracks == null || _currentPlayingTracks!.isEmpty) { _shuffledPlaylist = []; _currentIndex = -1; return; } _shuffledPlaylist = List.from(_currentPlayingTracks!)..shuffle(Random()); _updateCurrentIndex(); /* Preload handled by toggleShuffle or setPlaybackContext */ }
   List<Track> _getActivePlaylist() => _shuffleEnabled ? _shuffledPlaylist : (_currentPlayingTracks ?? []);
   void _updateCurrentIndex() { final list = _getActivePlaylist(); _currentIndex = (_currentTrack != null && list.isNotEmpty) ? list.indexWhere((t) => t.id == _currentTrack!.id) : -1; }
+
+  // --- Advance-race protection ---
+  // Natural end-of-track triggers BOTH the nav-monitor (dummy item) and the
+  // completed handler. This guard suppresses the second advance for the same
+  // track within a short window.
+  DateTime? _lastAutoAdvanceAt;
+  String? _lastAutoAdvanceTrackId;
+  bool _consumeDuplicateAutoAdvance(String? trackId) {
+    final now = DateTime.now();
+    final isDup = _lastAutoAdvanceAt != null &&
+        _lastAutoAdvanceTrackId == trackId &&
+        now.difference(_lastAutoAdvanceAt!).inMilliseconds < 2000;
+    if (!isDup) {
+      _lastAutoAdvanceAt = now;
+      _lastAutoAdvanceTrackId = trackId;
+    }
+    return isDup;
+  }
+
+  // Bumped whenever user intent starts/retargets playback; stale async
+  // continuations (e.g. autoplay fetches) compare and abort.
+  int _playbackGeneration = 0;
+
+  /// Force-reloads the current track, bypassing play/pause toggle logic.
+  /// Needed because after auto-advance the player sits on a silent dummy item,
+  /// so seek(Duration.zero)/resume would target the wrong source.
+  Future<void> _replayCurrentTrack() async {
+    final t = _currentTrack;
+    if (t == null) return;
+    _currentTrack = null; // force playTrack full path
+    await playTrack(t, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId);
+  }
+
+
   void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { print("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); print("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) {
     _shufflePlaylist();
   } else {
     _updateCurrentIndex();
   } _handlePlaybackOrContextChangeForPreloading();} else { _updateCurrentIndex(); }  }
-  void _onTrackComplete() {
+  /// Handles skip events arriving via the audio-service stream (dummy-item
+  /// auto-advance and media-session skips). Guards the double-advance race
+  /// with the completed handler and honors repeat-one.
+  Future<void> _handleAutoSkipToNext() async {
+    if (_consumeDuplicateAutoAdvance(_currentTrack?.id)) return;
+
+    if (_repeatMode == RepeatMode.one && _currentTrack != null) {
+      // Replay the actual track: after auto-advance the player is parked on
+      // the next dummy item, so seeking/resuming there would play silence.
+      await _replayCurrentTrack();
+      _handlePlaybackOrContextChangeForPreloading();
+      return;
+    }
+    await skipToNext();
+  }
+
+  Future<void> _onTrackComplete() async {
     if (kDebugMode) print('MusicProvider: _onTrackComplete event for ${_currentTrack?.trackName}');
     
     // Record enhanced play signal for recommendation agent
@@ -663,11 +713,16 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
 
     if (_repeatMode == RepeatMode.one) {
-       seekTo(Duration.zero);
-       if(!_isPlaying) resumeTrack();
+       await _replayCurrentTrack();
        _handlePlaybackOrContextChangeForPreloading();
        return;
     }
+
+    // The nav-monitor usually advances first (dummy item); if it already did,
+    // this completed event must not advance a second time.
+    // ponytail: recommendation stats below may be approximate under the race —
+    // acceptable signal noise; revisit only if recommendations degrade.
+    if (_consumeDuplicateAutoAdvance(_currentTrack?.id)) return;
 
     _updateCurrentIndex();
     
@@ -735,19 +790,28 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       stopTrack();
       return;
     }
-    
+
+    // Own this playback attempt; any user interaction bumps the generation
+    // and aborts this continuation before it can hijack playback.
+    final gen = ++_playbackGeneration;
+
     if (kDebugMode) print('MusicProvider: Starting autoplay recommendations for ${_currentTrack!.trackName}');
-    
+
     try {
       // Get recommendations based on current track
       final List<Track> recommendations;
-      
+
       if (_currentTrack!.source == 'youtube' && _currentTrack!.id.length == 11) {
         // Use current track as seed for related content
         recommendations = await _innerTubeService.getSuggestions(_currentTrack!.id, limit: 20);
       } else {
         // Fallback: use recently played seeds
         recommendations = await _fetchPersonalizedForYou();
+      }
+
+      if (gen != _playbackGeneration) {
+        if (kDebugMode) print('MusicProvider: Autoplay aborted (user took over).');
+        return;
       }
       
       if (recommendations.isEmpty) {
@@ -784,6 +848,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
       
       // Set new context and play first recommendation
+      if (gen != _playbackGeneration) {
+        if (kDebugMode) print('MusicProvider: Autoplay aborted before start (user took over).');
+        return;
+      }
       final nextTrack = ranked.first;
       if (kDebugMode) print('MusicProvider: Autoplay -> ${nextTrack.trackName}');
       
@@ -820,9 +888,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     } 
   }
   Future<bool> _shouldPlayOffline(Track track) async => track.source == 'local' || await isTrackDownloaded(track.id);
-  Future<void> skipToNext() async { 
-    print('MusicProvider: SkipNext requested.'); 
-    if (_currentTrack == null) return; 
+  Future<void> skipToNext() async {
+    print('MusicProvider: SkipNext requested.');
+    _playbackGeneration++; // invalidate stale async continuations
+    if (_currentTrack == null) return;
     if (_queue.isNotEmpty) { 
       final next = _queue.removeAt(0); 
       print("MusicProvider: Skipping to next from queue: ${next.trackName}"); 
@@ -844,7 +913,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _handleEndOfPlaylist(); // Unified logic
     } 
   }
-  Future<void> skipToPrevious() async { print('SkipPrevious requested.'); if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
+  Future<void> skipToPrevious() async { print('SkipPrevious requested.'); _playbackGeneration++; if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
     await _playTrackInternal(list.last);
   } else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); } } /* Preload handled by playTrackInternal if it plays */ }
 
@@ -889,6 +958,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       return;
     }
 
+    _playbackGeneration++; // invalidate stale async continuations
     _isOfflineContext = false; // Reset offline flag for online playback
     
     // Resume audio service if it was stopped
@@ -959,14 +1029,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         final yt = await _spotifyService.findYouTubeTrack(track);
         if (yt != null) {
           playableId = yt.id;
+          // Keep _currentTrack as the ORIGINAL track so playlist index
+          // lookups (which match by original id) stay valid.
           effectiveTrack = track.copyWith(
             id: playableId,
             source: 'youtube',
             previewUrl: yt.previewUrl,
           );
-          _currentTrack = effectiveTrack;
-          notifyListeners();
-          updatePalette(); // FIX: Regenerate palette for new track ID
         } else {
           throw Exception("Could not find playable version of '${track.trackName}'.");
         }
@@ -987,10 +1056,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
               print('MusicProvider: Found equivalent: ${equivalentTrack.trackName} (${equivalentTrack.id})');
             }
             playableId = equivalentTrack.id;
+            // Keep _currentTrack as the ORIGINAL track (see spotify branch).
             effectiveTrack = equivalentTrack;
-            _currentTrack = effectiveTrack;
-            notifyListeners();
-            updatePalette(); // FIX: Regenerate palette for new track ID
           } else {
             // If no equivalent found, use the track's original source for this playback
             if (kDebugMode) {
@@ -1340,11 +1407,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
   
   // --- Casting Methods ---
+  StreamSubscription? _castDevicesSub;
+
   void startCastingDiscovery() {
     _isSearchingDevices = true;
     notifyListeners();
     _castService.startDiscovery();
-    _castService.devicesStream.listen((devices) {
+    // Keep exactly ONE devices subscription; re-invocations must not stack
+    // duplicate listeners on the broadcast stream.
+    _castDevicesSub ??= _castService.devicesStream.listen((devices) {
       _castDevices = devices;
       notifyListeners();
     });
@@ -1352,6 +1423,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   void stopCastingDiscovery() {
     _isSearchingDevices = false;
+    _castDevicesSub?.cancel();
+    _castDevicesSub = null;
     _castService.stopDiscovery();
     notifyListeners();
   }

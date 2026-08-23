@@ -105,6 +105,7 @@ class AudioService {
       ));
 
       // BATTERY FIX: Handle audio interruptions (calls, other apps, etc.)
+      bool _wasPlayingBeforeInterruption = false;
       _subscriptions.add(
         session.interruptionEventStream.listen((event) {
           if (event.begin) {
@@ -115,15 +116,19 @@ class AudioService {
                 break;
               case AudioInterruptionType.pause:
               case AudioInterruptionType.unknown:
-                // Pause playback, will resume when interruption ends
+                // Pause playback; remember whether WE were playing so we only
+                // resume what was actually playing before the interruption.
+                _wasPlayingBeforeInterruption = _audioPlayer.playing;
                 _audioPlayer.pause();
                 break;
             }
           } else {
-            // Interruption ended - resume if we were playing
-            if (_audioPlayer.processingState != ProcessingState.idle) {
+            // Interruption ended - resume ONLY if it was playing before
+            if (_wasPlayingBeforeInterruption &&
+                _audioPlayer.processingState != ProcessingState.idle) {
               _audioPlayer.play();
             }
+            _wasPlayingBeforeInterruption = false;
           }
         }),
       );
@@ -377,12 +382,22 @@ class AudioService {
 
   // Handle playback errors
   void _handlePlaybackError(dynamic error) {
-    if (!_isLocalFile && _currentUrl != null &&
-        (error.toString().contains('network') ||
-            error.toString().contains('connection') ||
-            error.toString().contains('socket'))) {
+    if (!_isLocalFile && _currentUrl != null && _looksLikeNetworkError(error)) {
       _retryPlayback();
     }
+  }
+
+  bool _looksLikeNetworkError(dynamic error) {
+    if (error is PlayerException) {
+      // ExoPlayer codes: 2001/2002 = source IO/network errors. Codec/format
+      // errors will not heal by waiting, so don't retry them.
+      return const <int>{2001, 2002}.contains(error.code);
+    }
+    final msg = error.toString().toLowerCase();
+    return msg.contains('network') ||
+        msg.contains('connection') ||
+        msg.contains('socket') ||
+        msg.contains('timeout');
   }
 
   // Retry playback with exponential backoff
@@ -485,38 +500,52 @@ class AudioService {
   
   // Internal monitor for navigation
   DateTime _lastNavigationEvent = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _pendingNavigationTimer;
   bool _isConfiguring = false; // Flag to prevent self-triggering during setup
+
+  void _fireDummySkip(String dummyId) {
+    _lastNavigationEvent = DateTime.now();
+    if (dummyId == "prev_dummy") {
+      _onSkipToPreviousController.add(null);
+    } else if (dummyId == "next_dummy") {
+      _onSkipToNextController.add(null);
+    }
+  }
 
   void _startNavigationMonitor() {
       // FIX: Store subscription for proper cleanup
       _subscriptions.add(_audioPlayer.currentIndexStream.listen((index) {
           if (index == null || _isConfiguring) return; // Ignore during configuration
-          
+
           // DO NOT trigger navigation if player is in a transition/error state
           final pState = _audioPlayer.playerState.processingState;
           if (pState == ProcessingState.idle || pState == ProcessingState.loading) return;
-          
+
           final source = _audioPlayer.audioSource;
           if (source is! ConcatenatingAudioSource) return;
           // Strategy: identify if we are on a "dummy"
           if (index >= 0 && index < source.children.length) {
              final child = source.children[index];
              if (child is UriAudioSource) {
-                // Rate limit navigation events (debounce 500ms)
-                if (DateTime.now().difference(_lastNavigationEvent).inMilliseconds < 500) {
-                   return;
-                }
-                
                 final sequence = _audioPlayer.sequence;
                 if (sequence != null && index < sequence.length) {
                    final tag = sequence[index].tag;
-                   if (tag is MediaItem) {
-                      if (tag.id == "prev_dummy") {
-                          _lastNavigationEvent = DateTime.now();
-                          _onSkipToPreviousController.add(null);
-                      } else if (tag.id == "next_dummy") {
-                          _lastNavigationEvent = DateTime.now();
-                          _onSkipToNextController.add(null);
+                   if (tag is MediaItem && (tag.id == "prev_dummy" || tag.id == "next_dummy")) {
+                      // Rate limit navigation events, but keep trailing-edge:
+                      // rapid skips collapse into ONE deferred event instead of
+                      // being silently dropped.
+                      final elapsed =
+                          DateTime.now().difference(_lastNavigationEvent).inMilliseconds;
+                      const windowMs = 500;
+                      if (elapsed < windowMs) {
+                        _pendingNavigationTimer?.cancel();
+                        _pendingNavigationTimer = Timer(
+                          Duration(milliseconds: windowMs - elapsed),
+                          () => _fireDummySkip(tag.id),
+                        );
+                      } else {
+                        _pendingNavigationTimer?.cancel();
+                        _fireDummySkip(tag.id);
                       }
                    }
                 }
@@ -546,6 +575,7 @@ class AudioService {
 
   void dispose() {
     // FIX: Cancel all subscriptions before disposing
+    _pendingNavigationTimer?.cancel();
     for (final sub in _subscriptions) {
       sub.cancel();
     }

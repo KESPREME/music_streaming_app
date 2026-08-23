@@ -50,21 +50,27 @@ class MaterialYouSnackBar extends StatelessWidget {
   }
 }
 
+/// Builds the SnackBar without needing a live BuildContext — safe to show via
+/// a previously-captured ScaffoldMessengerState (e.g. after popping a sheet).
+SnackBar buildMaterialYouSnackBar(String message, {bool isError = false, Duration duration = const Duration(seconds: 2)}) {
+  return SnackBar(
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    behavior: SnackBarBehavior.floating,
+    margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+    padding: EdgeInsets.zero,
+    content: Center(
+      child: MaterialYouSnackBar(message: message, isError: isError),
+    ),
+    duration: duration,
+  );
+}
+
 void showMaterialYouSnackBar(BuildContext context, String message, {bool isError = false, Duration duration = const Duration(seconds: 2)}) {
   // Clear existing snackbars to avoid stacking delay
   ScaffoldMessenger.of(context).clearSnackBars();
-  
+
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-      padding: EdgeInsets.zero,
-      content: Center(
-        child: MaterialYouSnackBar(message: message, isError: isError),
-      ),
-      duration: duration,
-    ),
+    buildMaterialYouSnackBar(message, isError: isError, duration: duration),
   );
 }
