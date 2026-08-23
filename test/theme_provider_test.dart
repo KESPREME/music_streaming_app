@@ -72,12 +72,4 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('dynamic_color_enabled'), isFalse);
   });
-
-  test('updateDynamicColorScheme ignores when disabled', () {
-    final provider = ThemeProvider()
-      ..setDynamicColorEnabled(false);
-
-    provider.updateDynamicColorScheme(null);
-    expect(provider.dynamicColorScheme, isNull);
-  });
 }

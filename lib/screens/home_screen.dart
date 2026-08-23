@@ -11,7 +11,6 @@ import '../widgets/themed_trending_now_screen.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
-import '../home_tab_content.dart';
 import '../widgets/themed_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {

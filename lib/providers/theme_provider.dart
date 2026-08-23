@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../theme/dynamic_color_engine.dart';
 
 /// Theme modes available in the app
 enum AppThemeMode {
@@ -15,12 +14,10 @@ class ThemeProvider extends ChangeNotifier {
 
   AppThemeMode _currentTheme = AppThemeMode.glassmorphism; // Default to glassmorphism
   bool _isDynamicColorEnabled = true;
-  ColorScheme? _dynamicColorScheme;
   bool _isInitialized = false;
 
   AppThemeMode get currentTheme => _currentTheme;
   bool get isDynamicColorEnabled => _isDynamicColorEnabled;
-  ColorScheme? get dynamicColorScheme => _dynamicColorScheme;
   bool get isInitialized => _isInitialized;
 
   /// Check if current theme is glassmorphism
@@ -93,35 +90,6 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  /// Update dynamic color scheme from album art
-  Future<void> updateDynamicColorsFromImage(ImageProvider? image) async {
-    if (!_isDynamicColorEnabled || image == null) return;
-    
-    try {
-      final colorScheme = await DynamicColorEngine.extractColorsFromImage(image);
-      if (colorScheme != null) {
-        _dynamicColorScheme = colorScheme;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Error updating dynamic colors: $e');
-    }
-  }
-
-  /// Update dynamic color scheme directly
-  void updateDynamicColorScheme(ColorScheme? colorScheme) {
-    if (!_isDynamicColorEnabled) return;
-    
-    _dynamicColorScheme = colorScheme;
-    notifyListeners();
-  }
-
-  /// Clear dynamic color scheme
-  void clearDynamicColorScheme() {
-    _dynamicColorScheme = null;
-    notifyListeners();
-  }
-
   /// Get theme name for display
   String getThemeName() {
     switch (_currentTheme) {
@@ -142,3 +110,4 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 }
+

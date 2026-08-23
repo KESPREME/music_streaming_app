@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../theme/material_you_tokens.dart';
-import 'material_you_progress_bar.dart';
 
 /// Material You playback bar (mini player) - REDESIGNED
 /// Features:
