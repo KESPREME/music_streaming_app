@@ -15,8 +15,7 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
   // TextEditingController for the new playlist name
   final TextEditingController newPlaylistNameController = TextEditingController();
 
-  await showModalBottomSheet(
-    context: context,
+  await showModalBottomSheet(    context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true, // Allow it to be taller if needed
     builder: (BuildContext bottomSheetContext) {
@@ -151,6 +150,7 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
       );
     },
   );
+  newPlaylistNameController.dispose();
 }
 
 Widget _buildGlassOption(BuildContext context, {

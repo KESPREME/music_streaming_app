@@ -65,6 +65,10 @@ bool listEquals<T>(List<T>? a, List<T>? b) {
   return true;
 }
 
+/// Top-level so it can run in an isolate via [compute]; keeps large JSON
+/// encodes off the UI thread.
+String _jsonEncode(Object data) => jsonEncode(data);
+
 class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   final GlobalKey<NavigatorState> playerNavigatorKey = GlobalKey<NavigatorState>();
   
@@ -1851,13 +1855,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   void unlikeSong(String trackId) { int count = _likedSongs.length; _likedSongs.removeWhere((t) => t.id == trackId); if (_likedSongs.length < count) { _saveLikedSongs(); notifyListeners(); } }
   void toggleLike(Track track) => isSongLiked(track.id) ? unlikeSong(track.id) : likeSong(track);
   Future<void> _loadLikedSongs() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('likedSongs'); if (s != null) _likedSongs = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Track.fromJson(j)).toList(); } catch (_) { _likedSongs = []; } }
-  Future<void> _saveLikedSongs() async { try { final p = await SharedPreferences.getInstance(); await p.setString('likedSongs', jsonEncode(_likedSongs.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save liked', _saveLikedSongs)); } }
+  Future<void> _saveLikedSongs() async { try { final p = await SharedPreferences.getInstance(); await p.setString('likedSongs', await compute(_jsonEncode, _likedSongs.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save liked', _saveLikedSongs)); } }
 
   // --- Recently Played ---
   Future<void> _updateRecentlyPlayed(Track track) async { _recentlyPlayed.removeWhere((t) => t.id == track.id); _recentlyPlayed.insert(0, track); if (_recentlyPlayed.length > 20) _recentlyPlayed = _recentlyPlayed.take(20).toList(); await _saveRecentlyPlayed(); }
   void removeFromRecentlyPlayed(String trackId) { int count = _recentlyPlayed.length; _recentlyPlayed.removeWhere((t) => t.id == trackId); if (_recentlyPlayed.length < count) { _saveRecentlyPlayed(); notifyListeners(); } }
   Future<void> _loadRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('recentlyPlayed'); if (s != null) _recentlyPlayed = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Track.fromJson(j)).toList(); } catch (_) { _recentlyPlayed = []; } }
-  Future<void> _saveRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); await p.setString('recentlyPlayed', jsonEncode(_recentlyPlayed.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save recent', _saveRecentlyPlayed)); } }
+  Future<void> _saveRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); await p.setString('recentlyPlayed', await compute(_jsonEncode, _recentlyPlayed.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save recent', _saveRecentlyPlayed)); } }
 
   // --- Bitrate Settings ---
   // --- Bitrate Settings ---
@@ -1935,7 +1939,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   // --- Playlist Management ---
   Future<void> loadUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('userPlaylists'); if (s != null) _userPlaylists = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Playlist.fromJson(j)).toList(); } catch (_) { _userPlaylists = []; } }
-  Future<void> saveUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); await p.setString('userPlaylists', jsonEncode(_userPlaylists.map((pl) => pl.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save playlists', saveUserPlaylists)); } }
+  Future<void> saveUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); await p.setString('userPlaylists', await compute(_jsonEncode, _userPlaylists.map((pl) => pl.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save playlists', saveUserPlaylists)); } }
   Future<void> createPlaylist(String name, {List<Track>? initialTracks, String? imageUrl}) async { 
     if (name.trim().isEmpty) { 
       _errorMessage = "Name empty."; 
@@ -2172,6 +2176,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
             _downloadedTracksMetadata[id] = {
               'track': Track.fromJson(i['track']),
               'filePath': finalPath,
+              'artPath': i['artPath'] as String?,
               'downloadDate': i['downloadDate'] != null ? DateTime.fromMillisecondsSinceEpoch(i['downloadDate']) : null
             };
           }
@@ -2183,7 +2188,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
   Future<void> saveDownloadedTracksMetadata() async => await _saveDownloadedTracksMetadataInternal();
-  Future<void> _saveDownloadedTracksMetadataInternal() async { final l = _downloadedTracksMetadata.values.map((m) => {'id': (m['track'] as Track).id, 'filePath': m['filePath'], 'downloadDate': (m['downloadDate'] as DateTime?)?.millisecondsSinceEpoch, 'track': (m['track'] as Track).toJson()}).toList(); try { final p = await SharedPreferences.getInstance(); await p.setString('downloadedTracks', jsonEncode(l)); } catch (e) { _addToRetryQueue(_RetryOperation('Save dl meta', _saveDownloadedTracksMetadataInternal)); } }
+  Future<void> _saveDownloadedTracksMetadataInternal() async { final l = _downloadedTracksMetadata.values.map((m) => {'id': (m['track'] as Track).id, 'filePath': m['filePath'], 'artPath': m['artPath'], 'downloadDate': (m['downloadDate'] as DateTime?)?.millisecondsSinceEpoch, 'track': (m['track'] as Track).toJson()}).toList(); try { final p = await SharedPreferences.getInstance(); await p.setString('downloadedTracks', await compute(_jsonEncode, l)); } catch (e) { _addToRetryQueue(_RetryOperation('Save dl meta', _saveDownloadedTracksMetadataInternal)); } }
   Future<void> _handleMissingOfflineFile(String trackId, String expectedPath) async { bool mRem = _downloadedTracksMetadata.remove(trackId) != null; if (mRem) await _saveDownloadedTracksMetadataInternal(); int cB = _localTracks.length; _localTracks.removeWhere((t) => t.id == expectedPath); bool lRem = _localTracks.length < cB; if (mRem || lRem) notifyListeners(); }
   void _addToDownloadQueue(Track track) { if (_isDownloading[track.id]==true || _downloadQueue.any((t)=>t.id==track.id) || _downloadedTracksMetadata.containsKey(track.id)) return; _downloadQueue.add(track); _errorMessage = '${track.trackName} queued.'; notifyListeners(); _processDownloadQueue(); }
   Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= 6) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
@@ -2833,8 +2838,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           if (File(fallbackPath).existsSync()) {
              isLocalFile = true;
              imageProvider = FileImage(File(fallbackPath));
-             // Update metadata for next time
-             _downloadedTracksMetadata[trackId]!['artPath'] = fallbackPath;
+             // Update metadata for next time (entry may have been removed
+             // mid-flight — never force-unwrap)
+             _downloadedTracksMetadata[trackId]?['artPath'] = fallbackPath;
              saveDownloadedTracksMetadata();
              if (kDebugMode) print('MusicProvider: Recovered legacy art for ${track.trackName}');
           }

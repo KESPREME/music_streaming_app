@@ -149,6 +149,7 @@ Future<void> showMaterialYouPlaylistSelectionDialog(BuildContext context, Track 
       );
     },
   );
+  newPlaylistNameController.dispose();
 }
 
 Widget _buildMaterialOption(BuildContext context, {
