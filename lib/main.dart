@@ -62,7 +62,7 @@ void main() async {
     // Initialize Equalizer Service
     await EqualizerService().initialize();
   } catch (e) {
-    print("Initialization Error: $e");
+    debugPrint("Initialization Error: $e");
   }
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -111,9 +111,9 @@ class _MyAppState extends State<MyApp> {
       titleLarge: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w600, color: AppColors.onBackground),
       titleMedium: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.onBackground),
       titleSmall: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.onBackground),
-      bodyLarge: GoogleFonts.outfit(fontSize: 16, color: AppColors.onBackground.withOpacity(0.87)),
-      bodyMedium: GoogleFonts.outfit(fontSize: 14, color: AppColors.onBackground.withOpacity(0.70)),
-      bodySmall: GoogleFonts.outfit(fontSize: 12, color: AppColors.onBackground.withOpacity(0.60)),
+      bodyLarge: GoogleFonts.outfit(fontSize: 16, color: AppColors.onBackground.withValues(alpha: 0.87)),
+      bodyMedium: GoogleFonts.outfit(fontSize: 14, color: AppColors.onBackground.withValues(alpha: 0.70)),
+      bodySmall: GoogleFonts.outfit(fontSize: 12, color: AppColors.onBackground.withValues(alpha: 0.60)),
       labelLarge: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.onBackground),
     );
 
@@ -238,3 +238,5 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 }
+
+

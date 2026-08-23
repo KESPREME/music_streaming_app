@@ -126,7 +126,7 @@ class _MaterialYouLocalSearchScreenState extends State<MaterialYouLocalSearchScr
                         style: MaterialYouTypography.bodyLarge(colorScheme.onSurface),
                         decoration: InputDecoration(
                             hintText: "Search in Library...",
-                            hintStyle: MaterialYouTypography.bodyLarge(colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                            hintStyle: MaterialYouTypography.bodyLarge(colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                             border: InputBorder.none,
                             prefixIcon: Icon(Icons.search_rounded, color: colorScheme.onSurfaceVariant),
                             suffixIcon: _searchQuery.isNotEmpty 
@@ -160,7 +160,7 @@ class _MaterialYouLocalSearchScreenState extends State<MaterialYouLocalSearchScr
               child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                      Icon(Icons.history_rounded, size: 60, color: colorScheme.onSurfaceVariant.withOpacity(0.2)),
+                      Icon(Icons.history_rounded, size: 60, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2)),
                       const SizedBox(height: 16),
                       Text(
                           "Search your playlists and songs",
@@ -257,3 +257,5 @@ class _MaterialYouLocalSearchScreenState extends State<MaterialYouLocalSearchScr
       );
   }
 }
+
+

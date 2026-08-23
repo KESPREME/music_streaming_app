@@ -16,15 +16,15 @@ class CastService {
     _devices = [];
     _deviceController.add(_devices);
 
-    if (kDebugMode) print('CastService: Starting discovery...');
+    if (kDebugMode) debugPrint('CastService: Starting discovery...');
     
     try {
       // CastDiscoveryService().search() returns a Future<List<CastDevice>>
       _devices = await CastDiscoveryService().search();
-      if (kDebugMode) print('CastService: Found ${_devices.length} devices');
+      if (kDebugMode) debugPrint('CastService: Found ${_devices.length} devices');
       _deviceController.add(List.from(_devices));
     } catch (e) {
-      if (kDebugMode) print('CastService: Discovery error: $e');
+      if (kDebugMode) debugPrint('CastService: Discovery error: $e');
     }
   }
 
@@ -33,21 +33,21 @@ class CastService {
     // but typically we just stop listening. Since CastDevice.search() returns a stream,
     // we just let it be or manage subscriptions if needed. 
     // For now, we just clear our local list.
-    if (kDebugMode) print('CastService: Discovery stopped (logically).');
+    if (kDebugMode) debugPrint('CastService: Discovery stopped (logically).');
   }
 
   Future<bool> connect(CastDevice device) async {
     try {
-      if (kDebugMode) print('CastService: Connecting to ${device.name}...');
+      if (kDebugMode) debugPrint('CastService: Connecting to ${device.name}...');
       _session = await CastSessionManager().startSession(device);
       
       if (_session != null) {
         _connectedDevice = device;
-        if (kDebugMode) print('CastService: Connected to ${device.name}');
+        if (kDebugMode) debugPrint('CastService: Connected to ${device.name}');
         return true;
       }
     } catch (e) {
-      if (kDebugMode) print('CastService: Connection failed: $e');
+      if (kDebugMode) debugPrint('CastService: Connection failed: $e');
     }
     return false;
   }
@@ -57,7 +57,7 @@ class CastService {
       await _session!.close(); 
       _session = null;
       _connectedDevice = null;
-      if (kDebugMode) print('CastService: Disconnected');
+      if (kDebugMode) debugPrint('CastService: Disconnected');
     }
   }
 
@@ -70,7 +70,7 @@ class CastService {
   }) async {
     if (_session == null) return;
 
-    if (kDebugMode) print('CastService: Loading media: $title from $url');
+    if (kDebugMode) debugPrint('CastService: Loading media: $title from $url');
 
     try {
       _session!.sendMessage(CastSession.kNamespaceMedia, {
@@ -92,7 +92,7 @@ class CastService {
         }
       });
     } catch (e) {
-      print('CastService: Error loading media: $e');
+      debugPrint('CastService: Error loading media: $e');
     }
   }
 
@@ -125,3 +125,5 @@ class CastService {
      _session!.sendMessage(CastSession.kNamespaceMedia, message);
   }
 }
+
+

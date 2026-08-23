@@ -22,9 +22,9 @@ class ColorUtils {
     final muted = palette.mutedColor?.color;
     final dominant = palette.dominantColor?.color;
 
-    return darkMuted?.withOpacity(0.5) ?? 
-           muted?.withOpacity(0.3) ?? 
-           dominant?.withOpacity(0.2) ?? 
+    return darkMuted?.withValues(alpha: 0.5) ?? 
+           muted?.withValues(alpha: 0.3) ?? 
+           dominant?.withValues(alpha: 0.2) ?? 
            const Color(0xFF020617);
   }
 
@@ -42,9 +42,9 @@ class ColorUtils {
     final darkMuted = boostColor(palette.darkMutedColor?.color, lightness: -0.1);
     final dominant = palette.dominantColor?.color;
 
-    final topColor = darkVibrant?.withOpacity(0.8) ?? 
-                     darkMuted?.withOpacity(0.8) ?? 
-                     dominant?.withOpacity(0.6) ?? 
+    final topColor = darkVibrant?.withValues(alpha: 0.8) ?? 
+                     darkMuted?.withValues(alpha: 0.8) ?? 
+                     dominant?.withValues(alpha: 0.6) ?? 
                      const Color(0xFF0F172A);
 
     return [
@@ -64,3 +64,4 @@ class ColorUtils {
     return vibrant ?? boostColor(dominant, saturation: 0.3) ?? defaultColor;
   }
 }
+

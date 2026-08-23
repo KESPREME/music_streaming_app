@@ -84,7 +84,7 @@ class _LiquidCardState extends State<LiquidCard> with SingleTickerProviderStateM
                        borderRadius: BorderRadius.circular(widget.isCircle ? widget.width / 2 : 24),
                        boxShadow: [
                          BoxShadow(
-                           color: Colors.black.withOpacity(0.2),
+                           color: Colors.black.withValues(alpha: 0.2),
                            blurRadius: 10,
                            offset: const Offset(0, 5),
                          ),
@@ -118,7 +118,7 @@ class _LiquidCardState extends State<LiquidCard> with SingleTickerProviderStateM
                                     begin: Alignment.bottomCenter,
                                     end: Alignment.topCenter,
                                     colors: [
-                                      Colors.black.withOpacity(0.8),
+                                      Colors.black.withValues(alpha: 0.8),
                                       Colors.transparent,
                                     ],
                                   ),
@@ -153,7 +153,7 @@ class _LiquidCardState extends State<LiquidCard> with SingleTickerProviderStateM
                      style: TextStyle(
                        fontWeight: FontWeight.w500,
                        fontSize: 12,
-                       color: Colors.white.withOpacity(0.6),
+                       color: Colors.white.withValues(alpha: 0.6),
                      ),
                      maxLines: 1,
                      overflow: TextOverflow.ellipsis,
@@ -167,3 +167,4 @@ class _LiquidCardState extends State<LiquidCard> with SingleTickerProviderStateM
     );
   }
 }
+

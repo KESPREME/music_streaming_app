@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io'; // For SocketException
 import 'package:flutter/services.dart'; // For PlatformException
@@ -75,13 +76,13 @@ class SpotifyService {
       }
     } on PlatformException catch (e) {
       // This can happen if the user cancels the web auth flow.
-      print('Spotify Auth Error (Platform): ${e.message}');
+      debugPrint('Spotify Auth Error (Platform): ${e.message}');
       throw Exception('Authentication cancelled or failed.');
     } on SocketException catch (e) {
-      print('Spotify Auth Error (Network): $e');
+      debugPrint('Spotify Auth Error (Network): $e');
       throw Exception('Network error during authentication. Please check your connection.');
     } catch (e) {
-      print('Authentication error: $e');
+      debugPrint('Authentication error: $e');
       throw Exception('Failed to authenticate with Spotify: $e');
     }
   }
@@ -104,7 +105,7 @@ class SpotifyService {
         throw Exception('Failed to fetch playlists: ${response.body}');
       }
     } catch (e) {
-      print('Error fetching playlists: $e');
+      debugPrint('Error fetching playlists: $e');
       throw Exception('Failed to fetch playlists: $e');
     }
   }
@@ -167,7 +168,7 @@ class SpotifyService {
               youtubeTracks.add(track);
             }
           } catch (e) {
-            print('Error converting track to YouTube: $e');
+            debugPrint('Error converting track to YouTube: $e');
             // Just add the original track if conversion fails
             youtubeTracks.add(track);
           }
@@ -183,7 +184,7 @@ class SpotifyService {
         throw Exception('Failed to fetch playlist tracks: ${response.body}');
       }
     } catch (e) {
-      print('Error fetching playlist tracks: $e');
+      debugPrint('Error fetching playlist tracks: $e');
       throw Exception('Failed to fetch playlist tracks: $e');
     }
   }
@@ -207,7 +208,7 @@ class SpotifyService {
       }
       return null;
     } catch (e) {
-      print('Error finding YouTube track: $e');
+      debugPrint('Error finding YouTube track: $e');
       return null;
     }
   }
@@ -237,3 +238,6 @@ class SpotifyService {
     }
   }
 }
+
+
+

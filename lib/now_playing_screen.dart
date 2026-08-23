@@ -127,7 +127,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           top: -150,
           left: -100,
           child: _LiquidGlob(
-            color: colors[0].withOpacity(0.4),
+            color: colors[0].withValues(alpha: 0.4),
             size: 450,
             duration: 15.seconds,
           ),
@@ -138,7 +138,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           bottom: -150,
           right: -100,
           child: _LiquidGlob(
-            color: highlight?.withOpacity(0.2) ?? accent.withOpacity(0.2),
+            color: highlight?.withValues(alpha: 0.2) ?? accent.withValues(alpha: 0.2),
             size: 500,
             duration: 20.seconds,
           ),
@@ -147,7 +147,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         // Center Floating Glob (Subtle)
         Center(
           child: _LiquidGlob(
-            color: secondary?.withOpacity(0.1) ?? colors[1].withOpacity(0.1),
+            color: secondary?.withValues(alpha: 0.1) ?? colors[1].withValues(alpha: 0.1),
             size: 600,
             duration: 25.seconds,
           ),
@@ -178,7 +178,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             },
             icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 32),
             style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.1),
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
               padding: const EdgeInsets.all(8),
             ),
           ),
@@ -186,7 +186,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           Text(
             'NOW PLAYING',
             style: GoogleFonts.plusJakartaSans(
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 12,
               fontWeight: FontWeight.w700,
               letterSpacing: 2.0,
@@ -206,7 +206,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 },
                 icon: const Icon(Icons.lyrics_rounded, color: Colors.white, size: 24),
                 style: IconButton.styleFrom(
-                   backgroundColor: Colors.white.withOpacity(0.1),
+                   backgroundColor: Colors.white.withValues(alpha: 0.1),
                    padding: const EdgeInsets.all(8),
                 ),
               ),
@@ -215,7 +215,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 onPressed: () => _showOptionsBottomSheet(context, track, provider),
                 icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 24),
                  style: IconButton.styleFrom(
-                   backgroundColor: Colors.white.withOpacity(0.1),
+                   backgroundColor: Colors.white.withValues(alpha: 0.1),
                    padding: const EdgeInsets.all(8),
                 ),
               ),
@@ -234,7 +234,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
              BoxShadow(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               blurRadius: 40,
               offset: const Offset(0, 20),
             ),
@@ -290,11 +290,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     child: Text(
                       track.artistName,
                       style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                         decoration: TextDecoration.underline,
-                        decorationColor: Colors.white.withOpacity(0.3),
+                        decorationColor: Colors.white.withValues(alpha: 0.3),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -336,7 +336,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       },
                       icon: Icon(
                         isDownloaded ? Icons.download_done_rounded : Icons.download_rounded,
-                        color: isDownloaded ? accentColor : Colors.white.withOpacity(0.6),
+                        color: isDownloaded ? accentColor : Colors.white.withValues(alpha: 0.6),
                         size: 28,
                       ),
                     );
@@ -354,15 +354,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Colors.white.withOpacity(0.25),
-                            Colors.white.withOpacity(0.05),
+                            Colors.white.withValues(alpha: 0.25),
+                            Colors.white.withValues(alpha: 0.05),
                           ],
                         ),
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -372,7 +372,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         onPressed: () => provider.toggleLike(track),
                         icon: Icon(
                           provider.isSongLiked(track.id) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          color: provider.isSongLiked(track.id) ? accentColor.withOpacity(0.9) : Colors.white.withOpacity(0.9),
+                          color: provider.isSongLiked(track.id) ? accentColor.withValues(alpha: 0.9) : Colors.white.withValues(alpha: 0.9),
                           size: 28, 
                         ),
                         style: IconButton.styleFrom(
@@ -400,7 +400,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         IconButton(
           onPressed: provider.toggleShuffle,
           icon: Icon(Icons.shuffle_rounded, 
-            color: provider.shuffleEnabled ? accentColor : Colors.white.withOpacity(0.6), 
+            color: provider.shuffleEnabled ? accentColor : Colors.white.withValues(alpha: 0.6), 
             size: 26
           ),
         ),
@@ -426,15 +426,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    accentColor.withOpacity(0.5),
-                    accentColor.withOpacity(0.2),
+                    accentColor.withValues(alpha: 0.5),
+                    accentColor.withValues(alpha: 0.2),
                   ],
                 ),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.2), // Thinner border
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.2), // Thinner border
                 boxShadow: [
                   BoxShadow(
-                    color: accentColor.withOpacity(0.2),
+                    color: accentColor.withValues(alpha: 0.2),
                     blurRadius: 20,
                     spreadRadius: -5,
                     offset: const Offset(0, 8),
@@ -451,7 +451,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 },
                 icon: Icon(
                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   size: 32, // Reduced from 36
                 ),
               ),
@@ -470,7 +470,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           onPressed: provider.cycleRepeatMode,
           icon: Icon(
             provider.repeatMode == RepeatMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-             color: provider.repeatMode != RepeatMode.off ? accentColor : Colors.white.withOpacity(0.6),
+             color: provider.repeatMode != RepeatMode.off ? accentColor : Colors.white.withValues(alpha: 0.6),
              size: 24, // Slightly smaller Icon
             ),
         ),
@@ -491,12 +491,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.12), // Slightly more transparent
-                Colors.white.withOpacity(0.04),
+                Colors.white.withValues(alpha: 0.12), // Slightly more transparent
+                Colors.white.withValues(alpha: 0.04),
               ],
             ),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.15), width: 0.8), // Thinner border
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.8), // Thinner border
           ),
           child: IconButton(
             onPressed: onTap,
@@ -560,12 +560,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       elevation: 0,
       builder: (context) => Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E).withOpacity(0.7), // Semi-transparent
+          color: const Color(0xFF1E1E1E).withValues(alpha: 0.7), // Semi-transparent
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: Colors.white.withOpacity(0.1), width: 1), // Glass edge
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1), // Glass edge
           boxShadow: [
              BoxShadow(
-               color: Colors.black.withOpacity(0.3),
+               color: Colors.black.withValues(alpha: 0.3),
                blurRadius: 20,
                offset: const Offset(0, -5),
              ),
@@ -585,7 +585,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -701,12 +701,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       builder: (context) {
         return Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E).withOpacity(0.7),
+            color: const Color(0xFF1E1E1E).withValues(alpha: 0.7),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
             boxShadow: [
                BoxShadow(
-                 color: Colors.black.withOpacity(0.3),
+                 color: Colors.black.withValues(alpha: 0.3),
                  blurRadius: 20,
                  offset: const Offset(0, -5),
                ),
@@ -725,7 +725,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -765,12 +765,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       builder: (context) {
         return Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E).withOpacity(0.7), // Semi-transparent
+            color: const Color(0xFF1E1E1E).withValues(alpha: 0.7), // Semi-transparent
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-             border: Border.all(color: Colors.white.withOpacity(0.1), width: 1), // Glass edge
+             border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1), // Glass edge
              boxShadow: [
                BoxShadow(
-                 color: Colors.black.withOpacity(0.3),
+                 color: Colors.black.withValues(alpha: 0.3),
                  blurRadius: 20,
                  offset: const Offset(0, -5),
                ),
@@ -789,7 +789,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                        width: 40,
                        height: 4,
                        decoration: BoxDecoration(
-                         color: Colors.white.withOpacity(0.2),
+                         color: Colors.white.withValues(alpha: 0.2),
                          borderRadius: BorderRadius.circular(2),
                        ),
                      ),
@@ -872,9 +872,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     final muted = palette.mutedColor?.color;
     final dominant = palette.dominantColor?.color;
 
-    return darkMuted?.withOpacity(0.5) ?? 
-           muted?.withOpacity(0.3) ?? 
-           dominant?.withOpacity(0.2) ?? 
+    return darkMuted?.withValues(alpha: 0.5) ?? 
+           muted?.withValues(alpha: 0.3) ?? 
+           dominant?.withValues(alpha: 0.2) ?? 
            const Color(0xFF020617);
   }
 
@@ -929,7 +929,7 @@ class _LiquidGlobState extends State<_LiquidGlob> with SingleTickerProviderState
           gradient: RadialGradient(
             colors: [
               widget.color,
-              widget.color.withOpacity(0),
+              widget.color.withValues(alpha: 0),
             ],
           ),
         ),
@@ -937,6 +937,7 @@ class _LiquidGlobState extends State<_LiquidGlob> with SingleTickerProviderState
     );
   }
 }
+
 
 
 

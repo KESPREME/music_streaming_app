@@ -94,13 +94,13 @@ class _MaterialYouUserPlaylistScreenState extends State<MaterialYouUserPlaylistS
                           Icon(
                             Icons.queue_music_rounded,
                             size: 80,
-                            color: colorScheme.onSurface.withOpacity(0.1),
+                            color: colorScheme.onSurface.withValues(alpha: 0.1),
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'No playlists yet',
                             style: MaterialYouTypography.titleMedium(
-                              colorScheme.onSurface.withOpacity(0.6),
+                              colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -255,7 +255,7 @@ class _MaterialYouUserPlaylistScreenState extends State<MaterialYouUserPlaylistS
             hintText: 'Playlist Name',
             hintStyle: MaterialYouTypography.bodyMedium(colorScheme.onSurfaceVariant),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: MaterialYouTokens.primaryVibrant.withOpacity(0.5)),
+              borderSide: BorderSide(color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.5)),
             ),
             focusedBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: MaterialYouTokens.primaryVibrant),
@@ -399,3 +399,5 @@ class _MaterialYouUserPlaylistScreenState extends State<MaterialYouUserPlaylistS
     );
   }
 }
+
+

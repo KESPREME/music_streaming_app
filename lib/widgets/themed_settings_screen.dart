@@ -17,3 +17,4 @@ class ThemedSettingsScreen extends StatelessWidget {
         : const SettingsScreen();
   }
 }
+

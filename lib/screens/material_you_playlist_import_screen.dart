@@ -77,7 +77,7 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
       decoration: BoxDecoration(
         color: MaterialYouTokens.surfaceContainerDark,
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeLarge),
-        border: Border.all(color: colorScheme.surfaceVariant),
+        border: Border.all(color: colorScheme.surfaceContainerHighest),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,9 +91,9 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: MaterialYouTokens.surfaceVariantDark,
+              color: MaterialYouTokens.surfaceContainerHighestDark,
               borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
-              border: Border.all(color: colorScheme.surfaceVariant),
+              border: Border.all(color: colorScheme.surfaceContainerHighest),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
@@ -120,7 +120,7 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
             style: MaterialYouTypography.bodyLarge(colorScheme.onSurface),
             decoration: InputDecoration(
               filled: true,
-              fillColor: MaterialYouTokens.surfaceVariantDark,
+              fillColor: MaterialYouTokens.surfaceContainerHighestDark,
               hintText: 'Paste playlist URL here',
               hintStyle: MaterialYouTypography.bodyMedium(colorScheme.onSurfaceVariant),
               border: OutlineInputBorder(
@@ -170,9 +170,9 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
+          color: color.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -308,3 +308,5 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
     }
   }
 }
+
+

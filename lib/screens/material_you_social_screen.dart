@@ -237,14 +237,14 @@ class _MaterialYouSocialScreenState extends State<MaterialYouSocialScreen> {
                     Icon(
                       Icons.people_outline_rounded,
                       size: 80,
-                      color: colorScheme.onSurface.withOpacity(0.1),
+                      color: colorScheme.onSurface.withValues(alpha: 0.1),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       _errorMessage ?? 'No users found nearby',
                       textAlign: TextAlign.center,
                       style: MaterialYouTypography.titleMedium(
-                        colorScheme.onSurface.withOpacity(0.6)
+                        colorScheme.onSurface.withValues(alpha: 0.6)
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -278,13 +278,13 @@ class _MaterialYouSocialScreenState extends State<MaterialYouSocialScreen> {
       decoration: BoxDecoration(
         color: MaterialYouTokens.surfaceContainerDark,
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
-        border: Border.all(color: colorScheme.surfaceVariant),
+        border: Border.all(color: colorScheme.surfaceContainerHighest),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
         leading: CircleAvatar(
           radius: 28,
-          backgroundColor: MaterialYouTokens.primaryVibrant.withOpacity(0.2),
+          backgroundColor: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.2),
           child: user.avatarUrl == null
               ? Text(
                   user.name.isNotEmpty ? user.name.substring(0, 1).toUpperCase() : "?",
@@ -369,3 +369,5 @@ class _MaterialYouSocialScreenState extends State<MaterialYouSocialScreen> {
     );
   }
 }
+
+

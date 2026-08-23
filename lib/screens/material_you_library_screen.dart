@@ -142,7 +142,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       decoration: BoxDecoration(
-        color: MaterialYouTokens.surfaceVariantDark,
+        color: MaterialYouTokens.surfaceContainerHighestDark,
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeExtraLarge),
       ),
       child: TabBar(
@@ -259,7 +259,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: (item['color'] as Color).withOpacity(0.15),
+                color: (item['color'] as Color).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
               ),
               child: Icon(
@@ -302,7 +302,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
             // Chevron
             Icon(
               Icons.chevron_right_rounded,
-              color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
           ],
         ),
@@ -374,7 +374,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: MaterialYouTokens.primaryVibrant.withOpacity(0.2),
+                color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
                 image: playlist.imageUrl.isNotEmpty
                     ? DecorationImage(
@@ -420,7 +420,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
             
             Icon(
               Icons.chevron_right_rounded,
-              color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
           ],
         ),
@@ -493,7 +493,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
                       height: 80,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: colorScheme.surfaceVariant,
+                        color: colorScheme.surfaceContainerHighest,
                         image: (artist.albumArtUrl != null && artist.albumArtUrl.isNotEmpty) 
                             ? DecorationImage(
                                 image: NetworkImage(artist.albumArtUrl),
@@ -551,7 +551,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: colorScheme.surfaceVariant,
+                color: colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -586,7 +586,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: MaterialYouTokens.surfaceVariantDark,
+        backgroundColor: MaterialYouTokens.surfaceContainerHighestDark,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(MaterialYouTokens.shapeExtraLarge),
         ),
@@ -608,11 +608,11 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
             ),
             hintText: 'My Awesome Mix',
             hintStyle: GoogleFonts.splineSans(
-              color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
             enabledBorder: UnderlineInputBorder(
               borderSide: BorderSide(
-                color: colorScheme.primary.withOpacity(0.5),
+                color: colorScheme.primary.withValues(alpha: 0.5),
               ),
             ),
             focusedBorder: UnderlineInputBorder(
@@ -681,3 +681,5 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
     );
   }
 }
+
+

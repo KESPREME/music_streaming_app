@@ -119,13 +119,13 @@ class _MaterialYouLikedSongsScreenState extends State<MaterialYouLikedSongsScree
                           Icon(
                             Icons.favorite_rounded, 
                             size: 80, 
-                            color: colorScheme.onSurface.withOpacity(0.1)
+                            color: colorScheme.onSurface.withValues(alpha: 0.1)
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'Songs you like will appear here',
                             style: MaterialYouTypography.titleMedium(
-                              colorScheme.onSurface.withOpacity(0.6)
+                              colorScheme.onSurface.withValues(alpha: 0.6)
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -169,3 +169,5 @@ class _MaterialYouLikedSongsScreenState extends State<MaterialYouLikedSongsScree
     );
   }
 }
+
+

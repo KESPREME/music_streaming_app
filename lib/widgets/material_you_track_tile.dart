@@ -59,11 +59,11 @@ class MaterialYouTrackTile extends StatelessWidget {
             errorBuilder: (context, error, stackTrace) => Container(
               width: artworkSize,
               height: artworkSize,
-              color: colorScheme.surfaceVariant,
+              color: colorScheme.surfaceContainerHighest,
               child: Icon(
                 Icons.broken_image_rounded,
                 size: artworkSize * 0.5,
-                color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
               ),
             ),
             loadingBuilder: (context, child, loadingProgress) {
@@ -71,7 +71,7 @@ class MaterialYouTrackTile extends StatelessWidget {
               return Container(
                 width: artworkSize,
                 height: artworkSize,
-                color: colorScheme.surfaceVariant,
+                color: colorScheme.surfaceContainerHighest,
                 child: Center(
                   child: SizedBox(
                     width: 20,
@@ -95,7 +95,7 @@ class MaterialYouTrackTile extends StatelessWidget {
       return Material(
         elevation: 1,
         surfaceTintColor: colorScheme.surfaceTint,
-        color: colorScheme.surfaceVariant,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
         child: Container(
           width: artworkSize,
@@ -104,7 +104,7 @@ class MaterialYouTrackTile extends StatelessWidget {
           child: Icon(
             Icons.music_note_rounded,
             size: artworkSize * 0.5,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
           ),
         ),
       );
@@ -116,7 +116,7 @@ class MaterialYouTrackTile extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveBackgroundColor = backgroundColor ??
         (isPlaying
-            ? MaterialYouTokens.primaryVibrant.withOpacity(0.08)
+            ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.08)
             : Colors.transparent);
 
     return Material(
@@ -168,7 +168,7 @@ class MaterialYouTrackTile extends StatelessWidget {
                                 : MaterialYouTypography.bodyMedium(colorScheme.onSurfaceVariant))
                             .copyWith(
                           color: isPlaying
-                              ? MaterialYouTokens.primaryVibrant.withOpacity(0.8)
+                              ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.8)
                               : colorScheme.onSurfaceVariant,
                         ),
                         maxLines: 1,
@@ -186,7 +186,7 @@ class MaterialYouTrackTile extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: MaterialYouTokens.primaryVibrant.withOpacity(0.15),
+                    color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -220,4 +220,6 @@ class MaterialYouTrackTile extends StatelessWidget {
     );
   }
 }
+
+
 

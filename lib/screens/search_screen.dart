@@ -43,10 +43,10 @@ class ArtistSearchTile extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               width: 1,
             ),
           ),
@@ -67,7 +67,7 @@ class ArtistSearchTile extends StatelessWidget {
     return Material(
       elevation: 1,
       surfaceTintColor: colorScheme.surfaceTint,
-      color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+      color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -95,21 +95,21 @@ class ArtistSearchTile extends StatelessWidget {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 6,
                 offset: const Offset(0, 3),
               ),
             ],
             border: Border.all(
               color: isGlass
-                  ? const Color(0xFFFF1744).withOpacity(0.3)
-                  : colorScheme.primary.withOpacity(0.3),
+                  ? const Color(0xFFFF1744).withValues(alpha: 0.3)
+                  : colorScheme.primary.withValues(alpha: 0.3),
               width: 1.5,
             ),
           ),
           child: CircleAvatar(
             radius: 30,
-            backgroundColor: isGlass ? Colors.grey[850] : colorScheme.surfaceVariant,
+            backgroundColor: isGlass ? Colors.grey[850] : colorScheme.surfaceContainerHighest,
             backgroundImage: artistImageUrl != null && artistImageUrl!.isNotEmpty
                 ? NetworkImage(artistImageUrl!)
                 : null,
@@ -151,7 +151,7 @@ class ArtistSearchTile extends StatelessWidget {
           Icons.chevron_right_rounded,
           color: isGlass
               ? Colors.white30
-              : colorScheme.onSurfaceVariant.withOpacity(0.5),
+              : colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
         ),
       ],
     );
@@ -251,7 +251,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -262,20 +262,20 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     style: GoogleFonts.splineSans(color: Colors.white, fontSize: 16),
                     decoration: InputDecoration(
                       hintText: 'Search songs, artists...',
-                      hintStyle: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
+                      hintStyle: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4)),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
                       ),
                       enabledBorder: OutlineInputBorder(
                          borderRadius: BorderRadius.circular(30),
-                         borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
+                         borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: const Color(0xFFFF1744).withOpacity(0.5), width: 1),
+                        borderSide: BorderSide(color: const Color(0xFFFF1744).withValues(alpha: 0.5), width: 1),
                       ),
                       prefixIcon: const Icon(Icons.search, color: Colors.white54),
                       suffixIcon: _searchQuery.isNotEmpty
@@ -306,19 +306,19 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(25),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                     ),
                     child: TabBar(
                       controller: _tabController,
                       indicator: BoxDecoration(
-                        color: const Color(0xFFFF1744).withOpacity(0.15),
+                        color: const Color(0xFFFF1744).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(25),
-                        border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.3)),
+                        border: Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.3)),
                       ),
                       labelColor: const Color(0xFFFF1744),
-                      unselectedLabelColor: Colors.white.withOpacity(0.5),
+                      unselectedLabelColor: Colors.white.withValues(alpha: 0.5),
                       labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.bold),
                       unselectedLabelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w500),
                       indicatorSize: TabBarIndicatorSize.tab,
@@ -383,11 +383,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.person_search_outlined, size: 60, color: Colors.white.withOpacity(0.1)),
+                Icon(Icons.person_search_outlined, size: 60, color: Colors.white.withValues(alpha: 0.1)),
                 const SizedBox(height: 16),
                 Text(
                   'Search for your favorite artists',
-                  style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4), fontSize: 16),
+                  style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 16),
                 ),
               ],
             ),
@@ -398,7 +398,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
            return Center(
             child: Text(
               'No artists found.',
-              style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
+              style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4)),
             ),
           );
         }
@@ -450,11 +450,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.queue_music_rounded, size: 60, color: Colors.white.withOpacity(0.1)),
+                Icon(Icons.queue_music_rounded, size: 60, color: Colors.white.withValues(alpha: 0.1)),
                 const SizedBox(height: 16),
                 Text(
                   'Search for playlists',
-                  style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4), fontSize: 16),
+                  style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 16),
                 ),
               ],
             ),
@@ -465,7 +465,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
            return Center(
             child: Text(
               'No playlists found.',
-              style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4)),
+              style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4)),
             ),
           );
         }
@@ -519,3 +519,4 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     );
   }
 }
+

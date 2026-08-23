@@ -245,17 +245,17 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                      child: Container(
                         decoration: BoxDecoration(
-                          color: accentColor.withOpacity(0.15),
+                          color: accentColor.withValues(alpha: 0.15),
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.black.withOpacity(0.6),
-                              accentColor.withOpacity(0.05),
+                              Colors.black.withValues(alpha: 0.6),
+                              accentColor.withValues(alpha: 0.05),
                             ],
                           ),
                           border: Border(
-                            bottom: BorderSide(color: Colors.white.withOpacity(0.1), width: 0.5),
+                            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 0.5),
                           ),
                         ),
                         child: SafeArea(
@@ -302,8 +302,8 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
             icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32, color: Colors.white),
             onPressed: () => Navigator.of(context).pop(),
             style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.1),
-              highlightColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              highlightColor: Colors.white.withValues(alpha: 0.2),
             ),
           ),
           
@@ -380,7 +380,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lyrics_rounded, size: 60, color: Colors.white.withOpacity(0.1)),
+              Icon(Icons.lyrics_rounded, size: 60, color: Colors.white.withValues(alpha: 0.1)),
               const SizedBox(height: 16),
               Text(
                  provider.lyricsError ?? 'No synced lyrics available',
@@ -391,7 +391,7 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
                  onPressed: () => provider.fetchLyrics(forceRefresh: true),
                  style: OutlinedButton.styleFrom(
                    foregroundColor: Colors.white,
-                   side: BorderSide(color: Colors.white.withOpacity(0.3)),
+                   side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))
                  ),
                  child: const Text("Retry"),
@@ -519,11 +519,11 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(32),
                       color: isCurrentLine 
-                          ? Colors.white.withOpacity(0.06) // Very translucent
+                          ? Colors.white.withValues(alpha: 0.06) // Very translucent
                           : Colors.transparent,
                       border: Border.all(
                         color: isCurrentLine 
-                            ? Colors.white.withOpacity(0.12) 
+                            ? Colors.white.withValues(alpha: 0.12) 
                             : Colors.transparent,
                         width: 1.0,
                       ),
@@ -532,8 +532,8 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.white.withOpacity(0.1),
-                                Colors.white.withOpacity(0.02),
+                                Colors.white.withValues(alpha: 0.1),
+                                Colors.white.withValues(alpha: 0.02),
                               ],
                             )
                           : null,
@@ -564,3 +564,4 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
     );
   }
 }
+

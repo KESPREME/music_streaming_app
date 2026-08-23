@@ -125,7 +125,7 @@ class MaterialYouPlaybackBar extends StatelessWidget {
                                       ? track.durationMs! 
                                       : (provider.duration.inMilliseconds > 0 ? provider.duration.inMilliseconds : 1)
                                   )).clamp(0.0, 1.0),
-                           backgroundColor: colorScheme.onSurfaceVariant.withOpacity(0.1),
+                           backgroundColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
                            valueColor: AlwaysStoppedAnimation<Color>(vibrantColor),
                            minHeight: 2,
                         ),
@@ -169,7 +169,7 @@ class MaterialYouPlaybackBar extends StatelessWidget {
       width: 56, // Updated to match new Art size
       height: 56,
       decoration: BoxDecoration(
-        color: vibrantColor.withOpacity(0.2),
+        color: vibrantColor.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
       ),
       child: Icon(
@@ -180,3 +180,5 @@ class MaterialYouPlaybackBar extends StatelessWidget {
     );
   }
 }
+
+

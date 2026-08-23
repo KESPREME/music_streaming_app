@@ -40,7 +40,7 @@ class LyricsService {
     if (_isInitialized) return;
     await _diskCache.initialize();
     _isInitialized = true;
-    if (kDebugMode) print('LyricsService: Initialized with disk cache');
+    if (kDebugMode) debugPrint('LyricsService: Initialized with disk cache');
   }
   
   /// Get lyrics with two-tier cache and deduplication
@@ -58,14 +58,14 @@ class LyricsService {
     
     // 1. Check memory cache (fastest)
     if (_memCache.containsKey(cacheKey)) {
-      if (kDebugMode) print('LyricsService: Memory cache hit for "$title"');
+      if (kDebugMode) debugPrint('LyricsService: Memory cache hit for "$title"');
       return _memCache[cacheKey];
     }
     
     // 2. Check disk cache
     final diskEntry = await _diskCache.get(cacheKey);
     if (diskEntry != null) {
-      if (kDebugMode) print('LyricsService: Disk cache hit for "$title"');
+      if (kDebugMode) debugPrint('LyricsService: Disk cache hit for "$title"');
       final result = LyricsResult(
         lyrics: diskEntry.lyrics,
         isSynced: diskEntry.isSynced,
@@ -80,7 +80,7 @@ class LyricsService {
     
     // 3. Deduplicate in-flight requests
     if (_inFlightRequests.containsKey(cacheKey)) {
-      if (kDebugMode) print('LyricsService: Deduplicating request for "$title"');
+      if (kDebugMode) debugPrint('LyricsService: Deduplicating request for "$title"');
       return _inFlightRequests[cacheKey];
     }
     
@@ -123,7 +123,7 @@ class LyricsService {
         
         if (result != null && result.lyrics.isNotEmpty) {
           if (kDebugMode) {
-            print('LyricsService: Found lyrics via ${provider.name} for "$title"');
+            debugPrint('LyricsService: Found lyrics via ${provider.name} for "$title"');
           }
           
           // Cache in memory
@@ -136,12 +136,12 @@ class LyricsService {
         }
       } catch (e) {
         if (kDebugMode) {
-          print('LyricsService: ${provider.name} failed: $e');
+          debugPrint('LyricsService: ${provider.name} failed: $e');
         }
       }
     }
     
-    if (kDebugMode) print('LyricsService: No lyrics found for "$title"');
+    if (kDebugMode) debugPrint('LyricsService: No lyrics found for "$title"');
     return null;
   }
   
@@ -232,9 +232,9 @@ class LyricsService {
           videoId: task.videoId,
         );
         
-        if (kDebugMode) print('LyricsService: Prefetched lyrics for "${task.title}"');
+        if (kDebugMode) debugPrint('LyricsService: Prefetched lyrics for "${task.title}"');
       } catch (e) {
-        if (kDebugMode) print('LyricsService: Prefetch failed for "${task.title}": $e');
+        if (kDebugMode) debugPrint('LyricsService: Prefetch failed for "${task.title}": $e');
       }
     }
     
@@ -391,7 +391,7 @@ class LyricsService {
   Future<void> clearCache() async {
     _memCache.clear();
     await _diskCache.clear();
-    if (kDebugMode) print('LyricsService: All caches cleared');
+    if (kDebugMode) debugPrint('LyricsService: All caches cleared');
   }
   
   /// Get cache statistics
@@ -446,3 +446,5 @@ class _SearchVariant {
   
   _SearchVariant(this.title, this.artist);
 }
+
+

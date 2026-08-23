@@ -21,10 +21,10 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
     builder: (BuildContext bottomSheetContext) {
       return Container(
          decoration: BoxDecoration(
-            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withOpacity(0.8),
+            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.8),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, -5)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, -5)),
             ],
           ),
           child: ClipRRect(
@@ -169,16 +169,16 @@ Widget _buildGlassOption(BuildContext context, {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isAccent ? const Color(0xFFFF1744).withOpacity(0.1) : Colors.transparent,
+          color: isAccent ? const Color(0xFFFF1744).withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
-          border: isAccent ? Border.all(color: const Color(0xFFFF1744).withOpacity(0.3)) : null,
+          border: isAccent ? Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.3)) : null,
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: isAccent ? const Color(0xFFFF1744).withOpacity(0.2) : (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+                color: isAccent ? const Color(0xFFFF1744).withValues(alpha: 0.2) : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: isAccent ? const Color(0xFFFF1744) : (isDark ? Colors.white : Colors.black), size: 24),
@@ -231,9 +231,9 @@ Widget _buildGlassInputDialog(
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withOpacity(0.9),
+            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
           child: Column(
              mainAxisSize: MainAxisSize.min,
@@ -256,21 +256,21 @@ Widget _buildGlassInputDialog(
                    style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black),
                    cursorColor: const Color(0xFFFF1744),
                    onSubmitted: (value) async {
-                     print('DEBUG: TextField submitted with value: "$value"');
+                     debugPrint('DEBUG: TextField submitted with value: "$value"');
                      if (value.trim().isEmpty) {
-                       print('DEBUG: Submitted value is empty');
+                       debugPrint('DEBUG: Submitted value is empty');
                        return;
                      }
                      
                      try {
-                       print('DEBUG: Creating playlist from onSubmitted...');
+                       debugPrint('DEBUG: Creating playlist from onSubmitted...');
                        
                        await musicProvider.createPlaylist(
                          value.trim(), 
                          initialTracks: [trackToAdd],
                          imageUrl: trackToAdd.albumArtUrl, // Use track's album art
                        );
-                       print('DEBUG: Playlist created from onSubmitted!');
+                       debugPrint('DEBUG: Playlist created from onSubmitted!');
                        
                        if (context.mounted) {
                          Navigator.pop(context);
@@ -283,7 +283,7 @@ Widget _buildGlassInputDialog(
                          );
                        }
                      } catch (e) {
-                       print('DEBUG: Error in onSubmitted: $e');
+                       debugPrint('DEBUG: Error in onSubmitted: $e');
                        if (context.mounted) {
                          ScaffoldMessenger.of(context).showSnackBar(
                            SnackBar(
@@ -311,7 +311,7 @@ Widget _buildGlassInputDialog(
                  children: [
                    TextButton(
                      onPressed: () {
-                       print('DEBUG: Cancel button pressed');
+                       debugPrint('DEBUG: Cancel button pressed');
                        Navigator.pop(context);
                      },
                      child: Text('Cancel', style: GoogleFonts.splineSans(color: isDark ? Colors.white60 : Colors.black54)),
@@ -319,13 +319,13 @@ Widget _buildGlassInputDialog(
                    const SizedBox(width: 8),
                    ElevatedButton(
                      onPressed: () async {
-                        print('DEBUG: Create button pressed!');
+                        debugPrint('DEBUG: Create button pressed!');
                         try {
                           final name = controller.text.trim();
-                          print('DEBUG: Playlist name: "$name"');
+                          debugPrint('DEBUG: Playlist name: "$name"');
                           
                           if (name.isEmpty) {
-                            print('DEBUG: Name is empty, returning');
+                            debugPrint('DEBUG: Name is empty, returning');
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Please enter a playlist name'),
@@ -335,7 +335,7 @@ Widget _buildGlassInputDialog(
                             return;
                           }
                           
-                          print('DEBUG: Creating playlist with provider...');
+                          debugPrint('DEBUG: Creating playlist with provider...');
                           
                           // Create playlist AND add the track immediately
                           // Use the track's thumbnail as the playlist cover
@@ -344,12 +344,12 @@ Widget _buildGlassInputDialog(
                             initialTracks: [trackToAdd],
                             imageUrl: trackToAdd.albumArtUrl, // Use track's album art
                           ); 
-                          print('DEBUG: Playlist created successfully!');
+                          debugPrint('DEBUG: Playlist created successfully!');
                           
                           // Close dialog
                           if (context.mounted) {
                             Navigator.pop(context);
-                            print('DEBUG: Dialog closed');
+                            debugPrint('DEBUG: Dialog closed');
                             
                             // Show success message
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -359,11 +359,11 @@ Widget _buildGlassInputDialog(
                                 duration: const Duration(seconds: 2),
                               ),
                             );
-                            print('DEBUG: Success message shown');
+                            debugPrint('DEBUG: Success message shown');
                           }
                         } catch (e, stack) {
-                          print('DEBUG: Error occurred: $e');
-                          print('DEBUG: Stack trace: $stack');
+                          debugPrint('DEBUG: Error occurred: $e');
+                          debugPrint('DEBUG: Stack trace: $stack');
                           // Show error if something goes wrong
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -391,3 +391,5 @@ Widget _buildGlassInputDialog(
     ),
   );
 }
+
+

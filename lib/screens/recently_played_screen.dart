@@ -85,7 +85,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                         ),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          color: _isScrolled ? Colors.black.withOpacity(0.5) : Colors.transparent,
+                          color: _isScrolled ? Colors.black.withValues(alpha: 0.5) : Colors.transparent,
                           child: FlexibleSpaceBar(
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                             title: Text(
@@ -109,12 +109,12 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.history_rounded, size: 80, color: Colors.white.withOpacity(0.1)),
+                            Icon(Icons.history_rounded, size: 80, color: Colors.white.withValues(alpha: 0.1)),
                             const SizedBox(height: 16),
                             Text(
                               'No recently played tracks',
                               style: GoogleFonts.splineSans(
-                                color: Colors.white.withOpacity(0.6), 
+                                color: Colors.white.withValues(alpha: 0.6), 
                                 fontSize: 18,
                                 fontWeight: FontWeight.w500
                               ),
@@ -123,7 +123,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                             Text(
                               'Start listening to build your history!',
                               style: GoogleFonts.splineSans(
-                                color: Colors.white.withOpacity(0.4),
+                                color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 14
                               ),
                             ),

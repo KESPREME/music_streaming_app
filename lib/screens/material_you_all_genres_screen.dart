@@ -80,7 +80,7 @@ class MaterialYouAllGenresScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
                   border: Border.all(
-                    color: genreColor.withOpacity(0.3),
+                    color: genreColor.withValues(alpha: 0.3),
                     width: 2,
                   ),
                 ),
@@ -112,3 +112,4 @@ class MaterialYouAllGenresScreen extends StatelessWidget {
     );
   }
 }
+

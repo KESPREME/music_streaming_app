@@ -45,7 +45,7 @@ class QueueScreen extends StatelessWidget {
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(color: Colors.black.withOpacity(0.2)),
+            child: Container(color: Colors.black.withValues(alpha: 0.2)),
           ),
         ),
       ),
@@ -78,7 +78,7 @@ class QueueScreen extends StatelessWidget {
                     color: Colors.transparent,
                     child: Container(
                        decoration: BoxDecoration(
-                         color: Colors.white.withOpacity(0.1),
+                         color: Colors.white.withValues(alpha: 0.1),
                          borderRadius: BorderRadius.circular(12),
                          boxShadow: [
                            BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0,4))
@@ -97,7 +97,7 @@ class QueueScreen extends StatelessWidget {
                       background: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.redAccent.withOpacity(0.8),
+                          color: Colors.redAccent.withValues(alpha: 0.8),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         alignment: Alignment.centerRight,
@@ -110,9 +110,9 @@ class QueueScreen extends StatelessWidget {
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
+                          color: Colors.white.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withOpacity(isActuallyPlaying ? 0.3 : 0.05)),
+                          border: Border.all(color: Colors.white.withValues(alpha: isActuallyPlaying ? 0.3 : 0.05)),
                         ),
                         child: Theme(
                           data: theme.copyWith(canvasColor: Colors.transparent), 
@@ -150,19 +150,19 @@ class QueueScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  colors: [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.02)],
+                  colors: [Colors.white.withValues(alpha: 0.1), Colors.white.withValues(alpha: 0.02)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
               ),
-              child: Icon(Icons.queue_music_rounded, size: 60, color: Colors.white.withOpacity(0.5)),
+              child: Icon(Icons.queue_music_rounded, size: 60, color: Colors.white.withValues(alpha: 0.5)),
             ),
             const SizedBox(height: 24),
             Text(
               'Queue is Empty',
               style: GoogleFonts.splineSans(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 fontSize: 20,
                 fontWeight: FontWeight.bold
               ),
@@ -172,7 +172,7 @@ class QueueScreen extends StatelessWidget {
               'Add songs to your queue\nto see them here.',
               textAlign: TextAlign.center,
               style: GoogleFonts.splineSans(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 14,
               ),
             ),
@@ -185,7 +185,7 @@ class QueueScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E).withOpacity(0.9),
+        backgroundColor: const Color(0xFF1E1E1E).withValues(alpha: 0.9),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Clear Queue?', style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold)),
         content: Text(
@@ -209,3 +209,4 @@ class QueueScreen extends StatelessWidget {
     );
   }
 }
+

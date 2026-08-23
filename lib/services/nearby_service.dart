@@ -96,19 +96,19 @@ class NearbyService {
     _nearby.stateChangedSubscription(callback: (devicesList) {
       for (var device in devicesList) {
         if (kDebugMode) {
-          print("Nearby State Change: DeviceId: ${device.deviceId}, State: ${device.state}");
+          debugPrint("Nearby State Change: DeviceId: ${device.deviceId}, State: ${device.state}");
         }
         if (device.state == SessionState.connected) {
           if (!_connectedDevices.containsKey(device.deviceId)) {
             _connectedDevices[device.deviceId] = device;
              _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
-            if (kDebugMode) print("Connected to: ${device.deviceId}");
+            if (kDebugMode) debugPrint("Connected to: ${device.deviceId}");
           }
         } else if (device.state == SessionState.disconnected) {
           if (_connectedDevices.containsKey(device.deviceId)) {
             _connectedDevices.remove(device.deviceId);
             _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
-            if (kDebugMode) print("Disconnected from: ${device.deviceId}");
+            if (kDebugMode) debugPrint("Disconnected from: ${device.deviceId}");
           }
         }
       }
@@ -116,7 +116,7 @@ class NearbyService {
 
     _nearby.dataReceivedSubscription(callback: (data) {
       if (kDebugMode) {
-        print("Data received from ${data.deviceId}: ${data.message}");
+        debugPrint("Data received from ${data.deviceId}: ${data.message}");
       }
       try {
         final payloadJson = jsonDecode(data.message);
@@ -144,7 +144,7 @@ class NearbyService {
         }
       } catch (e) {
         if (kDebugMode) {
-          print("Error decoding received data: $e");
+          debugPrint("Error decoding received data: $e");
         }
         onMessageReceived?.call(data.deviceId, data.message);
       }
@@ -159,21 +159,21 @@ class NearbyService {
         serviceId: _serviceType,
         onConnectionInitiated: _onConnectionInitiated,
         onConnectionResult: (deviceId, status) {
-          if (kDebugMode) print("Advertising Connection Result: $deviceId, Status: $status");
+          if (kDebugMode) debugPrint("Advertising Connection Result: $deviceId, Status: $status");
            if (status == Status.CONNECTED) {
              sendCurrentUserPayload(deviceId, _currentUser);
            }
         },
         onDisconnected: (deviceId) {
-          if (kDebugMode) print("Advertising Disconnected: $deviceId");
+          if (kDebugMode) debugPrint("Advertising Disconnected: $deviceId");
           _connectedDevices.remove(deviceId);
           _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
         },
       );
-      if (kDebugMode) print("Started advertising as ${_currentUser.name}");
+      if (kDebugMode) debugPrint("Started advertising as ${_currentUser.name}");
       return true;
     } catch (e) {
-      if (kDebugMode) print("Error starting advertising: $e");
+      if (kDebugMode) debugPrint("Error starting advertising: $e");
       return false;
     }
   }
@@ -185,20 +185,20 @@ class NearbyService {
         Strategy.P2P_CLUSTER, // Changed to P2P_CLUSTER
         serviceId: _serviceType,
         onServiceFound: (deviceId, name, serviceId) {
-          if (kDebugMode) print("Service found: $deviceId, Name: $name, ServiceId: $serviceId. Requesting connection...");
+          if (kDebugMode) debugPrint("Service found: $deviceId, Name: $name, ServiceId: $serviceId. Requesting connection...");
           if (!_connectedDevices.containsKey(deviceId) && deviceId != _currentUser.id) {
              _nearby.requestConnection(
               _currentUser.name,
               deviceId,
               onConnectionInitiated: _onConnectionInitiated,
               onConnectionResult: (id, status) {
-                if (kDebugMode) print("Browsing Connection Result: $id, Status: $status");
+                if (kDebugMode) debugPrint("Browsing Connection Result: $id, Status: $status");
                  if (status == Status.CONNECTED) {
                     sendCurrentUserPayload(id, _currentUser);
                  }
               },
               onDisconnected: (id) {
-                if (kDebugMode) print("Browsing Disconnected: $id");
+                if (kDebugMode) debugPrint("Browsing Disconnected: $id");
                  _connectedDevices.remove(id);
                  _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
                  _discoveredUsers.remove(id);
@@ -209,28 +209,28 @@ class NearbyService {
           }
         },
         onServiceLost: (deviceId) {
-          if (kDebugMode) print("Service lost: $deviceId");
+          if (kDebugMode) debugPrint("Service lost: $deviceId");
           _discoveredUsers.remove(deviceId);
           _discoveredUsersController.add(_discoveredUsers.values.toList());
           onUserLost?.call(deviceId);
         },
       );
-      if (kDebugMode) print("Started browsing for services");
+      if (kDebugMode) debugPrint("Started browsing for services");
       return true;
     } catch (e) {
-      if (kDebugMode) print("Error starting browsing: $e");
+      if (kDebugMode) debugPrint("Error starting browsing: $e");
       return false;
     }
   }
 
   void _onConnectionInitiated(String deviceId, ConnectionInfo connectionInfo) {
     if (kDebugMode) {
-      print("Connection initiated with $deviceId, Name: ${connectionInfo.endpointName}, AuthToken: ${connectionInfo.authenticationToken}");
+      debugPrint("Connection initiated with $deviceId, Name: ${connectionInfo.endpointName}, AuthToken: ${connectionInfo.authenticationToken}");
     }
     _nearby.acceptConnection(
       deviceId,
       onPayLoadRecieved: (endpointId, payload) async {
-        if (kDebugMode) print("Payload received during connection from $endpointId: ${payload.bytes}");
+        if (kDebugMode) debugPrint("Payload received during connection from $endpointId: ${payload.bytes}");
       },
       onPayloadTransferUpdate: (endpointId, payloadTransferUpdate) {
       },
@@ -242,12 +242,12 @@ class NearbyService {
       try {
         final message = jsonEncode(payload.toJson());
         await _nearby.sendBytesPayload(deviceId, Uint8List.fromList(message.codeUnits));
-        if (kDebugMode) print("Sent payload to $deviceId: ${payload.type}");
+        if (kDebugMode) debugPrint("Sent payload to $deviceId: ${payload.type}");
       } catch (e) {
-        if (kDebugMode) print("Error sending payload to $deviceId: $e");
+        if (kDebugMode) debugPrint("Error sending payload to $deviceId: $e");
       }
     } else {
-      if (kDebugMode) print("Cannot send payload: $deviceId not connected.");
+      if (kDebugMode) debugPrint("Cannot send payload: $deviceId not connected.");
     }
   }
 
@@ -261,7 +261,7 @@ class NearbyService {
     for (String deviceId in _connectedDevices.keys) {
        await sendPayload(deviceId, payload);
     }
-     if (kDebugMode && _connectedDevices.isNotEmpty) print("Broadcasted current user data to all connected devices.");
+     if (kDebugMode && _connectedDevices.isNotEmpty) debugPrint("Broadcasted current user data to all connected devices.");
   }
 
   Future<void> sendFriendRequestAction(String toDeviceId, FriendRequestAction action) async {
@@ -271,7 +271,7 @@ class NearbyService {
       case FriendRequestAction.accepted: type = 'friendRequestAccepted'; break;
       case FriendRequestAction.declined: type = 'friendRequestDeclined'; break;
       default:
-        if (kDebugMode) print("Error: Unknown FriendRequestAction: $action");
+        if (kDebugMode) debugPrint("Error: Unknown FriendRequestAction: $action");
         throw ArgumentError("Unknown FriendRequestAction: $action");
     }
     final payload = NearbyPayload(type: type, data: {'fromUserId': _currentUser.id});
@@ -280,12 +280,12 @@ class NearbyService {
 
   Future<void> stopAdvertising() async {
     await _nearby.stopAdvertising();
-    if (kDebugMode) print("Stopped advertising");
+    if (kDebugMode) debugPrint("Stopped advertising");
   }
 
   Future<void> stopBrowsing() async {
     await _nearby.stopBrowsing();
-    if (kDebugMode) print("Stopped browsing");
+    if (kDebugMode) debugPrint("Stopped browsing");
   }
 
   Future<void> disconnectFromDevice(String deviceId) async {
@@ -293,7 +293,7 @@ class NearbyService {
       await _nearby.disconnectFromEndpoint(deviceId);
       _connectedDevices.remove(deviceId);
        _connectedDeviceIdsController.add(_connectedDevices.keys.toList());
-      if (kDebugMode) print("Disconnected from $deviceId");
+      if (kDebugMode) debugPrint("Disconnected from $deviceId");
     }
   }
 
@@ -303,10 +303,12 @@ class NearbyService {
     await _nearby.stopAllEndpoints();
     _discoveredUsersController.close();
     _connectedDeviceIdsController.close();
-    if (kDebugMode) print("NearbyService disposed");
+    if (kDebugMode) debugPrint("NearbyService disposed");
   }
 
   List<UserModel> getDiscoveredUsersList() {
     return List<UserModel>.from(_discoveredUsers.values);
   }
 }
+
+

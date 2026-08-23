@@ -146,7 +146,7 @@ class AudioService {
         _audioPlayer.playbackEventStream.listen(
           (event) {},
           onError: (Object e, StackTrace st) {
-            print('Audio player error: $e');
+            debugPrint('Audio player error: $e');
             _handlePlaybackError(e);
           },
         ),
@@ -154,7 +154,7 @@ class AudioService {
 
       _isInitialized = true;
     } catch (e) {
-      print('Error initializing audio session: $e');
+      debugPrint('Error initializing audio session: $e');
     }
   }
 
@@ -170,7 +170,7 @@ class AudioService {
   }) async {
     try {
       if (kDebugMode) {
-        print('AudioService: play() called. Prev: $hasPrevious, Next: $hasNext');
+        debugPrint('AudioService: play() called. Prev: $hasPrevious, Next: $hasNext');
       }
       
       // Validate inputs
@@ -263,7 +263,7 @@ class AudioService {
       AudioSource finalSource = ConcatenatingAudioSource(children: playlistChildren);
       int initialIndex = 1; // Current track is always at index 1 now
 
-      if (kDebugMode) print('AudioService: Setting source with window size ${playlistChildren.length}, index $initialIndex');
+      if (kDebugMode) debugPrint('AudioService: Setting source with window size ${playlistChildren.length}, index $initialIndex');
       
       // FIX: Prevent navigation monitor from triggering during setup
       _isConfiguring = true;
@@ -282,10 +282,10 @@ class AudioService {
       // Ideally, the global listener handles any "current" playing sequence.
       
     } on PlayerException catch (e) {
-      if (kDebugMode) print('AudioService: PlayerException: ${e.message}');
+      if (kDebugMode) debugPrint('AudioService: PlayerException: ${e.message}');
       throw Exception('Audio player error: ${e.message}');
     } catch (e) {
-      if (kDebugMode) print('AudioService: Error playing: $e');
+      if (kDebugMode) debugPrint('AudioService: Error playing: $e');
       throw Exception('Failed to play audio: $e');
     }
   }
@@ -332,7 +332,7 @@ class AudioService {
     try {
       await _audioPlayer.pause();
     } catch (e) {
-      print('Error pausing audio: $e');
+      debugPrint('Error pausing audio: $e');
       throw Exception('Failed to pause audio: $e');
     }
   }
@@ -343,7 +343,7 @@ class AudioService {
          // If we are resumed from "Completed" state, we might need to check if we are on a Dummy.
          // But play() normally handles new tracks.
          // If we just resume same track:
-        if (kDebugMode) print("AudioService: Stream completed, seeking to current position to resume.");
+        if (kDebugMode) debugPrint("AudioService: Stream completed, seeking to current position to resume.");
         await _audioPlayer.seek(_audioPlayer.position);
       }
       await _audioPlayer.play();
@@ -358,7 +358,7 @@ class AudioService {
       _preloadedUrl = null;
       _preloadedSource = null;
     } catch (e) {
-      print('Error stopping audio: $e');
+      debugPrint('Error stopping audio: $e');
       throw Exception('Failed to stop audio: $e');
     }
   }
@@ -367,7 +367,7 @@ class AudioService {
     try {
       await _audioPlayer.seek(position);
     } catch (e) {
-      print('Error seeking audio: $e');
+      debugPrint('Error seeking audio: $e');
       throw Exception('Failed to seek audio: $e');
     }
   }
@@ -457,11 +457,11 @@ class AudioService {
            });
         } 
       } catch (e) {
-        print('Retry attempt $attempt failed: $e');
+        debugPrint('Retry attempt $attempt failed: $e');
       }
     }
 
-    print('All retry attempts failed');
+    debugPrint('All retry attempts failed');
   }
 
   bool get _isPlaying => _audioPlayer.playing;
@@ -472,7 +472,7 @@ class AudioService {
 
   Future<void> preloadTrack(String url) async {
     if (url == _preloadedUrl && _preloadedSource != null) return;
-    if (kDebugMode) print("AudioService: Preloading track $url");
+    if (kDebugMode) debugPrint("AudioService: Preloading track $url");
     _preloadedUrl = url;
     try {
       final headers = <String, String>{
@@ -489,10 +489,10 @@ class AudioService {
         headers['Origin'] = 'https://www.youtube.com';
       }
       _preloadedSource = LockCachingAudioSource(Uri.parse(url), headers: headers);
-      if (kDebugMode) print("AudioService: Set up LockCachingAudioSource for $url");
+      if (kDebugMode) debugPrint("AudioService: Set up LockCachingAudioSource for $url");
 
     } catch (e) {
-      if (kDebugMode) print("AudioService: Error preloading track $url: $e");
+      if (kDebugMode) debugPrint("AudioService: Error preloading track $url: $e");
       _preloadedUrl = null;
       _preloadedSource = null;
     }
@@ -564,10 +564,10 @@ class AudioService {
     // Listen for Player Exceptions explicitly
     _subscriptions.add(_audioPlayer.playbackEventStream.listen((event) {}, 
         onError: (Object e, StackTrace stackTrace) {
-            print('AudioService: Playback Event Exception: $e');
+            debugPrint('AudioService: Playback Event Exception: $e');
             // Check for specific error substrings if possible
             if (e.toString().contains("Source error") || e.toString().contains("UnrecognizedInputFormatException")) {
-                 print("AudioService: CRITICAL - Corrupt Source Detected.");
+                 debugPrint("AudioService: CRITICAL - Corrupt Source Detected.");
                  _onPlaybackErrorController.add("Source error");
             }
     }));
@@ -587,3 +587,5 @@ class AudioService {
     _onPlaybackErrorController.close();
   }
 }
+
+

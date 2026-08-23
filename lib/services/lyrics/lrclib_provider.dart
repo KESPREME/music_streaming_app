@@ -43,7 +43,7 @@ class LrcLibProvider {
       
     } catch (e) {
       if (kDebugMode) {
-        print('LrcLibProvider: Error getting lyrics: $e');
+        debugPrint('LrcLibProvider: Error getting lyrics: $e');
       }
       return null;
     }
@@ -71,7 +71,7 @@ class LrcLibProvider {
       
     } catch (e) {
       if (kDebugMode) {
-        print('LrcLibProvider: Error getting all lyrics: $e');
+        debugPrint('LrcLibProvider: Error getting all lyrics: $e');
       }
       return [];
     }
@@ -118,7 +118,7 @@ class LrcLibProvider {
       return null;
     } catch (e) {
       if (kDebugMode) {
-        print('LrcLibProvider: Exact match failed: $e');
+        debugPrint('LrcLibProvider: Exact match failed: $e');
       }
       return null;
     }
@@ -185,7 +185,7 @@ class LrcLibProvider {
       final uri = Uri.parse('$_baseUrl/api/search').replace(queryParameters: params);
       
       if (kDebugMode) {
-        print('LrcLibProvider: Searching: $uri');
+        debugPrint('LrcLibProvider: Searching: $uri');
       }
       
       final response = await _httpClient.get(
@@ -198,7 +198,7 @@ class LrcLibProvider {
       
       if (response.statusCode != 200) {
         if (kDebugMode) {
-          print('LrcLibProvider: Search failed: ${response.statusCode}');
+          debugPrint('LrcLibProvider: Search failed: ${response.statusCode}');
         }
         return [];
       }
@@ -208,7 +208,7 @@ class LrcLibProvider {
       
     } catch (e) {
       if (kDebugMode) {
-        print('LrcLibProvider: Search error: $e');
+        debugPrint('LrcLibProvider: Search error: $e');
       }
       return [];
     }
@@ -289,3 +289,5 @@ class LrcLibResult {
     );
   }
 }
+
+

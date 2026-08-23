@@ -169,7 +169,7 @@ class _MaterialYouAllArtistsScreenState extends State<MaterialYouAllArtistsScree
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: MaterialYouTokens.primaryVibrant.withOpacity(0.3), 
+                  color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.3), 
                   width: 2
                 ),
               ),
@@ -205,7 +205,7 @@ class _MaterialYouAllArtistsScreenState extends State<MaterialYouAllArtistsScree
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: MaterialYouTokens.primaryVibrant.withOpacity(0.1),
+              color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -219,3 +219,5 @@ class _MaterialYouAllArtistsScreenState extends State<MaterialYouAllArtistsScree
     );
   }
 }
+
+

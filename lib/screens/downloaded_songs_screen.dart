@@ -113,7 +113,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                               ),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
-                                color: _isScrolled ? Colors.black.withOpacity(0.5) : Colors.transparent,
+                                color: _isScrolled ? Colors.black.withValues(alpha: 0.5) : Colors.transparent,
                                 child: FlexibleSpaceBar(
                                   titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                                   title: Text(
@@ -140,13 +140,13 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                   Icon(
                                     Icons.download_done_rounded,
                                     size: 80,
-                                    color: Colors.white.withOpacity(0.1),
+                                    color: Colors.white.withValues(alpha: 0.1),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
                                     'No downloaded songs yet',
                                     style: GoogleFonts.splineSans(
-                                      color: Colors.white.withOpacity(0.6),
+                                      color: Colors.white.withValues(alpha: 0.6),
                                       fontSize: 18,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -155,7 +155,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                   Text(
                                     'Download songs to listen offline',
                                     style: GoogleFonts.splineSans(
-                                      color: Colors.white.withOpacity(0.4),
+                                      color: Colors.white.withValues(alpha: 0.4),
                                       fontSize: 14,
                                     ),
                                   ),
@@ -257,14 +257,14 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
           const SizedBox(height: 4),
           LinearProgressIndicator(
             value: progress,
-            backgroundColor: Colors.white.withOpacity(0.1),
+            backgroundColor: Colors.white.withValues(alpha: 0.1),
             valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00E676)), // Green Accent
             borderRadius: BorderRadius.circular(2),
           ),
           const SizedBox(height: 4),
           Text(
             '${(progress * 100).toStringAsFixed(0)}%',
-            style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.5), fontSize: 12),
+            style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
           ),
         ],
       ),
@@ -303,7 +303,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
       ),
       subtitle: Text(
         track.artistName,
-        style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.6), fontSize: 13),
+        style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -317,7 +317,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
             },
           ),
           IconButton(
-            icon: Icon(Icons.delete_outline_rounded, color: Colors.white.withOpacity(0.5)),
+            icon: Icon(Icons.delete_outline_rounded, color: Colors.white.withValues(alpha: 0.5)),
             onPressed: () async {
                // Add confirmation dialog if needed
                await musicProvider.deleteDownloadedTrack(track.id);
@@ -330,3 +330,4 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
     );
   }
 }
+

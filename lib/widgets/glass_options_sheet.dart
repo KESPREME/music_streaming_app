@@ -71,11 +71,11 @@ class GlassOptionsSheet extends StatelessWidget {
         
         return Container(
           decoration: BoxDecoration(
-            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withOpacity(0.8),
+            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.8),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 20,
                 offset: const Offset(0, -5),
               ),
@@ -440,11 +440,11 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withOpacity(0.8),
+        color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.8),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, -5),
           ),
@@ -607,4 +607,5 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
     );
   }
 }
+
 

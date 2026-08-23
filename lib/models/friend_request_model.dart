@@ -63,3 +63,4 @@ class FriendRequestModel { // Removed "extends Equatable"
     );
   }
 }
+

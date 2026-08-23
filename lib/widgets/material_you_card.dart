@@ -62,7 +62,7 @@ class _MaterialYouCardState extends State<MaterialYouCard> {
               Material(
                 elevation: _isPressed ? 1 : 2,
                 surfaceTintColor: colorScheme.surfaceTint,
-                color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+                color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(
                   widget.isCircle ? widget.width / 2 : 16,
                 ),
@@ -83,7 +83,7 @@ class _MaterialYouCardState extends State<MaterialYouCard> {
                             widget.imageUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => Container(
-                              color: colorScheme.surfaceVariant,
+                              color: colorScheme.surfaceContainerHighest,
                               child: Icon(
                                 Icons.music_note_rounded,
                                 size: 48,
@@ -92,7 +92,7 @@ class _MaterialYouCardState extends State<MaterialYouCard> {
                             ),
                           )
                         : Container(
-                            color: colorScheme.surfaceVariant,
+                            color: colorScheme.surfaceContainerHighest,
                             child: Icon(
                               Icons.music_note_rounded,
                               size: 48,
@@ -136,3 +136,5 @@ class _MaterialYouCardState extends State<MaterialYouCard> {
     );
   }
 }
+
+

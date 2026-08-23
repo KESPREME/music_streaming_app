@@ -162,11 +162,11 @@ class EqualizerService {
         }
         
         if (kDebugMode) {
-          print('EqualizerService: Initialized with $_bandCount bands');
-          print('EqualizerService: Band frequencies: $bandLabels');
+          debugPrint('EqualizerService: Initialized with $_bandCount bands');
+          debugPrint('EqualizerService: Band frequencies: $bandLabels');
         }
       } catch (e) {
-        if (kDebugMode) print('EqualizerService: Error getting EQ params: $e');
+        if (kDebugMode) debugPrint('EqualizerService: Error getting EQ params: $e');
       }
     }
     
@@ -176,7 +176,7 @@ class EqualizerService {
     }
     
     if (kDebugMode) {
-      print('EqualizerService: Initialized with preset=$_currentPresetId, enabled=$_isEnabled');
+      debugPrint('EqualizerService: Initialized with preset=$_currentPresetId, enabled=$_isEnabled');
     }
   }
 
@@ -212,9 +212,9 @@ class EqualizerService {
         if (enabled) {
           await _applyEQ();
         }
-        if (kDebugMode) print('EqualizerService: EQ ${enabled ? "enabled" : "disabled"}');
+        if (kDebugMode) debugPrint('EqualizerService: EQ ${enabled ? "enabled" : "disabled"}');
       } catch (e) {
-        if (kDebugMode) print('EqualizerService: Error setting enabled: $e');
+        if (kDebugMode) debugPrint('EqualizerService: Error setting enabled: $e');
       }
     }
     
@@ -262,7 +262,7 @@ class EqualizerService {
 
     final gains = currentBandGains;
     if (kDebugMode) {
-      print('EqualizerService: Applying EQ - Preset=$_currentPresetId, Gains=$gains');
+      debugPrint('EqualizerService: Applying EQ - Preset=$_currentPresetId, Gains=$gains');
     }
 
     try {
@@ -270,7 +270,7 @@ class EqualizerService {
       _eqParams ??= await _audioService!.equalizer.parameters;
       
       if (_eqParams == null) {
-        if (kDebugMode) print('EqualizerService: No EQ params available');
+        if (kDebugMode) debugPrint('EqualizerService: No EQ params available');
         return;
       }
       
@@ -286,11 +286,11 @@ class EqualizerService {
         
         await bands[i].setGain(deviceGain);
         if (kDebugMode) {
-          print('EqualizerService: Band ${i} (${bands[i].centerFrequency}Hz) set to ${deviceGain.toStringAsFixed(1)}dB');
+          debugPrint('EqualizerService: Band ${i} (${bands[i].centerFrequency}Hz) set to ${deviceGain.toStringAsFixed(1)}dB');
         }
       }
     } catch (e) {
-      if (kDebugMode) print('EqualizerService: Error applying EQ: $e');
+      if (kDebugMode) debugPrint('EqualizerService: Error applying EQ: $e');
     }
   }
 
@@ -307,7 +307,7 @@ class EqualizerService {
         _customBandGains = List.filled(_bandCount, 0.0);
       }
     } catch (e) {
-      if (kDebugMode) print('EqualizerService: Error loading settings: $e');
+      if (kDebugMode) debugPrint('EqualizerService: Error loading settings: $e');
     }
   }
 
@@ -321,7 +321,7 @@ class EqualizerService {
         _customBandGains.map((g) => g.toString()).toList(),
       );
     } catch (e) {
-      if (kDebugMode) print('EqualizerService: Error saving settings: $e');
+      if (kDebugMode) debugPrint('EqualizerService: Error saving settings: $e');
     }
   }
 
@@ -334,3 +334,5 @@ class EqualizerService {
     _notifyListeners();
   }
 }
+
+

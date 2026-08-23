@@ -322,3 +322,4 @@ class UserTasteBlender {
     return shortTerm.isInSkipMode() || shortTerm.getSessionQuality() < 0.4;
   }
 }
+

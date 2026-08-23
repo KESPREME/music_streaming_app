@@ -73,3 +73,4 @@ class WordTimestamp {
   @override
   String toString() => 'WordTimestamp("$text", $startTime-$endTime)';
 }
+

@@ -15,3 +15,4 @@ class ThemedRecentlyPlayedScreen extends StatelessWidget {
         : const RecentlyPlayedScreen();
   }
 }
+

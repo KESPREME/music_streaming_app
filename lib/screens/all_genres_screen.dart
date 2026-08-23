@@ -65,14 +65,14 @@ class AllGenresScreen extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [genreColor.withOpacity(0.7), genreColor],
+                  colors: [genreColor.withValues(alpha: 0.7), genreColor],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                  boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   )
@@ -84,7 +84,7 @@ class AllGenresScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center, // Center content
                   children: [
                     if (genreIcon != null)
-                      Icon(genreIcon, color: Colors.white.withOpacity(0.9), size: 24),
+                      Icon(genreIcon, color: Colors.white.withValues(alpha: 0.9), size: 24),
                     if (genreIcon != null)
                       const SizedBox(width: 10),
                     Expanded(
@@ -107,3 +107,4 @@ class AllGenresScreen extends StatelessWidget {
     );
   }
 }
+

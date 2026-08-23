@@ -22,7 +22,7 @@ class AuthService extends ChangeNotifier {
         _cookies = Map<String, String>.from(jsonDecode(cookieString));
         notifyListeners();
       } catch (e) {
-        print('AuthService: Failed to parse saved cookies: $e');
+        debugPrint('AuthService: Failed to parse saved cookies: $e');
       }
     }
   }
@@ -75,3 +75,5 @@ class AuthService extends ChangeNotifier {
   /// Get specific cookie value
   String? getCookie(String name) => _cookies[name];
 }
+
+

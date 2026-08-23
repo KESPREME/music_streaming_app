@@ -85,7 +85,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                         ),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          color: _isScrolled ? Colors.black.withOpacity(0.5) : Colors.transparent,
+                          color: _isScrolled ? Colors.black.withValues(alpha: 0.5) : Colors.transparent,
                           child: FlexibleSpaceBar(
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                             title: Text(
@@ -142,12 +142,12 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.favorite_rounded, size: 80, color: Colors.white.withOpacity(0.1)),
+                            Icon(Icons.favorite_rounded, size: 80, color: Colors.white.withValues(alpha: 0.1)),
                             const SizedBox(height: 16),
                             Text(
                               'Songs you like will appear here',
                               style: GoogleFonts.splineSans(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 18, 
                                 fontWeight: FontWeight.w500
                               ),
@@ -156,7 +156,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                             Text(
                               'Tap the heart icon to save music.',
                               style: GoogleFonts.splineSans(
-                                color: Colors.white.withOpacity(0.4),
+                                color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 14
                               ),
                             ),

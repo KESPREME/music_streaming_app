@@ -44,8 +44,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     // Capture Flutter errors
     FlutterError.onError = (FlutterErrorDetails details) {
       if (kDebugMode) {
-        print('Flutter Error: ${details.exception}');
-        print('Stack trace: ${details.stack}');
+        debugPrint('Flutter Error: ${details.exception}');
+        debugPrint('Stack trace: ${details.stack}');
       }
     };
     
@@ -72,7 +72,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           !widget.artistId.contains('UC')) { // YouTube channel IDs start with UC
         
         if (kDebugMode) {
-          print('Searching for artist: ${widget.artistName}');
+          debugPrint('Searching for artist: ${widget.artistName}');
         }
         
         await provider.fetchArtistTracks(widget.artistName)
@@ -89,7 +89,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           _resolvedArtistId = artistIdToFetch;
           
           if (kDebugMode) {
-            print('Found artist ID: $artistIdToFetch');
+            debugPrint('Found artist ID: $artistIdToFetch');
           }
         } else {
           if (mounted) {
@@ -113,7 +113,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       }
       
       if (kDebugMode) {
-        print('Fetching artist details for ID: $artistIdToFetch');
+        debugPrint('Fetching artist details for ID: $artistIdToFetch');
       }
       
       final details = await provider.fetchArtistDetails(artistIdToFetch)
@@ -135,8 +135,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       });
     } on TimeoutException catch (e, stackTrace) {
       if (kDebugMode) {
-        print('Timeout loading artist details: $e');
-        print('Stack trace: $stackTrace');
+        debugPrint('Timeout loading artist details: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
       if (mounted) {
         setState(() {
@@ -146,8 +146,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('Error loading artist details: $e');
-        print('Stack trace: $stackTrace');
+        debugPrint('Error loading artist details: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
       if (mounted) {
         setState(() {
@@ -196,10 +196,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                        Container(
                          padding: const EdgeInsets.all(20),
                          decoration: BoxDecoration(
-                           color: Colors.white.withOpacity(0.05),
+                           color: Colors.white.withValues(alpha: 0.05),
                            shape: BoxShape.circle,
                            border: Border.all(
-                             color: Colors.white.withOpacity(0.1),
+                             color: Colors.white.withValues(alpha: 0.1),
                            ),
                          ),
                          child: const Icon(
@@ -286,9 +286,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   ),
                   child: Consumer<MusicProvider>(
                     builder: (context, provider, child) {
@@ -358,7 +358,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                        decoration: BoxDecoration(
                          borderRadius: BorderRadius.circular(16),
                          boxShadow: [
-                           BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+                           BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))
                          ]
                        ),
                        child: ClipRRect(
@@ -379,7 +379,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                          maxLines: 2,
                          overflow: TextOverflow.ellipsis,
                          style: GoogleFonts.splineSans(
-                           color: Colors.white.withOpacity(0.9), 
+                           color: Colors.white.withValues(alpha: 0.9), 
                            fontWeight: FontWeight.w600, 
                            fontSize: 13,
                            height: 1.2
@@ -407,7 +407,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       leading: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
         child: IconButton(
@@ -435,7 +435,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontSize: 16 + (8 * percentage), // Smooth scale 16 -> 24
-                    shadows: [Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 20)],
+                    shadows: [Shadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 20)],
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -464,9 +464,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.black.withOpacity(0.3),
+                              Colors.black.withValues(alpha: 0.3),
                               Colors.transparent,
-                              Colors.black.withOpacity(0.6),
+                              Colors.black.withValues(alpha: 0.6),
                               Colors.black,
                             ],
                             stops: const [0.0, 0.4, 0.8, 1.0],
@@ -477,7 +477,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
                     // Liquid Glass Overlay (Darkens as it collapses)
                     Container(
-                      color: Colors.black.withOpacity(overlayOpacity),
+                      color: Colors.black.withValues(alpha: overlayOpacity),
                     ),
                     
                     // Subtle Border when fully collapsed
@@ -486,7 +486,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         alignment: Alignment.bottomCenter,
                         child: Container(
                           height: 1,
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                   ],
@@ -501,3 +501,5 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
 
 }
+
+

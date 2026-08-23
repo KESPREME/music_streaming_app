@@ -84,7 +84,7 @@ class MaterialYouNavBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? MaterialYouTokens.primaryVibrant.withOpacity(0.2)
+                    ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.2)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(MaterialYouTokens.shapeFull),
               ),
@@ -125,3 +125,5 @@ class MaterialYouNavBar extends StatelessWidget {
     );
   }
 }
+
+

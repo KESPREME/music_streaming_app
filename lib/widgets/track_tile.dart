@@ -51,7 +51,7 @@ class TrackTile extends StatelessWidget {
             width: artworkSize,
             height: artworkSize,
             color: theme.colorScheme.surfaceContainerHighest,
-            child: Icon(Icons.broken_image, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
+            child: Icon(Icons.broken_image, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
           ),
           loadingBuilder: (context, child, loadingProgress) {
             if (loadingProgress == null) return child;
@@ -72,7 +72,7 @@ class TrackTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(dense ? 4 : 6),
           color: theme.colorScheme.surfaceContainerHighest,
         ),
-        child: Icon(Icons.music_note, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
+        child: Icon(Icons.music_note, size: artworkSize * 0.6, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
       );
     }
   }
@@ -103,14 +103,14 @@ class TrackTile extends StatelessWidget {
           ? Text(
               track.artistName,
               style: (dense ? theme.textTheme.bodySmall : theme.textTheme.bodyMedium)?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             )
           : null,
       trailing: IconButton(
-        icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withOpacity(0.7)),
+        icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withValues(alpha: 0.7)),
         onPressed: () {
           ThemedOptionsSheet.show(
             context,
@@ -136,5 +136,7 @@ class TrackTile extends StatelessWidget {
     );
   }
 }
+
+
 
 

@@ -114,7 +114,7 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
                           sigmaY: 10,
                         ),
                         child: Container(
-                          color: Colors.black.withOpacity(0.5), // Always distinct for nested scroll
+                          color: Colors.black.withValues(alpha: 0.5), // Always distinct for nested scroll
                           child: FlexibleSpaceBar(
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 50),
                             title: Text(
@@ -242,16 +242,16 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.folder_off_rounded, size: 70, color: Colors.white.withOpacity(0.2)),
+          Icon(Icons.folder_off_rounded, size: 70, color: Colors.white.withValues(alpha: 0.2)),
           const SizedBox(height: 20),
           Text(
             'No Local Music Found',
-            style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.6), fontSize: 18, fontWeight: FontWeight.bold),
+            style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.6), fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Text(
             'Tap the folder icon (+) to add music folders.',
-            style: GoogleFonts.splineSans(color: Colors.white.withOpacity(0.4), fontSize: 14),
+            style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
           ),
           const SizedBox(height: 30),
           ElevatedButton.icon(

@@ -39,3 +39,4 @@ class ThemedNavBar extends StatelessWidget {
     );
   }
 }
+

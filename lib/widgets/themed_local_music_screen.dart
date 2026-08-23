@@ -15,3 +15,4 @@ class ThemedLocalMusicScreen extends StatelessWidget {
         : const LocalMusicScreen();
   }
 }
+

@@ -36,3 +36,4 @@ class ThemedArtistDetailScreen extends StatelessWidget {
           );
   }
 }
+

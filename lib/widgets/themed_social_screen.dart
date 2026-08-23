@@ -15,3 +15,4 @@ class ThemedSocialScreen extends StatelessWidget {
         : const SocialScreen();
   }
 }
+

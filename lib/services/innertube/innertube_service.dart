@@ -69,12 +69,12 @@ class InnerTubeService {
       if (!entry.isExpired(_cacheDuration)) return;
     }
     
-    if (kDebugMode) print('InnerTubeService: Prefetching $videoId...');
+    if (kDebugMode) debugPrint('InnerTubeService: Prefetching $videoId...');
     try {
       // Just call getAudioStreamUrl, it will handle fetching and caching
       await getAudioStreamUrl(videoId);
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: Prefetch failed for $videoId: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: Prefetch failed for $videoId: $e');
     }
   }
   
@@ -228,7 +228,7 @@ class InnerTubeService {
 
   Future<List<Track>> _searchWithParams(String query, String params, int limit) async {
     try {
-      if (kDebugMode) print('InnerTubeService: Searching "$query" with params $params');
+      if (kDebugMode) debugPrint('InnerTubeService: Searching "$query" with params $params');
       final body = jsonEncode({
         'context': _buildContext(clientType: YouTubeClientType.webRemix),
          'query': query,
@@ -248,7 +248,7 @@ class InnerTubeService {
       // This allows UC/VL/PL browse IDs to be returned for navigation purposes
       return _parseSearchResults(data, limit, allowBrowseIds: true);
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: Search error: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: Search error: $e');
       rethrow;
     }
   }
@@ -257,7 +257,7 @@ class InnerTubeService {
   Future<List<Track>> searchSongs(String query, {int limit = 20}) async {
     try {
       if (kDebugMode) {
-        print('InnerTubeService: Searching for "$query"');
+        debugPrint('InnerTubeService: Searching for "$query"');
       }
       return _searchWithParams(query, 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D', limit);
     } catch (e) {
@@ -341,7 +341,7 @@ class InnerTubeService {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Parse error: $e');
+        debugPrint('InnerTubeService: Parse error: $e');
       }
     }
     
@@ -378,7 +378,7 @@ class InnerTubeService {
           videoId.startsWith('PL') ||    // Playlist  
           videoId.startsWith('OLAK') ||  // Album
           videoId.startsWith('MPREb'))) { // Album browse ID
-        if (kDebugMode) print('InnerTubeService: Skipping non-playable ID: $videoId');
+        if (kDebugMode) debugPrint('InnerTubeService: Skipping non-playable ID: $videoId');
         return null;
       }
       
@@ -454,7 +454,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Track parse error: $e');
+        debugPrint('InnerTubeService: Track parse error: $e');
       }
       return null;
     }
@@ -484,7 +484,7 @@ class InnerTubeService {
     // Try ANDROID_VR first (no auth required)
     try {
       if (kDebugMode) {
-        print('InnerTubeService: Getting player for $videoId using ANDROID_VR');
+        debugPrint('InnerTubeService: Getting player for $videoId using ANDROID_VR');
       }
       
       final result = await _getPlayerWithClient(videoId, YouTubeClientType.androidVr143);
@@ -497,11 +497,11 @@ class InnerTubeService {
       
       // If not OK, try iOS client as fallback
       if (kDebugMode) {
-        print('InnerTubeService: ANDROID_VR failed ($status), trying iOS client');
+        debugPrint('InnerTubeService: ANDROID_VR failed ($status), trying iOS client');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: ANDROID_VR error: $e, trying iOS');
+        debugPrint('InnerTubeService: ANDROID_VR error: $e, trying iOS');
       }
     }
     
@@ -511,7 +511,7 @@ class InnerTubeService {
       return result;
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: iOS client also failed: $e');
+        debugPrint('InnerTubeService: iOS client also failed: $e');
       }
       rethrow;
     }
@@ -558,7 +558,7 @@ class InnerTubeService {
     // 1. Check Cache
     final cached = await _getCachedUrl(videoId);
     if (cached != null) {
-      if (kDebugMode) print('InnerTubeService: Cache HIT for $videoId');
+      if (kDebugMode) debugPrint('InnerTubeService: Cache HIT for $videoId');
       return cached;
     }
 
@@ -576,13 +576,13 @@ class InnerTubeService {
   Future<dynamic> _getAudioStreamInternal(String videoId, int preferredBitrate, {required bool returnSource}) async {
     // 1. Primary: YoutubeExplode (The "Dart NewPipe") -> ROBUST & FAST (with persistent instance)
     try {
-      if (kDebugMode) print('InnerTubeService: Fetching stream via YoutubeExplode for $videoId');
+      if (kDebugMode) debugPrint('InnerTubeService: Fetching stream via YoutubeExplode for $videoId');
       
       // Use shared instance (Optimized)
       // final yt = YoutubeExplode(); 
 
       try {
-        if (kDebugMode) print('InnerTubeService: Fetching stream via YoutubeExplode (Optimized Clients) for $videoId');
+        if (kDebugMode) debugPrint('InnerTubeService: Fetching stream via YoutubeExplode (Optimized Clients) for $videoId');
 
         // Use custom clients to avoid throttling (Android VR / Sdkless)
         final manifest = await _yt.videos.streamsClient.getManifest(
@@ -595,7 +595,7 @@ class InnerTubeService {
              // ROBUSTNESS FIX: Return the stream proxy source directly.
              // Inject Auth headers (Cookies + Auth)
              final headers = AuthService().getHeaders();
-             if (kDebugMode) print('InnerTubeService: Using YoutubeExplode Stream Proxy (Fix 403) with Auth: ${headers.isNotEmpty}');
+             if (kDebugMode) debugPrint('InnerTubeService: Using YoutubeExplode Stream Proxy (Fix 403) with Auth: ${headers.isNotEmpty}');
              
              // Cache the URL even if using Proxy Source, so parallel/future calls can benefit
              _cacheUrl(videoId, audioStream.url.toString());
@@ -611,11 +611,11 @@ class InnerTubeService {
         
       } catch (e) {
           // _yt.close(); // Do not close shared instance
-          if (kDebugMode) print('InnerTubeService: YoutubeExplode failed: $e. Switching to Manual/Piped Fallbacks.');
+          if (kDebugMode) debugPrint('InnerTubeService: YoutubeExplode failed: $e. Switching to Manual/Piped Fallbacks.');
           
           // Fallback 1: Manual InnerTube (Android VR / iOS)
           try {
-            if (kDebugMode) print('InnerTubeService: Trying Manual InnerTube fallback...');
+            if (kDebugMode) debugPrint('InnerTubeService: Trying Manual InnerTube fallback...');
             final playerResponse = await getPlayer(videoId);
             final playabilityStatus = playerResponse['playabilityStatus'];
             if (playabilityStatus?['status'] == 'OK') {
@@ -623,35 +623,35 @@ class InnerTubeService {
               if (streamingData != null) {
                 final directUrl = await _extractBestStream(streamingData, preferredBitrate);
                 if (directUrl != null && await _validateStreamUrl(directUrl)) {
-                   if (kDebugMode) print('InnerTubeService: Found valid stream via Manual InnerTube');
+                   if (kDebugMode) debugPrint('InnerTubeService: Found valid stream via Manual InnerTube');
                    return directUrl;
                 }
               }
             }
           } catch (manualErr) {
-             if (kDebugMode) print('InnerTubeService: Manual InnerTube failed: $manualErr');
+             if (kDebugMode) debugPrint('InnerTubeService: Manual InnerTube failed: $manualErr');
           }
 
           // Fallback 2: Cobalt
           try {
-             if (kDebugMode) print('InnerTubeService: Trying Cobalt Fallback...');
+             if (kDebugMode) debugPrint('InnerTubeService: Trying Cobalt Fallback...');
              final cobaltUrl = await CobaltService().getAudioStreamUrl(videoId);
              // Always return the raw URL string: callers attach track metadata
              // and build a properly-tagged source themselves.
              _cacheUrl(videoId, cobaltUrl);
              return cobaltUrl;
           } catch (cobaltErr) {
-             if (kDebugMode) print('InnerTubeService: Cobalt failed: $cobaltErr');
+             if (kDebugMode) debugPrint('InnerTubeService: Cobalt failed: $cobaltErr');
           }
       }
       // _yt.close(); // Do not close shared instance
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: YoutubeExplode wrapper failed: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: YoutubeExplode wrapper failed: $e');
     }
 
     // 2. Secondary: Piped API (Last Resort)
     try {
-        if (kDebugMode) print('InnerTubeService: All internal methods failed. Trying Piped...');
+        if (kDebugMode) debugPrint('InnerTubeService: All internal methods failed. Trying Piped...');
         return await PipedService().getAudioStreamUrl(videoId);
     } catch (_) {}
 
@@ -723,10 +723,10 @@ class InnerTubeService {
         Uri.parse(url),
         headers: headers,
       );
-      if (kDebugMode) print('InnerTubeService: Stream validation status: ${response.statusCode}');
+      if (kDebugMode) debugPrint('InnerTubeService: Stream validation status: ${response.statusCode}');
       return response.statusCode == 200 || response.statusCode == 206;
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: Stream validation failed: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: Stream validation failed: $e');
       return false;
     }
   }
@@ -754,7 +754,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Home error: $e');
+        debugPrint('InnerTubeService: Home error: $e');
       }
       rethrow;
     }
@@ -802,7 +802,7 @@ class InnerTubeService {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Home parse error: $e');
+        debugPrint('InnerTubeService: Home parse error: $e');
       }
     }
     
@@ -812,7 +812,7 @@ class InnerTubeService {
   /// Get Artist Details (Top Songs)
   Future<Map<String, dynamic>> getArtistDetails(String browseId) async {
     try {
-      if (kDebugMode) print('InnerTubeService: Getting artist details for $browseId');
+      if (kDebugMode) debugPrint('InnerTubeService: Getting artist details for $browseId');
       
       final body = jsonEncode({
         'context': _buildContext(),
@@ -898,7 +898,7 @@ class InnerTubeService {
       };
       
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: Artist details error: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: Artist details error: $e');
       return {'tracks': <Track>[], 'albums': <Album>[], 'singles': <Album>[]};
     }
   }
@@ -937,7 +937,7 @@ class InnerTubeService {
   /// Get Playlist Details
   Future<List<Track>> getPlaylistDetails(String browseId) async {
     try {
-      if (kDebugMode) print('InnerTubeService: Getting playlist details for $browseId');
+      if (kDebugMode) debugPrint('InnerTubeService: Getting playlist details for $browseId');
       // Ensure browseId starts with VL if needed? Usually passing ID directly works.
       
       final body = jsonEncode({
@@ -989,7 +989,7 @@ class InnerTubeService {
       return tracks;
       
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: Playlist details error: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: Playlist details error: $e');
       return [];
     }
   }
@@ -998,7 +998,7 @@ class InnerTubeService {
   /// Album browseIds typically start with 'MPREb_' for music albums
   Future<List<Track>> getAlbumTracks(String browseId) async {
     try {
-      if (kDebugMode) print('InnerTubeService: Getting album tracks for $browseId');
+      if (kDebugMode) debugPrint('InnerTubeService: Getting album tracks for $browseId');
       
       final body = jsonEncode({
         'context': _buildContext(),
@@ -1070,11 +1070,11 @@ class InnerTubeService {
         }
       }
       
-      if (kDebugMode) print('InnerTubeService: Found ${tracks.length} tracks in album');
+      if (kDebugMode) debugPrint('InnerTubeService: Found ${tracks.length} tracks in album');
       return tracks;
       
     } catch (e) {
-      if (kDebugMode) print('InnerTubeService: Album tracks error: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: Album tracks error: $e');
       return [];
     }
   }
@@ -1106,7 +1106,7 @@ class InnerTubeService {
         // Skip non-playable items ONLY when NOT in browse mode
         // Artists and Playlists need to be navigated to, not played directly
         if (!allowBrowseIds && (isArtist || isPlaylist)) {
-           if (kDebugMode) print('InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
+           if (kDebugMode) debugPrint('InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
            return null;
         }
         
@@ -1145,7 +1145,7 @@ class InnerTubeService {
   Future<String?> getTranscript(String videoId) async {
     try {
       if (kDebugMode) {
-        print('InnerTubeService: Getting transcript for $videoId');
+        debugPrint('InnerTubeService: Getting transcript for $videoId');
       }
       
       // Encode the params properly
@@ -1171,7 +1171,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Transcript error: $e');
+        debugPrint('InnerTubeService: Transcript error: $e');
       }
       return null;
     }
@@ -1213,7 +1213,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Transcript parse error: $e');
+        debugPrint('InnerTubeService: Transcript parse error: $e');
       }
       return null;
     }
@@ -1242,7 +1242,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Suggestions error: $e');
+        debugPrint('InnerTubeService: Suggestions error: $e');
       }
       return [];
     }
@@ -1299,7 +1299,7 @@ class InnerTubeService {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Next parse error: $e');
+        debugPrint('InnerTubeService: Next parse error: $e');
       }
     }
     
@@ -1338,7 +1338,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Trending error: $e');
+        debugPrint('InnerTubeService: Trending error: $e');
       }
       // Fallback to search
       return searchSongs('popular songs', limit: limit);
@@ -1384,7 +1384,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Suggestions error: $e');
+        debugPrint('InnerTubeService: Suggestions error: $e');
       }
       return [];
     }
@@ -1473,7 +1473,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Explore error: $e');
+        debugPrint('InnerTubeService: Explore error: $e');
       }
       return {'newReleases': <Track>[], 'moodGenres': <Map<String, String>>[]};
     }
@@ -1503,7 +1503,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: Mood/Genre error: $e');
+        debugPrint('InnerTubeService: Mood/Genre error: $e');
       }
       return [];
     }
@@ -1555,7 +1555,7 @@ class InnerTubeService {
       
     } catch (e) {
       if (kDebugMode) {
-        print('InnerTubeService: New releases error: $e');
+        debugPrint('InnerTubeService: New releases error: $e');
       }
       return searchSongs('latest hits', limit: limit);
     }
@@ -1583,3 +1583,5 @@ class _CachedUrlEntry {
     return DateTime.now().difference(timestamp) > duration;
   }
 }
+
+

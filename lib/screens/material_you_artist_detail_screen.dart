@@ -43,8 +43,8 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
     // Capture Flutter errors
     FlutterError.onError = (FlutterErrorDetails details) {
       if (kDebugMode) {
-        print('Flutter Error: ${details.exception}');
-        print('Stack trace: ${details.stack}');
+        debugPrint('Flutter Error: ${details.exception}');
+        debugPrint('Stack trace: ${details.stack}');
       }
     };
     
@@ -71,7 +71,7 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
           !widget.artistId.contains('UC')) { // YouTube channel IDs start with UC
         
         if (kDebugMode) {
-          print('Searching for artist: ${widget.artistName}');
+          debugPrint('Searching for artist: ${widget.artistName}');
         }
         
         await provider.fetchArtistTracks(widget.artistName)
@@ -88,7 +88,7 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
           _resolvedArtistId = artistIdToFetch;
           
           if (kDebugMode) {
-            print('Found artist ID: $artistIdToFetch');
+            debugPrint('Found artist ID: $artistIdToFetch');
           }
         } else {
           if (mounted) {
@@ -112,7 +112,7 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
       }
       
       if (kDebugMode) {
-        print('Fetching artist details for ID: $artistIdToFetch');
+        debugPrint('Fetching artist details for ID: $artistIdToFetch');
       }
       
       final details = await provider.fetchArtistDetails(artistIdToFetch)
@@ -149,8 +149,8 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
       });
     } on TimeoutException catch (e, stackTrace) {
       if (kDebugMode) {
-        print('Timeout loading artist details: $e');
-        print('Stack trace: $stackTrace');
+        debugPrint('Timeout loading artist details: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
       if (mounted) {
         setState(() {
@@ -160,8 +160,8 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('Error loading artist details: $e');
-        print('Stack trace: $stackTrace');
+        debugPrint('Error loading artist details: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
       if (mounted) {
         setState(() {
@@ -326,9 +326,9 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.3),
+                        Colors.black.withValues(alpha: 0.3),
                         Colors.transparent,
-                        Colors.black.withOpacity(0.6),
+                        Colors.black.withValues(alpha: 0.6),
                         Colors.black,
                       ],
                       stops: const [0.0, 0.4, 0.8, 1.0],
@@ -413,7 +413,7 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
                   id = (item as dynamic).id ?? '';
                }
             } catch (e) {
-               print("Error parsing artist item: $e");
+               debugPrint("Error parsing artist item: $e");
             }
 
             return GestureDetector(
@@ -480,3 +480,6 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
     );
   }
 }
+
+
+

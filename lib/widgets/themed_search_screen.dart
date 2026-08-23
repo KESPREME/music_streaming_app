@@ -18,3 +18,4 @@ class ThemedSearchScreen extends StatelessWidget {
         : const SearchScreen();
   }
 }
+

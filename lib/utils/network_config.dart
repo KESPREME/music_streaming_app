@@ -26,3 +26,4 @@ class NetworkConfig {
   // Chunk size for downloads (512KB)
   static const int downloadChunkSize = 512 * 1024;
 }
+

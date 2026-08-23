@@ -26,7 +26,7 @@ class CobaltService {
     // Iterate through instances until one succeeds
     for (final instance in _instances) {
       try {
-        if (kDebugMode) print('CobaltService: Trying instance $instance for $videoId');
+        if (kDebugMode) debugPrint('CobaltService: Trying instance $instance for $videoId');
         
         final apiUrl = '$instance/api/json';
         final response = await _httpClient.post(
@@ -51,20 +51,22 @@ class CobaltService {
           if (data['status'] == 'stream' || data['status'] == 'redirect' || data['status'] == 'success') {
              final playUrl = data['url'] as String?;
              if (playUrl != null && playUrl.isNotEmpty) {
-               if (kDebugMode) print('CobaltService: Success via $instance');
+               if (kDebugMode) debugPrint('CobaltService: Success via $instance');
                return playUrl;
              }
           } else if (data['status'] == 'error') {
-             if (kDebugMode) print('CobaltService: Instance $instance returned error: ${data['text']}');
+             if (kDebugMode) debugPrint('CobaltService: Instance $instance returned error: ${data['text']}');
           }
         } else {
-          if (kDebugMode) print('CobaltService: Instance $instance failed with status ${response.statusCode}');
+          if (kDebugMode) debugPrint('CobaltService: Instance $instance failed with status ${response.statusCode}');
         }
       } catch (e) {
-        if (kDebugMode) print('CobaltService: Instance $instance failed: $e');
+        if (kDebugMode) debugPrint('CobaltService: Instance $instance failed: $e');
       }
     }
     
     throw Exception('All Cobalt instances failed');
   }
 }
+
+

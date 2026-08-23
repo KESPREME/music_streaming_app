@@ -32,17 +32,17 @@ class GlassPlaybackBar extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 30), // Extra bottom padding for safe area
           decoration: BoxDecoration(
-            color: accentColor.withOpacity(0.15), // Dynamic glass tint
+            color: accentColor.withValues(alpha: 0.15), // Dynamic glass tint
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                accentColor.withOpacity(0.05),
-                Colors.black.withOpacity(0.6),
+                accentColor.withValues(alpha: 0.05),
+                Colors.black.withValues(alpha: 0.6),
               ],
             ),
             border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.1), width: 0.5),
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 0.5),
             ),
           ),
           child: Column(
@@ -90,14 +90,14 @@ class GlassPlaybackBar extends StatelessWidget {
                              begin: Alignment.topLeft,
                              end: Alignment.bottomRight,
                              colors: [
-                               accentColor.withOpacity(0.9),
-                               accentColor.withOpacity(0.5),
+                               accentColor.withValues(alpha: 0.9),
+                               accentColor.withValues(alpha: 0.5),
                              ]
                            ),
                            boxShadow: [
-                             BoxShadow(color: accentColor.withOpacity(0.4), blurRadius: 25, spreadRadius: -2)
+                             BoxShadow(color: accentColor.withValues(alpha: 0.4), blurRadius: 25, spreadRadius: -2)
                            ],
-                           border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                           border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
                         ),
                         child: IconButton(
                           icon: Icon(
@@ -145,9 +145,9 @@ class GlassPlaybackBar extends StatelessWidget {
         child: Container(
           height: 48, width: 48,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
           child: IconButton(
             icon: Icon(icon, color: Colors.white, size: 28),
@@ -158,4 +158,5 @@ class GlassPlaybackBar extends StatelessWidget {
     );
   }
 }
+
 

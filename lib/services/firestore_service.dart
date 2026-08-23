@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 // import 'package:uuid/uuid.dart'; // Commented out
 import '../models/friend_listening.dart'; // Keep if still used for a different feature
@@ -20,7 +21,7 @@ class FirestoreService {
     try {
       await _usersCollection.doc(user.id).set(user.toMap());
     } catch (e) {
-      print('Error creating user: $e');
+      debugPrint('Error creating user: $e');
       throw Exception('Failed to create user profile.');
     }
   }
@@ -33,7 +34,7 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error fetching user: $e');
+      debugPrint('Error fetching user: $e');
       return null;
     }
   }
@@ -42,7 +43,7 @@ class FirestoreService {
     try {
       await _usersCollection.doc(user.id).update(user.toMap());
     } catch (e) {
-      print('Error updating user: $e');
+      debugPrint('Error updating user: $e');
       throw Exception('Failed to update user profile.');
     }
   }
@@ -55,7 +56,7 @@ class FirestoreService {
         'lastSeenActive': FieldValue.serverTimestamp(), // Optional: track activity
       });
     } catch (e) {
-      print('Error updating user listening status: $e');
+      debugPrint('Error updating user listening status: $e');
       // Non-critical, so don't throw an exception that breaks user flow
     }
   }
@@ -92,7 +93,7 @@ class FirestoreService {
       // await _friendRequestsCollection.doc(requestId).set(newRequest.toMap()); // Old way
       await requestDocRef.set(newRequest.toMap()); // Set data using the new doc ref
     } catch (e) {
-      print('Error sending friend request: $e');
+      debugPrint('Error sending friend request: $e');
       throw Exception('Failed to send friend request.');
     }
   }
@@ -112,7 +113,7 @@ class FirestoreService {
         await _usersCollection.doc(request.receiverId).collection('friends').doc(request.senderId).set({'friendSince': Timestamp.now()});
       }
     } catch (e) {
-      print('Error responding to friend request: $e');
+      debugPrint('Error responding to friend request: $e');
       throw Exception('Failed to respond to friend request.');
     }
   }
@@ -183,7 +184,7 @@ class FirestoreService {
         'unreadCounts.${message.receiverId}': FieldValue.increment(1),
       });
     } catch (e) {
-      print('Error sending message: $e');
+      debugPrint('Error sending message: $e');
       throw Exception('Failed to send message.');
     }
   }
@@ -225,7 +226,7 @@ class FirestoreService {
       // }
       // await batch.commit();
     } catch (e) {
-      print('Error marking messages as read: $e');
+      debugPrint('Error marking messages as read: $e');
     }
   }
 
@@ -240,3 +241,5 @@ class FirestoreService {
     });
   }
 }
+
+

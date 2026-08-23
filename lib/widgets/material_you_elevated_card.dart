@@ -63,8 +63,8 @@ class MaterialYouElevatedCard extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(borderRadius),
           // FIX: Use accent color for splash/highlight with very low opacity
-          splashColor: MaterialYouTokens.primaryVibrant.withOpacity(0.08),
-          highlightColor: MaterialYouTokens.primaryVibrant.withOpacity(0.03),
+          splashColor: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.08),
+          highlightColor: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.03),
           child: Container(
             padding: padding,
             child: child,
@@ -127,7 +127,7 @@ class MaterialYouAlbumCard extends StatelessWidget {
                         imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          color: colorScheme.surfaceVariant,
+                          color: colorScheme.surfaceContainerHighest,
                           child: Icon(
                             Icons.music_note_rounded,
                             size: 48,
@@ -136,7 +136,7 @@ class MaterialYouAlbumCard extends StatelessWidget {
                         ),
                       )
                     : Container(
-                        color: colorScheme.surfaceVariant,
+                        color: colorScheme.surfaceContainerHighest,
                         child: Icon(
                           Icons.music_note_rounded,
                           size: 48,
@@ -227,7 +227,7 @@ class MaterialYouListCard extends StatelessWidget {
                     errorBuilder: (_, __, ___) => Container(
                       width: 60,
                       height: 60,
-                      color: colorScheme.surfaceVariant,
+                      color: colorScheme.surfaceContainerHighest,
                       child: Icon(
                         Icons.music_note_rounded,
                         color: colorScheme.onSurfaceVariant,
@@ -237,7 +237,7 @@ class MaterialYouListCard extends StatelessWidget {
                 : Container(
                     width: 60,
                     height: 60,
-                    color: colorScheme.surfaceVariant,
+                    color: colorScheme.surfaceContainerHighest,
                     child: Icon(
                       Icons.music_note_rounded,
                       color: colorScheme.onSurfaceVariant,
@@ -286,3 +286,5 @@ class MaterialYouListCard extends StatelessWidget {
     );
   }
 }
+
+

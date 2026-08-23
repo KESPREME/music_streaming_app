@@ -82,7 +82,7 @@ class TrendingNowScreen extends StatelessWidget {
       leading: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
         child: IconButton(
@@ -114,11 +114,11 @@ class TrendingNowScreen extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     Container(color: Colors.transparent),
-                    Container(color: Colors.black.withOpacity(overlayOpacity)),
+                    Container(color: Colors.black.withValues(alpha: overlayOpacity)),
                     if (percentage < 0.05)
                       Align(
                         alignment: Alignment.bottomCenter,
-                        child: Container(height: 1, color: Colors.white.withOpacity(0.1)),
+                        child: Container(height: 1, color: Colors.white.withValues(alpha: 0.1)),
                       ),
                   ],
                 ),
@@ -137,9 +137,9 @@ class TrendingNowScreen extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
           ),
           child: TrackTile(
             track: track,

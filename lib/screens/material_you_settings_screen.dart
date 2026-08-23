@@ -242,7 +242,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: MaterialYouTokens.primaryVibrant.withOpacity(0.15),
+          color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: MaterialYouTokens.primaryVibrant, size: 20),
@@ -282,7 +282,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: MaterialYouTokens.primaryVibrant.withOpacity(0.15),
+          color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: MaterialYouTokens.primaryVibrant, size: 20),
@@ -296,7 +296,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
         style: MaterialYouTypography.bodyMedium(colorScheme.onSurfaceVariant),
       ),
       activeColor: MaterialYouTokens.primaryVibrant,
-      activeTrackColor: MaterialYouTokens.primaryVibrant.withOpacity(0.3),
+      activeTrackColor: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.3),
     );
   }
 
@@ -317,7 +317,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   color: currentSource == MusicSource.youtube
-                      ? MaterialYouTokens.primaryVibrant.withOpacity(0.2)
+                      ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.2)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -353,7 +353,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   color: currentSource == MusicSource.local
-                      ? MaterialYouTokens.primaryVibrant.withOpacity(0.2)
+                      ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.2)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -406,8 +406,8 @@ class MaterialYouSettingsScreen extends StatelessWidget {
           CircleAvatar(
             radius: 24,
             backgroundColor: isLoggedIn
-                ? MaterialYouTokens.primaryVibrant.withOpacity(0.2)
-                : colorScheme.surfaceVariant,
+                ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.2)
+                : colorScheme.surfaceContainerHighest,
             child: Icon(
               isLoggedIn ? Icons.g_mobiledata_rounded : Icons.person_outline_rounded,
               color: isLoggedIn ? MaterialYouTokens.primaryVibrant : colorScheme.onSurfaceVariant,
@@ -555,3 +555,5 @@ class MaterialYouSettingsScreen extends StatelessWidget {
     );
   }
 }
+
+

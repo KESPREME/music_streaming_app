@@ -15,3 +15,4 @@ class ThemedTrendingNowScreen extends StatelessWidget {
         : const TrendingNowScreen();
   }
 }
+

@@ -34,7 +34,7 @@ class ArtistListTile extends StatelessWidget {
           child: imageUrl.isEmpty ? Icon(Icons.person, color: theme.colorScheme.onSurfaceVariant) : null,
         ),
         title: Text(name, style: theme.textTheme.titleMedium),
-        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: theme.iconTheme.color?.withOpacity(0.6)),
+        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: theme.iconTheme.color?.withValues(alpha: 0.6)),
         onTap: onTap,
       ),
     );
@@ -158,7 +158,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
       leading: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
         child: IconButton(
@@ -190,11 +190,11 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                   fit: StackFit.expand,
                   children: [
                     Container(color: Colors.transparent),
-                    Container(color: Colors.black.withOpacity(overlayOpacity)),
+                    Container(color: Colors.black.withValues(alpha: overlayOpacity)),
                     if (percentage < 0.05)
                       Align(
                         alignment: Alignment.bottomCenter,
-                        child: Container(height: 1, color: Colors.white.withOpacity(0.1)),
+                        child: Container(height: 1, color: Colors.white.withValues(alpha: 0.1)),
                       ),
                   ],
                 ),
@@ -236,9 +236,9 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
+              color: Colors.white.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Row(
               children: [
@@ -247,7 +247,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withOpacity(0.1), width: 2),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 2),
                       boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: const Offset(0, 4))],
                     ),
                     child: CircleAvatar(
@@ -286,7 +286,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 16),
@@ -299,3 +299,5 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
     );
   }
 }
+
+

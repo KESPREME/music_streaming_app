@@ -56,3 +56,4 @@ class UserModel { // Removed "extends Equatable"
     );
   }
 }
+

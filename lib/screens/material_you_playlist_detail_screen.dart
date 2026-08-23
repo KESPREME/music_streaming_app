@@ -223,9 +223,9 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.3),
+                        Colors.black.withValues(alpha: 0.3),
                         Colors.transparent,
-                        Colors.black.withOpacity(0.6),
+                        Colors.black.withValues(alpha: 0.6),
                         Colors.black,
                       ],
                       stops: const [0.0, 0.4, 0.8, 1.0],
@@ -288,3 +288,5 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
     );
   }
 }
+
+

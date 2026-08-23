@@ -174,7 +174,7 @@ class MaterialYouWavySliderPainter extends CustomPainter {
     final activeWidth = size.width * progress;
 
     // Inactive Path (Straight Line)
-    paint.color = Colors.grey.withOpacity(0.3);
+    paint.color = Colors.grey.withValues(alpha: 0.3);
     final inactivePath = Path();
     inactivePath.moveTo(activeWidth, centerY);
     inactivePath.lineTo(size.width, centerY);
@@ -208,7 +208,7 @@ class MaterialYouWavySliderPainter extends CustomPainter {
 
     // Thumb Glow (subtle)
     final glowPaint = Paint()
-      ..color = color.withOpacity(0.3)
+      ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(lastX, lastY), 14.0, glowPaint);
   }
@@ -220,3 +220,5 @@ class MaterialYouWavySliderPainter extends CustomPainter {
         oldDelegate.color != color;
   }
 }
+
+

@@ -147,9 +147,9 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
                         child: Container(
                             height: 50,
                             decoration: BoxDecoration(
-                                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
                                 borderRadius: BorderRadius.circular(25),
-                                border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1)),
+                                border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
                             ),
                             child: TextField(
                                 controller: _searchController,
@@ -289,3 +289,4 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
       );
   }
 }
+

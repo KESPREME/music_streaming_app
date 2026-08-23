@@ -220,3 +220,4 @@ class TransitionEvaluator {
     return smoothness.clamp(0.0, 1.0);
   }
 }
+

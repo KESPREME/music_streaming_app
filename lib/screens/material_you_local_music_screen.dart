@@ -229,13 +229,13 @@ class _MaterialYouLocalMusicScreenState extends State<MaterialYouLocalMusicScree
           Icon(
             Icons.folder_off_rounded, 
             size: 70, 
-            color: colorScheme.onSurface.withOpacity(0.2)
+            color: colorScheme.onSurface.withValues(alpha: 0.2)
           ),
           const SizedBox(height: 20),
           Text(
             'No Local Music Found',
             style: MaterialYouTypography.titleLarge(
-              colorScheme.onSurface.withOpacity(0.6)
+              colorScheme.onSurface.withValues(alpha: 0.6)
             ),
           ),
           const SizedBox(height: 12),
@@ -302,3 +302,5 @@ class _MaterialYouLocalMusicScreenState extends State<MaterialYouLocalMusicScree
     );
   }
 }
+
+

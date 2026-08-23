@@ -239,7 +239,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // Return if already loaded for this track AND not forcing refresh
     if (!forceRefresh && _lyricsTrackId == _currentTrack!.id && _currentLyrics != null) {
-      if (kDebugMode) print("MusicProvider: Using cached lyrics for ${_currentTrack!.trackName}");
+      if (kDebugMode) debugPrint("MusicProvider: Using cached lyrics for ${_currentTrack!.trackName}");
       return; 
     }
     
@@ -250,7 +250,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
     
     try {
-      if (kDebugMode) print("MusicProvider: Fetching lyrics for ${_currentTrack!.trackName} (Force: $forceRefresh)");
+      if (kDebugMode) debugPrint("MusicProvider: Fetching lyrics for ${_currentTrack!.trackName} (Force: $forceRefresh)");
       final entries = await _lyricsService.getParsedLyrics(
         title: _currentTrack!.trackName,
         artist: _currentTrack!.artistName,
@@ -269,7 +269,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // FIX: Use null-safe check to prevent crash if currentTrack becomes null
       if (_currentTrack != null && _lyricsTrackId == _currentTrack!.id) {
         _lyricsError = "Failed to load lyrics";
-        print("Lyrics Fetch Error: $e");
+        debugPrint("Lyrics Fetch Error: $e");
       }
     } finally {
       // FIX: Use null-safe check to prevent crash if currentTrack becomes null
@@ -337,7 +337,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   MusicProvider() { _initialize(); }
   
   Future<void> _initialize() async {
-    if (kDebugMode) print('MusicProvider: Initializing...');
+    if (kDebugMode) debugPrint('MusicProvider: Initializing...');
     
     await _loadSettings();
     await _loadLikedSongs();
@@ -368,7 +368,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         ]);
       } catch (e) {
         _errorMessage = 'Could not load initial content.';
-        if (kDebugMode) print('MusicProvider: Error loading initial content: $e');
+        if (kDebugMode) debugPrint('MusicProvider: Error loading initial content: $e');
       }
     } else {
       _errorMessage = _isOfflineMode
@@ -377,7 +377,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     
     unawaited(loadLocalMusicFiles());
-    if (kDebugMode) print('MusicProvider: Initialization complete.');
+    if (kDebugMode) debugPrint('MusicProvider: Initialization complete.');
   }
   
   // FIX: Debounced notification to avoid excessive UI rebuilds
@@ -396,7 +396,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appLifecycleState = state;
     
-    if (kDebugMode) print('MusicProvider: App lifecycle changed to $state');
+    if (kDebugMode) debugPrint('MusicProvider: App lifecycle changed to $state');
     
     switch (state) {
       case AppLifecycleState.paused:
@@ -419,7 +419,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
   
   void _setupAudioListeners() {
-    if (kDebugMode) print('MusicProvider: Setting up audio listeners...');
+    if (kDebugMode) debugPrint('MusicProvider: Setting up audio listeners...');
     
     // FIX: Store all subscriptions for proper cleanup
     // Position stream
@@ -437,26 +437,26 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         }
       }
     }, onError: (e) {
-      if (kDebugMode) print("MusicProvider: Position stream error: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Position stream error: $e");
     }));
     
     // Duration stream
     _audioSubscriptions.add(_audioService.onDurationChanged.listen((dur) {
       if ((_duration - dur).abs() > const Duration(milliseconds: 500) && dur > Duration.zero) {
-        if (kDebugMode) print('MusicProvider: Duration updated: $dur');
+        if (kDebugMode) debugPrint('MusicProvider: Duration updated: $dur');
         _duration = dur;
         _debouncedNotify();
       }
     }, onError: (e) {
-      if (kDebugMode) print("MusicProvider: Duration stream error: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Duration stream error: $e");
     }));
     
     // Playback state stream - THIS IS CRITICAL
     _audioSubscriptions.add(_audioService.onPlaybackStateChanged.listen((playing) {
       if (kDebugMode) {
-        print('MusicProvider: Playback state changed: $playing (was: $_isPlaying)');
+        debugPrint('MusicProvider: Playback state changed: $playing (was: $_isPlaying)');
         if (_currentTrack != null) {
-          print('MusicProvider: Current track: ${_currentTrack!.trackName}');
+          debugPrint('MusicProvider: Current track: ${_currentTrack!.trackName}');
         }
       }
       
@@ -464,20 +464,20 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         _isPlaying = playing;
         
         if (!playing && _currentTrack != null) {
-          if (kDebugMode) print('MusicProvider: ⚠️ Playback stopped unexpectedly!');
+          if (kDebugMode) debugPrint('MusicProvider: ⚠️ Playback stopped unexpectedly!');
         }
         
         notifyListeners(); // Immediate notify for play/pause
       }
     }, onError: (e) {
-      if (kDebugMode) print("MusicProvider: Playback state stream error: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Playback state stream error: $e");
     }));
     
     // FIX: Restore track completion handling via playerStateStream
     // This listener handles both debugging AND track completion detection
     _audioSubscriptions.add(_audioService.playerStateStream.listen((state) {
       if (kDebugMode) {
-        print('MusicProvider: Player state: ${state.playing ? "PLAYING" : "PAUSED"}, '
+        debugPrint('MusicProvider: Player state: ${state.playing ? "PLAYING" : "PAUSED"}, '
               'Processing: ${state.processingState}');
       }
       
@@ -486,30 +486,30 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       if (state.processingState == ProcessingState.completed && 
           _currentTrack != null && 
           !_isStopping) {
-        if (kDebugMode) print('MusicProvider: Track completed naturally, calling _onTrackComplete');
+        if (kDebugMode) debugPrint('MusicProvider: Track completed naturally, calling _onTrackComplete');
         _onTrackComplete();
       }
     }, onError: (e) {
-      if (kDebugMode) print("MusicProvider: Player state stream error: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Player state stream error: $e");
     }));
     
-    if (kDebugMode) print('MusicProvider: Audio listeners set up complete');
+    if (kDebugMode) debugPrint('MusicProvider: Audio listeners set up complete');
     
     // --- Navigation Listeners ---
     _audioSubscriptions.add(_audioService.onSkipToNext.listen((_) {
-      if (kDebugMode) print("MusicProvider: External SkipNext triggered (Notification/LockScreen)");
+      if (kDebugMode) debugPrint("MusicProvider: External SkipNext triggered (Notification/LockScreen)");
       _handleAutoSkipToNext();
     }));
     
     _audioSubscriptions.add(_audioService.onSkipToPrevious.listen((_) {
-      if (kDebugMode) print("MusicProvider: External SkipPrevious triggered (Notification/LockScreen)");
+      if (kDebugMode) debugPrint("MusicProvider: External SkipPrevious triggered (Notification/LockScreen)");
       skipToPrevious();
     }));
     
     // Listen for Critical Playback Errors (Corrupt Files)
     _audioSubscriptions.add(_audioService.onPlaybackError.listen((error) async {
        if (error == "Source error" && _currentTrack != null) {
-           if (kDebugMode) print("MusicProvider: Source error detected for ${_currentTrack!.trackName}");
+           if (kDebugMode) debugPrint("MusicProvider: Source error detected for ${_currentTrack!.trackName}");
            final id = _currentTrack!.id;
            final isDownloaded = _downloadedTracksMetadata.containsKey(id);
            
@@ -550,7 +550,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _currentMusicSource = MusicSource.fromString(sourceValue); 
       
       if (kDebugMode) {
-        print('Settings: Loaded music source = "$sourceValue" → ${_currentMusicSource.displayName}');
+        debugPrint('Settings: Loaded music source = "$sourceValue" → ${_currentMusicSource.displayName}');
       }
       
       try { 
@@ -565,11 +565,11 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       } 
       
       if (kDebugMode) {
-        print('Settings loaded successfully.');
+        debugPrint('Settings loaded successfully.');
       }
     } catch (e) { 
       if (kDebugMode) {
-        print("Error loading settings: $e"); 
+        debugPrint("Error loading settings: $e"); 
       }
     } 
   }
@@ -588,13 +588,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       await p.setInt('localSortCriteria', _localTracksSortCriteria.index); 
       
       if (kDebugMode) {
-        print('Settings: Saved music source = "${_currentMusicSource.value}" (${_currentMusicSource.displayName})');
-        print('Settings saved successfully.');
+        debugPrint('Settings: Saved music source = "${_currentMusicSource.value}" (${_currentMusicSource.displayName})');
+        debugPrint('Settings saved successfully.');
       }
     } catch (e) { 
       _errorMessage = "Failed to save settings."; 
       if (kDebugMode) {
-        print('Settings: Error saving - $e');
+        debugPrint('Settings: Error saving - $e');
       }
       notifyListeners(); 
     } 
@@ -660,7 +660,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
 
-  void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { print("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); print("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) {
+  void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { debugPrint("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); debugPrint("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) {
     _shufflePlaylist();
   } else {
     _updateCurrentIndex();
@@ -682,7 +682,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> _onTrackComplete() async {
-    if (kDebugMode) print('MusicProvider: _onTrackComplete event for ${_currentTrack?.trackName}');
+    if (kDebugMode) debugPrint('MusicProvider: _onTrackComplete event for ${_currentTrack?.trackName}');
     
     // Record enhanced play signal for recommendation agent
     if (_currentTrack != null) {
@@ -733,7 +733,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     // 1. Check Queue
     if (_queue.isNotEmpty) {
        final next = _queue.removeAt(0);
-       if (kDebugMode) print("MusicProvider: Playing next from queue: ${next.trackName}");
+       if (kDebugMode) debugPrint("MusicProvider: Playing next from queue: ${next.trackName}");
        _playTrackInternal(next, setContext: false, clearQueue: false);
        notifyListeners(); 
        return;
@@ -748,7 +748,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
     int nextIdx = _currentIndex + 1;
     if (nextIdx < list.length) {
-       if (kDebugMode) print('MusicProvider: Advancing to index $nextIdx');
+       if (kDebugMode) debugPrint('MusicProvider: Advancing to index $nextIdx');
        _playTrackInternal(list[nextIdx], setContext: false, clearQueue: false);
     } else {
        _handleEndOfPlaylist();
@@ -764,7 +764,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
 
     if (_repeatMode == RepeatMode.all) {
-       if (kDebugMode) print('MusicProvider: Looping context to start.');
+       if (kDebugMode) debugPrint('MusicProvider: Looping context to start.');
        _playTrackInternal(list[0], setContext: false, clearQueue: false);
     } else {
        // Check playback context type
@@ -775,11 +775,11 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
        
        if (isOfflineContext) {
            // Local/downloaded playlists loop
-           if (kDebugMode) print('MusicProvider: End of Downloaded List -> Looping to start');
+           if (kDebugMode) debugPrint('MusicProvider: End of Downloaded List -> Looping to start');
            _playOfflineTrackInternal(list[0], setContext: false, clearQueue: false);
        } else if (isListNotEmpty && _currentPlayingTracks != null && _currentPlayingTracks!.length > 1) {
            // Multi-track playlists loop
-           if (kDebugMode) print('MusicProvider: End of Online Playlist -> Looping to start');
+           if (kDebugMode) debugPrint('MusicProvider: End of Online Playlist -> Looping to start');
            _playTrackInternal(list[0], setContext: false, clearQueue: false);
        } else {
            // ENHANCED: Single track or For You context -> Smart Autoplay with recommendations
@@ -799,7 +799,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     // and aborts this continuation before it can hijack playback.
     final gen = ++_playbackGeneration;
 
-    if (kDebugMode) print('MusicProvider: Starting autoplay recommendations for ${_currentTrack!.trackName}');
+    if (kDebugMode) debugPrint('MusicProvider: Starting autoplay recommendations for ${_currentTrack!.trackName}');
 
     try {
       // Get recommendations based on current track
@@ -814,12 +814,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
 
       if (gen != _playbackGeneration) {
-        if (kDebugMode) print('MusicProvider: Autoplay aborted (user took over).');
+        if (kDebugMode) debugPrint('MusicProvider: Autoplay aborted (user took over).');
         return;
       }
       
       if (recommendations.isEmpty) {
-        if (kDebugMode) print('MusicProvider: No recommendations found, stopping.');
+        if (kDebugMode) debugPrint('MusicProvider: No recommendations found, stopping.');
         stopTrack();
         return;
       }
@@ -834,7 +834,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }).toList();
       
       if (filtered.isEmpty) {
-        if (kDebugMode) print('MusicProvider: No valid recommendations after filtering.');
+        if (kDebugMode) debugPrint('MusicProvider: No valid recommendations after filtering.');
         stopTrack();
         return;
       }
@@ -853,18 +853,18 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       // Set new context and play first recommendation
       if (gen != _playbackGeneration) {
-        if (kDebugMode) print('MusicProvider: Autoplay aborted before start (user took over).');
+        if (kDebugMode) debugPrint('MusicProvider: Autoplay aborted before start (user took over).');
         return;
       }
       final nextTrack = ranked.first;
-      if (kDebugMode) print('MusicProvider: Autoplay -> ${nextTrack.trackName}');
+      if (kDebugMode) debugPrint('MusicProvider: Autoplay -> ${nextTrack.trackName}');
       
       // Set remaining as new playlist context
       _setPlaybackContext(ranked, clearQueue: false);
       await _playTrackInternal(nextTrack, setContext: false, clearQueue: false);
       
     } catch (e) {
-      if (kDebugMode) print('MusicProvider: Autoplay error: $e');
+      if (kDebugMode) debugPrint('MusicProvider: Autoplay error: $e');
       stopTrack();
     }
   }
@@ -888,17 +888,17 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue);
       } 
     } catch(e) { 
-      print("Error in _playTrackInternal: $e"); 
+      debugPrint("Error in _playTrackInternal: $e"); 
     } 
   }
   Future<bool> _shouldPlayOffline(Track track) async => track.source == 'local' || await isTrackDownloaded(track.id);
   Future<void> skipToNext() async {
-    print('MusicProvider: SkipNext requested.');
+    debugPrint('MusicProvider: SkipNext requested.');
     _playbackGeneration++; // invalidate stale async continuations
     if (_currentTrack == null) return;
     if (_queue.isNotEmpty) { 
       final next = _queue.removeAt(0); 
-      print("MusicProvider: Skipping to next from queue: ${next.trackName}"); 
+      debugPrint("MusicProvider: Skipping to next from queue: ${next.trackName}"); 
       await _playTrackInternal(next, setContext: false, clearQueue: false); 
       notifyListeners(); 
       return; 
@@ -917,7 +917,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _handleEndOfPlaylist(); // Unified logic
     } 
   }
-  Future<void> skipToPrevious() async { print('SkipPrevious requested.'); _playbackGeneration++; if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
+  Future<void> skipToPrevious() async { debugPrint('SkipPrevious requested.'); _playbackGeneration++; if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
     await _playTrackInternal(list.last);
   } else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); } } /* Preload handled by playTrackInternal if it plays */ }
 
@@ -947,7 +947,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         bool clearQueue = true,
       }) async {
     if (kDebugMode) {
-      print('MusicProvider: Request playTrack: ${track.trackName} (ID: ${track.id})');
+      debugPrint('MusicProvider: Request playTrack: ${track.trackName} (ID: ${track.id})');
     }
 
     // If currently playing same track, pause (toggle)
@@ -978,7 +978,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         trackId.startsWith('PL') ||     // Playlist
         trackId.startsWith('OLAK') ||   // Album
         trackId.startsWith('MPREb')) {  // Album browse ID
-      if (kDebugMode) print('MusicProvider: Skipping non-playable track: ${track.trackName} (ID: $trackId)');
+      if (kDebugMode) debugPrint('MusicProvider: Skipping non-playable track: ${track.trackName} (ID: $trackId)');
       _errorMessage = 'Cannot play ${track.trackName} - it is a ${trackId.startsWith("UC") ? "channel" : "playlist/album"}, not a song.';
       notifyListeners();
       return; // Don't try to play, don't skip - just return early
@@ -1028,7 +1028,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Handle Spotify tracks - convert to YouTube
       if (track.source == 'spotify') {
         if (kDebugMode) {
-          print('MusicProvider: Converting Spotify track to YouTube: ${track.trackName}');
+          debugPrint('MusicProvider: Converting Spotify track to YouTube: ${track.trackName}');
         }
         final yt = await _spotifyService.findYouTubeTrack(track);
         if (yt != null) {
@@ -1049,15 +1049,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Try to find equivalent track in current source or fall back to track's original source
       if (_shouldSearchForEquivalent(track)) {
         if (kDebugMode) {
-          print('MusicProvider: Track source (${track.source}) differs from current source ($_currentMusicSource)');
-          print('MusicProvider: Searching for equivalent track in ${_currentMusicSource.displayName}');
+          debugPrint('MusicProvider: Track source (${track.source}) differs from current source ($_currentMusicSource)');
+          debugPrint('MusicProvider: Searching for equivalent track in ${_currentMusicSource.displayName}');
         }
         
         try {
           final equivalentTrack = await _findEquivalentTrack(track);
           if (equivalentTrack != null) {
             if (kDebugMode) {
-              print('MusicProvider: Found equivalent: ${equivalentTrack.trackName} (${equivalentTrack.id})');
+              debugPrint('MusicProvider: Found equivalent: ${equivalentTrack.trackName} (${equivalentTrack.id})');
             }
             playableId = equivalentTrack.id;
             // Keep _currentTrack as the ORIGINAL track (see spotify branch).
@@ -1065,13 +1065,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           } else {
             // If no equivalent found, use the track's original source for this playback
             if (kDebugMode) {
-              print('MusicProvider: No equivalent found, using original source for this track');
+              debugPrint('MusicProvider: No equivalent found, using original source for this track');
             }
           }
         } catch (e) {
           if (kDebugMode) {
-            print('MusicProvider: Error finding equivalent track: $e');
-            print('MusicProvider: Falling back to original track source');
+            debugPrint('MusicProvider: Error finding equivalent track: $e');
+            debugPrint('MusicProvider: Falling back to original track source');
           }
         }
       }
@@ -1083,7 +1083,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
 
       if (kDebugMode) {
-        print('MusicProvider: Fetching stream URL for ${effectiveTrack.trackName} (bitrate: $bitrate kbps)');
+        debugPrint('MusicProvider: Fetching stream URL for ${effectiveTrack.trackName} (bitrate: $bitrate kbps)');
       }
 
 
@@ -1092,13 +1092,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       try {
         if (kDebugMode) {
-          print('MusicProvider: Fetching stream via InnerTube for $playableId');
+          debugPrint('MusicProvider: Fetching stream via InnerTube for $playableId');
         }
         // Changed from getAudioStreamUrl to getAudioStream to support StreamProxy
         result = await _innerTubeService.getAudioStream(playableId, preferredBitrate: 128);
       } catch (e) {
         if (kDebugMode) {
-          print('MusicProvider: InnerTube stream fetch failed: $e');
+          debugPrint('MusicProvider: InnerTube stream fetch failed: $e');
         }
         throw Exception('Failed to get stream: $e');
       }
@@ -1108,7 +1108,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
 
       if (kDebugMode) {
-        print('MusicProvider: Stream fetched. Type: ${result.runtimeType}');
+        debugPrint('MusicProvider: Stream fetched. Type: ${result.runtimeType}');
       }
 
       // Play the audio based on result type
@@ -1141,13 +1141,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       } catch (e) {
         if (result is AudioSource) {
            // If Proxy failed, Try Fallback URL Method immediately
-           if (kDebugMode) print('MusicProvider: Proxy playback failed ($e). Falling back to legacy URL method...');
+           if (kDebugMode) debugPrint('MusicProvider: Proxy playback failed ($e). Falling back to legacy URL method...');
            
            // Fetch URL using the Legacy/Fallback chain (Manual -> Cobalt -> Piped)
            // We explicitly use getAudioStreamUrl which returns a String
            final fallbackUrl = await _innerTubeService.getAudioStreamUrl(playableId, preferredBitrate: 128);
            
-           if (kDebugMode) print('MusicProvider: Playing fallback URL...');
+           if (kDebugMode) debugPrint('MusicProvider: Playing fallback URL...');
            await _audioService.play(fallbackUrl,
              title: effectiveTrack.trackName,
              artist: effectiveTrack.artistName,
@@ -1187,16 +1187,16 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Palette updated earlier in parallel
       
       if (kDebugMode) {
-        print('MusicProvider: Successfully started playback of ${effectiveTrack.trackName}');
+        debugPrint('MusicProvider: Successfully started playback of ${effectiveTrack.trackName}');
       }
       _consecutiveErrors = 0; // Reset error count on success
       
     } catch (e, s) {
       if (kDebugMode) {
-        print('MusicProvider: ERROR PLAYING TRACK');
-        print('Track: ${track.trackName}');
-        print('Error: $e');
-        print('Stack trace: $s');
+        debugPrint('MusicProvider: ERROR PLAYING TRACK');
+        debugPrint('Track: ${track.trackName}');
+        debugPrint('Error: $e');
+        debugPrint('Stack trace: $s');
       }
       await _handlePlaybackError('Failed to play ${track.trackName}: ${e.toString()}');
     }
@@ -1267,14 +1267,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       if (!fileExists || fileSize < 50 * 1024) { // Check for validity (< 50KB assumed corrupt)
         if (fileExists) {
-             print("MusicProvider: File exists but too small ($fileSize bytes). Deleting: $filePath");
+             debugPrint("MusicProvider: File exists but too small ($fileSize bytes). Deleting: $filePath");
              try { await file.delete(); } catch (_) {}
         }
         await _handleMissingOfflineFile(track.id, filePath);
         
         // Fallback to online if possible
         if (!_isOfflineMode && _networkService.isConnected) {
-            if (kDebugMode) print("MusicProvider: Local file missing, falling back to online for ${track.trackName}");
+            if (kDebugMode) debugPrint("MusicProvider: Local file missing, falling back to online for ${track.trackName}");
             // Recursive call to playTrack will now see it as NOT downloaded (since we removed metadata)
             // and attempt online playback.
             await playTrack(track, 
@@ -1305,14 +1305,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         
         _setPlaybackContext(contextTracks, clearQueue: clearQueue);
         if (kDebugMode) {
-          print("MusicProvider: Set playback context to $contextDesc");
+          debugPrint("MusicProvider: Set playback context to $contextDesc");
         }
       } else {
         _updateCurrentIndex();
       }
       
       if (kDebugMode) {
-        print('MusicProvider: Playing offline file: $filePath');
+        debugPrint('MusicProvider: Playing offline file: $filePath');
       }
       
       await _audioService.playLocalFile(filePath,
@@ -1330,10 +1330,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
     } catch (e, s) {
       if (kDebugMode) {
-        print('MusicProvider: ERROR PLAYING OFFLINE TRACK');
-        print('Track: ${track.trackName}');
-        print('Error: $e');
-        print('Stack trace: $s');
+        debugPrint('MusicProvider: ERROR PLAYING OFFLINE TRACK');
+        debugPrint('Track: ${track.trackName}');
+        debugPrint('Error: $e');
+        debugPrint('Stack trace: $s');
       }
       await _handlePlaybackError('Failed to play offline track: ${e.toString()}');
     }
@@ -1389,7 +1389,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     try { 
       await _audioService.stop(); 
     } catch (e) { 
-      print('Error stopping service: $e'); 
+      debugPrint('Error stopping service: $e'); 
     } finally { 
       _isPlaying = false; 
       _currentTrack = null; 
@@ -1473,14 +1473,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   // --- Error Handling ---
   void _clearError() { if (_errorMessage != null) { _errorMessage = null; notifyListeners(); } }
   Future<void> _handlePlaybackError(String message) async { 
-    print("Playback Error: $message"); 
+    debugPrint("Playback Error: $message"); 
     _errorMessage = message.length > 150 ? '${message.substring(0, 147)}...' : message; 
     
     // Automatic Failover: If it's an online track and we have a next one, try skipping
     if (!_isOfflineTrack && !_isOfflineMode && _networkService.isConnected) {
        _consecutiveErrors++;
        if (_consecutiveErrors <= 2) {
-          if (kDebugMode) print("MusicProvider: Attempting auto-skip after error...");
+          if (kDebugMode) debugPrint("MusicProvider: Attempting auto-skip after error...");
           skipToNext();
           return;
        }
@@ -1491,9 +1491,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Queue Management ---
-  void addToQueue(Track track) { _queue.add(track); print("Added to queue: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); print("Added ${tracks.length} to queue. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void playNext(Track track) { _queue.insert(0, track); print("Play next: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void addToQueue(Track track) { _queue.add(track); debugPrint("Added to queue: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); debugPrint("Added ${tracks.length} to queue. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void playNext(Track track) { _queue.insert(0, track); debugPrint("Play next: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
   void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
 
   // Updated to accept Track object or index
@@ -1501,20 +1501,20 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     bool removed = false;
     if (item is int && item >= 0 && item < _queue.length) {
       final rTr = _queue.removeAt(item);
-      print("Removed from queue by index: ${rTr.trackName}. Size: ${_queue.length}");
+      debugPrint("Removed from queue by index: ${rTr.trackName}. Size: ${_queue.length}");
       removed = true;
     } else if (item is Track) {
       final initialLength = _queue.length;
       _queue.removeWhere((t) => t.id == item.id);
       if (_queue.length < initialLength) {
-        print("Removed from queue by track: ${item.trackName}. Size: ${_queue.length}");
+        debugPrint("Removed from queue by track: ${item.trackName}. Size: ${_queue.length}");
         removed = true;
       }
     } else if (item is String) { // Remove by track ID
        final initialLength = _queue.length;
       _queue.removeWhere((t) => t.id == item);
       if (_queue.length < initialLength) {
-        print("Removed from queue by track ID: $item. Size: ${_queue.length}");
+        debugPrint("Removed from queue by track ID: $item. Size: ${_queue.length}");
         removed = true;
       }
     }
@@ -1526,7 +1526,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); print("Queue cleared."); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); debugPrint("Queue cleared."); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
 
 
   // --- Preloading Logic ---
@@ -1554,14 +1554,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     final nextTrack = _getActualNextTrack();
     if (nextTrack != null && nextTrack.id != _currentTrack?.id && nextTrack.source != 'local' && !(await isTrackDownloaded(nextTrack.id))) {
       try {
-        if (kDebugMode) print("MusicProvider: Attempting to preload ${nextTrack.trackName}");
+        if (kDebugMode) debugPrint("MusicProvider: Attempting to preload ${nextTrack.trackName}");
         String playableId = nextTrack.id;
         if (nextTrack.source == 'spotify') {
           final ytEquivalent = await _spotifyService.findYouTubeTrack(nextTrack);
           if (ytEquivalent != null) {
             playableId = ytEquivalent.id;
           } else {
-            if (kDebugMode) print("MusicProvider: Could not find YouTube equivalent for Spotify track ${nextTrack.trackName} for preloading.");
+            if (kDebugMode) debugPrint("MusicProvider: Could not find YouTube equivalent for Spotify track ${nextTrack.trackName} for preloading.");
             return;
           }
         }
@@ -1569,10 +1569,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         final url = await _innerTubeService.getAudioStreamUrl(playableId, preferredBitrate: bitrate);
         await _audioService.preloadTrack(url);
       } catch (e) {
-        if (kDebugMode) print("MusicProvider: Error preloading next track ${nextTrack.trackName}: $e");
+        if (kDebugMode) debugPrint("MusicProvider: Error preloading next track ${nextTrack.trackName}: $e");
       }
     } else {
-      if (kDebugMode) print("MusicProvider: No suitable next track to preload or next is same as current/local/downloaded.");
+      if (kDebugMode) debugPrint("MusicProvider: No suitable next track to preload or next is same as current/local/downloaded.");
     }
   }
 
@@ -1634,7 +1634,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<Artist?> _fetchArtistInternal(String artistName) async {
     // 1. Check Cache
     if (_artistCache.containsKey(artistName)) {
-      if (kDebugMode) print("MusicProvider: Cache hit for artist $artistName");
+      if (kDebugMode) debugPrint("MusicProvider: Cache hit for artist $artistName");
       return _artistCache[artistName];
     }
     
@@ -1660,7 +1660,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _artistCache[artistName] = artist;
       return artist;
     } catch (e) {
-      if (kDebugMode) print("MusicProvider: Internal artist fetch error: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Internal artist fetch error: $e");
       return null;
     }
   }
@@ -1670,7 +1670,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // 1. Check Cache
     if (_albumCache.containsKey(key)) {
-       if (kDebugMode) print("MusicProvider: Cache hit for album $albumName");
+       if (kDebugMode) debugPrint("MusicProvider: Cache hit for album $albumName");
        return _albumCache[key];
     }
 
@@ -1694,7 +1694,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
       return null;
     } catch (e) {
-      if (kDebugMode) print("MusicProvider: Internal album fetch error: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Internal album fetch error: $e");
       return null;
     }
   }
@@ -1713,7 +1713,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   // --- Optimized Navigation Methods ---
   Future<void> navigateToArtist(String artistName) async { 
-    if (kDebugMode) print("PROVIDER ACTION: Navigate to Artist: $artistName");
+    if (kDebugMode) debugPrint("PROVIDER ACTION: Navigate to Artist: $artistName");
     _isLoadingArtist = true;
     _currentArtistDetails = null; // Clear old
     _errorMessage = null; 
@@ -1737,7 +1737,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   /// Robust navigation using an existing Artist/Track object from search results
   Future<void> navigateToArtistObject(Track artistTrack) async {
-    if (kDebugMode) print("PROVIDER ACTION: Navigate to Artist Object: ${artistTrack.trackName} (${artistTrack.id})");
+    if (kDebugMode) debugPrint("PROVIDER ACTION: Navigate to Artist Object: ${artistTrack.trackName} (${artistTrack.id})");
     _isLoadingArtist = true;
     _currentArtistDetails = null;
     _errorMessage = null;
@@ -1747,7 +1747,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Check cache first using name
       if (_artistCache.containsKey(artistTrack.trackName)) {
         _currentArtistDetails = _artistCache[artistTrack.trackName];
-        if (kDebugMode) print("MusicProvider: Cache hit for artist object ${artistTrack.trackName}");
+        if (kDebugMode) debugPrint("MusicProvider: Cache hit for artist object ${artistTrack.trackName}");
         return;
       }
       
@@ -1769,10 +1769,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Cache it
       _artistCache[artistTrack.trackName] = _currentArtistDetails!;
       
-       print("PROVIDER: Artist info loaded for ${_currentArtistDetails?.name}");
+       debugPrint("PROVIDER: Artist info loaded for ${_currentArtistDetails?.name}");
     } catch (e) {
       _errorMessage = "Could not load artist details.";
-      if (kDebugMode) print("PROVIDER ERROR: $e");
+      if (kDebugMode) debugPrint("PROVIDER ERROR: $e");
       _currentArtistDetails = null;
     } finally {
       _isLoadingArtist = false;
@@ -1781,7 +1781,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> navigateToAlbum(String albumName, String artistName) async { 
-    if (kDebugMode) print("PROVIDER ACTION: Navigate to Album: $albumName by $artistName");
+    if (kDebugMode) debugPrint("PROVIDER ACTION: Navigate to Album: $albumName by $artistName");
     _isLoadingAlbum = true;
     _currentAlbumDetails = null;
     _errorMessage = null;
@@ -1804,7 +1804,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Network & Mode Management ---
-  void _setupConnectivityMonitoring() { _networkQualitySubscription = _networkService.onNetworkQualityChanged.listen((q) => _handleNetworkQualityChange(q), onError: (e) => print("NetQual stream error: $e")); _connectivityStatusSubscription = _networkService.onConnectivityChanged.listen((c) => _handleConnectivityChange(c), onError: (e) => print("Connect stream error: $e")); _networkService.checkNetworkQualityNow().then((q) { _handleNetworkQualityChange(q); _handleConnectivityChange(q != NetworkQuality.offline); }); }
+  void _setupConnectivityMonitoring() { _networkQualitySubscription = _networkService.onNetworkQualityChanged.listen((q) => _handleNetworkQualityChange(q), onError: (e) => debugPrint("NetQual stream error: $e")); _connectivityStatusSubscription = _networkService.onConnectivityChanged.listen((c) => _handleConnectivityChange(c), onError: (e) => debugPrint("Connect stream error: $e")); _networkService.checkNetworkQualityNow().then((q) { _handleNetworkQualityChange(q); _handleConnectivityChange(q != NetworkQuality.offline); }); }
 
   void _handleNetworkQualityChange(NetworkQuality quality) {
     // Adjust bitrates based on network quality (existing logic)
@@ -1822,7 +1822,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         _wifiBitrate = nW;
         _cellularBitrate = nC;
         _saveSettings(); // Save bitrate settings
-        if (kDebugMode) print("MusicProvider: Auto-adjusted bitrate to Wifi:$_wifiBitrate, Cell:$_cellularBitrate");
+        if (kDebugMode) debugPrint("MusicProvider: Auto-adjusted bitrate to Wifi:$_wifiBitrate, Cell:$_cellularBitrate");
       }
     }
 
@@ -1897,7 +1897,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   void setMusicSource(MusicSource source) {
     if (_currentMusicSource != source) {
       if (kDebugMode) {
-        print('MusicProvider: Switching music source from ${_currentMusicSource.displayName} to ${source.displayName}');
+        debugPrint('MusicProvider: Switching music source from ${_currentMusicSource.displayName} to ${source.displayName}');
       }
       _currentMusicSource = source;
       _saveSettings();
@@ -2094,7 +2094,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           try {
               await _networkService.downloadFile(track.albumArtUrl, aP);
           } catch (e) {
-              if (kDebugMode) print('MusicProvider: Art download failed: $e');
+              if (kDebugMode) debugPrint('MusicProvider: Art download failed: $e');
               aP = ''; // Fallback to network if local art fails
           }
       }
@@ -2137,7 +2137,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     if (await File(p).length() > 50 * 1024) { // 50KB min
       return true;
     } else {
-      if (kDebugMode) print("MusicProvider: Found downloaded file for $trackId but it's too small. Treating as missing.");
+      if (kDebugMode) debugPrint("MusicProvider: Found downloaded file for $trackId but it's too small. Treating as missing.");
       await _handleMissingOfflineFile(trackId, p);
       return false;
     }
@@ -2168,7 +2168,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
                final filename = storedPath.split('/').last;
                final currentPath = '${dDir.path}/$filename';
                if (await File(currentPath).exists()) {
-                  if (kDebugMode) print("MusicProvider: Corrected path for $id: $storedPath -> $currentPath");
+                  if (kDebugMode) debugPrint("MusicProvider: Corrected path for $id: $storedPath -> $currentPath");
                   finalPath = currentPath;
                }
             }
@@ -2183,7 +2183,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      if (kDebugMode) print("MusicProvider: Error loading download metadata: $e");
+      if (kDebugMode) debugPrint("MusicProvider: Error loading download metadata: $e");
       _downloadedTracksMetadata = {};
     }
   }
@@ -2192,7 +2192,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> _handleMissingOfflineFile(String trackId, String expectedPath) async { bool mRem = _downloadedTracksMetadata.remove(trackId) != null; if (mRem) await _saveDownloadedTracksMetadataInternal(); int cB = _localTracks.length; _localTracks.removeWhere((t) => t.id == expectedPath); bool lRem = _localTracks.length < cB; if (mRem || lRem) notifyListeners(); }
   void _addToDownloadQueue(Track track) { if (_isDownloading[track.id]==true || _downloadQueue.any((t)=>t.id==track.id) || _downloadedTracksMetadata.containsKey(track.id)) return; _downloadQueue.add(track); _errorMessage = '${track.trackName} queued.'; notifyListeners(); _processDownloadQueue(); }
   Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= 6) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
-  void pauseAllDownloads({bool clearQueue = false}) { final ids = List<String>.from(_downloadCancelTokens.keys); int c = 0; for (final id in ids) { _downloadCancelTokens[id]?.cancel("Downloads paused"); c++; } if (c > 0) print("Paused $c downloads."); if (clearQueue && _downloadQueue.isNotEmpty) { _downloadQueue.clear(); notifyListeners(); } }
+  void pauseAllDownloads({bool clearQueue = false}) { final ids = List<String>.from(_downloadCancelTokens.keys); int c = 0; for (final id in ids) { _downloadCancelTokens[id]?.cancel("Downloads paused"); c++; } if (c > 0) debugPrint("Paused $c downloads."); if (clearQueue && _downloadQueue.isNotEmpty) { _downloadQueue.clear(); notifyListeners(); } }
   
   /// Batch download multiple tracks - adds to queue efficiently
   Future<void> downloadTracks(List<Track> tracks, {bool skipDownloaded = true}) async {
@@ -2239,7 +2239,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       final searchQuery = '${originalTrack.artistName} ${originalTrack.trackName}';
       
       if (kDebugMode) {
-        print('MusicProvider: Searching for: "$searchQuery"');
+        debugPrint('MusicProvider: Searching for: "$searchQuery"');
       }
       
       List<Track> results = [];
@@ -2249,7 +2249,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       if (results.isEmpty) {
         if (kDebugMode) {
-          print('MusicProvider: No results found for "$searchQuery"');
+          debugPrint('MusicProvider: No results found for "$searchQuery"');
         }
         return null;
       }
@@ -2270,14 +2270,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       bestMatch ??= results.first;
       
       if (kDebugMode) {
-        print('MusicProvider: Best match: ${bestMatch.trackName} by ${bestMatch.artistName}');
+        debugPrint('MusicProvider: Best match: ${bestMatch.trackName} by ${bestMatch.artistName}');
       }
       
       return bestMatch;
       
     } catch (e) {
       if (kDebugMode) {
-        print('MusicProvider: Error finding equivalent track: $e');
+        debugPrint('MusicProvider: Error finding equivalent track: $e');
       }
       return null;
     }
@@ -2348,7 +2348,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
             }
           }
         } catch (e) {
-          if (kDebugMode) print('MusicProvider: Error fetching related for ${seed.trackName}: $e');
+          if (kDebugMode) debugPrint('MusicProvider: Error fetching related for ${seed.trackName}: $e');
         }
       }
       
@@ -2367,7 +2367,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
             }
           }
         } catch (e) {
-          if (kDebugMode) print('MusicProvider: Error fetching related for liked ${seed.trackName}: $e');
+          if (kDebugMode) debugPrint('MusicProvider: Error fetching related for liked ${seed.trackName}: $e');
         }
       }
     }
@@ -2382,7 +2382,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      if (kDebugMode) print('MusicProvider: Error fetching home tracks: $e');
+      if (kDebugMode) debugPrint('MusicProvider: Error fetching home tracks: $e');
     }
     
     // If no seeds available, just use home tracks
@@ -2476,7 +2476,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _recentlyShownTrackIds.clear();
       _recentlyShownTrackIds.addAll(ids);
     } catch (e) {
-      if (kDebugMode) print('MusicProvider: Error loading recently shown IDs: $e');
+      if (kDebugMode) debugPrint('MusicProvider: Error loading recently shown IDs: $e');
     }
   }
   
@@ -2486,7 +2486,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList('recently_shown_track_ids', _recentlyShownTrackIds);
     } catch (e) {
-      if (kDebugMode) print('MusicProvider: Error saving recently shown IDs: $e');
+      if (kDebugMode) debugPrint('MusicProvider: Error saving recently shown IDs: $e');
     }
   }
   Future<List<Track>> fetchTrendingTracks({bool forceRefresh = false}) async { 
@@ -2539,7 +2539,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // Check Search Cache for speed
     if (!forceRefresh && _searchCache.containsKey(query)) {
-       if (kDebugMode) print('MusicProvider: Search Cache HIT for "$query"');
+       if (kDebugMode) debugPrint('MusicProvider: Search Cache HIT for "$query"');
        _searchedTracks = _searchCache[query]!;
        notifyListeners();
        return _searchedTracks;
@@ -2549,7 +2549,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _clearError(); // Clear previous errors before a new search
       
       if (kDebugMode) {
-        print('MusicProvider: Searching for "$query" using ${_currentMusicSource.displayName}');
+        debugPrint('MusicProvider: Searching for "$query" using ${_currentMusicSource.displayName}');
       }
       
       // Use InnerTube service for YouTube Music search or local search
@@ -2569,7 +2569,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         try {
            onlineResults = await _innerTubeService.searchSongs(query, limit: 50);
         } catch (e) {
-           if (kDebugMode) print("Online search failed: $e");
+           if (kDebugMode) debugPrint("Online search failed: $e");
         }
       }
       
@@ -2583,7 +2583,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _searchCache[query] = _searchedTracks;
 
       if (kDebugMode) {
-        print('MusicProvider: Found ${_searchedTracks.length} results (Local: ${localResults.length}, Online: ${onlineResults.length}) for "$query"');
+        debugPrint('MusicProvider: Found ${_searchedTracks.length} results (Local: ${localResults.length}, Online: ${onlineResults.length}) for "$query"');
       }
       
       notifyListeners(); // Notify listeners that new search results are available
@@ -2624,7 +2624,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
        final playlists = await _innerTubeService.searchPlaylists(query, limit: 20);
        _playlistSearchResults = playlists;
      } catch (e) {
-       print("Playlist Search Error: $e");
+       debugPrint("Playlist Search Error: $e");
        _playlistSearchResults = [];
      }
      notifyListeners();
@@ -2644,7 +2644,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     } 
     try { 
       if (kDebugMode) {
-        print('MusicProvider: Fetching artist tracks for "$artistName" using ${_currentMusicSource.displayName}');
+        debugPrint('MusicProvider: Fetching artist tracks for "$artistName" using ${_currentMusicSource.displayName}');
       }
       
       // Use appropriate service based on current music source
@@ -2706,7 +2706,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     } 
     try { 
       if (kDebugMode) {
-        print('MusicProvider: Fetching genre tracks for "$genre" using ${_currentMusicSource.displayName}');
+        debugPrint('MusicProvider: Fetching genre tracks for "$genre" using ${_currentMusicSource.displayName}');
       }
       
       // Use appropriate service based on current music source
@@ -2801,7 +2801,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
     // BATTERY FIX: Skip expensive palette generation if app is in background
     if (isInBackground) {
-      if (kDebugMode) print('MusicProvider: Skipping palette generation (background)');
+      if (kDebugMode) debugPrint('MusicProvider: Skipping palette generation (background)');
       return; 
     }
 
@@ -2809,7 +2809,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // 1. Check Cache first for instant update
     if (_paletteCache.containsKey(trackId)) {
-        if (kDebugMode) print('MusicProvider: Using cached palette for ${track.trackName}');
+        if (kDebugMode) debugPrint('MusicProvider: Using cached palette for ${track.trackName}');
         _paletteGenerator = _paletteCache[trackId];
         // Note: We don't notifyListeners() here IF it's already set 
         // but since we reset it to null on track change, we should notify.
@@ -2818,7 +2818,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     
     try {
-      if (kDebugMode) print('MusicProvider: Generating palette for ${track.trackName}...');
+      if (kDebugMode) debugPrint('MusicProvider: Generating palette for ${track.trackName}...');
       
       ImageProvider? imageProvider;
       bool isLocalFile = false;
@@ -2831,7 +2831,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           // 1. Downloaded YouTube Track Artwork
           isLocalFile = true;
           imageProvider = FileImage(File(artPath));
-          if (kDebugMode) print('MusicProvider: Using offline art for ${track.trackName}');
+          if (kDebugMode) debugPrint('MusicProvider: Using offline art for ${track.trackName}');
       } else if (_downloadedTracksMetadata.containsKey(trackId)) {
           // LEGACY FALLBACK: Check if art file exists even if not in metadata
           final fallbackPath = await _buildArtDownloadPath(trackId);
@@ -2842,7 +2842,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
              // mid-flight — never force-unwrap)
              _downloadedTracksMetadata[trackId]?['artPath'] = fallbackPath;
              saveDownloadedTracksMetadata();
-             if (kDebugMode) print('MusicProvider: Recovered legacy art for ${track.trackName}');
+             if (kDebugMode) debugPrint('MusicProvider: Recovered legacy art for ${track.trackName}');
           }
       } 
       
@@ -2880,7 +2880,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         _paletteCache[trackId] = palette;
         
         notifyListeners();
-        if (kDebugMode) print('MusicProvider: Palette updated for ${track.trackName} (${isLocalFile ? "Local" : "Network"})');
+        if (kDebugMode) debugPrint('MusicProvider: Palette updated for ${track.trackName} (${isLocalFile ? "Local" : "Network"})');
 
         // PROACTIVE FIX: If played online but missing local art, download it now
         if (!isLocalFile && _downloadedTracksMetadata.containsKey(trackId)) {
@@ -2891,13 +2891,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
                 if (meta == null) return; // entry removed while downloading
                 meta['artPath'] = aP;
                 saveDownloadedTracksMetadata();
-                if (kDebugMode) print('MusicProvider: Proactively saved artwork for $trackId');
+                if (kDebugMode) debugPrint('MusicProvider: Proactively saved artwork for $trackId');
              }).catchError((_) {});
            }
         }
       }
     } catch (e) {
-      if (kDebugMode) print('MusicProvider: Error generating palette for ${track.trackName}: $e');
+      if (kDebugMode) debugPrint('MusicProvider: Error generating palette for ${track.trackName}: $e');
     }
   }
 
@@ -2917,7 +2917,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   // --- Dispose ---
   @override
   void dispose() {
-    print('MusicProvider: Disposing...');
+    debugPrint('MusicProvider: Disposing...');
     WidgetsBinding.instance.removeObserver(this); // Stop lifecycle updates
     
     // FIX: Cancel all audio subscriptions to prevent memory leaks
@@ -2937,7 +2937,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _sleepTimer?.cancel();
     _downloadCancelTokens.forEach((_, token) { if (!token.isCancelled) token.cancel("Provider disposed"); });
     _downloadCancelTokens.clear();
-    print('MusicProvider: Disposed.');
+    debugPrint('MusicProvider: Disposed.');
     super.dispose();
   }
 
@@ -2967,14 +2967,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     if (nextTrack == null) return;
     if (nextTrack.id == _currentTrack?.id) return;
 
-    if (kDebugMode) print('MusicProvider: Prefetching next track: ${nextTrack.trackName}');
+    if (kDebugMode) debugPrint('MusicProvider: Prefetching next track: ${nextTrack.trackName}');
 
     if (!_isOfflineMode && !_isOfflineTrack && nextTrack.source != 'spotify') {
         // Audio Prefetch through InnerTubeService (Now also resolves URL for faster start)
         _innerTubeService.getAudioStreamUrl(nextTrack.id).then((url) {
-           if (kDebugMode) print('MusicProvider: Stream URL prefetched for ${nextTrack!.trackName}');
+           if (kDebugMode) debugPrint('MusicProvider: Stream URL prefetched for ${nextTrack!.trackName}');
         }).catchError((e) {
-           if (kDebugMode) print('MusicProvider: Stream prefetch failed: $e');
+           if (kDebugMode) debugPrint('MusicProvider: Stream prefetch failed: $e');
         });
         
         // Lyrics Prefetch
@@ -2984,9 +2984,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           durationMs: nextTrack.durationMs,
           videoId: nextTrack.id
         ).then((_) {
-           if (kDebugMode) print('MusicProvider: Lyrics prefetch complete for ${nextTrack!.trackName}');
+           if (kDebugMode) debugPrint('MusicProvider: Lyrics prefetch complete for ${nextTrack!.trackName}');
         }).catchError((e) {
-           if (kDebugMode) print('MusicProvider: Lyrics prefetch failed: $e');
+           if (kDebugMode) debugPrint('MusicProvider: Lyrics prefetch failed: $e');
         });
     }
   }
@@ -3029,3 +3029,5 @@ class _RetryOperation {
   int attempts = 1;
   _RetryOperation(this.description, this.execute);
 }
+
+

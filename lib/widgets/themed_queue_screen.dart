@@ -15,3 +15,4 @@ class ThemedQueueScreen extends StatelessWidget {
         : const QueueScreen();
   }
 }
+

@@ -20,3 +20,4 @@ class ThemedGenreSongsScreen extends StatelessWidget {
         : GenreSongsScreen(genre: genre);
   }
 }
+

@@ -121,3 +121,4 @@ class ChatRoomModel { // Removed "extends Equatable"
     );
   }
 }
+

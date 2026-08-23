@@ -85,7 +85,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                         ),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          color: _isScrolled ? Colors.black.withOpacity(0.5) : Colors.transparent,
+                          color: _isScrolled ? Colors.black.withValues(alpha: 0.5) : Colors.transparent,
                           child: FlexibleSpaceBar(
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                             title: Text(
@@ -118,12 +118,12 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.queue_music_rounded, size: 80, color: Colors.white.withOpacity(0.1)),
+                            Icon(Icons.queue_music_rounded, size: 80, color: Colors.white.withValues(alpha: 0.1)),
                              const SizedBox(height: 16),
                             Text(
                               'No playlists yet',
                               style: GoogleFonts.splineSans(
-                                color: Colors.white.withOpacity(0.6), 
+                                color: Colors.white.withValues(alpha: 0.6), 
                                 fontSize: 18,
                                 fontWeight: FontWeight.w500
                               ),
@@ -132,7 +132,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                             Text(
                               'Create or import playlists to get started',
                               style: GoogleFonts.splineSans(
-                                color: Colors.white.withOpacity(0.4),
+                                color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 14
                               ),
                             ),
@@ -198,9 +198,9 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,7 +243,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                   Text(
                     '${playlist.tracks.length} tracks',
                     style: GoogleFonts.splineSans(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                     ),
                   ),
@@ -277,14 +277,14 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
            autofocus: true,
           decoration: InputDecoration(
             hintText: 'Playlist Name',
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-             enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.5))),
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+             enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: const Color(0xFF00E5FF).withValues(alpha: 0.5))),
              focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF00E5FF))),
           ),
         ),
         actions: [
           TextButton(
-            child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.6))),
+            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
             onPressed: () => Navigator.pop(context),
           ),
           ElevatedButton(
@@ -416,3 +416,4 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
     );
   }
 }
+

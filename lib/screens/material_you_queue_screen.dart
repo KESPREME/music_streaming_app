@@ -75,12 +75,12 @@ class MaterialYouQueueScreen extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
                       color: isActuallyPlaying
-                          ? MaterialYouTokens.primaryVibrant.withOpacity(0.08)
-                          : MaterialYouTokens.surfaceVariantDark,
+                          ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.08)
+                          : MaterialYouTokens.surfaceContainerHighestDark,
                       borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
                       border: Border.all(
                         color: isActuallyPlaying
-                            ? MaterialYouTokens.primaryVibrant.withOpacity(0.3)
+                            ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.3)
                             : Colors.transparent,
                       ),
                     ),
@@ -116,7 +116,7 @@ class MaterialYouQueueScreen extends StatelessWidget {
             width: 120,
             height: 120,
             decoration: BoxDecoration(
-              color: colorScheme.surfaceVariant,
+              color: colorScheme.surfaceContainerHighest,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -184,3 +184,5 @@ class MaterialYouQueueScreen extends StatelessWidget {
     );
   }
 }
+
+

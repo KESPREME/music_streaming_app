@@ -389,7 +389,7 @@ class _MaterialYouLyricsScreenState extends State<MaterialYouLyricsScreen> {
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: vibrantColor.withOpacity(0.2),
+        color: vibrantColor.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
       ),
       child: Icon(
@@ -422,7 +422,7 @@ class _MaterialYouLyricsScreenState extends State<MaterialYouLyricsScreen> {
               Icon(
                 Icons.lyrics_rounded,
                 size: 60,
-                color: colorScheme.onSurface.withOpacity(0.1),
+                color: colorScheme.onSurface.withValues(alpha: 0.1),
               ),
               const SizedBox(height: 16),
               Text(
@@ -521,11 +521,11 @@ class _MaterialYouLyricsScreenState extends State<MaterialYouLyricsScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
           color: isCurrentLine 
-              ? vibrantColor.withOpacity(0.1) 
+              ? vibrantColor.withValues(alpha: 0.1) 
               : Colors.transparent,
           border: Border.all(
             color: isCurrentLine 
-                ? vibrantColor.withOpacity(0.3) 
+                ? vibrantColor.withValues(alpha: 0.3) 
                 : Colors.transparent,
             width: 1.0,
           ),
@@ -551,3 +551,5 @@ class _MaterialYouLyricsScreenState extends State<MaterialYouLyricsScreen> {
     );
   }
 }
+
+

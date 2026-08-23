@@ -15,3 +15,4 @@ class ThemedAllArtistsScreen extends StatelessWidget {
         : const AllArtistsScreen();
   }
 }
+

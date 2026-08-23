@@ -87,7 +87,7 @@ class MaterialYouTonalIconButton extends StatelessWidget {
     
     final backgroundColor = isSelected
         ? colorScheme.secondaryContainer
-        : colorScheme.surfaceVariant;
+        : colorScheme.surfaceContainerHighest;
     
     final foregroundColor = isSelected
         ? colorScheme.onSecondaryContainer
@@ -145,3 +145,5 @@ class MaterialYouTonalButtonRow extends StatelessWidget {
     );
   }
 }
+
+

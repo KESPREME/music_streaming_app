@@ -18,17 +18,17 @@ void showLiquidSnackBar(BuildContext context, String message, {bool isError = fa
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
             decoration: BoxDecoration(
               color: isError 
-                  ? const Color(0xFFFF1744).withOpacity(0.2) 
-                  : Colors.white.withOpacity(0.1),
+                  ? const Color(0xFFFF1744).withValues(alpha: 0.2) 
+                  : Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
                 color: isError 
-                    ? const Color(0xFFFF1744).withOpacity(0.3) 
-                    : Colors.white.withOpacity(0.15),
+                    ? const Color(0xFFFF1744).withValues(alpha: 0.3) 
+                    : Colors.white.withValues(alpha: 0.15),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -61,3 +61,4 @@ void showLiquidSnackBar(BuildContext context, String message, {bool isError = fa
     ),
   );
 }
+

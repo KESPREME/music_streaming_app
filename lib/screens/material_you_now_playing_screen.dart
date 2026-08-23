@@ -48,7 +48,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  dominantColor.withOpacity(0.6),
+                  dominantColor.withValues(alpha: 0.6),
                   MaterialYouTokens.surfaceDark,
                   MaterialYouTokens.surfaceDark,
                 ],
@@ -118,7 +118,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
           Material(
             elevation: 1,
             surfaceTintColor: Colors.transparent, // FIX: No white tint
-            color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+            color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
             shape: const CircleBorder(),
             child: IconButton(
               onPressed: () {
@@ -147,7 +147,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
               Material(
                 elevation: 1,
                 surfaceTintColor: Colors.transparent, // FIX: No white tint
-                color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+                color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
                 shape: const CircleBorder(),
                 child: IconButton(
                   onPressed: () {
@@ -165,7 +165,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
               Material(
                 elevation: 1,
                 surfaceTintColor: Colors.transparent, // FIX: No white tint
-                color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+                color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
                 shape: const CircleBorder(),
                 child: IconButton(
                   onPressed: () => _showOptionsBottomSheet(context, track, provider),
@@ -193,7 +193,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
               // Add subtle colored glow around album art
               boxShadow: [
                 BoxShadow(
-                  color: MaterialYouTokens.primaryVibrant.withOpacity(0.15), // Reduced opacity for subtler glow
+                  color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15), // Reduced opacity for subtler glow
                   blurRadius: 40,
                   spreadRadius: 0,
                 ),
@@ -256,7 +256,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                         fontSize: 18, 
                         fontWeight: FontWeight.w600, 
                         decoration: TextDecoration.underline,
-                        decorationColor: accentColor.withOpacity(0.5),
+                        decorationColor: accentColor.withValues(alpha: 0.5),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -308,8 +308,8 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                   elevation: 2,
                   surfaceTintColor: Colors.transparent, // FIX: No white tint
                   color: provider.isSongLiked(track.id) 
-                      ? accentColor.withOpacity(0.2) 
-                      : colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+                      ? accentColor.withValues(alpha: 0.2) 
+                      : colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
                   shape: const CircleBorder(),
                   child: IconButton(
                     onPressed: () => provider.toggleLike(track),
@@ -404,7 +404,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
     return Material(
       elevation: 1,
       surfaceTintColor: Colors.transparent, // FIX: No white tint
-      color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+      color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
       shape: const CircleBorder(),
       child: InkWell(
         onTap: onTap,
@@ -493,7 +493,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -532,7 +532,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                                 width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: MaterialYouTokens.primaryVibrant.withOpacity(0.15),
+                                  color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -620,7 +620,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -702,7 +702,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                                         height: 40,
                                         decoration: BoxDecoration(
                                           color: isConnected 
-                                              ? accentColor.withOpacity(0.15)
+                                              ? accentColor.withValues(alpha: 0.15)
                                               : colorScheme.surfaceContainerHighest,
                                           shape: BoxShape.circle,
                                         ),
@@ -756,12 +756,14 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
 
   Widget _buildArtPlaceholder(ColorScheme colorScheme) {
     return Container(
-      color: colorScheme.surfaceVariant,
+      color: colorScheme.surfaceContainerHighest,
       child: Icon(
         Icons.music_note_rounded,
         size: 80,
-        color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
       ),
     );
   }
 }
+
+

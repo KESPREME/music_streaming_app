@@ -76,17 +76,17 @@ class LyricsCacheDb {
           // Index for faster lookups
           await db.execute('CREATE INDEX idx_key ON $_tableName(key)');
           
-          if (kDebugMode) print('LyricsCacheDb: Database created');
+          if (kDebugMode) debugPrint('LyricsCacheDb: Database created');
         },
       );
       
       _isInitialized = true;
-      if (kDebugMode) print('LyricsCacheDb: Initialized');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Initialized');
       
       // Cleanup expired entries on startup
       await _cleanupExpired();
     } catch (e) {
-      if (kDebugMode) print('LyricsCacheDb: Init error: $e');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Init error: $e');
     }
   }
   
@@ -114,7 +114,7 @@ class LyricsCacheDb {
       
       return entry;
     } catch (e) {
-      if (kDebugMode) print('LyricsCacheDb: Get error: $e');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Get error: $e');
       return null;
     }
   }
@@ -138,9 +138,9 @@ class LyricsCacheDb {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       
-      if (kDebugMode) print('LyricsCacheDb: Cached lyrics for "$key"');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Cached lyrics for "$key"');
     } catch (e) {
-      if (kDebugMode) print('LyricsCacheDb: Put error: $e');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Put error: $e');
     }
   }
   
@@ -155,7 +155,7 @@ class LyricsCacheDb {
         whereArgs: [key],
       );
     } catch (e) {
-      if (kDebugMode) print('LyricsCacheDb: Delete error: $e');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Delete error: $e');
     }
   }
   
@@ -175,10 +175,10 @@ class LyricsCacheDb {
       );
       
       if (kDebugMode && deleted > 0) {
-        print('LyricsCacheDb: Cleaned up $deleted expired entries');
+        debugPrint('LyricsCacheDb: Cleaned up $deleted expired entries');
       }
     } catch (e) {
-      if (kDebugMode) print('LyricsCacheDb: Cleanup error: $e');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Cleanup error: $e');
     }
   }
   
@@ -188,9 +188,9 @@ class LyricsCacheDb {
     
     try {
       await _database!.delete(_tableName);
-      if (kDebugMode) print('LyricsCacheDb: Cache cleared');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Cache cleared');
     } catch (e) {
-      if (kDebugMode) print('LyricsCacheDb: Clear error: $e');
+      if (kDebugMode) debugPrint('LyricsCacheDb: Clear error: $e');
     }
   }
   
@@ -220,3 +220,5 @@ class LyricsCacheDb {
     }
   }
 }
+
+

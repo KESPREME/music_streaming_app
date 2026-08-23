@@ -36,3 +36,4 @@ class ThemedNowPlayingScreen extends StatelessWidget {
     );
   }
 }
+

@@ -114,8 +114,8 @@ class _MaterialYouEqualizerScreenState extends State<MaterialYouEqualizerScreen>
           borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
           border: Border.all(
             color: isEnabled 
-                ? MaterialYouTokens.primaryVibrant.withOpacity(0.3) 
-                : colorScheme.surfaceVariant,
+                ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.3) 
+                : colorScheme.surfaceContainerHighest,
           ),
         ),
         child: Row(
@@ -139,8 +139,8 @@ class _MaterialYouEqualizerScreenState extends State<MaterialYouEqualizerScreen>
             Switch.adaptive(
               value: isEnabled,
               activeColor: MaterialYouTokens.primaryVibrant,
-              activeTrackColor: MaterialYouTokens.primaryVibrant.withOpacity(0.3),
-              inactiveTrackColor: colorScheme.surfaceVariant,
+              activeTrackColor: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.3),
+              inactiveTrackColor: colorScheme.surfaceContainerHighest,
               onChanged: (val) {
                 HapticFeedback.selectionClick();
                 _eqService.setEnabled(val);
@@ -205,14 +205,14 @@ class _MaterialYouEqualizerScreenState extends State<MaterialYouEqualizerScreen>
                 children: [
                   Container(
                     width: 2,
-                    color: colorScheme.surfaceVariant,
+                    color: colorScheme.surfaceContainerHighest,
                   ),
                   
                   FractionallySizedBox(
                     heightFactor: normalized,
                     child: Container(
                       width: 2,
-                      color: isEnabled ? MaterialYouTokens.primaryVibrant : colorScheme.surfaceVariant,
+                      color: isEnabled ? MaterialYouTokens.primaryVibrant : colorScheme.surfaceContainerHighest,
                     ),
                   ),
                   
@@ -276,7 +276,7 @@ class _MaterialYouEqualizerScreenState extends State<MaterialYouEqualizerScreen>
                     : MaterialYouTokens.surfaceContainerDark,
                 borderRadius: BorderRadius.circular(MaterialYouTokens.shapeMedium),
                 border: Border.all(
-                  color: isSelected ? Colors.transparent : colorScheme.surfaceVariant,
+                  color: isSelected ? Colors.transparent : colorScheme.surfaceContainerHighest,
                 ),
               ),
               child: Column(
@@ -321,3 +321,5 @@ class _MaterialYouEqualizerScreenState extends State<MaterialYouEqualizerScreen>
     }
   }
 }
+
+

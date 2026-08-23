@@ -35,27 +35,27 @@ class LocalMusicService {
     }
 
     if (permissionsToRequest.isEmpty) {
-      print("LocalMusicService: All necessary permissions already granted.");
+      debugPrint("LocalMusicService: All necessary permissions already granted.");
       return true; // Already granted
     }
 
-    print("LocalMusicService: Requesting permissions: ${permissionsToRequest.map((p) => p.toString()).toList()}");
+    debugPrint("LocalMusicService: Requesting permissions: ${permissionsToRequest.map((p) => p.toString()).toList()}");
     Map<Permission, PermissionStatus> statuses = await permissionsToRequest.request();
 
     // Check if all requested permissions were granted
     bool allGranted = statuses.values.every((status) => status.isGranted);
 
     if (!allGranted) {
-      print("LocalMusicService: Permissions not granted. Statuses: $statuses");
+      debugPrint("LocalMusicService: Permissions not granted. Statuses: $statuses");
       // Optionally open app settings if permanently denied
       statuses.forEach((permission, status) {
         if (status.isPermanentlyDenied) {
           // openAppSettings(); // Consider prompting user
-          print("LocalMusicService: Permission ${permission.toString()} permanently denied.");
+          debugPrint("LocalMusicService: Permission ${permission.toString()} permanently denied.");
         }
       });
     } else {
-      print("LocalMusicService: Permissions granted successfully.");
+      debugPrint("LocalMusicService: Permissions granted successfully.");
     }
 
     return allGranted;
@@ -76,7 +76,7 @@ class LocalMusicService {
         ignoreCase: true,
       );
 
-      print('LocalMusicService: Found ${songs.length} songs via MediaStore.');
+      debugPrint('LocalMusicService: Found ${songs.length} songs via MediaStore.');
 
       // Map SongModel to Track model
       List<Track> tracks = songs
@@ -97,11 +97,11 @@ class LocalMusicService {
         );
       }).toList();
 
-      print('LocalMusicService: Mapped ${tracks.length} valid music tracks.');
+      debugPrint('LocalMusicService: Mapped ${tracks.length} valid music tracks.');
       return tracks;
 
     } catch (e) {
-      print('Error fetching local music from MediaStore: $e');
+      debugPrint('Error fetching local music from MediaStore: $e');
       rethrow; // Rethrow to allow provider/UI to handle
     }
   }
@@ -115,14 +115,14 @@ class LocalMusicService {
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
       if (selectedDirectory != null) {
-        print("LocalMusicService: User selected directory: $selectedDirectory");
+        debugPrint("LocalMusicService: User selected directory: $selectedDirectory");
         // Inform the caller that a directory was selected.
         // On Android, MediaStore needs time or a trigger to index new files.
         // Returning the path allows the caller (MusicProvider) to trigger a rescan.
       }
       return selectedDirectory;
     } catch (e) {
-      print('Error picking directory: $e');
+      debugPrint('Error picking directory: $e');
       return null; // Return null on error
     }
   }
@@ -157,7 +157,7 @@ class LocalMusicService {
           );
         } else {
           // Fallback: Basic info if metadata query fails
-          print("LocalMusicService: Metadata query failed for picked file, using filename.");
+          debugPrint("LocalMusicService: Metadata query failed for picked file, using filename.");
           final fileName = result.files.first.name;
           final trackName = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
           return Track(
@@ -174,7 +174,7 @@ class LocalMusicService {
       }
       return null;
     } catch (e) {
-      print('Error picking music file: $e');
+      debugPrint('Error picking music file: $e');
       rethrow;
     }
   }
@@ -197,11 +197,11 @@ class LocalMusicService {
           }
           musicByFolder[folderName]!.add(track);
         } else {
-          print("Warning: Parent directory not found for ${track.previewUrl}");
+          debugPrint("Warning: Parent directory not found for ${track.previewUrl}");
         }
       } catch (e) {
         // Catch potential file system errors
-        print("Error grouping track ${track.id} by folder: $e");
+        debugPrint("Error grouping track ${track.id} by folder: $e");
       }
     }
     return musicByFolder;
@@ -296,7 +296,7 @@ class LocalMusicService {
         );
       }
     } catch (e) {
-      if (kDebugMode) print('LocalMusicService: Error fetching artwork for $path: $e');
+      if (kDebugMode) debugPrint('LocalMusicService: Error fetching artwork for $path: $e');
     }
     return null;
   }
@@ -311,3 +311,4 @@ enum SortCriteria {
   folderAsc, folderDesc,
   dateAddedAsc, dateAddedDesc,
 }
+

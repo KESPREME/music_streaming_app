@@ -15,3 +15,4 @@ class ThemedLyricsScreen extends StatelessWidget {
         : const LyricsScreen();
   }
 }
+

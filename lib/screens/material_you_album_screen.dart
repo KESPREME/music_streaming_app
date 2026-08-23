@@ -140,8 +140,8 @@ class MaterialYouAlbumScreen extends StatelessWidget {
                       stops: const [0.0, 0.5, 1.0],
                       colors: [
                         Colors.transparent,
-                        Colors.black.withOpacity(0.2),
-                        Colors.black.withOpacity(0.9),
+                        Colors.black.withValues(alpha: 0.2),
+                        Colors.black.withValues(alpha: 0.9),
                       ],
                     ),
                   ),
@@ -239,3 +239,5 @@ class MaterialYouAlbumScreen extends StatelessWidget {
     );
   }
 }
+
+

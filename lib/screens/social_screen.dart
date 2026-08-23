@@ -136,7 +136,7 @@ class _SocialScreenState extends State<SocialScreen> {
         if (deviceInfo.version.sdkInt < 31 && statuses[Permission.nearbyWifiDevices]!.isDenied) {
             // For older Android, this permission might not be applicable or auto-granted if others are.
             // Consider it granted if others are. This logic might need refinement based on flutter_nearby_connections behavior.
-            print("Nearby Wifi Devices permission not strictly required for this Android version or handled by other BT permissions.");
+            debugPrint("Nearby Wifi Devices permission not strictly required for this Android version or handled by other BT permissions.");
         } else if (deviceInfo.version.sdkInt >= 31 && !statuses[Permission.nearbyWifiDevices]!.isGranted) {
             allGranted = false; // Explicitly require for Android 12+
         }
@@ -194,7 +194,7 @@ class _SocialScreenState extends State<SocialScreen> {
                 child: Text(
                   _errorMessage ?? 'No users found nearby. Make sure others have the app open and are discoverable!',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
                 ),
               ),
             );
@@ -221,7 +221,7 @@ class _SocialScreenState extends State<SocialScreen> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Text(isConnected ? "Connected" : "Discoverable", style: theme.textTheme.bodySmall?.copyWith(color: isConnected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.6))),
+                      // Text(isConnected ? "Connected" : "Discoverable", style: theme.textTheme.bodySmall?.copyWith(color: isConnected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.6))),
                       if(user.currentTrackName != null)
                         Text('Listening to: ${user.currentTrackName} by ${user.currentTrackArtist ?? "Unknown"}',
                             style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic, color: theme.colorScheme.secondary),
@@ -273,3 +273,4 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 }
+

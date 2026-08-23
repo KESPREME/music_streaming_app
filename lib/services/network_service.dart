@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:math';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -71,7 +72,7 @@ class NetworkService {
     if (_isConnected != isConnected) {
       _isConnected = isConnected;
       _connectivityController.add(_isConnected);
-      print('Network connectivity changed to: ${_isConnected ? 'connected' : 'disconnected'}');
+      debugPrint('Network connectivity changed to: ${_isConnected ? 'connected' : 'disconnected'}');
     }
   }
 
@@ -112,7 +113,7 @@ class NetworkService {
       final downloadSizeKb = response.bodyBytes.length / 1024;
       final speedKbps = downloadSizeKb / (downloadTime / 1000);
 
-      print('Network speed test: $speedKbps Kbps');
+      debugPrint('Network speed test: $speedKbps Kbps');
 
       // Determine network quality based on speed and connection type
       NetworkQuality quality;
@@ -142,7 +143,7 @@ class NetworkService {
 
       _updateNetworkQuality(quality);
     } catch (e) {
-      print('Error checking network quality: $e');
+      debugPrint('Error checking network quality: $e');
       // If we can't measure speed but have connectivity, assume moderate
       if (_isConnected) {
         _updateNetworkQuality(NetworkQuality.moderate);
@@ -166,7 +167,7 @@ class NetworkService {
       return isJioDns;
     } catch (_) {
       // Error is not used, just print a generic message.
-      print('Could not determine carrier-specific network details.');
+      debugPrint('Could not determine carrier-specific network details.');
       return false;
     }
   }
@@ -190,7 +191,7 @@ class NetworkService {
 
   void _updateNetworkQuality(NetworkQuality quality) {
     if (_networkQuality != quality) {
-      print('Network quality changed from $_networkQuality to $quality');
+      debugPrint('Network quality changed from $_networkQuality to $quality');
       _networkQuality = quality;
       _networkQualityController.add(_networkQuality);
     }
@@ -282,7 +283,7 @@ class NetworkService {
 
         // Calculate backoff time (exponential with jitter)
         final backoffSeconds = pow(2, attempts) + (Random().nextInt(1000) / 1000.0);
-        print('Request failed, retrying in $backoffSeconds seconds...');
+        debugPrint('Request failed, retrying in $backoffSeconds seconds...');
         await Future.delayed(Duration(milliseconds: (backoffSeconds * 1000).round()));
 
         // Check connectivity again before retrying
@@ -315,7 +316,7 @@ class NetworkService {
       await prefs.setString(cacheKey, jsonEncode(data));
       await prefs.setInt(expiryKey, expiryTime);
     } catch (_) {
-      print('Error caching response for key: $url');
+      debugPrint('Error caching response for key: $url');
     }
   }
 
@@ -345,7 +346,7 @@ class NetworkService {
         return jsonDecode(cachedData);
       }
     } catch (_) {
-      print('Error getting cached response for key: $url');
+      debugPrint('Error getting cached response for key: $url');
     }
 
     return null;
@@ -369,7 +370,7 @@ class NetworkService {
       await _cacheResponse(url, response.data, cacheExpiry);
     } catch (_) {
       // Ignore errors during background refresh
-      print('Background cache refresh failed for url: $url');
+      debugPrint('Background cache refresh failed for url: $url');
     }
   }
 
@@ -541,7 +542,7 @@ class NetworkService {
           return fileInfo.file;
         }
       } catch (_) {
-        print('Error getting file from cache for key: ${key ?? url}');
+        debugPrint('Error getting file from cache for key: ${key ?? url}');
       }
       throw Exception('No internet connection');
     }
@@ -561,7 +562,7 @@ class NetworkService {
           return fileInfo.file;
         }
       } catch (_) {
-        print('Error getting file from cache for key: ${key ?? url}');
+        debugPrint('Error getting file from cache for key: ${key ?? url}');
       }
       rethrow;
     }
@@ -617,7 +618,7 @@ class NetworkService {
 
       await _cacheManager.emptyCache();
     } catch (_) {
-      print('Error clearing network service cache.');
+      debugPrint('Error clearing network service cache.');
     }
   }
 
@@ -628,4 +629,7 @@ class NetworkService {
     _connectivityController.close();
   }
 }
+
+
+
 

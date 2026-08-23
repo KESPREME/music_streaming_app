@@ -52,9 +52,9 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.05),
+                            color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withOpacity(0.08)),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                           ),
                           child: Row(
                             children: [
@@ -97,7 +97,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1DB954).withOpacity(0.1), // Spotify Green tint
+                                  color: const Color(0xFF1DB954).withValues(alpha: 0.1), // Spotify Green tint
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(Icons.download_rounded, color: Color(0xFF1DB954), size: 20),
@@ -127,9 +127,9 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Row(
               children: [
@@ -155,3 +155,4 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
     );
   }
 }
+

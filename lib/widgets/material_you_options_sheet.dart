@@ -108,7 +108,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -425,7 +425,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: MaterialYouTokens.primaryVibrant.withOpacity(0.15),
+                  color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -453,7 +453,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceVariant,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
       ),
       child: Icon(
@@ -508,7 +508,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -546,7 +546,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                                 width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: MaterialYouTokens.primaryVibrant.withOpacity(0.15),
+                                  color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -632,6 +632,8 @@ class MaterialYouOptionsSheet extends StatelessWidget {
   
 
 }
+
+
 
 
 

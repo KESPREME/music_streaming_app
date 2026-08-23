@@ -42,7 +42,7 @@ Future<void> showMaterialYouPlaylistSelectionDialog(BuildContext context, Track 
                         margin: const EdgeInsets.symmetric(vertical: 16),
                         width: 32, height: 4,
                         decoration: BoxDecoration(
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -169,7 +169,7 @@ Widget _buildMaterialOption(BuildContext context, {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isAccent ? MaterialYouTokens.primaryVibrant.withOpacity(0.12) : Colors.transparent,
+          color: isAccent ? MaterialYouTokens.primaryVibrant.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -232,21 +232,21 @@ Widget _buildMaterialInputDialog(
       style: textStyle,
       cursorColor: MaterialYouTokens.primaryVibrant,
       onSubmitted: (value) async {
-        print('DEBUG: TextField submitted with value: "$value"');
+        debugPrint('DEBUG: TextField submitted with value: "$value"');
         if (value.trim().isEmpty) {
-          print('DEBUG: Submitted value is empty');
+          debugPrint('DEBUG: Submitted value is empty');
           return;
         }
         
         try {
-          print('DEBUG: Creating playlist from onSubmitted...');
+          debugPrint('DEBUG: Creating playlist from onSubmitted...');
           
           await musicProvider.createPlaylist(
             value.trim(), 
             initialTracks: [trackToAdd],
             imageUrl: trackToAdd.albumArtUrl, // Use track's album art
           );
-          print('DEBUG: Playlist created from onSubmitted!');
+          debugPrint('DEBUG: Playlist created from onSubmitted!');
           
             if (context.mounted) {
             Navigator.pop(context);
@@ -256,7 +256,7 @@ Widget _buildMaterialInputDialog(
             );
           }
         } catch (e) {
-          print('DEBUG: Error in onSubmitted: $e');
+          debugPrint('DEBUG: Error in onSubmitted: $e');
           if (context.mounted) {
             showMaterialYouSnackBar(context, 'Error: $e', isError: true);
           }
@@ -274,20 +274,20 @@ Widget _buildMaterialInputDialog(
     actions: [
       TextButton(
         onPressed: () {
-          print('DEBUG: Cancel button pressed');
+          debugPrint('DEBUG: Cancel button pressed');
           Navigator.pop(context);
         },
         child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.white70)),
       ),
       FilledButton(
         onPressed: () async {
-           print('DEBUG: Create button pressed!');
+           debugPrint('DEBUG: Create button pressed!');
            try {
              final name = controller.text.trim();
-             print('DEBUG: Playlist name: "$name"');
+             debugPrint('DEBUG: Playlist name: "$name"');
              
              if (name.isEmpty) {
-               print('DEBUG: Name is empty, returning');
+               debugPrint('DEBUG: Name is empty, returning');
                ScaffoldMessenger.of(context).showSnackBar(
                  const SnackBar(
                    content: Text('Please enter a playlist name'),
@@ -297,7 +297,7 @@ Widget _buildMaterialInputDialog(
                return;
              }
              
-             print('DEBUG: Creating playlist with provider...');
+             debugPrint('DEBUG: Creating playlist with provider...');
              
              // Create playlist AND add the track immediately
              // Use the track's thumbnail as the playlist cover
@@ -306,23 +306,23 @@ Widget _buildMaterialInputDialog(
                initialTracks: [trackToAdd],
                imageUrl: trackToAdd.albumArtUrl, // Use track's album art
              ); 
-             print('DEBUG: Playlist created successfully!');
+             debugPrint('DEBUG: Playlist created successfully!');
              
              // Close dialog
              if (context.mounted) {
                Navigator.pop(context);
-               print('DEBUG: Dialog closed');
+               debugPrint('DEBUG: Dialog closed');
                
                // Show success message
                showMaterialYouSnackBar(
                  context, 
                  'Added "${trackToAdd.trackName}" to "$name"'
                );
-               print('DEBUG: Success message shown');
+               debugPrint('DEBUG: Success message shown');
              }
            } catch (e, stack) {
-             print('DEBUG: Error occurred: $e');
-             print('DEBUG: Stack trace: $stack');
+             debugPrint('DEBUG: Error occurred: $e');
+             debugPrint('DEBUG: Stack trace: $stack');
              // Show error if something goes wrong
              if (context.mounted) {
                showMaterialYouSnackBar(context, 'Error: $e', isError: true);
@@ -338,3 +338,6 @@ Widget _buildMaterialInputDialog(
     ],
   );
 }
+
+
+

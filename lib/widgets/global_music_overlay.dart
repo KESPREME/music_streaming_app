@@ -262,3 +262,4 @@ class PlayerAwarePopScope extends StatelessWidget {
     );
   }
 }
+

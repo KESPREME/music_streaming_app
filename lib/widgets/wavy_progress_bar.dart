@@ -99,7 +99,7 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
                   Text(
                     _formatDuration(position),
                     style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -107,7 +107,7 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
                   Text(
                     _formatDuration(duration),
                     style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -146,7 +146,7 @@ class WavySliderPainter extends CustomPainter {
     final activeWidth = size.width * progress;
     
     // Inactive Path (Straight Line)
-    paint.color = Colors.white.withOpacity(0.2);
+    paint.color = Colors.white.withValues(alpha: 0.2);
     final inactivePath = Path();
     inactivePath.moveTo(activeWidth, centerY);
     inactivePath.lineTo(size.width, centerY);
@@ -177,7 +177,7 @@ class WavySliderPainter extends CustomPainter {
     canvas.drawCircle(Offset(lastX, lastY), 8.0, thumbPaint);
     
     // Thumb Glow
-    final glowPaint = Paint()..color = color.withOpacity(0.4)..style = PaintingStyle.fill;
+    final glowPaint = Paint()..color = color.withValues(alpha: 0.4)..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(lastX, lastY), 16.0, glowPaint);
   }
 
@@ -186,3 +186,4 @@ class WavySliderPainter extends CustomPainter {
     return oldDelegate.progress != progress || oldDelegate.phase != phase || oldDelegate.color != color;
   }
 }
+

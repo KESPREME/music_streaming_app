@@ -85,13 +85,13 @@ class _MaterialYouRecentlyPlayedScreenState extends State<MaterialYouRecentlyPla
                           Icon(
                             Icons.history_rounded, 
                             size: 80, 
-                            color: colorScheme.onSurface.withOpacity(0.1)
+                            color: colorScheme.onSurface.withValues(alpha: 0.1)
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'No recently played tracks',
                             style: MaterialYouTypography.titleMedium(
-                              colorScheme.onSurface.withOpacity(0.6)
+                              colorScheme.onSurface.withValues(alpha: 0.6)
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -139,3 +139,5 @@ class _MaterialYouRecentlyPlayedScreenState extends State<MaterialYouRecentlyPla
     );
   }
 }
+
+

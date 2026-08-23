@@ -91,9 +91,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Container(
              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
              decoration: BoxDecoration(
-               color: Colors.white.withOpacity(0.05),
+               color: Colors.white.withValues(alpha: 0.05),
                borderRadius: BorderRadius.circular(20),
-               border: Border.all(color: Colors.white.withOpacity(0.1)),
+               border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
              ),
              child: Row(
                children: [
@@ -116,9 +116,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       height: 48,
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       padding: const EdgeInsets.all(4),
       child: Row(
@@ -141,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
              child: AnimatedContainer(
                duration: const Duration(milliseconds: 200),
                decoration: BoxDecoration(
-                 color: selected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+                 color: selected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
                  borderRadius: BorderRadius.circular(24),
                ),
                alignment: Alignment.center,
@@ -223,9 +223,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.04), // Glassy list
+                      color: Colors.white.withValues(alpha: 0.04), // Glassy list
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.05)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                     ),
                     child: Row(
                       children: [
@@ -250,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                const SizedBox(height: 4),
                                Text(
                                  track.artistName,
-                                 style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+                                 style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
                                  maxLines: 1, overflow: TextOverflow.ellipsis,
                                ),
                             ],
@@ -347,9 +347,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                child: Container(
                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                  decoration: BoxDecoration(
-                   color: const Color(0xFFFF1744).withOpacity(0.1),
+                   color: const Color(0xFFFF1744).withValues(alpha: 0.1),
                    borderRadius: BorderRadius.circular(12),
-                   border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.2)),
+                   border: Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.2)),
                  ),
                  child: Text(
                    "SEE ALL",
@@ -400,12 +400,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                        begin: Alignment.topLeft,
                        end: Alignment.bottomRight,
                        colors: [
-                         (genre['color'] as Color).withOpacity(0.6),
-                         (genre['color'] as Color).withOpacity(0.3),
+                         (genre['color'] as Color).withValues(alpha: 0.6),
+                         (genre['color'] as Color).withValues(alpha: 0.3),
                        ],
                      ),
                      borderRadius: BorderRadius.circular(20),
-                     border: Border.all(color: Colors.white.withOpacity(0.1)),
+                     border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                    ),
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
@@ -463,8 +463,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             padding: const EdgeInsets.all(3), 
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFFF1744).withOpacity(0.5), width: 2),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5, offset: const Offset(0, 3))],
+                              border: Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.5), width: 2),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 5, offset: const Offset(0, 3))],
                             ),
                             child: CircleAvatar(
                               radius: 40, // 80x80
@@ -496,3 +496,4 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 }
+

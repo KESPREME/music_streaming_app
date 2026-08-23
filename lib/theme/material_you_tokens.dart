@@ -11,7 +11,6 @@ class MaterialYouTokens {
   
   // Surface colors (deep black theme)
   static const Color surfaceDark = Color(0xFF000000); // Pure black
-  static const Color surfaceVariantDark = Color(0xFF0A0A0A); // Very dark grey
   static const Color surfaceContainerDark = Color(0xFF121212); // Dark grey
   static const Color surfaceContainerHighestDark = Color(0xFF1A1A1A); // Lighter dark grey
   
@@ -62,8 +61,8 @@ class MaterialYouTokens {
       // Material 3 Color Roles (Flat, Solid Colors)
       'surface': {
         'primary': colorScheme.surface,
-        'secondary': colorScheme.surfaceVariant,
-        'tertiary': colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+        'secondary': colorScheme.surfaceContainerHighest,
+        'tertiary': colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
       },
       'container': {
         'primary': colorScheme.primaryContainer,
@@ -147,7 +146,7 @@ class MaterialYouTokens {
       secondary: secondaryVibrant,
       tertiary: tertiaryVibrant,
       surface: surfaceDark, // Pure black
-      surfaceVariant: surfaceVariantDark,
+      surfaceContainerHighest: surfaceContainerHighestDark,
     );
   }
 
@@ -172,3 +171,5 @@ class MaterialYouTokens {
     );
   }
 }
+
+

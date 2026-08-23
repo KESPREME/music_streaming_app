@@ -22,12 +22,12 @@ class GlassNavBar extends StatelessWidget {
       height: 65,
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF1E1E1E).withOpacity(0.60)
-            : Colors.white.withOpacity(0.70), 
+            ? const Color(0xFF1E1E1E).withValues(alpha: 0.60)
+            : Colors.white.withValues(alpha: 0.70), 
         borderRadius: BorderRadius.circular(40),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 30,
             offset: const Offset(0, 10),
           ),
@@ -54,10 +54,10 @@ class GlassNavBar extends StatelessWidget {
                       width: 56,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.15),
+                        color: accentColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: accentColor.withOpacity(0.3),
+                          color: accentColor.withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -85,7 +85,7 @@ class GlassNavBar extends StatelessWidget {
                                 data: IconThemeData(
                                   color: isSelected
                                       ? accentColor
-                                      : Colors.white.withOpacity(0.5),
+                                      : Colors.white.withValues(alpha: 0.5),
                                   size: 26,
                                 ),
                                 child: isSelected 
@@ -107,3 +107,4 @@ class GlassNavBar extends StatelessWidget {
     );
   }
 }
+

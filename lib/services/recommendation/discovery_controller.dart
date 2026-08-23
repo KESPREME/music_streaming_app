@@ -218,3 +218,4 @@ class _ScoredDiscovery {
   
   _ScoredDiscovery(this.track, this.score);
 }
+

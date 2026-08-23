@@ -63,11 +63,11 @@ class _GlassDownloadSelectionSheetState extends State<GlassDownloadSelectionShee
     return Container(
       height: MediaQuery.of(context).size.height * 0.75, // Tall sheet
       decoration: BoxDecoration(
-        color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withOpacity(0.85),
+        color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.85),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, -5),
           ),
@@ -234,3 +234,4 @@ class _GlassDownloadSelectionSheetState extends State<GlassDownloadSelectionShee
     );
   }
 }
+

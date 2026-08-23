@@ -45,3 +45,4 @@ class ThemedPlaylistDetailScreen extends StatelessWidget {
           );
   }
 }
+

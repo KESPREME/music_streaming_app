@@ -131,7 +131,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
       child: Material(
         elevation: 2,
         surfaceTintColor: Colors.transparent, // FIX: No white tint
-        color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+        color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(28), // Highly rounded
         child: TextField(
           controller: _searchController,
@@ -139,7 +139,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
           decoration: InputDecoration(
             hintText: 'Search songs, artists, albums...',
             hintStyle: MaterialYouTypography.bodyLarge(
-              colorScheme.onSurfaceVariant.withOpacity(0.6),
+              colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
             ),
             prefixIcon: Icon(
               Icons.search_rounded,
@@ -288,7 +288,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
               Icon(
                 Icons.search_rounded,
                 size: 80,
-                color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
               ),
               const SizedBox(height: 24),
               Text(
@@ -336,7 +336,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
                 Icon(
                   Icons.search_off_rounded,
                   size: 60,
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -442,3 +442,5 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
     );
   }
 }
+
+

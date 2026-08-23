@@ -61,12 +61,12 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
         decoration: BoxDecoration(
           color: themeProvider.isGlassmorphism
-              ? Colors.white.withOpacity(0.05)
-              : colorScheme.surfaceContainerHighest ?? colorScheme.surfaceVariant,
+              ? Colors.white.withValues(alpha: 0.05)
+              : colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: themeProvider.isGlassmorphism
-                ? Colors.white.withOpacity(0.1)
+                ? Colors.white.withValues(alpha: 0.1)
                 : colorScheme.outlineVariant,
           ),
         ),
@@ -75,9 +75,9 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (item['color'] as Color).withOpacity(0.15),
+                color: (item['color'] as Color).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: (item['color'] as Color).withOpacity(0.3)),
+                border: Border.all(color: (item['color'] as Color).withValues(alpha: 0.3)),
               ),
               child: Icon(item['icon'] as IconData, color: item['color'], size: 26),
             ),
@@ -112,8 +112,8 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: themeProvider.isGlassmorphism
-                    ? Colors.white.withOpacity(0.05)
-                    : colorScheme.surfaceVariant,
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : colorScheme.surfaceContainerHighest,
               ),
               child: Icon(
                 Icons.arrow_forward_rounded,
@@ -182,7 +182,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                                
                                // Liquid Overlay (Darkens/Glassifies on collapse)
                                Container(
-                                 color: Colors.black.withOpacity(overlayOpacity), // Only darken, no image
+                                 color: Colors.black.withValues(alpha: overlayOpacity), // Only darken, no image
                                ),
                             ],
                           ),
@@ -232,17 +232,17 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFFF1744) : Colors.white.withOpacity(0.05),
+                            color: isSelected ? const Color(0xFFFF1744) : Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: isSelected ? const Color(0xFFFF1744) : Colors.white.withOpacity(0.1)
+                              color: isSelected ? const Color(0xFFFF1744) : Colors.white.withValues(alpha: 0.1)
                             ),
                           ),
                           alignment: Alignment.center,
                           child: Text(
                             label,
                             style: GoogleFonts.splineSans(
-                              color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+                              color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7),
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                               fontSize: 13,
                             ),
@@ -383,9 +383,9 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
       onLongPress: () => _showPlaylistOptions(context, playlist),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -532,9 +532,9 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                               },
                               child: Container(
                                  decoration: BoxDecoration(
-                                     color: Colors.white.withOpacity(0.05),
+                                     color: Colors.white.withValues(alpha: 0.05),
                                      borderRadius: BorderRadius.circular(20),
-                                     border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                     border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                                  ),
                                  child: Column(
                                      mainAxisAlignment: MainAxisAlignment.center,
@@ -584,10 +584,10 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             labelText: 'Playlist Name',
-            labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+            labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             hintText: 'My Awesome Mix',
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: const Color(0xFFFF1744).withOpacity(0.5))),
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: const Color(0xFFFF1744).withValues(alpha: 0.5))),
             focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFFF1744))),
           ),
           textCapitalization: TextCapitalization.words,
@@ -601,7 +601,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.6))),
+            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF1744)),
@@ -745,3 +745,5 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     );
   }
 }
+
+

@@ -25,7 +25,7 @@ class PipedService {
     // Iterate through instances until one succeeds
     for (final instance in _instances) {
       try {
-        if (kDebugMode) print('PipedService: Trying instance $instance for $videoId');
+        if (kDebugMode) debugPrint('PipedService: Trying instance $instance for $videoId');
         
         final apiUrl = '$instance/streams/$videoId';
         final response = await _httpClient.get(
@@ -46,16 +46,18 @@ class PipedService {
              
              final playUrl = bestStream['url'] as String?;
              if (playUrl != null && playUrl.isNotEmpty) {
-                if (kDebugMode) print('PipedService: Success via $instance');
+                if (kDebugMode) debugPrint('PipedService: Success via $instance');
                 return playUrl;
              }
           }
         } 
       } catch (e) {
-        if (kDebugMode) print('PipedService: Instance $instance failed: $e');
+        if (kDebugMode) debugPrint('PipedService: Instance $instance failed: $e');
       }
     }
     
     throw Exception('All Piped instances failed');
   }
 }
+
+

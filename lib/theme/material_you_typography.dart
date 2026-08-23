@@ -170,3 +170,5 @@ class MaterialYouTypography {
   static TextStyle cardSubtitle(Color color) => bodyMedium(color);
   static TextStyle buttonLabel(Color color) => labelLarge(color);
 }
+
+

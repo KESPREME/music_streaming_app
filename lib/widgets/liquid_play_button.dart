@@ -27,17 +27,17 @@ class LiquidPlayButton extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.2),
-                Colors.white.withOpacity(0.05),
+                Colors.white.withValues(alpha: 0.2),
+                Colors.white.withValues(alpha: 0.05),
               ],
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white.withValues(alpha: 0.25),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1), // Much softer shadow
+                color: Colors.black.withValues(alpha: 0.1), // Much softer shadow
                 blurRadius: 10,
                 spreadRadius: 0, 
                 offset: const Offset(0, 4),
@@ -51,11 +51,11 @@ class LiquidPlayButton extends StatelessWidget {
             child: InkWell(
               onTap: onPressed,
               borderRadius: BorderRadius.circular(30),
-              splashColor: Colors.white.withOpacity(0.3),
-              highlightColor: Colors.white.withOpacity(0.1),
+              splashColor: Colors.white.withValues(alpha: 0.3),
+              highlightColor: Colors.white.withValues(alpha: 0.1),
               child: Icon(
                 isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                color: Colors.white.withOpacity(0.9), // Slightly translucent icon
+                color: Colors.white.withValues(alpha: 0.9), // Slightly translucent icon
                 size: 32,
               ),
             ),
@@ -65,3 +65,4 @@ class LiquidPlayButton extends StatelessWidget {
     );
   }
 }
+

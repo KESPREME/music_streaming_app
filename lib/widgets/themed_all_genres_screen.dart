@@ -15,3 +15,4 @@ class ThemedAllGenresScreen extends StatelessWidget {
         : const AllGenresScreen();
   }
 }
+

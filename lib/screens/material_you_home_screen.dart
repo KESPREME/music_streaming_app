@@ -112,7 +112,7 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
       height: 48,
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceVariant,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(24),
       ),
       padding: const EdgeInsets.all(4),
@@ -391,7 +391,7 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
                 ),
               );
             },
-            backgroundColor: (genre['color'] as Color).withOpacity(0.2),
+            backgroundColor: (genre['color'] as Color).withValues(alpha: 0.2),
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,7 +461,7 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
                     SnackBar(
                       content: Text("Loading $artistName..."),
                       duration: const Duration(seconds: 1),
-                      backgroundColor: colorScheme.surfaceVariant,
+                      backgroundColor: colorScheme.surfaceContainerHighest,
                     ),
                   );
                 },
@@ -473,3 +473,5 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
     );
   }
 }
+
+

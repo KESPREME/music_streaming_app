@@ -141,7 +141,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       leading: Container(
         margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
         child: IconButton(
@@ -154,7 +154,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             shape: BoxShape.circle,
           ),
           child: IconButton(
@@ -191,7 +191,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontSize: 16 + (6 * percentage), // 16 -> 22
-                    shadows: [Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 20)],
+                    shadows: [Shadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 20)],
                   ),
                    maxLines: 1,
                    overflow: TextOverflow.ellipsis,
@@ -220,9 +220,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.black.withOpacity(0.3),
+                              Colors.black.withValues(alpha: 0.3),
                               Colors.transparent,
-                              Colors.black.withOpacity(0.6),
+                              Colors.black.withValues(alpha: 0.6),
                               Colors.black,
                             ],
                             stops: const [0.0, 0.4, 0.8, 1.0],
@@ -233,13 +233,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     
                     // Liquid Overlay
                     Container(
-                      color: Colors.black.withOpacity(overlayOpacity),
+                      color: Colors.black.withValues(alpha: overlayOpacity),
                     ),
                     
                     if (percentage < 0.05)
                       Align(
                         alignment: Alignment.bottomCenter,
-                        child: Container(height: 1, color: Colors.white.withOpacity(0.1)),
+                        child: Container(height: 1, color: Colors.white.withValues(alpha: 0.1)),
                       ),
                   ],
                 ),
@@ -274,9 +274,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   ),
                   child: TrackTile(
                     track: track,
@@ -296,3 +296,4 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 }
+

@@ -205,9 +205,9 @@ class RecommendationService {
       _buildModelsFromSignals();
       
       _isInitialized = true;
-      if (kDebugMode) print('RecommendationAgent: Initialized with ${_signalCache.length} signals');
+      if (kDebugMode) debugPrint('RecommendationAgent: Initialized with ${_signalCache.length} signals');
     } catch (e) {
-      if (kDebugMode) print('RecommendationAgent: Init error: $e');
+      if (kDebugMode) debugPrint('RecommendationAgent: Init error: $e');
     }
   }
   
@@ -241,7 +241,7 @@ class RecommendationService {
         await db.execute('DROP TABLE IF EXISTS $_signalsTable');
         await _createDb(db, newVersion);
       } catch (e) {
-        if (kDebugMode) print('RecommendationAgent: Migration error: $e');
+        if (kDebugMode) debugPrint('RecommendationAgent: Migration error: $e');
       }
     }
   }
@@ -564,7 +564,7 @@ class RecommendationService {
       // Also save profile periodically
       await _saveProfile();
     } catch (e) {
-      if (kDebugMode) print('RecommendationAgent: Batch save error: $e');
+      if (kDebugMode) debugPrint('RecommendationAgent: Batch save error: $e');
     }
   }
   
@@ -580,7 +580,7 @@ class RecommendationService {
         _signalCache[signal.trackId] = signal;
       }
     } catch (e) {
-      if (kDebugMode) print('RecommendationAgent: Load error: $e');
+      if (kDebugMode) debugPrint('RecommendationAgent: Load error: $e');
     }
   }
   
@@ -603,7 +603,7 @@ class RecommendationService {
         _explorationEpsilon = (map['explorationEpsilon'] as num?)?.toDouble() ?? 0.15;
       }
     } catch (e) {
-      if (kDebugMode) print('RecommendationAgent: Profile load error: $e');
+      if (kDebugMode) debugPrint('RecommendationAgent: Profile load error: $e');
     }
   }
   
@@ -619,7 +619,7 @@ class RecommendationService {
       
       await prefs.setString(_profileKey, jsonEncode(map));
     } catch (e) {
-      if (kDebugMode) print('RecommendationAgent: Profile save error: $e');
+      if (kDebugMode) debugPrint('RecommendationAgent: Profile save error: $e');
     }
   }
   
@@ -651,3 +651,5 @@ class _ScoredTrack {
   
   _ScoredTrack(this.track, this.score);
 }
+
+

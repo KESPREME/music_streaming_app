@@ -15,3 +15,4 @@ class ThemedUserPlaylistScreen extends StatelessWidget {
         : const UserPlaylistScreen();
   }
 }
+

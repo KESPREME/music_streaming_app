@@ -74,3 +74,4 @@ void showMaterialYouSnackBar(BuildContext context, String message, {bool isError
     buildMaterialYouSnackBar(message, isError: isError, duration: duration),
   );
 }
+

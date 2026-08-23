@@ -74,7 +74,7 @@ class SearchTabContent extends StatelessWidget {
           return Center(
             child: Text(
               'Search for tracks, artists, or albums.', // Updated to match screenshot
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
             ),
           );
         }
@@ -100,3 +100,4 @@ class SearchTabContent extends StatelessWidget {
     );
   }
 }
+

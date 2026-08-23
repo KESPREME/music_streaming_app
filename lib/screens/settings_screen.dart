@@ -51,7 +51,7 @@ class SettingsScreen extends StatelessWidget {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withValues(alpha: 0.5),
                       child: FlexibleSpaceBar(
                         titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                         title: Text(
@@ -84,7 +84,7 @@ class SettingsScreen extends StatelessWidget {
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                              color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(Icons.palette_rounded, color: isDark ? Colors.white : Colors.black, size: 20),
@@ -129,7 +129,7 @@ class SettingsScreen extends StatelessWidget {
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                              color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(Icons.color_lens_rounded, color: isDark ? Colors.white : Colors.black, size: 20),
@@ -339,10 +339,10 @@ class SettingsScreen extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
          child: Container(
            decoration: BoxDecoration(
-             color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+             color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
              borderRadius: BorderRadius.circular(24),
              border: Border.all(
-               color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+               color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
              ),
            ),
            child: Column(
@@ -357,7 +357,7 @@ class SettingsScreen extends StatelessWidget {
     return Divider(
       height: 1, 
       thickness: 1, 
-      color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+      color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
       indent: 56, // Align with text start
     );
   }
@@ -375,7 +375,7 @@ class SettingsScreen extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: isDark ? Colors.white : Colors.black, size: 20),
@@ -395,7 +395,7 @@ class SettingsScreen extends StatelessWidget {
           fontSize: 13
         )
       ) : null,
-      trailing: Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white30 : Colors.black.withOpacity(0.3)),
+      trailing: Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white30 : Colors.black.withValues(alpha: 0.3)),
     );
   }
 
@@ -414,7 +414,7 @@ class SettingsScreen extends StatelessWidget {
       secondary: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: isDark ? Colors.white : Colors.black, size: 20),
@@ -435,7 +435,7 @@ class SettingsScreen extends StatelessWidget {
         )
       ),
       activeColor: const Color(0xFFEA80FC), // Purple accent
-      activeTrackColor: const Color(0xFFEA80FC).withOpacity(0.3),
+      activeTrackColor: const Color(0xFFEA80FC).withValues(alpha: 0.3),
       inactiveThumbColor: isDark ? Colors.grey : Colors.white,
       inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
     );
@@ -452,9 +452,9 @@ class SettingsScreen extends StatelessWidget {
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08)),
+            border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08)),
           ),
           child: Stack(
             children: [
@@ -468,12 +468,12 @@ class SettingsScreen extends StatelessWidget {
                   child: Container(
                     margin: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.2),
+                      color: accentColor.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(26),
-                      border: Border.all(color: accentColor.withOpacity(0.5)),
+                      border: Border.all(color: accentColor.withValues(alpha: 0.5)),
                       boxShadow: [
                          BoxShadow(
-                           color: accentColor.withOpacity(0.15),
+                           color: accentColor.withValues(alpha: 0.15),
                            blurRadius: 8,
                            spreadRadius: 0,
                          )
@@ -575,7 +575,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
              CircleAvatar(
                radius: 24,
-               backgroundColor: isLoggedIn ? Colors.redAccent.withOpacity(0.2) : (isDark ? Colors.white10 : Colors.black12),
+               backgroundColor: isLoggedIn ? Colors.redAccent.withValues(alpha: 0.2) : (isDark ? Colors.white10 : Colors.black12),
                child: Icon(
                  isLoggedIn ? Icons.g_mobiledata_rounded : Icons.person_outline_rounded,
                  color: isLoggedIn ? Colors.redAccent : (isDark ? Colors.white : Colors.black),
@@ -616,7 +616,7 @@ class SettingsScreen extends StatelessWidget {
                  },
                )
              else 
-               Icon(Icons.arrow_forward_ios_rounded, color: isDark ? Colors.white30 : Colors.black.withOpacity(0.3), size: 16),
+               Icon(Icons.arrow_forward_ios_rounded, color: isDark ? Colors.white30 : Colors.black.withValues(alpha: 0.3), size: 16),
           ],
         ),
       ),
@@ -627,10 +627,10 @@ class SettingsScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
         ),
       ),
       child: child,
@@ -700,3 +700,4 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 }
+

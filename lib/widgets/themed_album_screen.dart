@@ -28,3 +28,4 @@ class ThemedAlbumScreen extends StatelessWidget {
           );
   }
 }
+

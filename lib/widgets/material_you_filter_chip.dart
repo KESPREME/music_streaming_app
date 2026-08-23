@@ -23,14 +23,14 @@ class MaterialYouFilterChip extends StatelessWidget {
     
     final backgroundColor = selected
         ? colorScheme.secondaryContainer
-        : colorScheme.surfaceVariant;
+        : colorScheme.surfaceContainerHighest;
     
     final foregroundColor = selected
         ? colorScheme.onSecondaryContainer
         : colorScheme.onSurfaceVariant;
     
     final borderColor = selected
-        ? colorScheme.secondary.withOpacity(0.3)
+        ? colorScheme.secondary.withValues(alpha: 0.3)
         : colorScheme.outline;
 
     return Material(
@@ -47,7 +47,7 @@ class MaterialYouFilterChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(32),
             border: selected 
                 ? Border.all(color: Colors.transparent, width: 0) // No border when selected (filled)
-                : Border.all(color: colorScheme.outline.withOpacity(0.5), width: 1), // Thin border unselected
+                : Border.all(color: colorScheme.outline.withValues(alpha: 0.5), width: 1), // Thin border unselected
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -101,7 +101,7 @@ class MaterialYouFilterChipList extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(32),
       ),
       child: Row(
@@ -159,3 +159,5 @@ class MaterialYouFilterChipList extends StatelessWidget {
     );
   }
 }
+
+

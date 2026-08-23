@@ -64,7 +64,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withValues(alpha: 0.5),
                       child: FlexibleSpaceBar(
                         titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                         title: Text(
@@ -106,9 +106,9 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
+                                color: Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                               ),
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String>(
@@ -136,9 +136,9 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
                                 filled: true,
-                                fillColor: Colors.white.withOpacity(0.08),
+                                fillColor: Colors.white.withValues(alpha: 0.08),
                                 hintText: 'Paste playlist URL here',
-                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
@@ -178,7 +178,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                       Text(
                         'Quick Connect',
                         style: GoogleFonts.splineSans(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -213,9 +213,9 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: child,
         ),
@@ -230,9 +230,9 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
+          color: color.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -241,7 +241,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
             Text(
               service,
               style: GoogleFonts.splineSans(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 12, 
                 fontWeight: FontWeight.w600
               ),
@@ -359,3 +359,4 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
      }
   }
 }
+
