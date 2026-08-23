@@ -2808,7 +2808,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
            final aP = await _buildArtDownloadPath(trackId);
            if (track.albumArtUrl.isNotEmpty) {
              _networkService.downloadFile(track.albumArtUrl, aP).then((_) {
-                _downloadedTracksMetadata[trackId]!['artPath'] = aP;
+                final meta = _downloadedTracksMetadata[trackId];
+                if (meta == null) return; // entry removed while downloading
+                meta['artPath'] = aP;
                 saveDownloadedTracksMetadata();
                 if (kDebugMode) print('MusicProvider: Proactively saved artwork for $trackId');
              }).catchError((_) {});

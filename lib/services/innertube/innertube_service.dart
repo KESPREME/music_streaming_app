@@ -636,11 +636,10 @@ class InnerTubeService {
           try {
              if (kDebugMode) print('InnerTubeService: Trying Cobalt Fallback...');
              final cobaltUrl = await CobaltService().getAudioStreamUrl(videoId);
-             if (returnSource) {
-               return AudioSource.uri(Uri.parse(cobaltUrl), tag: videoId);
-             } else {
-               return cobaltUrl;
-             }
+             // Always return the raw URL string: callers attach track metadata
+             // and build a properly-tagged source themselves.
+             _cacheUrl(videoId, cobaltUrl);
+             return cobaltUrl;
           } catch (cobaltErr) {
              if (kDebugMode) print('InnerTubeService: Cobalt failed: $cobaltErr');
           }

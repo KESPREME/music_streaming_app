@@ -496,7 +496,8 @@ class AudioService {
           final pState = _audioPlayer.playerState.processingState;
           if (pState == ProcessingState.idle || pState == ProcessingState.loading) return;
           
-          final source = _audioPlayer.audioSource as ConcatenatingAudioSource;
+          final source = _audioPlayer.audioSource;
+          if (source is! ConcatenatingAudioSource) return;
           // Strategy: identify if we are on a "dummy"
           if (index >= 0 && index < source.children.length) {
              final child = source.children[index];
