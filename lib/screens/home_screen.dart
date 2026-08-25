@@ -134,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
   
   Widget expandedTabItem(int index, String title) {
+    final accent = Theme.of(context).colorScheme.primary;
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, _) {
@@ -143,9 +144,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
              onTap: () => _tabController.animateTo(index),
              child: AnimatedContainer(
                duration: const Duration(milliseconds: 200),
+               curve: Curves.easeOutCubic,
                decoration: BoxDecoration(
-                 color: selected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+                 color: selected
+                     ? accent.withValues(alpha: 0.14)
+                     : Colors.transparent,
                  borderRadius: BorderRadius.circular(24),
+                 border: Border.all(
+                   color: selected
+                       ? accent.withValues(alpha: 0.30)
+                       : Colors.transparent,
+                 ),
                ),
                alignment: Alignment.center,
                child: Text(
@@ -153,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                  style: GoogleFonts.splineSans(
                    fontSize: 15,
                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                   color: selected ? Colors.white : Colors.grey[500],
+                   color: selected ? accent : Colors.grey[500],
                  ),
                ),
              ),
