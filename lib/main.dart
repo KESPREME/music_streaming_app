@@ -16,6 +16,8 @@ import 'widgets/themed_social_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';
+import 'widgets/themed_settings_screen.dart';
+import 'widgets/glass_surface.dart';
 import 'widgets/themed_library_screen.dart';
 import 'widgets/global_music_overlay.dart'; // Import Global Overlay
 
@@ -137,7 +139,6 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _screens = [
     const ThemedHomeScreen(),
-    const ThemedSearchScreen(),
     const ThemedSocialScreen(),
     const ThemedLibraryScreen(),
   ];
@@ -202,15 +203,44 @@ class _MainScreenState extends State<MainScreen> {
           physics: const BouncingScrollPhysics(), // Smooth bounce effect
           children: _screens,
         ),
-        bottomNavigationBar: ThemedNavBar(
-          currentIndex: _currentIndex,
-          onTap: _onItemTapped,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: 'Search'),
-            BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Social'),
-            BottomNavigationBarItem(icon: Icon(Icons.library_music_rounded), label: 'Library'),
-          ],
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: Row(
+              children: [
+                _NavCircle(
+                  icon: Icons.search_rounded,
+                  label: 'Search',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ThemedSearchScreen()),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ThemedNavBar(
+                    currentIndex: _currentIndex,
+                    onTap: _onItemTapped,
+                    items: const [
+                      BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
+                      BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Social'),
+                      BottomNavigationBarItem(icon: Icon(Icons.library_music_rounded), label: 'Library'),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _NavCircle(
+                  icon: Icons.settings_outlined,
+                  label: 'Settings',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -218,3 +248,33 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 
+
+/// Floating glass circle for nav destinations outside the pill (Muzo-style).
+class _NavCircle extends StatelessWidget {
+  const _NavCircle({required this.icon, required this.label, required this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassSurface(
+      tier: GlassTier.chrome,
+      borderRadius: 30,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 54,
+            height: 54,
+            child: Icon(icon, color: Colors.white.withValues(alpha: 0.9), size: 24,
+                semanticLabel: label),
+          ),
+        ),
+      ),
+    );
+  }
+}
