@@ -99,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
              ),
              child: Row(
                children: [
-                 const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFFF1744)), // Red Accent
+                 Icon(Icons.bolt_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
                  const SizedBox(width: 4),
                  GestureDetector(
                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedSettingsScreen())),
@@ -167,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final musicProvider = Provider.of<MusicProvider>(context);
     
     return RefreshIndicator(
-      color: const Color(0xFFFF1744),
+      color: Theme.of(context).colorScheme.primary,
       backgroundColor: const Color(0xFF1E1E1E),
       onRefresh: () async {
         await musicProvider.fetchTracks(forceRefresh: true);
@@ -313,7 +313,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ],
                   ),
                 ),
-                const Icon(Icons.play_circle_fill, color: Color(0xFFFF1744), size: 30),
+                const Icon(Icons.play_circle_fill, size: 30),
               ],
             ),
           ),
@@ -326,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final musicProvider = Provider.of<MusicProvider>(context);
     
     return RefreshIndicator(
-      color: const Color(0xFFFF1744),
+      color: Theme.of(context).colorScheme.primary,
       backgroundColor: const Color(0xFF1E1E1E),
       onRefresh: () async {
         await musicProvider.fetchTrendingTracks(forceRefresh: true);
@@ -400,16 +400,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                child: Container(
                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                  decoration: BoxDecoration(
-                   color: const Color(0xFFFF1744).withValues(alpha: 0.1),
+                   color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                    borderRadius: BorderRadius.circular(12),
-                   border: Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.2)),
+                   border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
                  ),
                  child: Text(
                    "SEE ALL",
                    style: GoogleFonts.splineSans(
                      fontSize: 10,
                      fontWeight: FontWeight.bold,
-                     color: const Color(0xFFFF1744), 
+                     color: Theme.of(context).colorScheme.primary, 
                      letterSpacing: 0.5,
                    ),
                  ),
@@ -486,7 +486,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       child: FutureBuilder(
          future: Provider.of<MusicProvider>(context, listen: false).fetchTrendingTracks(), 
          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF1744)));
+            if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
             final tracks = snapshot.data as List<Track>;
             final uniqueNames = <String>{};
             final uniqueTracks = tracks.where((t) => uniqueNames.add(t.artistName)).toList();
@@ -516,7 +516,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             padding: const EdgeInsets.all(3), 
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.5), width: 2),
+                              border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5), width: 2),
                               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 5, offset: const Offset(0, 3))],
                             ),
                             child: CircleAvatar(

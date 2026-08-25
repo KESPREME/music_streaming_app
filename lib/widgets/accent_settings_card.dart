@@ -17,11 +17,12 @@ class AccentSettingsCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Accent Color',
-          style: GoogleFonts.outfit(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
+          'ACCENT COLOR',
+          style: GoogleFonts.splineSans(
+            color: Colors.white54,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
           ),
         ),
         const SizedBox(height: 12),

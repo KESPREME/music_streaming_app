@@ -99,7 +99,7 @@ class SettingsScreen extends StatelessWidget {
                             ),
                           ),
                           subtitle: Text(
-                            themeProvider.getThemeName(),
+                            '${themeProvider.getThemeName()} · ${themeProvider.getThemeDescription()}',
                             style: GoogleFonts.splineSans(
                               color: isDark ? Colors.white54 : Colors.black54,
                               fontSize: 13,
@@ -110,18 +110,7 @@ class SettingsScreen extends StatelessWidget {
                             onChanged: (value) {
                               themeProvider.toggleTheme();
                             },
-                            activeThumbColor: const Color(0xFFFF1744),
-                          ),
-                        ),
-                        _buildDivider(isDark),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Text(
-                            themeProvider.getThemeDescription(),
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              color: isDark ? Colors.white60 : Colors.black54,
-                            ),
+                            activeThumbColor: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                         _buildDivider(isDark),
@@ -155,7 +144,7 @@ class SettingsScreen extends StatelessWidget {
                             onChanged: (value) {
                               themeProvider.setDynamicColorEnabled(value);
                             },
-                            activeThumbColor: const Color(0xFFFF1744),
+                            activeThumbColor: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ],
