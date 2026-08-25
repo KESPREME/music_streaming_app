@@ -31,6 +31,7 @@ class _GlassNavBarState extends State<GlassNavBar> {
   int? _pressedIndex;
   bool _dropletMode = false;
   double _dropletX = 0;
+  double _dropletOrigin = 0;
   int _hoverIndex = 0;
 
   double _itemWidth = 0;
@@ -40,13 +41,14 @@ class _GlassNavBarState extends State<GlassNavBar> {
     setState(() {
       _dropletMode = true;
       _hoverIndex = index;
-      _dropletX = index * _itemWidth + d.localPosition.dx;
+      _dropletOrigin = index * _itemWidth + d.localPosition.dx;
+      _dropletX = _dropletOrigin;
     });
   }
 
   void _moveDroplet(LongPressMoveUpdateDetails d) {
     final max = _itemWidth * widget.items.length;
-    final x = (_dropletX + d.delta.dx).clamp(0.0, max);
+    final x = (_dropletOrigin + d.offsetFromOrigin.dx).clamp(0.0, max);
     final hover = (x / _itemWidth).floor().clamp(0, widget.items.length - 1);
     if (hover != _hoverIndex) HapticFeedback.selectionClick();
     setState(() {
