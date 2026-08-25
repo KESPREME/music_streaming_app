@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import '../providers/music_provider.dart';
 import '../services/firestore_service.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../widgets/glass_surface.dart';
 
 class SocialScreen extends StatefulWidget {
   const SocialScreen({super.key});
@@ -61,34 +63,117 @@ class _SocialScreenState extends State<SocialScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final loggedIn = FirebaseAuth.instance.currentUser != null;
 
     return Scaffold(
-      appBar: AppBar(title: Text('Social', style: theme.textTheme.headlineSmall)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: const [
+              Color(0xFF141414),
+              Color(0xFF1E1E1E),
+              Color(0xFF000000),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
             children: [
-              Icon(
-                Icons.people_outline_rounded,
-                size: 80,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-              ),
-              const SizedBox(height: 16),
               Text(
-                _errorMessage ?? 'No friends yet',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                'Social',
+                style: GoogleFonts.splineSans(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Nearby discovery is not available in this build.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              const SizedBox(height: 28),
+              _GlassPanel(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    Icon(
+                      Icons.people_outline_rounded,
+                      size: 72,
+                      color: accent.withValues(alpha: 0.7),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      loggedIn
+                          ? 'Your circle is empty'
+                          : 'Share what you play',
+                      style: GoogleFonts.splineSans(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      loggedIn
+                          ? 'Add friends to see their live listening, react to tracks and build shared queues.'
+                          : 'Sign in to broadcast your listening live to friends and react to theirs.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.outfit(
+                        color: Colors.white54,
+                        fontSize: 13.5,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _FeatureChip(
+                            icon: Icons.graphic_eq_rounded, label: 'Live'),
+                        const SizedBox(width: 10),
+                        _FeatureChip(
+                            icon: Icons.favorite_rounded, label: 'React'),
+                        const SizedBox(width: 10),
+                        _FeatureChip(
+                            icon: Icons.queue_music_rounded,
+                            label: 'Co-listen'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _GlassPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.lock_outline_rounded,
+                            size: 16, color: accent),
+                        const SizedBox(width: 8),
+                        Text(
+                          'COMING SOON',
+                          style: GoogleFonts.splineSans(
+                            color: Colors.white54,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Friend requests are already wired to the backend — the friend picker and live feed land in the next drop.',
+                      style: GoogleFonts.outfit(
+                        color: Colors.white38,
+                        fontSize: 12.5,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -119,5 +204,48 @@ class _SocialScreenState extends State<SocialScreen> {
         backgroundColor: Theme.of(context).colorScheme.error,
       ));
     }
+  }
+}
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassSurface(
+      tier: GlassTier.card,
+      borderRadius: 24,
+      padding: const EdgeInsets.all(22),
+      child: child,
+    );
+  }
+}
+
+class _FeatureChip extends StatelessWidget {
+  const _FeatureChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: accent),
+          const SizedBox(width: 6),
+          Text(label, style: GoogleFonts.outfit(color: Colors.white70, fontSize: 12.5)),
+        ],
+      ),
+    );
   }
 }
