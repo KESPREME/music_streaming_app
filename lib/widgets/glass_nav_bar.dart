@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'glass_surface.dart';
 
@@ -6,6 +7,10 @@ import 'glass_surface.dart';
 ///
 /// Identity: chrome-tier shader glass, accent glow on the active tab with a
 /// spring squish on press. Accent always comes from the live theme.
+///
+/// Signature interaction: long-press any tab and the glow pill "melts" into a
+/// droplet that follows your finger across tabs; release to merge it into the
+/// hovered tab (the glow pill springs to the new index — the merge).
 class GlassNavBar extends StatefulWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -24,6 +29,40 @@ class GlassNavBar extends StatefulWidget {
 
 class _GlassNavBarState extends State<GlassNavBar> {
   int? _pressedIndex;
+  bool _dropletMode = false;
+  double _dropletX = 0;
+  int _hoverIndex = 0;
+
+  double _itemWidth = 0;
+
+  void _startDroplet(int index, LongPressStartDetails d) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _dropletMode = true;
+      _hoverIndex = index;
+      _dropletX = index * _itemWidth + d.localPosition.dx;
+    });
+  }
+
+  void _moveDroplet(LongPressMoveUpdateDetails d) {
+    final max = _itemWidth * widget.items.length;
+    final x = (_dropletX + d.delta.dx).clamp(0.0, max);
+    final hover = (x / _itemWidth).floor().clamp(0, widget.items.length - 1);
+    if (hover != _hoverIndex) HapticFeedback.selectionClick();
+    setState(() {
+      _dropletX = x;
+      _hoverIndex = hover;
+    });
+  }
+
+  void _endDroplet(LongPressEndDetails d) {
+    final target = _hoverIndex;
+    HapticFeedback.lightImpact();
+    setState(() => _dropletMode = false);
+    if (target != widget.currentIndex) {
+      widget.onTap(target);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,42 +78,73 @@ class _GlassNavBarState extends State<GlassNavBar> {
           height: 66,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final itemWidth = constraints.maxWidth / itemCount;
+              _itemWidth = constraints.maxWidth / itemCount;
               return Stack(
                 children: [
-                  // Animated accent glow pill
+                  // Animated accent glow pill (hidden while the droplet is out)
                   AnimatedPositioned(
                     duration: const Duration(milliseconds: 280),
                     curve: Curves.easeOutBack,
-                    left: widget.currentIndex * itemWidth +
-                        (itemWidth - 58) / 2,
+                    left: widget.currentIndex * _itemWidth +
+                        (_itemWidth - 58) / 2,
                     top: (66 - 46) / 2,
-                    child: Container(
-                      width: 58,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(23),
-                        border: Border.all(
-                          color: accent.withValues(alpha: 0.35),
-                          width: 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(alpha: 0.25),
-                            blurRadius: 16,
-                            spreadRadius: 1,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 120),
+                      opacity: _dropletMode ? 0.0 : 1.0,
+                      child: Container(
+                        width: 58,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(23),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.35),
+                            width: 1,
                           ),
-                        ],
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.25),
+                              blurRadius: 16,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
+                  // Droplet (long-press melt)
+                  if (_dropletMode)
+                    Positioned(
+                      left: (_dropletX - 32).clamp(0.0,
+                          _itemWidth * itemCount - 64),
+                      top: (66 - 52) / 2,
+                      child: Container(
+                        width: 64,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.30),
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.55),
+                            width: 1.2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.45),
+                              blurRadius: 24,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   Row(
                     children: widget.items.asMap().entries.map((entry) {
                       final index = entry.key;
                       final item = entry.value;
                       final isSelected = index == widget.currentIndex;
                       final isPressed = _pressedIndex == index;
+                      final isHovered = _dropletMode && _hoverIndex == index;
 
                       return Expanded(
                         child: GestureDetector(
@@ -85,12 +155,17 @@ class _GlassNavBarState extends State<GlassNavBar> {
                             setState(() => _pressedIndex = null);
                             widget.onTap(index);
                           },
+                          onLongPressStart: (d) => _startDroplet(index, d),
+                          onLongPressMoveUpdate: _moveDroplet,
+                          onLongPressEnd: _endDroplet,
                           child: AnimatedScale(
-                            scale: isPressed
-                                ? 0.88
-                                : isSelected
-                                    ? 1.08
-                                    : 1.0,
+                            scale: isHovered
+                                ? 1.18
+                                : isPressed
+                                    ? 0.88
+                                    : isSelected
+                                        ? 1.08
+                                        : 1.0,
                             duration: Duration(
                                 milliseconds: isPressed ? 90 : 220),
                             curve: isPressed
@@ -101,12 +176,12 @@ class _GlassNavBarState extends State<GlassNavBar> {
                               children: [
                                 IconTheme(
                                   data: IconThemeData(
-                                    color: isSelected
+                                    color: isSelected || isHovered
                                         ? accent
                                         : Colors.white.withValues(alpha: 0.55),
                                     size: 24,
                                   ),
-                                  child: isSelected
+                                  child: isSelected || isHovered
                                       ? item.activeIcon
                                       : item.icon,
                                 ),
@@ -118,7 +193,7 @@ class _GlassNavBarState extends State<GlassNavBar> {
                                     fontWeight: isSelected
                                         ? FontWeight.w700
                                         : FontWeight.w500,
-                                    color: isSelected
+                                    color: isSelected || isHovered
                                         ? accent
                                         : Colors.white.withValues(alpha: 0.55),
                                     letterSpacing: -0.2,
