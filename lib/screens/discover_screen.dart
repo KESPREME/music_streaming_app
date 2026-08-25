@@ -7,8 +7,7 @@ import '../models/discover_models.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
-import '../widgets/hero_track_card.dart';
-import '../widgets/themed_options_sheet.dart';
+import '../widgets/swipe_deck.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 
 /// Curated-content tab: charts heroes, new releases and moods & genres.
@@ -136,35 +135,37 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Widget _buildChartsSliver(BuildContext context) {
     return Consumer<MusicProvider>(
       builder: (context, provider, _) {
-        final charts = provider.trendingTracks.take(5).toList();
-        if (charts.isEmpty) {
-          return const _SectionSkeleton(height: 224);
+        final pool = <Track>{
+          for (final t in provider.trendingTracks.take(10)) t,
+          if (_newReleases != null)
+            for (final t in _newReleases!.take(10)) t,
+        }.toList();
+        if (pool.isEmpty) {
+          return const _SectionSkeleton(height: 480);
         }
         return SliverToBoxAdapter(
-          child: SizedBox(
-            height: 224,
-            child: PageView.builder(
-              padEnds: false,
-              controller: PageController(viewportFraction: 0.82),
-              itemCount: charts.length,
-              physics: const BouncingScrollPhysics(),
-              itemBuilder: (context, index) {
-                final track = charts[index];
-                return Padding(
-                  padding: EdgeInsets.only(
-                    left: index == 0 ? 20 : 6,
-                    right: index == charts.length - 1 ? 20 : 6,
-                  ),
-                  child: HeroTrackCard(
-                    track: track,
-                    onTap: () =>
-                        provider.playTrack(track, playlistTracks: charts),
-                    onLongPress: () =>
-                        ThemedOptionsSheet.show(context, track: track),
-                  ),
-                );
-              },
-            ),
+          child: SwipeDeck(
+            tracks: pool,
+            onAction: (track, action) {
+              switch (action) {
+                case SwipeAction.like:
+                  provider.recommendationService.recordSwipeOutcome(
+                    artistName: track.artistName,
+                    wasAccepted: true,
+                  );
+                  provider.playTrack(track);
+                  break;
+                case SwipeAction.skip:
+                  provider.recommendationService.recordSwipeOutcome(
+                    artistName: track.artistName,
+                    wasAccepted: false,
+                  );
+                  break;
+                case SwipeAction.queue:
+                  provider.addToQueue(track);
+                  break;
+              }
+            },
           ),
         );
       },

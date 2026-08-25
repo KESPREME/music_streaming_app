@@ -267,6 +267,16 @@ class RecommendationService {
     }
   }
   
+  /// Explicit swipe feedback from the discovery deck — feeds the discovery
+  /// controller's accept/reject learning directly.
+  void recordSwipeOutcome({required String artistName, required bool wasAccepted}) {
+    if (!_isInitialized) return;
+    _discoveryController.recordDiscoveryOutcome(
+      artistName: artistName,
+      wasAccepted: wasAccepted,
+    );
+  }
+
   /// Record a track play with detailed signals
   Future<void> recordPlay(
     Track track, {
@@ -274,8 +284,7 @@ class RecommendationService {
     required int listenTimeMs,
     int? skipTimingMs, // When skipped, null if completed
   }) async {
-    if (!_isInitialized) return;
-    
+    if (!_isInitialized) return;    
     final isSkip = completionRate < 0.5;
     final isReplay = _recentlyPlayedIds.contains(track.id) && 
                      _recentlyPlayedIds.indexOf(track.id) < 3;

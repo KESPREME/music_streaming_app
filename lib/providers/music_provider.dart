@@ -231,6 +231,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   // Audio State // YouTube Music InnerTube API
   final LyricsService _lyricsService = LyricsService(); // Multi-provider lyrics service
   final RecommendationService _recommendationService = RecommendationService(); // AI recommendations
+  /// Public access for discovery surfaces (swipe deck taste signals).
+  RecommendationService get recommendationService => _recommendationService;
   MusicSource _currentMusicSource = MusicSource.youtube; // Default to YouTube (InnerTube)
   
   // Lyrics state
