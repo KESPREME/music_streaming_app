@@ -7,7 +7,7 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/material_you_options_sheet.dart';
 import '../widgets/artist_picker_sheet.dart';
-import '../widgets/material_you_wavy_progress_bar.dart';
+import '../widgets/wavy_progress_bar.dart';
 import '../widgets/themed_queue_screen.dart';
 import '../widgets/themed_lyrics_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
@@ -87,7 +87,8 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                             _buildNowPlayingInfo(context, currentTrack, musicProvider, vibrantColor, colorScheme),
                             
                             // Wavy Progress Bar
-                            MaterialYouWavyProgressBar(
+                            WavyProgressBar(
+                              style: WavyBarStyle.materialYou(context),
                               provider: musicProvider,
                               accentColor: vibrantColor,
                             ),
@@ -207,11 +208,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 child: Hero(
                   tag: 'albumArt_${track.id}',
-                  child: track.albumArtUrl.isNotEmpty
-                      ? (File(track.albumArtUrl).existsSync() 
-                          ? Image.file(File(track.albumArtUrl), fit: BoxFit.cover)
-                          : Image.network(track.albumArtUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildArtPlaceholder(colorScheme)))
-                      : _buildArtPlaceholder(colorScheme),
+                  child: _buildAlbumArtImage(track, colorScheme),
                 ),
               ),
             ),
@@ -219,6 +216,18 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Resolves album art without sync IO on the build path for remote URLs.
+  Widget _buildAlbumArtImage(Track track, ColorScheme colorScheme) {
+    final art = track.albumArtUrl;
+    if (art.isEmpty) return _buildArtPlaceholder(colorScheme);
+    // Only local paths (no scheme) justify a file lookup.
+    if (!art.contains('://')) {
+      final f = File(art);
+      if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
+    }
+    return Image.network(art, fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildArtPlaceholder(colorScheme));
   }
 
   Widget _buildNowPlayingInfo(BuildContext context, Track track, MusicProvider provider, Color accentColor, ColorScheme colorScheme) {
@@ -478,9 +487,9 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
         builder: (sheetContext) {
           final colorScheme = Theme.of(context).colorScheme;
           return Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: MaterialYouTokens.surfaceContainerDark,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: SafeArea(
               child: Column(
@@ -535,7 +544,7 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
                                   color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(
+                                child: const Icon(
                                   Icons.person_rounded,
                                   color: MaterialYouTokens.primaryVibrant,
                                   size: 20,
@@ -604,9 +613,9 @@ class MaterialYouNowPlayingScreen extends StatelessWidget {
       isScrollControlled: true,
       builder: (context) {
         return Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: MaterialYouTokens.surfaceContainerDark,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: SafeArea(
             child: SizedBox(

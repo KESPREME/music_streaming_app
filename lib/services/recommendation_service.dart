@@ -170,12 +170,8 @@ class RecommendationService {
   
   // RL-style policy parameters
   double _explorationEpsilon = 0.15; // 15% exploration
-  double _explorationDecay = 0.995; // Decay per session
   
   // Session tracking
-  DateTime _sessionStart = DateTime.now();
-  int _sessionTrackCount = 0;
-  double _sessionTotalCompletion = 0;
   
   // Batched updates for battery efficiency
   final List<TrackSignal> _pendingUpdates = [];
@@ -236,10 +232,35 @@ class RecommendationService {
   Future<void> _upgradeDb(Database db, int oldVersion, int newVersion) async {
     // Migration logic - preserve data where possible
     if (oldVersion < 2) {
-      // Create new table and migrate
+      // Back up v1 table instead of dropping it, then best-effort copy
+      // any overlapping columns into the new schema.
+      const backupTable = '${_signalsTable}_v1_backup';
+      final hasOld = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [_signalsTable],
+      );
+      if (hasOld.isNotEmpty) {
+        await db.execute('ALTER TABLE $_signalsTable RENAME TO $backupTable');
+      }
+      await _createDb(db, newVersion);
       try {
-        await db.execute('DROP TABLE IF EXISTS $_signalsTable');
-        await _createDb(db, newVersion);
+        if (hasOld.isNotEmpty) {
+          final cols = (await db.rawQuery('PRAGMA table_info($backupTable)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+          final shared = [
+            'track_id', 'artist_name', 'play_count', 'skip_count',
+            'replay_count', 'like_count', 'completion_rate',
+            'total_listen_time_ms', 'last_played', 'last_skip_timing_ms',
+          ].where(cols.contains).toList();
+          if (shared.isNotEmpty) {
+            await db.execute(
+              'INSERT OR REPLACE INTO $_signalsTable (${shared.join(',')}) '
+              'SELECT ${shared.join(',')} FROM $backupTable',
+            );
+          }
+          await db.execute('DROP TABLE IF EXISTS $backupTable');
+        }
       } catch (e) {
         if (kDebugMode) debugPrint('RecommendationAgent: Migration error: $e');
       }
@@ -312,30 +333,11 @@ class RecommendationService {
     }
     
     // Session tracking
-    _sessionTrackCount++;
-    _sessionTotalCompletion += completionRate;
     
     // Update recently played
     _updateRecentlyPlayed(track.id);
     
     // Batch save for battery efficiency
-    _pendingUpdates.add(signal);
-    _scheduleBatchSave();
-  }
-  
-  /// Record a like/heart event (low weight signal)
-  Future<void> recordLike(Track track, {bool isLiked = true}) async {
-    if (!_isInitialized) return;
-    
-    final signal = _signalCache[track.id] ?? TrackSignal(
-      trackId: track.id,
-      artistName: track.artistName,
-      lastPlayed: DateTime.now(),
-    );
-    
-    signal.likeCount = isLiked ? 1 : 0;
-    _signalCache[track.id] = signal;
-    
     _pendingUpdates.add(signal);
     _scheduleBatchSave();
   }
@@ -452,36 +454,6 @@ class RecommendationService {
     return sequenced.where((t) => 
       !_recentlyPlayedIds.take(5).contains(t.id) && t.id != currentTrack.id
     ).take(limit).toList();
-  }
-  
-  /// Record a transition for sequence learning
-  void recordTransition(Track from, Track to) {
-    _sequencePlanner.recordTransition(from, to);
-  }
-  
-  /// Record a search query for intent modeling
-  void recordSearch(String query) {
-    _shortTermModel.recordSearch(query);
-  }
-  
-  /// Start a new session
-  void startNewSession() {
-    _shortTermModel.startNewSession();
-    _sequencePlanner.resetSession();
-    _discoveryController.resetSession();
-    
-    // Update exploration epsilon with decay
-    _explorationEpsilon = (_explorationEpsilon * _explorationDecay).clamp(0.05, 0.2);
-    
-    _sessionStart = DateTime.now();
-    _sessionTrackCount = 0;
-    _sessionTotalCompletion = 0;
-  }
-  
-  /// Check if session is stale and needs refresh
-  bool isSessionStale() {
-    final sessionAge = DateTime.now().difference(_sessionStart);
-    return sessionAge > const Duration(hours: 4) || _shortTermModel.isSessionStale();
   }
   
   // --- Internal Helpers ---
@@ -622,17 +594,6 @@ class RecommendationService {
       if (kDebugMode) debugPrint('RecommendationAgent: Profile save error: $e');
     }
   }
-  
-  /// Get agent statistics
-  Map<String, dynamic> getStats() => {
-    'totalSignals': _signalCache.length,
-    'longTermConfidence': _longTermModel.confidence,
-    'sessionQuality': _shortTermModel.getSessionQuality(),
-    'skipMomentum': _shortTermModel.skipMomentum,
-    'explorationEpsilon': _explorationEpsilon,
-    'sessionTrackCount': _sessionTrackCount,
-    'discoveryStats': _discoveryController.getStats(),
-  };
   
   Future<void> close() async {
     _batchSaveTimer?.cancel();

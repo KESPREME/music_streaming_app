@@ -1,5 +1,6 @@
 // lib/services/audio_service.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
@@ -158,8 +159,9 @@ class AudioService {
   }
 
   Future<void> play(String? url, {
-    bool isLocal = false, 
+    bool isLocal = false,
     AudioSource? customSource,
+    Map<String, String>? headers,
     String? title,
     String? artist,
     String? artUri,
@@ -216,11 +218,18 @@ class AudioService {
                throw Exception('Invalid URL: $e');
             }
             
-            final headers = <String, String>{ 'Accept-Encoding': 'gzip' };
-            if (url!.contains('c=ANDROID')) {
-               headers['User-Agent'] = 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
-            } else if (url.contains('c=IOS')) {
-               headers['User-Agent'] = 'com.google.ios.youtube/19.29.1 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X)';
+            // Explicit headers (e.g. ANDROID_VR UA from StreamResolutionService)
+            // take precedence; otherwise sniff legacy client params from URL.
+            final resolvedHeaders = <String, String>{
+              'Accept-Encoding': 'gzip',
+              if (headers != null) ...headers,
+            };
+            if (!resolvedHeaders.containsKey('User-Agent')) {
+              if (url!.contains('c=ANDROID')) {
+                resolvedHeaders['User-Agent'] = 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
+              } else if (url.contains('c=IOS')) {
+                resolvedHeaders['User-Agent'] = 'com.google.ios.youtube/19.29.1 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X)';
+              }
             }
             
             MediaItem? tag;
@@ -237,7 +246,7 @@ class AudioService {
                // FIX: Use AudioSource.file for local files as recommended by just_audio
                mainSource = AudioSource.file(url!, tag: tag);
             } else {
-               mainSource = AudioSource.uri(uri, headers: headers.isNotEmpty ? headers : null, tag: tag);
+               mainSource = AudioSource.uri(uri, headers: resolvedHeaders.isNotEmpty ? resolvedHeaders : null, tag: tag);
             }
         }
       }
@@ -246,13 +255,13 @@ class AudioService {
       final List<AudioSource> playlistChildren = [];
       
       // ALWAYS add Previous Dummy (Button always visible)
-      playlistChildren.add(_createDummySource(id: "prev_dummy", title: "Previous Track"));
+      playlistChildren.add(await _createDummySource(id: "prev_dummy", title: "Previous Track"));
       
       // Current
       playlistChildren.add(mainSource);
       
       // ALWAYS add Next Dummy (Button always visible)
-      playlistChildren.add(_createDummySource(id: "next_dummy", title: "Next Track"));
+      playlistChildren.add(await _createDummySource(id: "next_dummy", title: "Next Track"));
 
       // Note: We used to conditionally add these based on hasPrevious/hasNext,
       // but user requested they always be present (and potentially disabled or just no-op).
@@ -289,7 +298,7 @@ class AudioService {
     }
   }
 
-  AudioSource _createDummySource({required String id, required String title}) {
+  Future<AudioSource> _createDummySource({required String id, required String title}) async {
     // We use a silent audio source or just a placeholder. 
     // Ideally, a small silent file. Since we don't have one handy safely, 
     // we use a failing URI but with a tag? No, that causes error.
@@ -301,19 +310,58 @@ class AudioService {
     // If we use a non-playable URI, the player stops with error.
     // But we want to CATCH the transition before it errors or while it tries to load.
     
-    // Using a valid but empty MP3 data URI is safe for "Silence" and won't crash.
-    // Tiny silent MP3 data URI
-    final silentUri = Uri.parse("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD//////////////////////////////////////////////////////////////////wAAABFMYXZjNTguNTQuMTAwAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAA=");
-    
-    return AudioSource.uri(
-      silentUri,
+    // just_audio/ExoPlayer on Android cannot load `data:` URIs — a dummy
+    // built from one throws a source error on every navigation, which the
+    // provider reads as a track failure and skip-cascades the whole queue.
+    // Use a real 0.2s silent WAV written to temp storage instead.
+    final silentFile = await _ensureSilentWav();
+    return AudioSource.file(
+      silentFile.path,
       tag: MediaItem(
         id: id,
-        title: title, 
+        title: title,
         artist: "",
         artUri: null, // No art
       ),
     );
+  }
+
+  File? _silentWavFile;
+
+  Future<File> _ensureSilentWav() async {
+    final existing = _silentWavFile;
+    if (existing != null && await existing.exists()) return existing;
+
+    const sampleRate = 8000;
+    const samples = 1600; // 0.2s of silence
+    final dataBytes = ByteData(2 * samples);
+    final header = BytesBuilder();
+    void u32(int v) => header.add([
+          v & 0xFF,
+          (v >> 8) & 0xFF,
+          (v >> 16) & 0xFF,
+          (v >> 24) & 0xFF,
+        ]);
+    void u16(int v) => header.add([v & 0xFF, (v >> 8) & 0xFF]);
+    header.add('RIFF'.codeUnits);
+    u32(36 + dataBytes.lengthInBytes);
+    header.add('WAVE'.codeUnits);
+    header.add('fmt '.codeUnits);
+    u32(16);
+    u16(1); // PCM
+    u16(1); // mono
+    u32(sampleRate);
+    u32(sampleRate * 2); // byte rate
+    u16(2); // block align
+    u16(16); // bits
+    header.add('data'.codeUnits);
+    u32(dataBytes.lengthInBytes);
+
+    final file = File('${Directory.systemTemp.path}/silent_padding.wav');
+    await file.writeAsBytes(
+        [...header.takeBytes(), ...dataBytes.buffer.asUint8List()]);
+    _silentWavFile = file;
+    return file;
   }
 
   Future<void> playLocalFile(String filePath, {
@@ -432,9 +480,9 @@ class AudioService {
         
         // Reconstruct Windowed Playlist logic - Restore ALWAYS structure
         final List<AudioSource> playlistChildren = [];
-        playlistChildren.add(_createDummySource(id: "prev_dummy", title: "Previous Track"));
+        playlistChildren.add(await _createDummySource(id: "prev_dummy", title: "Previous Track"));
         playlistChildren.add(mainSource);
-        playlistChildren.add(_createDummySource(id: "next_dummy", title: "Next Track"));
+        playlistChildren.add(await _createDummySource(id: "next_dummy", title: "Next Track"));
         
         AudioSource finalSource = ConcatenatingAudioSource(children: playlistChildren);
         int initialIndex = 1;
@@ -469,13 +517,13 @@ class AudioService {
   LockCachingAudioSource? _preloadedSource;
   String? _preloadedUrl;
 
-  Future<void> preloadTrack(String url) async {
+  Future<void> preloadTrack(String url, {String? userAgent}) async {
     if (url == _preloadedUrl && _preloadedSource != null) return;
     if (kDebugMode) debugPrint("AudioService: Preloading track $url");
     _preloadedUrl = url;
     try {
       final headers = <String, String>{
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate',

@@ -247,11 +247,6 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
     );
   }
 
-  Widget _buildRecentlyPlayedGrid(BuildContext context, MusicProvider musicProvider) {
-    // Deprecated: replaced by horizontal list inside _buildFeedTab
-    return const SizedBox.shrink();
-  }
-
   Widget _buildExploreTab(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context);
     final colorScheme = Theme.of(context).colorScheme;

@@ -9,11 +9,15 @@ import 'material_you_options_sheet.dart';
 /// Conditionally renders GlassOptionsSheet or MaterialYouOptionsSheet based on theme
 class ThemedOptionsSheet extends StatelessWidget {
   final Track track;
+  final String? playlistId;
+  final bool isInQueueContext;
   final bool isRecentlyPlayedContext;
 
   const ThemedOptionsSheet({
     super.key,
     required this.track,
+    this.playlistId,
+    this.isInQueueContext = false,
     this.isRecentlyPlayedContext = false,
   });
 
@@ -21,20 +25,26 @@ class ThemedOptionsSheet extends StatelessWidget {
   /// Hides the mini player during the process
   static Future<void> show(BuildContext context, {
     required Track track,
+    String? playlistId,
+    bool isInQueueContext = false,
     bool isRecentlyPlayedContext = false,
   }) async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    
+
     if (themeProvider.isGlassmorphism) {
       await GlassOptionsSheet.show(
-        context, 
-        track: track, 
+        context,
+        track: track,
+        playlistId: playlistId,
+        isInQueueContext: isInQueueContext,
         isRecentlyPlayedContext: isRecentlyPlayedContext,
       );
     } else {
       await MaterialYouOptionsSheet.show(
-        context, 
-        track: track, 
+        context,
+        track: track,
+        playlistId: playlistId,
+        isInQueueContext: isInQueueContext,
         isRecentlyPlayedContext: isRecentlyPlayedContext,
       );
     }
@@ -47,11 +57,15 @@ class ThemedOptionsSheet extends StatelessWidget {
         if (themeProvider.isGlassmorphism) {
           return GlassOptionsSheet(
             track: track,
+            playlistId: playlistId,
+            isInQueueContext: isInQueueContext,
             isRecentlyPlayedContext: isRecentlyPlayedContext,
           );
         } else {
           return MaterialYouOptionsSheet(
             track: track,
+            playlistId: playlistId,
+            isInQueueContext: isInQueueContext,
             isRecentlyPlayedContext: isRecentlyPlayedContext,
           );
         }

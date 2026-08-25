@@ -7,8 +7,11 @@ import 'package:just_audio_background/just_audio_background.dart';
 
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/accent_controller.dart';
+import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
+import 'services/firestore_service.dart';
 import 'widgets/themed_social_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
@@ -17,23 +20,10 @@ import 'widgets/themed_library_screen.dart';
 import 'widgets/global_music_overlay.dart'; // Import Global Overlay
 
 class AppColors {
-  static const Color primary = Color(0xFF00B4D8); // Light Blue (Material You)
-  static const Color primaryVariant = Color(0xFF0096C7); // Medium Blue
-  static const Color secondary = Color(0xFF03DAC6); // Teal Accent
-  static const Color secondaryVariant = Color(0xFF018786);
-
-  static const Color background = Color(0xFF121212); // Dark Background
-  static const Color surface = Color(0xFF1E1E1E); // Surface
-  static const Color error = Color(0xFFCF6679);
-
-  static const Color onPrimary = Colors.white;
-  static const Color onSecondary = Colors.black;
+  static const Color background = Colors.black; // Pure black AMOLED canvas
   static const Color onBackground = Colors.white;
-  static const Color onSurface = Colors.white;
-  static const Color onError = Colors.black;
 
   static const Color spotifyGreen = Color(0xFF1DB954);
-  static const Color accent = Color(0xFFFF1744); // Red Accent requested by user
 }
 
 // Define global key for root navigation
@@ -71,9 +61,15 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => MusicProvider()),
+        ChangeNotifierProvider(create: (context) => AccentController()),
+        ChangeNotifierProvider(
+          create: (context) => MusicProvider(
+            accentController: context.read<AccentController>(),
+          ),
+        ),
         ChangeNotifierProvider(create: (context) => AuthService()),
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        Provider<FirestoreService>(create: (context) => FirestoreService()),
       ],
       child: const MyApp(),
     ),
@@ -91,48 +87,34 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Initialize theme provider
+    // Initialize theme + accent providers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ThemeProvider>(context, listen: false).initialize();
+      Provider.of<AccentController>(context, listen: false).initialize();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final googleFontsTextTheme = GoogleFonts.outfitTextTheme(textTheme).copyWith(
-      headlineLarge: GoogleFonts.outfit(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.onBackground),
-      headlineMedium: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.onBackground),
-      headlineSmall: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.onBackground),
-      titleLarge: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w600, color: AppColors.onBackground),
-      titleMedium: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.onBackground),
-      titleSmall: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.onBackground),
-      bodyLarge: GoogleFonts.outfit(fontSize: 16, color: AppColors.onBackground.withValues(alpha: 0.87)),
-      bodyMedium: GoogleFonts.outfit(fontSize: 14, color: AppColors.onBackground.withValues(alpha: 0.70)),
-      bodySmall: GoogleFonts.outfit(fontSize: 12, color: AppColors.onBackground.withValues(alpha: 0.60)),
-      labelLarge: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.onBackground),
+    final accent = context.watch<AccentController>().accent;
+    final baseTextTheme = GoogleFonts.outfitTextTheme(Theme.of(context).textTheme);
+    final textTheme = baseTextTheme.copyWith(
+      headlineLarge: baseTextTheme.headlineLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+      headlineMedium: baseTextTheme.headlineMedium?.copyWith(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+      headlineSmall: baseTextTheme.headlineSmall?.copyWith(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+      titleLarge: baseTextTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.white),
+      titleMedium: baseTextTheme.titleMedium?.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
+      titleSmall: baseTextTheme.titleSmall?.copyWith(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+      bodyLarge: baseTextTheme.bodyLarge?.copyWith(fontSize: 16, color: Colors.white.withValues(alpha: 0.87)),
+      bodyMedium: baseTextTheme.bodyMedium?.copyWith(fontSize: 14, color: Colors.white.withValues(alpha: 0.70)),
+      bodySmall: baseTextTheme.bodySmall?.copyWith(fontSize: 12, color: Colors.white.withValues(alpha: 0.60)),
+      labelLarge: baseTextTheme.labelLarge?.copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
     );
 
     return MaterialApp(
       navigatorKey: rootNavigatorKey, // Assigned Key
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: const ColorScheme(
-          brightness: Brightness.dark,
-          primary: AppColors.primary,
-          onPrimary: AppColors.onPrimary,
-          secondary: AppColors.secondary,
-          onSecondary: AppColors.onSecondary,
-          error: AppColors.error,
-          onError: AppColors.onError,
-          surface: AppColors.surface,
-          onSurface: AppColors.onSurface,
-        ),
-        scaffoldBackgroundColor: AppColors.background,
-        textTheme: googleFontsTextTheme,
-      ),
+      theme: GlassTheme.build(accent, textTheme: textTheme),
       // Integrate Global Music Overlay here
       builder: (context, child) {
         return GlobalMusicOverlay(child: child!);

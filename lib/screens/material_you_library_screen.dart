@@ -380,6 +380,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
                     ? DecorationImage(
                         image: NetworkImage(playlist.imageUrl),
                         fit: BoxFit.cover,
+                        onError: (_, __) {},
                       )
                     : null,
               ),
@@ -494,10 +495,11 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: colorScheme.surfaceContainerHighest,
-                        image: (artist.albumArtUrl != null && artist.albumArtUrl.isNotEmpty) 
+                        image: (artist.albumArtUrl != null && artist.albumArtUrl.isNotEmpty)
                             ? DecorationImage(
                                 image: NetworkImage(artist.albumArtUrl),
                                 fit: BoxFit.cover,
+                                onError: (_, __) {},
                               )
                             : null,
                       ),

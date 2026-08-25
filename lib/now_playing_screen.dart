@@ -2,24 +2,24 @@ import 'dart:ui';
 import 'dart:io';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:provider/provider.dart';
+import 'widgets/waveform_visualizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:palette_generator/palette_generator.dart';
 
-import '../models/track.dart';
-import '../providers/music_provider.dart';
-import '../widgets/playlist_selection_dialog.dart';
-import '../widgets/themed_playlist_detail_screen.dart';
-import '../widgets/themed_queue_screen.dart';
-import '../widgets/themed_lyrics_screen.dart';
-import '../screens/material_you_equalizer_screen.dart';
-import '../widgets/glass_snackbar.dart';
-import '../widgets/artist_picker_sheet.dart';
+import 'models/track.dart';
+import 'providers/music_provider.dart';
+import 'widgets/playlist_selection_dialog.dart';
+import 'widgets/themed_playlist_detail_screen.dart';
+import 'widgets/themed_queue_screen.dart';
+import 'widgets/themed_lyrics_screen.dart';
+import 'screens/material_you_equalizer_screen.dart';
+import 'widgets/glass_snackbar.dart';
+import 'widgets/artist_picker_sheet.dart';
 
-import '../widgets/wavy_progress_bar.dart';
-import '../main.dart';
-import '../utils/color_utils.dart';
+import 'widgets/wavy_progress_bar.dart';
+import 'main.dart';
+import 'utils/color_utils.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
@@ -87,7 +87,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               _buildAlbumArt(currentTrack),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 12),
+                              WaveformVisualizer(
+                                isPlaying: isPlaying,
+                                color: accentColor,
+                                height: 52,
+                              ),
+                              const SizedBox(height: 12),
                               _buildNowPlayingInfo(context, currentTrack, musicProvider, accentColor),
                               
                               // Wavy Progress Bar
@@ -199,7 +205,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     context: context,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
-                    builder: (context) => ThemedLyricsScreen(),
+                    builder: (context) => const ThemedLyricsScreen(),
                   );
                 },
                 icon: const Icon(Icons.lyrics_rounded, color: Colors.white, size: 24),
@@ -242,15 +248,23 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           borderRadius: BorderRadius.circular(24),
           child: Hero(
             tag: 'albumArt_${track.id}',
-            child: track.albumArtUrl.isNotEmpty
-                ? (File(track.albumArtUrl).existsSync() 
-                    ? Image.file(File(track.albumArtUrl), fit: BoxFit.cover)
-                    : Image.network(track.albumArtUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildArtPlaceholder()))
-                : _buildArtPlaceholder(),
+            child: _buildAlbumArtImage(track),
           ),
         ),
       ),
     );
+  }
+
+  /// Resolves album art without sync IO on the build path for remote URLs.
+  Widget _buildAlbumArtImage(Track track) {
+    final art = track.albumArtUrl;
+    if (art.isEmpty) return _buildArtPlaceholder();
+    // Only local paths (no scheme) justify a file lookup.
+    if (!art.contains('://')) {
+      final f = File(art);
+      if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
+    }
+    return Image.network(art, fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildArtPlaceholder());
   }
 
   Widget _buildNowPlayingInfo(BuildContext context, Track track, MusicProvider provider, Color accentColor) {
@@ -592,8 +606,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     icon: Icons.playlist_add_rounded,
                     title: 'Add to Playlist',
                     onTap: () {
+                      final rootContext = rootNavigatorKey.currentContext;
                       Navigator.pop(context);
-                      showPlaylistSelectionDialog(context, track);
+                      if (rootContext != null && rootContext.mounted) {
+                        showPlaylistSelectionDialog(rootContext, track);
+                      }
                     }
                    ),
                    _buildOptionTile(
@@ -629,49 +646,55 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                      }
                    ),
                     _buildOptionTile(
-                     icon: Icons.person_rounded, 
-                     title: 'Go to Artist', 
+                     icon: Icons.person_rounded,
+                     title: 'Go to Artist',
                      onTap: () async {
+                       // Read provider BEFORE popping: this context dies with the sheet.
+                       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+                       final rootContext = rootNavigatorKey.currentContext;
                        Navigator.pop(context); // Close sheet
-                       
+
                        // Minimize Player First
                        if (widget.onMinimize != null) widget.onMinimize!();
 
                        // FIX: Use the static method which handles mini player hiding
-                       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-                       if (rootNavigatorKey.currentContext != null) {
+                       if (rootContext != null && rootContext.mounted) {
                          await ArtistPickerSheet.showIfNeeded(
-                           rootNavigatorKey.currentContext!,
+                           rootContext,
                            musicProvider,
                            track.artistName,
                          );
                        }
                      }
-                   ),
-                   _buildOptionTile(
-                     icon: Icons.graphic_eq_rounded, 
-                     title: 'Equalizer', 
-                     onTap: () async {
-                       Navigator.pop(context); // Close the menu sheet
-                       
-                       // Small delay to let sheet close, then navigate
-                       await Future.delayed(const Duration(milliseconds: 100));
-                       
-                       // FIX: Push to local navigator (not root) for proper back handling
-                       if (context.mounted) {
-                         Navigator.of(context, rootNavigator: false).push(
-                           MaterialPageRoute(builder: (_) => const MaterialYouEqualizerScreen()),
-                         );
-                       }
-                     }
-                   ),
-                   _buildOptionTile(
-                     icon: Icons.timer_rounded, 
-                     title: 'Sleep Timer', 
-                     onTap: () {
-                       Navigator.pop(context);
-                       _showSleepTimerDialog(context, musicProvider);
-                     }
+                    ),
+                    _buildOptionTile(
+                      icon: Icons.graphic_eq_rounded,
+                      title: 'Equalizer',
+                      onTap: () async {
+                        final rootContext = rootNavigatorKey.currentContext;
+                        Navigator.pop(context); // Close the menu sheet
+
+                        // Small delay to let sheet close, then navigate
+                        await Future.delayed(const Duration(milliseconds: 100));
+
+                        // FIX: Push to local navigator (not root) for proper back handling
+                        if (rootContext != null && rootContext.mounted) {
+                          Navigator.of(rootContext, rootNavigator: false).push(
+                            MaterialPageRoute(builder: (_) => const MaterialYouEqualizerScreen()),
+                          );
+                        }
+                      }
+                    ),
+                    _buildOptionTile(
+                      icon: Icons.timer_rounded,
+                      title: 'Sleep Timer',
+                      onTap: () {
+                        final rootContext = rootNavigatorKey.currentContext;
+                        Navigator.pop(context);
+                        if (rootContext != null && rootContext.mounted) {
+                          _showSleepTimerDialog(rootContext, musicProvider);
+                        }
+                      }
                    ),
                    const SizedBox(height: 16),
                 ],
@@ -778,7 +801,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             child: BackdropFilter(
                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Liquid blur effect
-               child: Container(
+               child: SizedBox(
                  height: 400,
                  child: Column(
                    children: [
@@ -864,17 +887,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   // --- UI Helpers ---
-
-  Color middleColorForPalette(PaletteGenerator palette) {
-    final darkMuted = palette.darkMutedColor?.color;
-    final muted = palette.mutedColor?.color;
-    final dominant = palette.dominantColor?.color;
-
-    return darkMuted?.withValues(alpha: 0.5) ?? 
-           muted?.withValues(alpha: 0.3) ?? 
-           dominant?.withValues(alpha: 0.2) ?? 
-           const Color(0xFF020617);
-  }
 
   Widget _buildArtPlaceholder() {
     return Container(

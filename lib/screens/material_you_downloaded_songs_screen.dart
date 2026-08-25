@@ -44,22 +44,22 @@ class _MaterialYouDownloadedSongsScreenState extends State<MaterialYouDownloaded
       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
       final tracks = await musicProvider.getDownloadedTracks();
 
+      if (!mounted) return;
       setState(() {
         _downloadedTracks = tracks;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading downloaded songs: $e'),
-            backgroundColor: MaterialYouTokens.surfaceContainerDark,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading downloaded songs: $e'),
+          backgroundColor: MaterialYouTokens.surfaceContainerDark,
+        ),
+      );
     }
   }
 
@@ -77,7 +77,7 @@ class _MaterialYouDownloadedSongsScreenState extends State<MaterialYouDownloaded
       backgroundColor: MaterialYouTokens.surfaceDark,
       body: SafeArea(
         child: _isLoading
-            ? Center(
+            ? const Center(
                 child: CircularProgressIndicator(
                   color: MaterialYouTokens.primaryVibrant,
                 ),
@@ -227,7 +227,7 @@ class _MaterialYouDownloadedSongsScreenState extends State<MaterialYouDownloaded
           LinearProgressIndicator(
             value: progress,
             backgroundColor: colorScheme.surfaceContainerHighest,
-            valueColor: AlwaysStoppedAnimation<Color>(MaterialYouTokens.accentGreen),
+            valueColor: const AlwaysStoppedAnimation<Color>(MaterialYouTokens.accentGreen),
             borderRadius: BorderRadius.circular(2),
           ),
           const SizedBox(height: 4),

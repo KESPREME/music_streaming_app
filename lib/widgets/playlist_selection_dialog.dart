@@ -11,9 +11,9 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
   final musicProvider = Provider.of<MusicProvider>(context, listen: false);
   final theme = Theme.of(context);
   final isDark = theme.brightness == Brightness.dark;
-
-  // TextEditingController for the new playlist name
-  final TextEditingController newPlaylistNameController = TextEditingController();
+  // The outer context stays mounted after the sheet pops - use it for
+  // any dialogs shown post-pop (the builder's context dies with the sheet).
+  final outerContext = context;
 
   await showModalBottomSheet(    context: context,
     backgroundColor: Colors.transparent,
@@ -77,17 +77,25 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
                               isAccent: true,
                               onTap: () async {
                                 Navigator.pop(bottomSheetContext);
-                                // Pass musicProvider to the dialog builder
-                                await showDialog(
-                                  context: context,
-                                  builder: (BuildContext dialogContext) => _buildGlassInputDialog(
-                                    dialogContext, 
-                                    newPlaylistNameController, 
-                                    isDark, 
-                                    trackToAdd,
-                                    musicProvider, // Pass provider directly
-                                  ),
-                                );
+                                // Controller lives exactly as long as the dialog that
+                                // owns its TextField - no dispose-after-pop race.
+                                final newPlaylistNameController = TextEditingController();
+                                try {
+                                  // Pass musicProvider to the dialog builder; use the
+                                  // OUTER context which survives the sheet being popped.
+                                  await showDialog(
+                                    context: outerContext,
+                                    builder: (BuildContext dialogContext) => _buildGlassInputDialog(
+                                      dialogContext,
+                                      newPlaylistNameController,
+                                      isDark,
+                                      trackToAdd,
+                                      musicProvider, // Pass provider directly
+                                    ),
+                                  );
+                                } finally {
+                                  newPlaylistNameController.dispose();
+                                }
                               },
                             ),
                           ),
@@ -150,7 +158,6 @@ Future<void> showPlaylistSelectionDialog(BuildContext context, Track trackToAdd)
       );
     },
   );
-  newPlaylistNameController.dispose();
 }
 
 Widget _buildGlassOption(BuildContext context, {
@@ -256,21 +263,17 @@ Widget _buildGlassInputDialog(
                    style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black),
                    cursorColor: const Color(0xFFFF1744),
                    onSubmitted: (value) async {
-                     debugPrint('DEBUG: TextField submitted with value: "$value"');
                      if (value.trim().isEmpty) {
-                       debugPrint('DEBUG: Submitted value is empty');
                        return;
                      }
                      
                      try {
-                       debugPrint('DEBUG: Creating playlist from onSubmitted...');
                        
                        await musicProvider.createPlaylist(
                          value.trim(), 
                          initialTracks: [trackToAdd],
                          imageUrl: trackToAdd.albumArtUrl, // Use track's album art
                        );
-                       debugPrint('DEBUG: Playlist created from onSubmitted!');
                        
                        if (context.mounted) {
                          Navigator.pop(context);
@@ -283,7 +286,6 @@ Widget _buildGlassInputDialog(
                          );
                        }
                      } catch (e) {
-                       debugPrint('DEBUG: Error in onSubmitted: $e');
                        if (context.mounted) {
                          ScaffoldMessenger.of(context).showSnackBar(
                            SnackBar(
@@ -311,7 +313,6 @@ Widget _buildGlassInputDialog(
                  children: [
                    TextButton(
                      onPressed: () {
-                       debugPrint('DEBUG: Cancel button pressed');
                        Navigator.pop(context);
                      },
                      child: Text('Cancel', style: GoogleFonts.splineSans(color: isDark ? Colors.white60 : Colors.black54)),
@@ -319,13 +320,10 @@ Widget _buildGlassInputDialog(
                    const SizedBox(width: 8),
                    ElevatedButton(
                      onPressed: () async {
-                        debugPrint('DEBUG: Create button pressed!');
                         try {
                           final name = controller.text.trim();
-                          debugPrint('DEBUG: Playlist name: "$name"');
                           
                           if (name.isEmpty) {
-                            debugPrint('DEBUG: Name is empty, returning');
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Please enter a playlist name'),
@@ -335,7 +333,6 @@ Widget _buildGlassInputDialog(
                             return;
                           }
                           
-                          debugPrint('DEBUG: Creating playlist with provider...');
                           
                           // Create playlist AND add the track immediately
                           // Use the track's thumbnail as the playlist cover
@@ -344,12 +341,10 @@ Widget _buildGlassInputDialog(
                             initialTracks: [trackToAdd],
                             imageUrl: trackToAdd.albumArtUrl, // Use track's album art
                           ); 
-                          debugPrint('DEBUG: Playlist created successfully!');
                           
                           // Close dialog
                           if (context.mounted) {
                             Navigator.pop(context);
-                            debugPrint('DEBUG: Dialog closed');
                             
                             // Show success message
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -359,11 +354,8 @@ Widget _buildGlassInputDialog(
                                 duration: const Duration(seconds: 2),
                               ),
                             );
-                            debugPrint('DEBUG: Success message shown');
                           }
                         } catch (e, stack) {
-                          debugPrint('DEBUG: Error occurred: $e');
-                          debugPrint('DEBUG: Stack trace: $stack');
                           // Show error if something goes wrong
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -391,5 +383,4 @@ Widget _buildGlassInputDialog(
     ),
   );
 }
-
 

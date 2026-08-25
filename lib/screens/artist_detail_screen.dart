@@ -34,7 +34,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   List<dynamic> _albums = []; // Using dynamic/Album
   List<dynamic> _singles = [];
   String? _error;
-  String? _resolvedArtistId; // For search-by-name mode
 
   @override
   void initState() {
@@ -85,7 +84,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             orElse: () => results.first,
           );
           artistIdToFetch = exactMatch.id;
-          _resolvedArtistId = artistIdToFetch;
           
           if (kDebugMode) {
             debugPrint('Found artist ID: $artistIdToFetch');
@@ -500,5 +498,4 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
 
 }
-
 

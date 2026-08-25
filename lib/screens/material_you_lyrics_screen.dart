@@ -295,9 +295,9 @@ class _MaterialYouLyricsScreenState extends State<MaterialYouLyricsScreen> {
             // Album art
             ClipRRect(
               borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
-              child: track.albumArt != null && track.albumArt!.isNotEmpty
+              child: track.albumArt.isNotEmpty
                   ? Image.network(
-                      track.albumArt!,
+                      track.albumArt,
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,

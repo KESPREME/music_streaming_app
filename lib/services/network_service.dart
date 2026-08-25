@@ -158,10 +158,11 @@ class NetworkService {
       // This is a heuristic approach - check for Jio DNS or IP ranges
       // Most Jio connections use Jio's DNS servers
       final dnsServers = await _getDnsServers();
+      // Only match Jio's actual DNS ranges. Google DNS (8.8.x) is NOT a Jio
+      // signal - matching it misclassified most users as "poor".
       final isJioDns = dnsServers.any((dns) =>
       dns.contains('49.44.') ||
-          dns.contains('49.45.') ||
-          dns.contains('8.8.') // Jio often uses Google DNS
+          dns.contains('49.45.')
       );
 
       return isJioDns;
@@ -194,22 +195,6 @@ class NetworkService {
       debugPrint('Network quality changed from $_networkQuality to $quality');
       _networkQuality = quality;
       _networkQualityController.add(_networkQuality);
-    }
-  }
-
-  // Get optimal bitrate based on network quality
-  int getOptimalBitrate() {
-    switch (_networkQuality) {
-      case NetworkQuality.offline:
-        return 0; // Offline mode
-      case NetworkQuality.poor:
-        return NetworkConfig.poorNetworkBitrate;
-      case NetworkQuality.moderate:
-        return NetworkConfig.moderateNetworkBitrate;
-      case NetworkQuality.good:
-        return NetworkConfig.goodNetworkBitrate;
-      case NetworkQuality.excellent:
-        return NetworkConfig.excellentNetworkBitrate;
     }
   }
 
@@ -453,34 +438,59 @@ class NetworkService {
       }
     }
 
-    // Set up options with range header for resume
-    final options = Options(
-      headers: startBytes > 0 ? {'Range': 'bytes=$startBytes-'} : null,
-      sendTimeout: timeout ?? const Duration(minutes: 30),
-      receiveTimeout: timeout ?? const Duration(minutes: 30),
-    );
-
     // Implement retry logic with exponential backoff
     int attempts = 0;
     while (attempts < maxRetries) {
       try {
-        await _dio.download(
+        // Stream manually so we can verify the server honored the Range
+        // header. A 200 (full body) instead of 206 (partial) means resume is
+        // not supported - appending would duplicate data and corrupt the file.
+        final response = await _dio.get<ResponseBody>(
           url,
-          startBytes > 0 ? '$savePath.temp' : savePath,
           cancelToken: cancelToken,
-          onReceiveProgress: (received, total) {
-            if (total != -1) {
-              final progress = (startBytes + received) / (startBytes + total);
-              onProgress?.call(progress);
-            }
-          },
-          options: options,
-          // FIX: Delete file on error to avoid corrupt/partial files
-          deleteOnError: true,
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: startBytes > 0 ? {'Range': 'bytes=$startBytes-'} : null,
+            sendTimeout: timeout ?? const Duration(minutes: 30),
+            receiveTimeout: timeout ?? const Duration(minutes: 30),
+          ),
         );
 
+        final status = response.statusCode ?? 0;
+        final bool resumed = startBytes > 0 && status == 206;
+        if (startBytes > 0 && !resumed) {
+          // Server ignored the Range header - restart from scratch.
+          startBytes = 0;
+        }
+
+        final targetPath = resumed ? '$savePath.temp' : savePath;
+        final sink = File(targetPath).openWrite(mode: FileMode.write);
+
+        int received = 0;
+        final totalRemaining = int.tryParse(
+              response.headers.value(HttpHeaders.contentLengthHeader) ?? '',
+            ) ??
+            -1;
+        final totalFull = startBytes + (totalRemaining > 0 ? totalRemaining : 0);
+
+        try {
+          await for (final chunk in response.data!.stream) {
+            sink.add(chunk);
+            received += chunk.length;
+            if (totalFull > 0) {
+              onProgress?.call((startBytes + received) / totalFull);
+            }
+          }
+          await sink.flush();
+        } catch (e) {
+          await sink.close();
+          // Keep the temp file so a later attempt can resume from it.
+          rethrow;
+        }
+        await sink.close();
+
         // If we were resuming, append the temp file to the original
-        if (startBytes > 0) {
+        if (resumed) {
           final tempFile = File('$savePath.temp');
           if (await tempFile.exists()) {
             final raf = await file.open(mode: FileMode.append);
@@ -514,80 +524,26 @@ class NetworkService {
           throw Exception('Lost internet connection');
         }
 
-        // Update start bytes in case we downloaded some data
+        // Update start bytes in case we downloaded some data previously.
+        // Bytes already in the temp file count toward progress too.
+        var baseBytes = 0;
         if (await file.exists()) {
           try {
-            startBytes = await file.length();
-          } catch (_) {
-            // If we can't get length, continue from last known position
-          }
+            baseBytes = await file.length();
+          } catch (_) {}
+        }
+        final tempFile = File('$savePath.temp');
+        if (baseBytes > 0 && await tempFile.exists()) {
+          try {
+            startBytes = baseBytes + await tempFile.length();
+          } catch (_) {}
+        } else if (!await tempFile.exists()) {
+          startBytes = baseBytes;
         }
       }
     }
 
     throw Exception('Failed after $maxRetries attempts');
-  }
-
-  // Download file using cache manager (better for smaller files like images)
-  Future<File> downloadCachedFile(
-      String url, {
-        String? key,
-        Map<String, String>? headers,
-      }) async {
-    if (!_isConnected) {
-      // Try to get from cache if offline
-      try {
-        final fileInfo = await _cacheManager.getFileFromCache(key ?? url);
-        if (fileInfo != null) {
-          return fileInfo.file;
-        }
-      } catch (_) {
-        debugPrint('Error getting file from cache for key: ${key ?? url}');
-      }
-      throw Exception('No internet connection');
-    }
-
-    try {
-      final fileInfo = await _cacheManager.downloadFile(
-        url,
-        key: key,
-      );
-
-      return fileInfo.file;
-    } catch (e) {
-      // Try to get from cache if download fails
-      try {
-        final fileInfo = await _cacheManager.getFileFromCache(key ?? url);
-        if (fileInfo != null) {
-          return fileInfo.file;
-        }
-      } catch (_) {
-        debugPrint('Error getting file from cache for key: ${key ?? url}');
-      }
-      rethrow;
-    }
-  }
-
-  // Check if a URL is reachable
-  Future<bool> isUrlReachable(String url, {Duration? timeout}) async {
-    if (!_isConnected) {
-      return false;
-    }
-
-    try {
-      final response = await _dio.head(
-        url,
-        options: Options(
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 500,
-          sendTimeout: timeout ?? const Duration(seconds: 5),
-          receiveTimeout: timeout ?? const Duration(seconds: 5),
-        ),
-      );
-      return response.statusCode != null && response.statusCode! < 400;
-    } catch (_) {
-      return false;
-    }
   }
 
   // Force network quality check
@@ -603,24 +559,6 @@ class NetworkService {
     return results.isNotEmpty ? results.first : ConnectivityResult.none;
   }
 
-
-  // Clear cache
-  Future<void> clearCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((key) =>
-      key.startsWith('cache_') || key.startsWith('expiry_')
-      ).toList();
-
-      for (final key in keys) {
-        await prefs.remove(key);
-      }
-
-      await _cacheManager.emptyCache();
-    } catch (_) {
-      debugPrint('Error clearing network service cache.');
-    }
-  }
 
   // Clean up resources
   void dispose() {

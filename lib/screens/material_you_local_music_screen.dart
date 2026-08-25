@@ -147,7 +147,7 @@ class _MaterialYouLocalMusicScreenState extends State<MaterialYouLocalMusicScree
                 ),
               ],
               body: isLoading
-                  ? Center(
+                  ? const Center(
                       child: CircularProgressIndicator(
                         color: MaterialYouTokens.primaryVibrant,
                       ),
@@ -199,7 +199,7 @@ class _MaterialYouLocalMusicScreenState extends State<MaterialYouLocalMusicScree
         return ExpansionTile(
           collapsedIconColor: colorScheme.onSurfaceVariant,
           iconColor: MaterialYouTokens.primaryVibrant,
-          leading: Icon(Icons.folder_open_rounded, color: MaterialYouTokens.primaryVibrant),
+          leading: const Icon(Icons.folder_open_rounded, color: MaterialYouTokens.primaryVibrant),
           title: Text(
             folderName, 
             style: MaterialYouTypography.titleMedium(colorScheme.onSurface)

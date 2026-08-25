@@ -23,7 +23,6 @@ class MaterialYouNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final itemCount = items.length;
     
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
@@ -125,5 +124,4 @@ class MaterialYouNavBar extends StatelessWidget {
     );
   }
 }
-
 

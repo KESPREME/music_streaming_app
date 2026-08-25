@@ -52,7 +52,7 @@ class _MaterialYouAllArtistsScreenState extends State<MaterialYouAllArtistsScree
                   future: _artistsFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return SliverFillRemaining(
+                      return const SliverFillRemaining(
                         child: Center(
                           child: CircularProgressIndicator(
                             color: MaterialYouTokens.primaryVibrant,
@@ -113,7 +113,7 @@ class _MaterialYouAllArtistsScreenState extends State<MaterialYouAllArtistsScree
       expandedHeight: 120,
       leading: Container(
         margin: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: MaterialYouTokens.surfaceContainerDark,
           shape: BoxShape.circle,
         ),
@@ -208,7 +208,7 @@ class _MaterialYouAllArtistsScreenState extends State<MaterialYouAllArtistsScree
               color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(
+            child: const Icon(
               Icons.arrow_forward_ios_rounded, 
               color: MaterialYouTokens.primaryVibrant, 
               size: 16

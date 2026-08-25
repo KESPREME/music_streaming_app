@@ -49,34 +49,6 @@ class LrcLibProvider {
     }
   }
   
-  /// Get all possible lyrics options for a track
-  Future<List<LrcLibResult>> getAllLyrics({
-    required String title,
-    required String artist,
-    int? durationSeconds,
-  }) async {
-    try {
-      final results = await _search(title: title, artist: artist);
-      
-      // Sort by relevance (duration match if provided)
-      if (durationSeconds != null) {
-        results.sort((a, b) {
-          final diffA = (a.duration - durationSeconds).abs();
-          final diffB = (b.duration - durationSeconds).abs();
-          return diffA.compareTo(diffB);
-        });
-      }
-      
-      return results;
-      
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('LrcLibProvider: Error getting all lyrics: $e');
-      }
-      return [];
-    }
-  }
-  
   /// Try to get exact match using the /api/get endpoint
   Future<String?> _getExactMatch({
     required String title,

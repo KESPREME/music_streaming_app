@@ -13,12 +13,13 @@ import 'package:flutter/material.dart'; // Added for NetworkImage
 
 // Flutter Packages
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:palette_generator/palette_generator.dart';
 // import 'package:device_info_plus/device_info_plus.dart'; // Commented out: Unused
 import 'package:dio/dio.dart'; // Used by NetworkService for downloads
 import 'package:path_provider/path_provider.dart';
 // import 'package:permission_handler/permission_handler.dart'; // Commented out: Unused
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http; // For network diagnostics
+// For network diagnostics
 import 'package:collection/collection.dart'; // For firstWhereOrNull
 
 // Your Project Model Imports
@@ -34,6 +35,8 @@ import '../services/spotify_service.dart';
 import '../services/local_music_service.dart'; 
 import '../services/network_service.dart';
 import '../services/innertube/innertube_service.dart';
+import '../services/stream_resolution_service.dart';
+import 'accent_controller.dart';
 import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
 import '../services/lyrics/lyrics_service.dart'; // Multi-provider lyrics service
@@ -69,7 +72,13 @@ bool listEquals<T>(List<T>? a, List<T>? b) {
 /// encodes off the UI thread.
 String _jsonEncode(Object data) => jsonEncode(data);
 
+List<dynamic> _jsonDecode(String s) => jsonDecode(s) as List<dynamic>;
+
 class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
+  /// Album-art accent feed (null when not injected).
+  final AccentController? _accentController;
+
+
   final GlobalKey<NavigatorState> playerNavigatorKey = GlobalKey<NavigatorState>();
   
   // BATTERY FIX: App lifecycle management
@@ -92,14 +101,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   SortCriteria _localTracksSortCriteria = SortCriteria.nameAsc;
   
   bool _isOfflineContext = false; // Explicit flag for offline playback context
-  bool _isMiniPlayerVisible = true; // Control mini player visibility (e.g. hide when bottom sheet is open)
+  final bool _isMiniPlayerVisible = true; // Control mini player visibility (e.g. hide when bottom sheet is open)
   
   bool get isMiniPlayerVisible => _isMiniPlayerVisible;
-  
-  void setMiniPlayerVisible(bool visible) {
-    _isMiniPlayerVisible = visible;
-    notifyListeners();
-  }
 
   // Search State
   List<Track> _playlistSearchResults = []; 
@@ -108,12 +112,22 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   // Getters
   
   Track? _currentTrack;
-  Track? _previousTrack; // For sequence transition learning
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isOfflineTrack = false;
   bool _shuffleEnabled = false;
+
+  /// Infinite autoplay: when a context ends, keep playing related tracks.
+  bool _isAutoQueueEnabled = true;
+  bool get isAutoQueueEnabled => _isAutoQueueEnabled;
+  Future<void> setAutoQueueEnabled(bool enabled) async {
+    if (_isAutoQueueEnabled == enabled) return;
+    _isAutoQueueEnabled = enabled;
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('autoQueueEnabled', enabled);
+  }
   RepeatMode _repeatMode = RepeatMode.off;
   String? _currentPlaylistId;
   List<Track>? _currentPlayingTracks;
@@ -150,7 +164,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   bool _isLowDataMode = false;
   bool _isAutoBitrate = true; // Default to Auto
   bool _isReconnecting = false;
-  Timer? _reconnectionTimer;
   String? _errorMessage;
   bool _isLoadingLocal = false;
   Artist? _currentArtistDetails; // Added state for artist screen
@@ -158,6 +171,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   bool _isLoadingArtist = false; // Loading state for artist screen
   bool _isLoadingAlbum = false; // Loading state for album screen
   final Map<String, double> _downloadProgress = {};
+  final Map<String, DateTime> _lastProgressNotify = {};
   final Map<String, bool> _isDownloading = {};
   final List<Track> _currentlyDownloadingTracks = [];
   final Map<String, CancelToken> _downloadCancelTokens = {};
@@ -174,6 +188,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   
   // Error Tracking for auto-failover
   int _consecutiveErrors = 0;
+  final List<String> _failedTrackIds = [];
   
   // Discovery Caching (TTL based)
   final Map<String, DateTime> _discoveryCacheTimes = {};
@@ -181,17 +196,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   
   // Search Caching (Speed up back/forth)
   final Map<String, List<Track>> _searchCache = {};
-  
-  // Download file validity cache to avoid repeated I/O
-  final Map<String, bool> _downloadedFileCache = {};
-  DateTime? _lastCacheRefresh;
 
   // Services
   final AudioService _audioService = AudioService();
   final SpotifyService _spotifyService = SpotifyService();
   final LocalMusicService _localMusicService = LocalMusicService();
   final NetworkService _networkService = NetworkService();
-  final InnerTubeService _innerTubeService = InnerTubeService();
+  final InnerTubeService _innerTubeService = InnerTubeService.instance;
+  final StreamResolutionService _streamResolution = StreamResolutionService.instance;
   final CastService _castService = CastService(); // Cast Service Instance
 
   // Cast State
@@ -302,7 +314,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   bool get isPlaying => _isPlaying;
   Duration get position => _position;
   Duration get duration => _duration;
-  bool get isOfflineTrackPlaying => _isOfflineTrack;
   String? get errorMessage => _errorMessage;
   bool get isLoadingLocal => _isLoadingLocal;
   Artist? get currentArtistDetails => _currentArtistDetails; // Added getter
@@ -325,16 +336,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   List<Track> get downloadQueue => List.unmodifiable(_downloadQueue);
   List<Track> get queue => List.unmodifiable(_queue); // Added queue getter
   Stream<Duration> get positionStream => _audioService.onPositionChanged;
-  Stream<Duration> get durationStream => _audioService.onDurationChanged;
-  Stream<bool> get playbackStateStream => _audioService.onPlaybackStateChanged;
-  Stream<PlayerState> get playerStateStream => _audioService.playerStateStream;
-  Stream<bool> get playbackCompleteStream => _audioService.onPlaybackComplete;
   
 
   
   // --- Initialization & Setup ---
   DateTime? _lastPositionNotify;
-  MusicProvider() { _initialize(); }
+  MusicProvider({AccentController? accentController})
+      : _accentController = accentController {
+    _initialize();
+  }
   
   Future<void> _initialize() async {
     if (kDebugMode) debugPrint('MusicProvider: Initializing...');
@@ -545,6 +555,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _isLowDataMode = p.getBool('lowDataMode') ?? false; 
       _isAutoBitrate = p.getBool('isAutoBitrate') ?? true;
       _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; 
+      _isAutoQueueEnabled = p.getBool('autoQueueEnabled') ?? true;
       
       final sourceValue = p.getString('musicSource') ?? 'youtube'; 
       _currentMusicSource = MusicSource.fromString(sourceValue); 
@@ -703,11 +714,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         listenTimeMs: listenTimeMs,
         skipTimingMs: skipTimingMs,
       );
-      
-      // Record transition for sequence learning
-      if (_previousTrack != null) {
-        _recommendationService.recordTransition(_previousTrack!, _currentTrack!);
-      }
     }
     
     if (_stopAfterCurrentTrack) {
@@ -781,10 +787,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
            // Multi-track playlists loop
            if (kDebugMode) debugPrint('MusicProvider: End of Online Playlist -> Looping to start');
            _playTrackInternal(list[0], setContext: false, clearQueue: false);
-       } else {
-           // ENHANCED: Single track or For You context -> Smart Autoplay with recommendations
-           _startAutoplayFromRecommendations();
-       }
+        } else {
+            // ENHANCED: Single track or For You context -> Smart Autoplay
+            if (!_isAutoQueueEnabled) {
+              if (kDebugMode) debugPrint('MusicProvider: Auto Queue disabled, stopping.');
+              stopTrack();
+              return;
+            }
+            _startAutoplayFromRecommendations();
+        }
     }
   }
   
@@ -1045,37 +1056,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         }
       }
 
-      // Handle cross-source playback: If track source doesn't match current music source
-      // Try to find equivalent track in current source or fall back to track's original source
-      if (_shouldSearchForEquivalent(track)) {
-        if (kDebugMode) {
-          debugPrint('MusicProvider: Track source (${track.source}) differs from current source ($_currentMusicSource)');
-          debugPrint('MusicProvider: Searching for equivalent track in ${_currentMusicSource.displayName}');
-        }
-        
-        try {
-          final equivalentTrack = await _findEquivalentTrack(track);
-          if (equivalentTrack != null) {
-            if (kDebugMode) {
-              debugPrint('MusicProvider: Found equivalent: ${equivalentTrack.trackName} (${equivalentTrack.id})');
-            }
-            playableId = equivalentTrack.id;
-            // Keep _currentTrack as the ORIGINAL track (see spotify branch).
-            effectiveTrack = equivalentTrack;
-          } else {
-            // If no equivalent found, use the track's original source for this playback
-            if (kDebugMode) {
-              debugPrint('MusicProvider: No equivalent found, using original source for this track');
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('MusicProvider: Error finding equivalent track: $e');
-            debugPrint('MusicProvider: Falling back to original track source');
-          }
-        }
-      }
-
       // Await the bitrate that was started earlier
       final bitrate = await bitrateFuture;
       if (bitrate == 0) {
@@ -1087,86 +1067,69 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
 
 
-      // Get stream URL or Source using InnerTube service
-      dynamic result;
-      
-      try {
-        if (kDebugMode) {
-          debugPrint('MusicProvider: Fetching stream via InnerTube for $playableId');
-        }
-        // Changed from getAudioStreamUrl to getAudioStream to support StreamProxy
-        result = await _innerTubeService.getAudioStream(playableId, preferredBitrate: 128);
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('MusicProvider: InnerTube stream fetch failed: $e');
-        }
-        throw Exception('Failed to get stream: $e');
-      }
-      
-      if (result == null) {
-        throw Exception('Received empty stream result');
-      }
+      // Resolve stream URL via the racing resolution service
+      // (InnerTube ANDROID_VR vs Saavn 320kbps, first validated wins).
+      final resolved = await _streamResolution.resolve(ResolveRequest(
+        videoId: playableId,
+        title: effectiveTrack.trackName,
+        artist: effectiveTrack.artistName,
+        durationMs: effectiveTrack.durationMs,
+      ));
 
+      if (resolved == null || resolved.url.isEmpty) {
+        throw Exception('Failed to get stream: all sources exhausted');
+      }
       if (kDebugMode) {
-        debugPrint('MusicProvider: Stream fetched. Type: ${result.runtimeType}');
+        debugPrint('MusicProvider: Stream resolved via ${resolved.source}');
       }
 
-      // Play the audio based on result type
-      try {
-        if (result is AudioSource) {
-           // Proxy Source (YoutubeExplode)
-           await _audioService.play(null, 
-             customSource: result,
-             title: effectiveTrack.trackName,
-             artist: effectiveTrack.artistName,
-             artUri: effectiveTrack.albumArtUrl,
-             id: effectiveTrack.id,
-             hasNext: _hasNext(),
-             hasPrevious: _hasPrevious(),
-           );
-        } else if (result is String) {
-           // URL (Fallback)
-           if (result.isEmpty) throw Exception('Empty URL received');
-           await _audioService.play(result,
-             title: effectiveTrack.trackName,
-             artist: effectiveTrack.artistName,
-             artUri: effectiveTrack.albumArtUrl,
-             id: effectiveTrack.id,
-             hasNext: _hasNext(),
-             hasPrevious: _hasPrevious(),
-           );
-        } else {
-           throw Exception('Unknown stream result type: ${result.runtimeType}');
-        }
-      } catch (e) {
-        if (result is AudioSource) {
-           // If Proxy failed, Try Fallback URL Method immediately
-           if (kDebugMode) debugPrint('MusicProvider: Proxy playback failed ($e). Falling back to legacy URL method...');
-           
-           // Fetch URL using the Legacy/Fallback chain (Manual -> Cobalt -> Piped)
-           // We explicitly use getAudioStreamUrl which returns a String
-           final fallbackUrl = await _innerTubeService.getAudioStreamUrl(playableId, preferredBitrate: 128);
-           
-           if (kDebugMode) debugPrint('MusicProvider: Playing fallback URL...');
-           await _audioService.play(fallbackUrl,
-             title: effectiveTrack.trackName,
-             artist: effectiveTrack.artistName,
-             artUri: effectiveTrack.albumArtUrl,
-             id: effectiveTrack.id,
-             hasNext: _hasNext(),
-             hasPrevious: _hasPrevious(),
-           );
-           
-        } else {
-           // If it was already a URL and failed, rethrow (or handle differently)
-           rethrow;
+      final playHeaders = <String, String>{
+        if (resolved.userAgent != null) 'User-Agent': resolved.userAgent!,
+      };
+
+      // Play the resolved URL. YouTube bot-gates URLs per-request (rotation),
+      // so a rejected URL often just needs a fresh resolution — retry up to
+      // 3 times, invalidating the cache each round.
+      ResolvedStream current = resolved;
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        final headers = <String, String>{
+          if (current.userAgent != null) 'User-Agent': current.userAgent!,
+        };
+        try {
+          await _audioService.play(current.url,
+            headers: headers.isNotEmpty ? headers : null,
+            title: effectiveTrack.trackName,
+            artist: effectiveTrack.artistName,
+            artUri: effectiveTrack.albumArtUrl,
+            id: effectiveTrack.id,
+            hasNext: _hasNext(),
+            hasPrevious: _hasPrevious(),
+          );
+          break;
+        } catch (e) {
+          if (attempt == 3) rethrow;
+          if (kDebugMode) {
+            debugPrint('MusicProvider: Playback failed ($e). Re-resolving (attempt ${attempt + 1}/3)...');
+          }
+          _streamResolution.invalidate(playableId);
+          final retry = await _streamResolution.resolve(ResolveRequest(
+            videoId: playableId,
+            title: effectiveTrack.trackName,
+            artist: effectiveTrack.artistName,
+            durationMs: effectiveTrack.durationMs,
+          ));
+          if (retry == null || retry.url.isEmpty) rethrow;
+          current = retry;
         }
       }
 
       // Update state - Note: _isPlaying will be updated by the stream listener
       // Don't set _isPlaying = true here to avoid race condition
-      _currentTrack = effectiveTrack;
-      _updateRecentlyPlayed(effectiveTrack);
+      // Keep the ORIGINAL track so playlist index lookups (by original id),
+      // same-tap toggles and download keys stay valid even after Spotify→YT
+      // conversion. The playable YT variant only lives in the audio source.
+      _currentTrack = track;
+      _updateRecentlyPlayed(track);
       _updateCurrentIndex();
       notifyListeners();
       
@@ -1190,6 +1153,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         debugPrint('MusicProvider: Successfully started playback of ${effectiveTrack.trackName}');
       }
       _consecutiveErrors = 0; // Reset error count on success
+      _failedTrackIds.remove(effectiveTrack.id);
       
     } catch (e, s) {
       if (kDebugMode) {
@@ -1221,14 +1185,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     
     _isOfflineContext = true; // Set explicit offline flag
-    await _playOfflineTrackInternal(track, setContext: setContext, clearQueue: clearQueue);
+    await _playOfflineTrackInternal(track, setContext: setContext, clearQueue: clearQueue, contextList: contextList);
     
     if (setContext && contextList != null) {
        _setPlaybackContext(contextList, clearQueue: clearQueue);
     }
   }
 
-  Future<void> _playOfflineTrackInternal(Track track, {bool setContext = true, bool clearQueue = true}) async {
+  Future<void> _playOfflineTrackInternal(Track track, {bool setContext = true, bool clearQueue = true, List<Track>? contextList}) async {
     _clearError();
     
     // Sync current track metadata immediately for UI consistency
@@ -1276,9 +1240,11 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         if (!_isOfflineMode && _networkService.isConnected) {
             if (kDebugMode) debugPrint("MusicProvider: Local file missing, falling back to online for ${track.trackName}");
             // Recursive call to playTrack will now see it as NOT downloaded (since we removed metadata)
-            // and attempt online playback.
-            await playTrack(track, 
-                playlistTracks: setContext ? (isDownloaded ? await getDownloadedTracks() : _localTracks) : null,
+            // and attempt online playback. Preserve the caller's original context list
+            // so skips stay inside what the user tapped from.
+            await playTrack(track,
+                playlistTracks: setContext ? (contextList ?? _currentPlayingTracks ?? (isDownloaded ? await getDownloadedTracks() : _localTracks)) : null,
+                playlistId: _currentPlaylistId,
                 setContext: setContext,
                 clearQueue: clearQueue
             );
@@ -1436,29 +1402,38 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> connectToCastDevice(CastDevice device) async {
     final success = await _castService.connect(device);
     if (success) {
-      _isCasting = true;
-      _audioService.pause(); // Pause local playback
-      
       // If we are currently playing something, transfer it
       if (_currentTrack != null) {
         // Build high quality URL
         String? streamUrl;
         if (_currentTrack!.source == 'youtube' || _currentTrack!.source == 'piped') {
-           streamUrl = await _innerTubeService.getAudioStreamUrl(_currentTrack!.id);
+           final castResolved = await _streamResolution.resolve(ResolveRequest(
+             videoId: _currentTrack!.id,
+             title: _currentTrack!.trackName,
+             artist: _currentTrack!.artistName,
+             durationMs: _currentTrack!.durationMs,
+           ));
+           streamUrl = castResolved?.url;
         } else {
            // Local file casting might require a local HTTP server, omitting for simple scope
            // For now, assume remote URLs only or just remote tracks
-           streamUrl = null; 
+           streamUrl = null;
         }
-        
+
         if (streamUrl != null) {
+          _isCasting = true;
+          unawaited(_audioService.pause()); // Pause local playback
           await _castService.loadMedia(
             url: streamUrl,
             title: _currentTrack!.trackName,
             artist: _currentTrack!.artistName,
             imageUrl: _currentTrack!.albumArtUrl,
           );
+        } else {
+          _errorMessage = 'Casting unavailable for this track.';
         }
+      } else {
+        _isCasting = true;
       }
     }
     notifyListeners();
@@ -1472,21 +1447,38 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   // --- Error Handling ---
   void _clearError() { if (_errorMessage != null) { _errorMessage = null; notifyListeners(); } }
-  Future<void> _handlePlaybackError(String message) async { 
-    debugPrint("Playback Error: $message"); 
-    _errorMessage = message.length > 150 ? '${message.substring(0, 147)}...' : message; 
-    
+  Future<void> _handlePlaybackError(String message) async {
+    debugPrint("Playback Error: $message");
+
+    // Dummy padding sources (silent WAV) must never count as track failures —
+    // they exist only so notification buttons stay clickable.
+    final id = _currentTrack?.id ?? '';
+    if (id == 'prev_dummy' || id == 'next_dummy') {
+      if (kDebugMode) debugPrint('MusicProvider: Ignoring dummy source error.');
+      return;
+    }
+
+    // Same track already failed recently: do not loop on it.
+    if (_failedTrackIds.contains(id)) {
+      await stopTrack();
+      return;
+    }
+    _failedTrackIds.add(id);
+    if (_failedTrackIds.length > 20) _failedTrackIds.remove(_failedTrackIds.first);
+
+    _errorMessage = message.length > 150 ? '${message.substring(0, 147)}...' : message;
+
     // Automatic Failover: If it's an online track and we have a next one, try skipping
     if (!_isOfflineTrack && !_isOfflineMode && _networkService.isConnected) {
        _consecutiveErrors++;
-       if (_consecutiveErrors <= 2) {
+       if (_consecutiveErrors <= 1) {
           if (kDebugMode) debugPrint("MusicProvider: Attempting auto-skip after error...");
           skipToNext();
           return;
        }
     }
-    
-    await stopTrack(); 
+
+    await stopTrack();
     _consecutiveErrors = 0; // Reset
   }
 
@@ -1565,9 +1557,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
             return;
           }
         }
-        final bitrate = await _getBitrate(); // Use current adaptive bitrate for preloading
-        final url = await _innerTubeService.getAudioStreamUrl(playableId, preferredBitrate: bitrate);
-        await _audioService.preloadTrack(url);
+        final preloadResolved = await _streamResolution.resolve(ResolveRequest(
+          videoId: playableId,
+          title: nextTrack.trackName,
+          artist: nextTrack.artistName,
+          durationMs: nextTrack.durationMs,
+        ));
+        if (preloadResolved == null) return;
+        await _audioService.preloadTrack(preloadResolved.url, userAgent: preloadResolved.userAgent);
       } catch (e) {
         if (kDebugMode) debugPrint("MusicProvider: Error preloading next track ${nextTrack.trackName}: $e");
       }
@@ -1631,6 +1628,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   final Map<String, Artist> _artistCache = {};
   final Map<String, Album> _albumCache = {};
 
+  /// Keeps insertion-ordered caches bounded (FIFO eviction).
+  static void _capCache<K, V>(Map<K, V> cache, int max) {
+    while (cache.length > max) {
+      cache.remove(cache.keys.first);
+    }
+  }
+
   Future<Artist?> _fetchArtistInternal(String artistName) async {
     // 1. Check Cache
     if (_artistCache.containsKey(artistName)) {
@@ -1658,6 +1662,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       // 3. Cache Result
       _artistCache[artistName] = artist;
+      _capCache(_artistCache, 100);
       return artist;
     } catch (e) {
       if (kDebugMode) debugPrint("MusicProvider: Internal artist fetch error: $e");
@@ -1690,6 +1695,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
          
          // 3. Cache Result
          _albumCache[key] = album;
+         _capCache(_albumCache, 100);
          return album;
       }
       return null;
@@ -1768,6 +1774,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       // Cache it
       _artistCache[artistTrack.trackName] = _currentArtistDetails!;
+      _capCache(_artistCache, 100);
       
        debugPrint("PROVIDER: Artist info loaded for ${_currentArtistDetails?.name}");
     } catch (e) {
@@ -1839,9 +1846,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
 
-  void _handleConnectivityChange(bool isConnected) { if (!isConnected && !_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = false; _saveSettings(); _showOfflineModeNotification('Connection lost.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } else if (isConnected && _isOfflineMode && !_userManuallySetOffline) { goOnline(); } else if (isConnected && _isOfflineMode && _userManuallySetOffline) { if (!_isReconnecting) _showReconnectionPrompt(); _processRetryQueue(); _processDownloadQueue(); } else if (isConnected && !_isOfflineMode) { if (_isReconnecting) { _isReconnecting = false; _reconnectionTimer?.cancel(); _errorMessage = null; notifyListeners(); } _processRetryQueue(); _processDownloadQueue(); } }
-  void goOnline() { if (_isOfflineMode) { bool wasOffline = _isOfflineMode; _isOfflineMode = false; _userManuallySetOffline = false; _isReconnecting = false; _reconnectionTimer?.cancel(); _saveSettings(); _errorMessage = 'You are now online.'; notifyListeners(); if (wasOffline) _refreshDataOnReconnect(); _processRetryQueue(); _processDownloadQueue(); } }
-  void goOffline() { if (!_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = true; _isReconnecting = false; _reconnectionTimer?.cancel(); _saveSettings(); _showOfflineModeNotification('Offline mode enabled.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } }
+  void _handleConnectivityChange(bool isConnected) { if (!isConnected && !_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = false; _saveSettings(); _showOfflineModeNotification('Connection lost.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } else if (isConnected && _isOfflineMode && !_userManuallySetOffline) { goOnline(); } else if (isConnected && _isOfflineMode && _userManuallySetOffline) { if (!_isReconnecting) _showReconnectionPrompt(); _processRetryQueue(); _processDownloadQueue(); } else if (isConnected && !_isOfflineMode) { if (_isReconnecting) { _isReconnecting = false; _errorMessage = null; notifyListeners(); } _processRetryQueue(); _processDownloadQueue(); } }
+  void goOnline() { if (_isOfflineMode) { bool wasOffline = _isOfflineMode; _isOfflineMode = false; _userManuallySetOffline = false; _isReconnecting = false; _saveSettings(); _errorMessage = 'You are now online.'; notifyListeners(); if (wasOffline) _refreshDataOnReconnect(); _processRetryQueue(); _processDownloadQueue(); } }
+  void goOffline() { if (!_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = true; _isReconnecting = false; _saveSettings(); _showOfflineModeNotification('Offline mode enabled.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } }
   void toggleOfflineMode() => _isOfflineMode ? goOnline() : goOffline();
   void toggleLowDataMode() { _isLowDataMode = !_isLowDataMode; if (_isLowDataMode) { _wifiBitrate = NetworkConfig.moderateNetworkBitrate; _cellularBitrate = NetworkConfig.poorNetworkBitrate; _errorMessage = "Low data mode enabled."; } else { _handleNetworkQualityChange(_networkService.networkQuality); _errorMessage = "Low data mode disabled."; } _saveSettings(); notifyListeners(); }
   void _showReconnectionPrompt() { if (_isReconnecting) return; _isReconnecting = true; _errorMessage = 'Internet available. Tap to go online.'; notifyListeners(); }
@@ -1854,13 +1861,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   void likeSong(Track track) { if (!isSongLiked(track.id)) { _likedSongs.insert(0, track); _saveLikedSongs(); notifyListeners(); } }
   void unlikeSong(String trackId) { int count = _likedSongs.length; _likedSongs.removeWhere((t) => t.id == trackId); if (_likedSongs.length < count) { _saveLikedSongs(); notifyListeners(); } }
   void toggleLike(Track track) => isSongLiked(track.id) ? unlikeSong(track.id) : likeSong(track);
-  Future<void> _loadLikedSongs() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('likedSongs'); if (s != null) _likedSongs = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Track.fromJson(j)).toList(); } catch (_) { _likedSongs = []; } }
+  Future<void> _loadLikedSongs() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('likedSongs'); if (s != null) _likedSongs = (await compute(_jsonDecode, s)).map((j) => Track.fromJson(Map<String, dynamic>.from(j as Map))).toList(); } catch (_) { _likedSongs = []; } }
   Future<void> _saveLikedSongs() async { try { final p = await SharedPreferences.getInstance(); await p.setString('likedSongs', await compute(_jsonEncode, _likedSongs.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save liked', _saveLikedSongs)); } }
 
   // --- Recently Played ---
   Future<void> _updateRecentlyPlayed(Track track) async { _recentlyPlayed.removeWhere((t) => t.id == track.id); _recentlyPlayed.insert(0, track); if (_recentlyPlayed.length > 20) _recentlyPlayed = _recentlyPlayed.take(20).toList(); await _saveRecentlyPlayed(); }
   void removeFromRecentlyPlayed(String trackId) { int count = _recentlyPlayed.length; _recentlyPlayed.removeWhere((t) => t.id == trackId); if (_recentlyPlayed.length < count) { _saveRecentlyPlayed(); notifyListeners(); } }
-  Future<void> _loadRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('recentlyPlayed'); if (s != null) _recentlyPlayed = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Track.fromJson(j)).toList(); } catch (_) { _recentlyPlayed = []; } }
+  Future<void> _loadRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('recentlyPlayed'); if (s != null) _recentlyPlayed = (await compute(_jsonDecode, s)).map((j) => Track.fromJson(Map<String, dynamic>.from(j as Map))).toList(); } catch (_) { _recentlyPlayed = []; } }
   Future<void> _saveRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); await p.setString('recentlyPlayed', await compute(_jsonEncode, _recentlyPlayed.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save recent', _saveRecentlyPlayed)); } }
 
   // --- Bitrate Settings ---
@@ -1930,15 +1937,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> loadLocalMusicFiles({bool forceRescan = false}) async { if (_isLoadingLocal && !forceRescan) return; _isLoadingLocal = true; notifyListeners(); try { _localTracks = await _localMusicService.fetchLocalMusicFromMediaStore(); _localTracks = LocalMusicService.sortTracks(_localTracks, _localTracksSortCriteria); _errorMessage = null; } catch (e) { _errorMessage = 'Failed to load local files: ${e.toString()}'; _localTracks = []; } finally { _isLoadingLocal = false; notifyListeners(); } }
   void sortLocalTracks(SortCriteria criteria) { if (_localTracksSortCriteria == criteria && _localTracks.isNotEmpty) return; _localTracksSortCriteria = criteria; _localTracks = LocalMusicService.sortTracks(_localTracks, criteria); _saveSettings(); notifyListeners(); }
   Future<void> addLocalMusicFolder() async { String? iMsg="Adding folder..."; _errorMessage=iMsg; notifyListeners(); try { final String? p = await _localMusicService.pickDirectory(); if(p!=null){await loadLocalMusicFiles(forceRescan:true); if(_errorMessage==iMsg) _errorMessage="Local music refreshed.";} else if(_errorMessage==iMsg) _errorMessage=null;} catch(e) {_errorMessage='Failed to add folder: ${e.toString()}';} finally {notifyListeners();} }
-  Future<void> pickAndPlayLocalFile() async { try { final t = await _localMusicService.pickMusicFile(); if (t != null) { if (!_localTracks.any((tr) => tr.id == t.id)) { _localTracks.add(t); sortLocalTracks(_localTracksSortCriteria); } await playOfflineTrack(t); } } catch (e) { _errorMessage = 'Failed to pick file: ${e.toString()}'; notifyListeners(); } }
-  Future<void> playAllLocalTracks({int startIndex = 0, bool? shuffle}) async { if (_localTracks.isEmpty) { _errorMessage = 'No local music found.'; notifyListeners(); return; } try { _setPlaybackContext(_localTracks); if (shuffle != null && shuffle != _shuffleEnabled) { _shuffleEnabled = shuffle; _saveSettings(); } Track t; if (_shuffleEnabled) {
-    t = _shuffledPlaylist.isNotEmpty ? _shuffledPlaylist[0] : _localTracks[0];
-  } else {
-    t = _localTracks[startIndex.clamp(0, _localTracks.length - 1)];
-  } await playOfflineTrack(t); } catch (e) { await _handlePlaybackError('Failed to play local tracks.'); } }
 
   // --- Playlist Management ---
-  Future<void> loadUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('userPlaylists'); if (s != null) _userPlaylists = List<Map<String, dynamic>>.from(jsonDecode(s)).map((j) => Playlist.fromJson(j)).toList(); } catch (_) { _userPlaylists = []; } }
+  Future<void> loadUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('userPlaylists'); if (s != null) _userPlaylists = (await compute(_jsonDecode, s)).map((j) => Playlist.fromJson(Map<String, dynamic>.from(j as Map))).toList(); } catch (_) { _userPlaylists = []; } }
   Future<void> saveUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); await p.setString('userPlaylists', await compute(_jsonEncode, _userPlaylists.map((pl) => pl.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save playlists', saveUserPlaylists)); } }
   Future<void> createPlaylist(String name, {List<Track>? initialTracks, String? imageUrl}) async { 
     if (name.trim().isEmpty) { 
@@ -2046,30 +2047,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     } 
   }
 
-  Future<void> reorderTrackInPlaylist(String playlistId, int oldIndex, int newIndex) async { 
-    final i = _userPlaylists.indexWhere((p) => p.id == playlistId); 
-    if (i < 0) return; 
-    final pl = _userPlaylists[i]; 
-    if (oldIndex < 0 || oldIndex >= pl.tracks.length || newIndex < 0) return; 
-    try { 
-      final t = List<Track>.from(pl.tracks); 
-      final tr = t.removeAt(oldIndex); 
-      int iI = (newIndex > oldIndex) ? newIndex - 1 : newIndex; 
-      iI = iI.clamp(0, t.length); 
-      t.insert(iI, tr); 
-      _userPlaylists[i] = pl.copyWith(tracks: t); 
-      await saveUserPlaylists(); 
-      notifyListeners(); 
-    } catch (e) { 
-      _errorMessage = "Failed to reorder: $e"; 
-      notifyListeners(); 
-    } 
-  }
-  Future<void> playPlaylist(String playlistId, {int startIndex = 0, bool? shuffle}) async { final i = _userPlaylists.indexWhere((p) => p.id == playlistId); if (i < 0) { _errorMessage = 'Playlist not found.'; notifyListeners(); return; } final pl = _userPlaylists[i]; if (pl.tracks.isEmpty) { _errorMessage = "'${pl.name}' empty."; notifyListeners(); return; } if (shuffle != null && shuffle != _shuffleEnabled) { _shuffleEnabled = shuffle; _saveSettings(); } _setPlaybackContext(pl.tracks, playlistId: playlistId); Track t; if (_shuffleEnabled) {
-    t = _shuffledPlaylist.isNotEmpty ? _shuffledPlaylist[0] : pl.tracks[0];
-  } else {
-    t = pl.tracks[startIndex.clamp(0, pl.tracks.length - 1)];
-  } await playTrack(t, playlistId: playlistId, playlistTracks: pl.tracks); }
   Future<void> importPlaylist(Playlist playlist) async { try { final i = _userPlaylists.indexWhere((p) => p.id == playlist.id); if (i >= 0) {
     _userPlaylists[i] = playlist;
   } else {
@@ -2084,7 +2061,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     sId = yt.id;
   } else {
     throw Exception("No playable version.");
-  } } final sUrl = await _innerTubeService.getAudioStreamUrl(sId, preferredBitrate: 256);
+  } } final dlResolved = await _streamResolution.resolve(ResolveRequest(
+        videoId: sId,
+        title: track.trackName,
+        artist: track.artistName,
+        durationMs: track.durationMs,
+      ));
+      final sUrl = dlResolved?.url;
+      if (sUrl == null) throw Exception('No downloadable stream found.');
       fP = await _buildDownloadFilePath(id);
       
       // Download Artwork simultaneously (if available)
@@ -2102,7 +2086,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       await _networkService.downloadFile(sUrl, fP, cancelToken: cT, onProgress: (p) {
         if (_isDownloading[id] == true) {
           _downloadProgress[id] = p;
-          notifyListeners();
+          // Throttle global notifications: Dio fires per-chunk (10-50x/sec per
+          // file, xN concurrent). Mirrors the position-tick throttle below.
+          final now = DateTime.now();
+          if (!_lastProgressNotify.containsKey(id) ||
+              now.difference(_lastProgressNotify[id]!) >= const Duration(milliseconds: 250)) {
+            _lastProgressNotify[id] = now;
+            notifyListeners();
+          }
         }
       });
       
@@ -2117,6 +2108,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
               'downloadDate': DateTime.now()
             };
             await saveDownloadedTracksMetadata();
+            _invalidateDownloadedTracksCache();
             _errorMessage = "${track.trackName} downloaded.";
          } else {
              // File too small or missing - likely an error page or empty
@@ -2131,7 +2123,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
   } catch (e) { if (!cT.isCancelled) { _errorMessage = 'Download failed: ${track.trackName}'; if (fP.isNotEmpty) try { final f = File(fP); if (await f.exists()) await f.delete(); } catch (_) {} bool retry = e is DioException && [DioExceptionType.connectionTimeout, DioExceptionType.sendTimeout, DioExceptionType.receiveTimeout, DioExceptionType.connectionError, DioExceptionType.unknown].contains(e.type); if (retry) _addToRetryQueue(_RetryOperation('Download: ${track.trackName}', () => downloadTrack(track))); } } finally { if (_isDownloading.containsKey(id)) { _isDownloading.remove(id); _downloadProgress.remove(id); _downloadCancelTokens.remove(id); _currentlyDownloadingTracks.removeWhere((t) => t.id == id); _concurrentDownloads = max(0, _concurrentDownloads - 1); } notifyListeners(); _processDownloadQueue(); } }
   void cancelDownload(String trackId) { _downloadQueue.removeWhere((t) => t.id == trackId); _downloadCancelTokens[trackId]?.cancel('Cancelled by user.'); }
-  Future<void> deleteDownloadedTrack(String trackId) async { final meta = _downloadedTracksMetadata[trackId]; if (meta == null) { _errorMessage = "Not downloaded."; notifyListeners(); return; } final fp = meta['filePath'] as String?; final ap = meta['artPath'] as String?; final tn = (meta['track'] as Track?)?.trackName ?? '?'; try { if (_isPlaying && _isOfflineTrack && _currentTrack?.id == trackId) await stopTrack(); if (fp != null) { final f = File(fp); if (await f.exists()) await f.delete(); } if (ap != null) { final af = File(ap); if (await af.exists()) await af.delete(); } _downloadedTracksMetadata.remove(trackId); await saveDownloadedTracksMetadata(); _errorMessage = "Removed $tn."; } catch (_) { _errorMessage = 'Failed to delete $tn.'; } finally { notifyListeners(); } }
+  Future<void> deleteDownloadedTrack(String trackId) async { final meta = _downloadedTracksMetadata[trackId]; if (meta == null) { _errorMessage = "Not downloaded."; notifyListeners(); return; } final fp = meta['filePath'] as String?; final ap = meta['artPath'] as String?; final tn = (meta['track'] as Track?)?.trackName ?? '?'; try { if (_isPlaying && _isOfflineTrack && _currentTrack?.id == trackId) await stopTrack(); if (fp != null) { final f = File(fp); if (await f.exists()) await f.delete(); } if (ap != null) { final af = File(ap); if (await af.exists()) await af.delete(); } _downloadedTracksMetadata.remove(trackId); await saveDownloadedTracksMetadata(); _invalidateDownloadedTracksCache(); _errorMessage = "Removed $tn."; } catch (_) { _errorMessage = 'Failed to delete $tn.'; } finally { notifyListeners(); } }
   Future<bool> isTrackDownloaded(String trackId) async { final meta = _downloadedTracksMetadata[trackId]; if (meta != null) { final p = meta['filePath'] as String?; if (p != null && p.isNotEmpty) { if (await File(p).exists()) {
     // Also check file size to ensure it's not a corrupt/empty file
     if (await File(p).length() > 50 * 1024) { // 50KB min
@@ -2143,15 +2135,25 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   } else { await _handleMissingOfflineFile(trackId, p); return false; } } } return false; }
   Future<String?> getDownloadedTrackPath(String trackId) async { if (await isTrackDownloaded(trackId)) return _downloadedTracksMetadata[trackId]?['filePath'] as String?; return null; }
-  Future<List<Track>> getDownloadedTracks() async { List<String> r = []; for (var e in _downloadedTracksMetadata.entries) { final p = e.value['filePath'] as String?; if (p == null || !(await File(p).exists())) r.add(e.key); } if (r.isNotEmpty) { for (var id in r) {
+  Future<List<Track>> getDownloadedTracks() async {
+    // Cached: FutureBuilders call this on every tab re-entry; each uncached
+    // call costs one disk stat per downloaded track.
+    final cached = _downloadedTracksCache;
+    if (cached != null) return cached;
+    List<String> r = []; for (var e in _downloadedTracksMetadata.entries) { final p = e.value['filePath'] as String?; if (p == null || !(await File(p).exists())) r.add(e.key); } if (r.isNotEmpty) { for (var id in r) {
     _downloadedTracksMetadata.remove(id);
-  } await _saveDownloadedTracksMetadataInternal(); notifyListeners(); } return _downloadedTracksMetadata.values.where((m) => m['track'] is Track).map((m) => m['track'] as Track).toList(); }
+  } await _saveDownloadedTracksMetadataInternal(); _invalidateDownloadedTracksCache(); notifyListeners(); }
+    final result = _downloadedTracksMetadata.values.where((m) => m['track'] is Track).map((m) => m['track'] as Track).toList();
+    _downloadedTracksCache = result;
+    return result; }
+  List<Track>? _downloadedTracksCache;
+  void _invalidateDownloadedTracksCache() => _downloadedTracksCache = null;
   Future<void> _loadDownloadedTracksMetadata() async {
     try {
       final p = await SharedPreferences.getInstance();
       final s = p.getString('downloadedTracks');
       if (s != null) {
-        final l = jsonDecode(s) as List;
+        final l = await compute(_jsonDecode, s);
         final dDir = await _getDownloadsDirectory();
         
         _downloadedTracksMetadata = {};
@@ -2189,7 +2191,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
   Future<void> saveDownloadedTracksMetadata() async => await _saveDownloadedTracksMetadataInternal();
   Future<void> _saveDownloadedTracksMetadataInternal() async { final l = _downloadedTracksMetadata.values.map((m) => {'id': (m['track'] as Track).id, 'filePath': m['filePath'], 'artPath': m['artPath'], 'downloadDate': (m['downloadDate'] as DateTime?)?.millisecondsSinceEpoch, 'track': (m['track'] as Track).toJson()}).toList(); try { final p = await SharedPreferences.getInstance(); await p.setString('downloadedTracks', await compute(_jsonEncode, l)); } catch (e) { _addToRetryQueue(_RetryOperation('Save dl meta', _saveDownloadedTracksMetadataInternal)); } }
-  Future<void> _handleMissingOfflineFile(String trackId, String expectedPath) async { bool mRem = _downloadedTracksMetadata.remove(trackId) != null; if (mRem) await _saveDownloadedTracksMetadataInternal(); int cB = _localTracks.length; _localTracks.removeWhere((t) => t.id == expectedPath); bool lRem = _localTracks.length < cB; if (mRem || lRem) notifyListeners(); }
+  Future<void> _handleMissingOfflineFile(String trackId, String expectedPath) async { bool mRem = _downloadedTracksMetadata.remove(trackId) != null; if (mRem) await _saveDownloadedTracksMetadataInternal(); _invalidateDownloadedTracksCache(); int cB = _localTracks.length; _localTracks.removeWhere((t) => t.previewUrl == expectedPath); bool lRem = _localTracks.length < cB; if (mRem || lRem) notifyListeners(); }
   void _addToDownloadQueue(Track track) { if (_isDownloading[track.id]==true || _downloadQueue.any((t)=>t.id==track.id) || _downloadedTracksMetadata.containsKey(track.id)) return; _downloadQueue.add(track); _errorMessage = '${track.trackName} queued.'; notifyListeners(); _processDownloadQueue(); }
   Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= 6) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
   void pauseAllDownloads({bool clearQueue = false}) { final ids = List<String>.from(_downloadCancelTokens.keys); int c = 0; for (final id in ids) { _downloadCancelTokens[id]?.cancel("Downloads paused"); c++; } if (c > 0) debugPrint("Paused $c downloads."); if (clearQueue && _downloadQueue.isNotEmpty) { _downloadQueue.clear(); notifyListeners(); } }
@@ -2214,74 +2216,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Spotify Integration ---
-  Future<void> importSpotifyPlaylist(String spotifyPlaylistId, String playlistName, String imageUrl) async { if (_isOfflineMode) { _errorMessage = 'Cannot import offline.'; notifyListeners(); return; } _errorMessage = 'Importing Spotify playlist...'; notifyListeners(); try { final playlist = await _spotifyService.getPlaylistWithTracks(spotifyPlaylistId, playlistName, imageUrl); await importPlaylist(playlist); _errorMessage = "Imported '${playlist.name}'."; } catch (e) { _errorMessage = 'Failed to import Spotify: ${e.toString()}'; _addToRetryQueue(_RetryOperation('Import Spotify: $playlistName', () => importSpotifyPlaylist(spotifyPlaylistId, playlistName, imageUrl))); } finally { notifyListeners(); } }
-
-  // --- Cross-Source Playback Helpers ---
-  
-  /// Determines if we should search for an equivalent track in the current music source
-  bool _shouldSearchForEquivalent(Track track) {
-    // Don't search for local tracks
-    if (track.source == 'local') return false;
-    
-    // If current source is Local but track is from YouTube, we can't play it
-    if (_currentMusicSource == MusicSource.local && track.source == 'youtube') {
-      return false; // Can't search for local equivalent
-    }
-    
-    // For YouTube source, we can play any track directly via InnerTube
-    return false;
-  }
-  
-  /// Attempts to find an equivalent track in the current music source
-  Future<Track?> _findEquivalentTrack(Track originalTrack) async {
-    try {
-      // Build a search query from the track metadata
-      final searchQuery = '${originalTrack.artistName} ${originalTrack.trackName}';
-      
-      if (kDebugMode) {
-        debugPrint('MusicProvider: Searching for: "$searchQuery"');
-      }
-      
-      List<Track> results = [];
-      
-      // Search using InnerTube service
-      results = await _innerTubeService.searchSongs(searchQuery, limit: 5);
-      
-      if (results.isEmpty) {
-        if (kDebugMode) {
-          debugPrint('MusicProvider: No results found for "$searchQuery"');
-        }
-        return null;
-      }
-      
-      // Try to find the best match
-      // First, try exact match on track name
-      Track? bestMatch = results.firstWhereOrNull((track) => 
-        track.trackName.toLowerCase() == originalTrack.trackName.toLowerCase()
-      );
-      
-      // If no exact match, try partial match
-      bestMatch ??= results.firstWhereOrNull((track) => 
-          track.trackName.toLowerCase().contains(originalTrack.trackName.toLowerCase()) ||
-          originalTrack.trackName.toLowerCase().contains(track.trackName.toLowerCase())
-        );
-      
-      // If still no match, just use the first result
-      bestMatch ??= results.first;
-      
-      if (kDebugMode) {
-        debugPrint('MusicProvider: Best match: ${bestMatch.trackName} by ${bestMatch.artistName}');
-      }
-      
-      return bestMatch;
-      
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('MusicProvider: Error finding equivalent track: $e');
-      }
-      return null;
-    }
-  }
 
   // --- API Content Fetching ---
   
@@ -2314,7 +2248,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       _tracks = processed;
       _recommendedTracks = processed; 
-      _cachedTracks[k] = _tracks; 
+      _cachedTracks[k] = _tracks; _capCache(_cachedTracks, 60); 
       _discoveryCacheTimes[k] = now;
       notifyListeners(); 
       return _tracks; 
@@ -2509,7 +2443,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     try { 
       // Use InnerTube for trending tracks
       _fullTrendingTracks = await _innerTubeService.getTrendingTracks(limit: 20); 
-      _cachedTracks[k] = _fullTrendingTracks; 
+      _cachedTracks[k] = _fullTrendingTracks; _capCache(_cachedTracks, 60); 
       _discoveryCacheTimes[k] = now;
       _trendingTracks = _fullTrendingTracks.take(5).toList(); 
       notifyListeners(); 
@@ -2555,8 +2489,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Use InnerTube service for YouTube Music search or local search
       
       // Always search local tracks first
+      final searchLower = query.toLowerCase();
       List<Track> localResults = _localTracks.where((track) {
-          final searchLower = query.toLowerCase();
           return track.trackName.toLowerCase().contains(searchLower) ||
                  track.artistName.toLowerCase().contains(searchLower) ||
                  track.albumName.toLowerCase().contains(searchLower);
@@ -2598,16 +2532,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // Helper for direct local search (used by Library screen)
-  List<Track> searchLocalTracks(String query) {
-    if (query.isEmpty) return _localTracks;
-    final lower = query.toLowerCase();
-    return _localTracks.where((t) => 
-      t.trackName.toLowerCase().contains(lower) || 
-      t.artistName.toLowerCase().contains(lower) || 
-      t.albumName.toLowerCase().contains(lower)
-    ).toList();
-  }
-
   Future<void> searchPlaylists(String query) async {
      if (query.trim().isEmpty) {
        _playlistSearchResults = [];
@@ -2654,22 +2578,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           track.artistName.toLowerCase().contains(artistName.toLowerCase())
         ).toList();
       } else {
-        // Use InnerTube for artist tracks (using new searchArtists method for finding the artist, 
-        // but wait, fetchArtistTracks in context of SearchScreen tab 2 expects LIST OF ARTISTS?
-        // OR tracks by the artist?
-        // The UI in SearchScreen Tab 2 expects a list of artists (via searchArtists).
-        // BUT the existing method name `fetchArtistTracks` sounds like "get tracks OF an artist".
-        // Let's check usage. 
-        // In SearchScreen: musicProvider.fetchArtistTracks(query); 
-        // Then it uses `provider.artistTracks` and iterates unique artists.
-        // So it expects a list of tracks or artists.
-        // `searchArtists` returns List<Track> (where each track represents an artist hit).
-        // So yes, I should use searchArtists here.
-        
+        // SearchScreen tab 2 iterates unique artists over these hits,
+        // so searchArtists (artist results as Track objects) is correct here.
         _artistTracks = await _innerTubeService.searchArtists(artistName, limit: 30);
       }
       
-      _cachedTracks[k] = _artistTracks; 
+      _cachedTracks[k] = _artistTracks; _capCache(_cachedTracks, 60); 
       notifyListeners(); 
     } catch (e) { 
       _errorMessage = 'Failed for $artistName.'; 
@@ -2722,7 +2636,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         _genreTracks = await _innerTubeService.searchSongs('$genre music', limit: 30);
       }
       
-      _cachedTracks[k] = _genreTracks; 
+      _cachedTracks[k] = _genreTracks; _capCache(_cachedTracks, 60); 
       notifyListeners(); 
     } catch (e) { 
       _errorMessage = 'Failed for $genre.'; 
@@ -2744,21 +2658,16 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Utility & Diagnostics ---
-  Track? getTrackById(String id) { if (_currentTrack?.id == id) return _currentTrack; Track? find(List<Track> l, String i) { try { return l.firstWhere((t) => t.id == i); } catch (_) { return null; } } Track? f; f = find(_localTracks, id); if (f != null) return f; f = find(_likedSongs, id); if (f != null) return f; if (_downloadedTracksMetadata.containsKey(id)) { final d = _downloadedTracksMetadata[id]?['track']; if (d is Track) return d; } f = find(_recentlyPlayed, id); if (f != null) return f; f = find(_tracks, id); if (f != null) return f; f = find(_fullTrendingTracks, id); if (f != null) return f; for (final p in _userPlaylists) { f = find(p.tracks, id); if (f != null) return f; } f = find(_artistTracks, id); if (f != null) return f; f = find(_genreTracks, id); if (f != null) return f; return null; }
-  Future<Map<String, dynamic>> runNetworkDiagnostics() async { final d=<String, dynamic>{}; try { d['OfflineMode']=_isOfflineMode; d['ManualOffline']=_userManuallySetOffline; d['NetSvc Conn']=_networkService.isConnected; d['NetQual']=_networkService.networkQuality.toString(); d['ConnType']=(await _networkService.getConnectionType()).toString(); if(_networkService.isConnected){try{final r=await http.get(Uri.parse('https://www.google.com/favicon.ico')).timeout(const Duration(seconds:5));d['PingTest']='${r.statusCode}(${r.contentLength}b)';}catch(e){d['PingTest']='Failed($e)';}} d['LowData']=_isLowDataMode; d['WiFi BR'] = _wifiBitrate; d['Cell BR'] = _cellularBitrate; d['Est BR'] = await _getBitrate(); d['Shuffle']=_shuffleEnabled; d['Repeat']=_repeatMode.toString(); d['DLQ']=_downloadQueue.length; d['RetryQ']=_retryQueue.length; d['ConcDL']=_concurrentDownloads; return d; } catch (e) { d['Error']=e.toString(); return d; } }
   Future<void> clearAllCaches() async { try { _cachedTracks.clear(); _tracks = []; _trendingTracks = []; _fullTrendingTracks = []; _artistTracks = []; _genreTracks = []; _retryQueue.clear(); _lyricsService.clearCache(); _errorMessage = 'Caches cleared.'; notifyListeners(); if (_networkService.isConnected && !_isOfflineMode) { await fetchTracks(); await fetchTrendingTracks(); } } catch (_) { _errorMessage = 'Failed cache clear.'; notifyListeners(); } }
 
   // --- Sleep Timer ---
   Timer? _sleepTimer;
-  int _sleepTimerMinutes = 0;
 
   void setSleepTimer(int minutes) {
     _sleepTimer?.cancel();
-    _sleepTimerMinutes = minutes;
     if (minutes > 0) {
       _sleepTimer = Timer(Duration(minutes: minutes), () {
         stopTrack();
-        _sleepTimerMinutes = 0;
         notifyListeners();
       });
       _errorMessage = "Sleep timer set for $minutes minutes.";
@@ -2782,6 +2691,19 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
 
   // --- Palette Generation ---
+  /// Feed the dominant palette color to the app accent when album-adaptive
+  /// mode is on. No-op otherwise (zero cost when the feature is off).
+  void _feedAlbumAccent(PaletteGenerator palette) {
+    final controller = _accentController;
+    if (controller == null || !controller.isAlbumAdaptive) return;
+    Color? color = palette.dominantColor?.color;
+    color ??= palette.vibrantColor?.color;
+    if (color == null && palette.colors.isNotEmpty) {
+      color = palette.colors.first;
+    }
+    controller.setAlbumAccent(color);
+  }
+
   Future<void> updatePalette() async {
     final track = _currentTrack;
     if (track == null) {
@@ -2792,9 +2714,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // Explicit check for artwork
     if (track.albumArtUrl.isEmpty) {
-       // Check if it's a local track - might need specific handling later
-       // For now, reset to default dark
        _paletteGenerator = null;
+       _accentController?.setAlbumAccent(null);
        notifyListeners();
        return;
     }
@@ -2811,7 +2732,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     if (_paletteCache.containsKey(trackId)) {
         if (kDebugMode) debugPrint('MusicProvider: Using cached palette for ${track.trackName}');
         _paletteGenerator = _paletteCache[trackId];
-        // Note: We don't notifyListeners() here IF it's already set 
+        _feedAlbumAccent(_paletteCache[trackId]!);
+        // Note: We don't notifyListeners() here IF it's already set
         // but since we reset it to null on track change, we should notify.
         notifyListeners();
         return;
@@ -2867,11 +2789,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       );
 
       // 3. Post-processing: Boost Vibrancy and Harmony
-      final palette = _boostVibrancy(gen);
+      final palette = gen;
       
       // Strict check: Ensure we are still playing the same track to avoid race conditions
       if (_currentTrack?.id == trackId) {
         _paletteGenerator = palette;
+        _feedAlbumAccent(palette);
         
         // Update cache (LRU management: remove oldest if full)
         if (_paletteCache.length > 15) {
@@ -2901,19 +2824,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  /// Post-processes a palette to ensure colors are vibrant enough for a liquid UI.
-  PaletteGenerator _boostVibrancy(PaletteGenerator original) {
-    // If we have a decent vibrant color, we trust it mostly.
-    // Otherwise, we take the dominant/muted colors and "boost" them.
-    
-    // This is a simplified simulation of boosting. In a real app, you'd reconstruct 
-    // the PaletteGenerator or just store the Color objects. 
-    // Since PaletteGenerator is mostly immutable, we return it but we will
-    // apply the "boost" logic in the UI layer (NowPlayingScreen) as well.
-    // FOR NOW: We return original and ensure our UI logic handles "drab" palettes.
-    return original;
-  }
-
   // --- Dispose ---
   @override
   void dispose() {
@@ -2930,10 +2840,11 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _audioService.dispose();
     _innerTubeService.dispose();
     _lyricsService.dispose();
+    unawaited(_recommendationService.close());
+    stopCastingDiscovery();
     _retryTimer?.cancel();
     _networkQualitySubscription?.cancel();
     _connectivityStatusSubscription?.cancel();
-    _reconnectionTimer?.cancel();
     _sleepTimer?.cancel();
     _downloadCancelTokens.forEach((_, token) { if (!token.isCancelled) token.cancel("Provider disposed"); });
     _downloadCancelTokens.clear();
@@ -2944,11 +2855,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
   // --- Preloading Logic ---
   Future<void> _prefetchNextTrack() async {
-    if (_queue.isEmpty) return;
-
     Track? nextTrack;
 
-    // 1. Determine Next Track based on Shuffle/Repeat/Queue
+    // Determine Next Track based on Shuffle/Repeat/Queue
     if (_queue.isNotEmpty) {
       nextTrack = _queue.first;
     } else {
@@ -2970,9 +2879,17 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     if (kDebugMode) debugPrint('MusicProvider: Prefetching next track: ${nextTrack.trackName}');
 
     if (!_isOfflineMode && !_isOfflineTrack && nextTrack.source != 'spotify') {
-        // Audio Prefetch through InnerTubeService (Now also resolves URL for faster start)
-        _innerTubeService.getAudioStreamUrl(nextTrack.id).then((url) {
-           if (kDebugMode) debugPrint('MusicProvider: Stream URL prefetched for ${nextTrack!.trackName}');
+        // Audio prefetch — warms the StreamResolutionService cache so the
+        // next track starts without a network round-trip.
+        _streamResolution.resolve(ResolveRequest(
+          videoId: nextTrack.id,
+          title: nextTrack.trackName,
+          artist: nextTrack.artistName,
+          durationMs: nextTrack.durationMs,
+        )        ).then((resolved) {
+           if (kDebugMode && resolved != null) {
+             debugPrint('MusicProvider: Stream URL prefetched for ${nextTrack!.trackName}');
+           }
         }).catchError((e) {
            if (kDebugMode) debugPrint('MusicProvider: Stream prefetch failed: $e');
         });
@@ -2998,7 +2915,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     final List<dynamic> smartArtists = [];
 
     // 1. Get AI Recommended Artists
-    final recommendedNames = _recommendationService.getRecommendedArtists(limit: 10);
     // Find metadata for these names from recent history/cache if possible
     
     // 2. Get Artists from Liked Songs (High priority)
@@ -3029,5 +2945,4 @@ class _RetryOperation {
   int attempts = 1;
   _RetryOperation(this.description, this.execute);
 }
-
 

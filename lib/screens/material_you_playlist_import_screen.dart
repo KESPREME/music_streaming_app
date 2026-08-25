@@ -129,7 +129,7 @@ class _MaterialYouPlaylistImportScreenState extends State<MaterialYouPlaylistImp
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(MaterialYouTokens.shapeSmall),
-                borderSide: BorderSide(color: MaterialYouTokens.primaryVibrant),
+                borderSide: const BorderSide(color: MaterialYouTokens.primaryVibrant),
               ),
               prefixIcon: Icon(Icons.link_rounded, color: colorScheme.onSurfaceVariant),
             ),

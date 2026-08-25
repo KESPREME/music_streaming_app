@@ -39,12 +39,16 @@ dependencies:
   palette_generator: ^0.3.3+3 # Added for dynamic colors
   flutter_inappwebview: ^6.0.0
   crypto: ^3.0.7
+  pointycastle: ^3.9.1 # DES-ECB decrypt for Saavn media URLs
   cast: 2.1.0 # Added for Chromecast support
+  sqflite: ^2.3.0 # Direct dependency (used by recommendation + lyrics cache)
+  path: ^1.9.0 # Direct dependency (used alongside sqflite)
 
 
 
 
   flutter_cache_manager: ^3.4.1
+  liquid_glass_widgets: ^0.30.2
 
 dependency_overrides: {}
 
@@ -52,6 +56,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/po_token.html
 
 dev_dependencies:
   flutter_test:

@@ -364,22 +364,6 @@ class GlassOptionsSheet extends StatelessWidget {
     );
   }
 
-  Future<void> _navigateToArtist(BuildContext context, MusicProvider provider, String artistName) async {
-    // Show loading indicator
-    showGlassSnackBar(context, 'Loading artist...', duration: const Duration(milliseconds: 500));
-    await provider.navigateToArtist(artistName);
-     if (context.mounted && provider.currentArtistDetails != null) {
-        // FIX: Ensure mini player is visible when going to details screen
-        provider.setHideMiniPlayer(false);
-        
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(
-            artistId: provider.currentArtistDetails!.id,
-            artistName: provider.currentArtistDetails!.name,
-            artistImage: provider.currentArtistDetails!.imageUrl,
-        )));
-     }
-  }
-
   Future<void> _navigateToAlbum(BuildContext context, MusicProvider provider, String albumName, String artistName) async {
      showGlassSnackBar(context, 'Loading album...', duration: const Duration(milliseconds: 500));
     await provider.navigateToAlbum(albumName, artistName);

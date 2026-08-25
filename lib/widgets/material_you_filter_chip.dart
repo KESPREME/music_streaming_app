@@ -28,10 +28,6 @@ class MaterialYouFilterChip extends StatelessWidget {
     final foregroundColor = selected
         ? colorScheme.onSecondaryContainer
         : colorScheme.onSurfaceVariant;
-    
-    final borderColor = selected
-        ? colorScheme.secondary.withValues(alpha: 0.3)
-        : colorScheme.outline;
 
     return Material(
       elevation: selected ? 1 : 0,
@@ -159,5 +155,4 @@ class MaterialYouFilterChipList extends StatelessWidget {
     );
   }
 }
-
 

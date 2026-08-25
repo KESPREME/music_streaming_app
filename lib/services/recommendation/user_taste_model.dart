@@ -12,9 +12,6 @@ class LongTermTasteModel {
   // Energy preference distribution (0-10 bins)
   final List<double> energyDistribution = List.filled(11, 0.0);
   
-  // Era preference (decade -> weight)
-  final Map<String, double> eraPreferences = {};
-  
   // Confidence in the model (0-1, based on data volume)
   double confidence = 0.0;
   
@@ -31,21 +28,6 @@ class LongTermTasteModel {
     final current = artistAffinities[artist] ?? 0.5;
     // Slow exponential moving average
     artistAffinities[artist] = (current * 0.9 + delta.clamp(0, 1) * 0.1).clamp(0.0, 1.0);
-    _updateConfidence();
-  }
-  
-  /// Update energy preference based on completed tracks
-  void updateEnergyPreference(double energy, double weight) {
-    final bin = (energy * 10).clamp(0, 10).round();
-    // Slow update to energy distribution
-    for (int i = 0; i <= 10; i++) {
-      if (i == bin) {
-        energyDistribution[i] = (energyDistribution[i] * 0.95 + weight * 0.05).clamp(0, 1);
-      } else {
-        // Slight decay for other bins
-        energyDistribution[i] *= 0.999;
-      }
-    }
     _updateConfidence();
   }
   
@@ -100,7 +82,6 @@ class LongTermTasteModel {
   Map<String, dynamic> toMap() => {
     'artist_affinities': artistAffinities,
     'energy_distribution': energyDistribution,
-    'era_preferences': eraPreferences,
     'confidence': confidence,
     'last_updated': lastUpdated.millisecondsSinceEpoch,
   };
@@ -117,11 +98,6 @@ class LongTermTasteModel {
         energyDistribution[i] = (energyList[i] as num).toDouble();
       }
     }
-    
-    eraPreferences.clear();
-    (map['era_preferences'] as Map<String, dynamic>?)?.forEach((k, v) {
-      eraPreferences[k] = (v as num).toDouble();
-    });
     
     confidence = (map['confidence'] as num?)?.toDouble() ?? 0.0;
     lastUpdated = DateTime.fromMillisecondsSinceEpoch(
@@ -145,10 +121,6 @@ class ShortTermIntentModel {
   
   // Session start time
   DateTime sessionStart = DateTime.now();
-  
-  // Recent search queries (for intent detection)
-  final List<String> recentSearches = [];
-  static const int _maxSearches = 5;
   
   /// Record a track listen
   void recordListen({
@@ -189,14 +161,6 @@ class ShortTermIntentModel {
     }
   }
   
-  /// Record a search query
-  void recordSearch(String query) {
-    recentSearches.insert(0, query.toLowerCase().trim());
-    while (recentSearches.length > _maxSearches) {
-      recentSearches.removeLast();
-    }
-  }
-  
   /// Get recently listened artists (for short-term affinity)
   Set<String> getRecentArtists() {
     return recentListens.map((l) => l.artistName).toSet();
@@ -225,20 +189,7 @@ class ShortTermIntentModel {
   
   /// Check if user is in "skip mode" (high momentum)
   bool isInSkipMode() => skipMomentum >= 3;
-  
-  /// Check if session is stale (needs refresh)
-  bool isSessionStale() {
-    return DateTime.now().difference(sessionStart) > const Duration(hours: 4);
-  }
-  
-  /// Reset for new session
-  void startNewSession() {
-    recentListens.clear();
-    skipMomentum = 0;
-    energyTrajectory = 0;
-    sessionStart = DateTime.now();
-  }
-  
+
   /// Get average completion rate (session quality indicator)
   double getSessionQuality() {
     if (recentListens.isEmpty) return 0.5;

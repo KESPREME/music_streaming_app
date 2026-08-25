@@ -257,7 +257,7 @@ class _MaterialYouUserPlaylistScreenState extends State<MaterialYouUserPlaylistS
             enabledBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.5)),
             ),
-            focusedBorder: UnderlineInputBorder(
+            focusedBorder: const UnderlineInputBorder(
               borderSide: BorderSide(color: MaterialYouTokens.primaryVibrant),
             ),
           ),
@@ -361,9 +361,11 @@ class _MaterialYouUserPlaylistScreenState extends State<MaterialYouUserPlaylistS
           TextButton(
             child: Text('Save', style: MaterialYouTypography.labelLarge(MaterialYouTokens.primaryVibrant)),
             onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                Navigator.pop(context);
+              final newName = nameController.text.trim();
+              if (newName.isNotEmpty && newName != playlist.name) {
+                context.read<MusicProvider>().renamePlaylist(playlist.id, newName);
               }
+              Navigator.pop(context);
             },
           ),
         ],

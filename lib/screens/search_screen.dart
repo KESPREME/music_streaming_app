@@ -3,9 +3,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../services/search_history_store.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
-import '../search_tab_content.dart'; 
+import '../widgets/track_tile.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 
@@ -65,7 +66,7 @@ class ArtistSearchTile extends StatelessWidget {
     return Material(
       elevation: 1,
       surfaceTintColor: colorScheme.surfaceTint,
-      color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
+      color: colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -169,12 +170,21 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   String _searchQuery = "";
   Timer? _debounce;
   final List<String> _recentSearches = [];
+  final SearchHistoryStore _historyStore = SearchHistoryStore();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this); 
     _searchController.addListener(_onSearchChanged);
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    await _historyStore.load();
+    if (mounted) {
+      setState(() => _recentSearches..clear()..addAll(_historyStore.entries));
+    }
   }
 
   @override
@@ -345,11 +355,13 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                          setState(() {
                            _recentSearches.clear();
                          });
+                         _historyStore.clear();
                       },
                       onRemoveHistoryItem: (query) {
                         setState(() {
                           _recentSearches.remove(query);
                         });
+                        _historyStore.remove(query);
                       },
                     ), 
                     _buildArtistsTab(context, _searchQuery),
@@ -369,6 +381,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         if (_recentSearches.length > 5) _recentSearches.removeLast();
       });
     }
+    // Persist (dedupe/move-to-front handled by the store; UI list keeps its
+    // existing 5-item display behavior).
+    _historyStore.add(query);
   }
 
 
@@ -414,7 +429,6 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           itemBuilder: (context, index) {
             final artistTrack = artists[index];
             final artistName = artistTrack.trackName; // Correct Name
-            final artistDescription = artistTrack.artistName; // Subtitle info
 
             return ArtistSearchTile(
               artistName: artistName, 
@@ -518,3 +532,100 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 }
 
+
+class SearchTabContent extends StatelessWidget {
+  final List<String> recentSearches;
+  final Function(String) onSearchSelected;
+  final VoidCallback onClearHistory;
+  final Function(String) onRemoveHistoryItem;
+
+  const SearchTabContent({
+    super.key,
+    this.recentSearches = const [],
+    required this.onSearchSelected,
+    required this.onClearHistory,
+    required this.onRemoveHistoryItem,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Consumer<MusicProvider>(
+      builder: (context, musicProvider, child) {
+        final searchResults = musicProvider.searchedTracks;
+
+        if (searchResults.isEmpty) {
+            // Show History if available
+            if (recentSearches.isNotEmpty) {
+                 return ListView(
+                   padding: const EdgeInsets.all(16),
+                   children: [
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                           Text(
+                             "Recent Searches",
+                             style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                           ),
+                           TextButton(
+                             onPressed: onClearHistory,
+                             child: Text("Clear All", style: GoogleFonts.splineSans(color: const Color(0xFFFF1744))),
+                           )
+                        ],
+                      ),
+                      ...recentSearches.map((query) => ListTile(
+                        leading: const Icon(Icons.history_rounded, color: Colors.white54),
+                        title: Text(query, style: GoogleFonts.splineSans(color: Colors.white)),
+                        onTap: () => onSearchSelected(query),
+                        onLongPress: () {
+                             showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                backgroundColor: const Color(0xFF1E1E1E), // Dark background for Glass UI
+                                title: const Text("Remove from history?", style: TextStyle(color: Colors.white)),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
+                                  TextButton(onPressed: () {
+                                    onRemoveHistoryItem(query);
+                                    Navigator.pop(context);
+                                  }, child: const Text("Remove", style: TextStyle(color: Color(0xFFFF1744)))),
+                                ],
+                              ),
+                            );
+                        },
+                      )),
+                   ],
+                 );
+            }
+
+          return Center(
+            child: Text(
+              'Search for tracks, artists, or albums.', // Updated to match screenshot
+              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          itemExtent: 72.0, 
+          itemCount: searchResults.length,
+          itemBuilder: (context, index) {
+            final track = searchResults[index];
+            final isPlaying = musicProvider.currentTrack?.id == track.id && musicProvider.isPlaying;
+
+            return TrackTile(
+              track: track,
+              isPlaying: isPlaying,
+              onTap: () {
+                musicProvider.playTrack(track, playlistTracks: searchResults);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}

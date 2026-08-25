@@ -11,7 +11,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  InAppWebViewController? _webViewController;
   final CookieManager _cookieManager = CookieManager.instance();
   bool _isLoading = true;
   Timer? _cookieTimer;
@@ -86,7 +85,6 @@ class _LoginScreenState extends State<LoginScreen> {
               clearCache: true, // Start clean
             ),
             onWebViewCreated: (controller) {
-              _webViewController = controller;
             },
             onLoadStart: (controller, url) {
               if (mounted) setState(() => _isLoading = true);
@@ -115,4 +113,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

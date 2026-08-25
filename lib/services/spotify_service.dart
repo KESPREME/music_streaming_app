@@ -9,9 +9,12 @@ import '../models/playlist.dart';
 import 'innertube/innertube_service.dart';
 
 class SpotifyService {
-  // Replace with your Spotify Developer credentials
-  static const String _clientId = 'b0d754792f364e2fa6b7731b460a75a4';
-  static const String _clientSecret = 'e1290c6890f74502a21ea5e187995c69';
+  // Credentials are injected at build time via --dart-define:
+  // flutter build apk --dart-define=SPOTIFY_CLIENT_ID=xxx --dart-define=SPOTIFY_CLIENT_SECRET=yyy
+  // Rotate any previously committed credentials on the Spotify developer dashboard.
+  static const String _clientId = String.fromEnvironment('SPOTIFY_CLIENT_ID');
+  static const String _clientSecret =
+      String.fromEnvironment('SPOTIFY_CLIENT_SECRET');
   static const String _redirectUri = 'musicapp://callback'; // Simplified URI scheme
 
   // Spotify API endpoints
@@ -26,6 +29,13 @@ class SpotifyService {
 
   Future<String> _authenticate() async {
     if (_accessToken != null) return _accessToken!;
+
+    if (_clientId.isEmpty || _clientSecret.isEmpty) {
+      throw Exception(
+        'Spotify credentials missing. Build with --dart-define=SPOTIFY_CLIENT_ID=... '
+        '--dart-define=SPOTIFY_CLIENT_SECRET=...',
+      );
+    }
 
     // Define OAuth scopes needed
     final scopes = [

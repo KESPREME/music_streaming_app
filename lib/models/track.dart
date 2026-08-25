@@ -70,6 +70,7 @@ class Track {
     String? albumArtUrl,
     String? source,
     Duration? duration,
+    int? durationMs,
   }) {
     return Track(
       id: id ?? this.id,
@@ -80,6 +81,7 @@ class Track {
       albumArtUrl: albumArtUrl ?? this.albumArtUrl,
       source: source ?? this.source,
       duration: duration ?? this.duration,
+      durationMs: durationMs ?? _durationMs,
     );
   }
 

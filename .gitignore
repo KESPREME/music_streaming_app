@@ -46,3 +46,8 @@ app.*.map.json
 /android/app/release
 
 android/build/
+
+# Third-party reference apps (research only)
+Metrolist-main/
+Muzza-main/
+Muzo/

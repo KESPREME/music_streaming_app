@@ -41,7 +41,7 @@ class MaterialYouTrendingNowScreen extends StatelessWidget {
                                 'No trending tracks available', 
                                 style: MaterialYouTypography.bodyLarge(colorScheme.onSurfaceVariant)
                               )
-                            : CircularProgressIndicator(
+                            : const CircularProgressIndicator(
                                 color: MaterialYouTokens.primaryVibrant,
                               ),
                   ),
@@ -85,7 +85,7 @@ class MaterialYouTrendingNowScreen extends StatelessWidget {
       expandedHeight: 120,
       leading: Container(
         margin: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: MaterialYouTokens.surfaceContainerDark,
           shape: BoxShape.circle,
         ),

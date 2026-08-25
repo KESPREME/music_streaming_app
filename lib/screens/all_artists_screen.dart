@@ -248,7 +248,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 2),
-                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: const Offset(0, 4))],
+                      boxShadow: [const BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
                     ),
                     child: CircleAvatar(
                       radius: 35,

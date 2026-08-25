@@ -20,8 +20,6 @@ class GlassPlaybackBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final position = provider.position;
-    final duration = provider.duration;
     
     if (!provider.isMiniPlayerVisible) return const SizedBox.shrink();
 
@@ -105,7 +103,11 @@ class GlassPlaybackBar extends StatelessWidget {
                             size: 36
                           ),
                           onPressed: () {
-                             if (provider.isPlaying) provider.pauseTrack(); else provider.resumeTrack();
+                             if (provider.isPlaying) {
+                               provider.pauseTrack();
+                             } else {
+                               provider.resumeTrack();
+                             }
                           },
                         ),
                       ),
@@ -157,5 +159,4 @@ class GlassPlaybackBar extends StatelessWidget {
     );
   }
 }
-
 

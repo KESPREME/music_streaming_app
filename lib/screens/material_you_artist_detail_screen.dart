@@ -33,7 +33,6 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
   List<dynamic> _albums = [];
   List<dynamic> _singles = [];
   String? _error;
-  String? _resolvedArtistId;
 
   @override
   void initState() {
@@ -84,7 +83,6 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
             orElse: () => results.first,
           );
           artistIdToFetch = exactMatch.id;
-          _resolvedArtistId = artistIdToFetch;
           
           if (kDebugMode) {
             debugPrint('Found artist ID: $artistIdToFetch');
@@ -200,7 +198,7 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
         slivers: [
           _buildSliverAppBar(context, colorScheme),
           if (_isLoading)
-            SliverFillRemaining(
+            const SliverFillRemaining(
               child: Center(
                 child: CircularProgressIndicator(color: MaterialYouTokens.primaryVibrant),
               ),
@@ -276,7 +274,7 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
       elevation: 2,
       leading: Container(
         margin: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: MaterialYouTokens.surfaceContainerDark,
           shape: BoxShape.circle,
         ),
@@ -479,6 +477,5 @@ class _MaterialYouArtistDetailScreenState extends State<MaterialYouArtistDetailS
     );
   }
 }
-
 
 

@@ -45,11 +45,13 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
       final tracks = await musicProvider.getDownloadedTracks();
 
+      if (!mounted) return;
       setState(() {
         _downloadedTracks = tracks;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });

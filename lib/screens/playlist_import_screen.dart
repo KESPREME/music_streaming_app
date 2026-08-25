@@ -273,8 +273,6 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
 
       if (playlistId == null) throw Exception('Could not extract playlist ID from URL');
 
-      if (playlistId == null) throw Exception('Could not extract playlist ID from URL');
-
       // Efficiently fetch ONLY the target playlist metadata
       final playlistInfo = await _spotifyService.getPlaylistMetadata(playlistId);
 

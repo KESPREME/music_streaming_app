@@ -1,6 +1,8 @@
 // lib/models/music_source.dart
 
 /// Music source options for the app
+library;
+
 
 enum MusicSource {
   youtube('YouTube Music', 'youtube'),

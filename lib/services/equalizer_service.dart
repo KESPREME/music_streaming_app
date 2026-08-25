@@ -286,7 +286,7 @@ class EqualizerService {
         
         await bands[i].setGain(deviceGain);
         if (kDebugMode) {
-          debugPrint('EqualizerService: Band ${i} (${bands[i].centerFrequency}Hz) set to ${deviceGain.toStringAsFixed(1)}dB');
+          debugPrint('EqualizerService: Band $i (${bands[i].centerFrequency}Hz) set to ${deviceGain.toStringAsFixed(1)}dB');
         }
       }
     } catch (e) {

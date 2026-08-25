@@ -11,6 +11,8 @@ import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
 import '../widgets/themed_settings_screen.dart';
+import '../widgets/hero_track_card.dart';
+import 'discover_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
   
   @override
@@ -61,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                    controller: _tabController,
                    children: [
                       _buildFeedTab(context),
+                      const DiscoverScreen(),
                       _buildExploreTab(context),
                    ],
                  ),
@@ -123,7 +126,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       child: Row(
         children: [
            expandedTabItem(0, "Feed"),
-           expandedTabItem(1, "Explore"),
+           expandedTabItem(1, "Discover"),
+           expandedTabItem(2, "Explore"),
         ],
       ),
     );
@@ -172,6 +176,36 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         padding: const EdgeInsets.only(top: 10, bottom: 100),
         physics: const BouncingScrollPhysics(),
         children: [
+           // 0. Top Picks (Hero Cards)
+           if (musicProvider.recommendedTracks.isNotEmpty) ...[
+             _buildSectionHeader("Top Picks"),
+             SizedBox(
+               height: 224,
+               child: PageView.builder(
+                 padEnds: false,
+                 controller: PageController(viewportFraction: 0.82),
+                 itemCount: musicProvider.recommendedTracks
+                     .take(5)
+                     .length,                 physics: const BouncingScrollPhysics(),
+                 itemBuilder: (context, index) {
+                   final track = musicProvider.recommendedTracks[index];
+                   return Padding(
+                     padding: EdgeInsets.only(
+                       left: index == 0 ? 20 : 6,
+                       right: index == musicProvider.recommendedTracks.take(5).length - 1 ? 20 : 6,
+                     ),
+                     child: HeroTrackCard(
+                       track: track,
+                       onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.recommendedTracks),
+                       onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+                     ),
+                   );
+                 },
+               ),
+             ),
+             const SizedBox(height: 10),
+           ],
+
            // 1. Recently Played (Horizontal)
            if (musicProvider.recentlyPlayed.isNotEmpty) ...[
              _buildSectionHeader("Jump Back In"),
@@ -204,68 +238,88 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
              ),
            ],
            
-           // 2. For You (Vertical List)
-           const SizedBox(height: 10),
-           _buildSectionHeader("For You"),
-           if (musicProvider.recommendedTracks.isEmpty)
-              const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFFFF1744)))),
-           ...musicProvider.recommendedTracks.map((track) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                child: InkWell(
-                  onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.recommendedTracks),
-                  onLongPress: () {
-                    HapticFeedback.mediumImpact(); // Premium haptic feedback
-                    ThemedOptionsSheet.show(context, track: track);
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04), // Glassy list
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                    ),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            track.albumArtUrl,
-                            width: 60, height: 60, fit: BoxFit.cover,
-                            errorBuilder: (_,__,___) => Container(color: Colors.grey[800], width: 60, height: 60),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                               Text(
-                                 track.trackName,
-                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
-                                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                               ),
-                               const SizedBox(height: 4),
-                               Text(
-                                 track.artistName,
-                                 style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
-                                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                               ),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.play_circle_fill, color: Color(0xFFFF1744), size: 30),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-           }),
-           const SizedBox(height: 20),
+            // 2. For You (Vertical List) — falls back to trending while the
+            // recommendation engine has no history to learn from yet.
+            const SizedBox(height: 10),
+            _buildSectionHeader("For You"),
+            ..._buildForYouList(musicProvider),
+            const SizedBox(height: 20),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildForYouList(MusicProvider musicProvider) {
+    final recs = musicProvider.recommendedTracks.isNotEmpty
+        ? musicProvider.recommendedTracks
+        : musicProvider.trendingTracks;
+    if (recs.isEmpty) {
+      return [
+        const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ),
+        ),
+      ];
+    }
+    return recs.map((track) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        child: InkWell(
+          onTap: () => musicProvider.playTrack(track, playlistTracks: recs),
+          onLongPress: () {
+            HapticFeedback.mediumImpact(); // Premium haptic feedback
+            ThemedOptionsSheet.show(context, track: track);
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04), // Glassy list
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    track.albumArtUrl,
+                    width: 60, height: 60, fit: BoxFit.cover,
+                    errorBuilder: (_,__,___) => Container(color: Colors.grey[800], width: 60, height: 60),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                       Text(
+                         track.trackName,
+                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                         maxLines: 1, overflow: TextOverflow.ellipsis,
+                       ),
+                       const SizedBox(height: 4),
+                       Text(
+                         track.artistName,
+                         style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                         maxLines: 1, overflow: TextOverflow.ellipsis,
+                       ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.play_circle_fill, color: Color(0xFFFF1744), size: 30),
+              ],
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   Widget _buildExploreTab(BuildContext context) {

@@ -56,7 +56,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                     trailing: Switch(
                       value: themeProvider.isMaterialYou,
                       onChanged: (value) => themeProvider.toggleTheme(),
-                      activeColor: MaterialYouTokens.primaryVibrant,
+                      activeThumbColor: MaterialYouTokens.primaryVibrant,
                     ),
                   ),
                   _buildDivider(colorScheme),
@@ -76,7 +76,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                     trailing: Switch(
                       value: themeProvider.isDynamicColorEnabled,
                       onChanged: (value) => themeProvider.setDynamicColorEnabled(value),
-                      activeColor: MaterialYouTokens.primaryVibrant,
+                      activeThumbColor: MaterialYouTokens.primaryVibrant,
                     ),
                   ),
                 ],
@@ -151,8 +151,8 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                       await musicProvider.clearAllCaches();
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Cache cleared'),
+                          const SnackBar(
+                            content: Text('Cache cleared'),
                             backgroundColor: MaterialYouTokens.primaryVibrant,
                           ),
                         );
@@ -294,7 +294,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
         subtitle,
         style: MaterialYouTypography.bodyMedium(colorScheme.onSurfaceVariant),
       ),
-      activeColor: MaterialYouTokens.primaryVibrant,
+      activeThumbColor: MaterialYouTokens.primaryVibrant,
       activeTrackColor: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.3),
     );
   }
@@ -432,7 +432,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
           ),
           if (isLoggedIn)
             IconButton(
-              icon: Icon(Icons.logout_rounded, color: MaterialYouTokens.primaryVibrant),
+              icon: const Icon(Icons.logout_rounded, color: MaterialYouTokens.primaryVibrant),
               onPressed: () async {
                 await authService.logout();
               },

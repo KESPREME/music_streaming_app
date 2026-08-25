@@ -4,11 +4,53 @@ import 'package:google_fonts/google_fonts.dart';
 import '../providers/music_provider.dart';
 import '../utils/format.dart';
 
+/// Visual style for [WavyProgressBar]. The two former copies
+/// (glass + Material You) differed only in these values.
+class WavyBarStyle {
+  final TextStyle Function(BuildContext, Color)? labelStyleBuilder;
+  final Color inactiveColor;
+  final double glowRadius;
+  final double glowAlpha;
+
+  const WavyBarStyle({
+    this.labelStyleBuilder,
+    this.inactiveColor = const Color(0x33FFFFFF),
+    this.glowRadius = 16.0,
+    this.glowAlpha = 0.4,
+  });
+
+  /// Glassmorphism look (default): plusJakartaSans white labels.
+  static TextStyle glassLabel(BuildContext context, Color color) =>
+      GoogleFonts.plusJakartaSans(
+        color: color,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      );
+
+  /// Material You look - theme-aware labels, softer glow.
+  static WavyBarStyle materialYou(BuildContext context) => WavyBarStyle(
+        labelStyleBuilder: (ctx, color) => GoogleFonts.splineSans(
+          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+        inactiveColor: Colors.grey.withValues(alpha: 0.3),
+        glowRadius: 14.0,
+        glowAlpha: 0.3,
+      );
+}
+
 class WavyProgressBar extends StatefulWidget {
   final MusicProvider provider;
   final Color accentColor;
+  final WavyBarStyle style;
 
-  const WavyProgressBar({required this.provider, required this.accentColor, super.key});
+  const WavyProgressBar({
+    required this.provider,
+    required this.accentColor,
+    this.style = const WavyBarStyle(),
+    super.key,
+  });
 
   @override
   State<WavyProgressBar> createState() => _WavyProgressBarState();
@@ -35,6 +77,10 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final labelStyle = widget.style.labelStyleBuilder
+            ?.call(context, Colors.white) ??
+        WavyBarStyle.glassLabel(context, Colors.white.withValues(alpha: 0.5));
+
     return StreamBuilder<Duration>(
       stream: widget.provider.positionStream,
       builder: (context, snapshot) {
@@ -77,7 +123,10 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
                       painter: WavySliderPainter(
                         progress: progress,
                         color: widget.accentColor,
-                        phase: widget.provider.isPlaying ? _controller.value * 2 * math.pi : 0, 
+                        phase: widget.provider.isPlaying ? _controller.value * 2 * math.pi : 0,
+                        inactiveColor: widget.style.inactiveColor,
+                        glowRadius: widget.style.glowRadius,
+                        glowAlpha: widget.style.glowAlpha,
                       ),
                       size: Size.infinite,
                     );
@@ -91,22 +140,8 @@ class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProv
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    formatDuration(position),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    formatDuration(duration),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(formatDuration(position), style: labelStyle),
+                  Text(formatDuration(duration), style: labelStyle),
                 ],
               ),
             ),
@@ -121,8 +156,18 @@ class WavySliderPainter extends CustomPainter {
   final double progress;
   final Color color;
   final double phase;
+  final Color inactiveColor;
+  final double glowRadius;
+  final double glowAlpha;
 
-  WavySliderPainter({required this.progress, required this.color, required this.phase});
+  WavySliderPainter({
+    required this.progress,
+    required this.color,
+    required this.phase,
+    required this.inactiveColor,
+    required this.glowRadius,
+    required this.glowAlpha,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -132,16 +177,15 @@ class WavySliderPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final centerY = size.height / 2;
-    
+
     // Config
     const double waveAmplitude = 4.0;
-    const double waveFrequency = 0.05; 
+    const double waveFrequency = 0.05;
 
-    // Draw Inactive Line (Straight & Gray)
+    // Draw Inactive Line (Straight)
     final activeWidth = size.width * progress;
-    
-    // Inactive Path (Straight Line)
-    paint.color = Colors.white.withValues(alpha: 0.2);
+
+    paint.color = inactiveColor;
     final inactivePath = Path();
     inactivePath.moveTo(activeWidth, centerY);
     inactivePath.lineTo(size.width, centerY);
@@ -150,11 +194,11 @@ class WavySliderPainter extends CustomPainter {
     // active Path (Wavy Line)
     final activePath = Path();
     paint.color = color;
-    
+
     // Calculate initial Y to avoid "hook"
     double startY = centerY + math.sin((0 * waveFrequency) + phase) * waveAmplitude;
     activePath.moveTo(0, startY);
-    
+
     double lastX = 0;
     double lastY = startY;
 
@@ -170,16 +214,19 @@ class WavySliderPainter extends CustomPainter {
     // Draw Thumb at the tip of the wave
     final thumbPaint = Paint()..color = color..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(lastX, lastY), 8.0, thumbPaint);
-    
+
     // Thumb Glow
-    final glowPaint = Paint()..color = color.withValues(alpha: 0.4)..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(lastX, lastY), 16.0, glowPaint);
+    final glowPaint = Paint()..color = color.withValues(alpha: glowAlpha)..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(lastX, lastY), glowRadius, glowPaint);
   }
 
   @override
   bool shouldRepaint(covariant WavySliderPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.phase != phase || oldDelegate.color != color;
+    return oldDelegate.progress != progress ||
+        oldDelegate.phase != phase ||
+        oldDelegate.color != color ||
+        oldDelegate.inactiveColor != inactiveColor ||
+        oldDelegate.glowRadius != glowRadius ||
+        oldDelegate.glowAlpha != glowAlpha;
   }
 }
-
-

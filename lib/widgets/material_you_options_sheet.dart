@@ -20,6 +20,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
   final Track? track;
   final bool isRecentlyPlayedContext;
   final String? playlistId;
+  final bool isInQueueContext;
   final String? playlistName;
   final String? playlistImage;
   final bool isAlbum;
@@ -31,6 +32,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
     this.track,
     this.isRecentlyPlayedContext = false,
     this.playlistId,
+    this.isInQueueContext = false,
     this.playlistName,
     this.playlistImage,
     this.isAlbum = false,
@@ -43,6 +45,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
     Track? track,
     bool isRecentlyPlayedContext = false,
     String? playlistId,
+    bool isInQueueContext = false,
     String? playlistName,
     String? playlistImage,
     bool isAlbum = false,
@@ -50,10 +53,10 @@ class MaterialYouOptionsSheet extends StatelessWidget {
     List<Track>? contextTracks,
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
-    
+
     // Hide Mini Player
     provider.setHideMiniPlayer(true);
-    
+
     try {
       await showModalBottomSheet(
         context: context,
@@ -63,6 +66,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
           track: track,
           isRecentlyPlayedContext: isRecentlyPlayedContext,
           playlistId: playlistId,
+          isInQueueContext: isInQueueContext,
           playlistName: playlistName,
           playlistImage: playlistImage,
           isAlbum: isAlbum,
@@ -91,9 +95,9 @@ class MaterialYouOptionsSheet extends StatelessWidget {
 
     
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: MaterialYouTokens.surfaceContainerDark,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         child: Column(
@@ -189,7 +193,6 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                       title: 'Add to Queue',
                       onTap: () {
                         Navigator.pop(context);
-                        musicProvider.addToQueue(track!);
                         musicProvider.addToQueue(track!);
                         showMaterialYouSnackBar(
                           context,
@@ -310,7 +313,6 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                           Navigator.pop(context);
                           try {
                             musicProvider.removeFromRecentlyPlayed(track!.id);
-                            musicProvider.removeFromRecentlyPlayed(track!.id);
                             showMaterialYouSnackBar(
                               context,
                               'Removed "${track!.trackName}" from history',
@@ -320,6 +322,45 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                           }
                         },
                       ),
+
+                    if (playlistId != null && playlistId!.isNotEmpty && track != null)
+                      _buildOptionTile(
+                        context,
+                        icon: Icons.playlist_remove_rounded,
+                        title: 'Remove from Playlist',
+                        onTap: () {
+                          Navigator.pop(context);
+                          try {
+                            musicProvider.removeTrackFromPlaylist(playlistId!, track!.id);
+                            showMaterialYouSnackBar(
+                              context,
+                              'Removed "${track!.trackName}" from playlist',
+                            );
+                          } catch (e) {
+                             // Ignore safe remove errors
+                          }
+                        },
+                      ),
+
+                    if (isInQueueContext && track != null)
+                      _buildOptionTile(
+                        context,
+                        icon: Icons.remove_circle_outline_rounded,
+                        title: 'Remove from Queue',
+                        onTap: () {
+                          Navigator.pop(context);
+                          try {
+                            musicProvider.removeFromQueue(track!);
+                            showMaterialYouSnackBar(
+                              context,
+                              'Removed "${track!.trackName}" from queue',
+                            );
+                          } catch (e) {
+                             // Ignore safe remove errors
+                          }
+                        },
+                      ),
+
                     
                     // Playlist / Album Options
                     if (track == null && (playlistId != null || isAlbum) && contextTracks != null && contextTracks!.isNotEmpty) ...[
@@ -378,19 +419,24 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                        const SizedBox(height: 16),
                     ],
 
-                    // Generic Artist/Playlist Options (when track is null)
-                    if (track == null) ...[
-                       if (isArtist)
-                       _buildOptionTile(
-                          context,
-                          icon: Icons.radio, // Fixed Icon Name
-                          title: 'Start Artist Radio',
-                          onTap: () {
-                             Navigator.pop(context);
-                             // Implementation for radio
-                          },
-                       ),
-                    ],
+                     // Generic Artist/Playlist Options (when track is null)
+                     if (track == null) ...[
+                        if (isArtist && contextTracks != null && contextTracks!.isNotEmpty)
+                        _buildOptionTile(
+                           context,
+                           icon: Icons.radio, // Fixed Icon Name
+                           title: 'Start Artist Radio',
+                           onTap: () {
+                              Navigator.pop(context);
+                              musicProvider.fetchArtistTracks(contextTracks!.first.artistName).then((_) {
+                                final radioTracks = musicProvider.artistTracks.isNotEmpty
+                                    ? musicProvider.artistTracks
+                                    : contextTracks!;
+                                musicProvider.shuffleAndPlay(radioTracks);
+                              });
+                           },
+                        ),
+                     ],
 
                     const SizedBox(height: 16),
                   ],
@@ -491,9 +537,9 @@ class MaterialYouOptionsSheet extends StatelessWidget {
         builder: (sheetContext) {
           final colorScheme = Theme.of(context).colorScheme;
           return Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: MaterialYouTokens.surfaceContainerDark,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: SafeArea(
               child: Column(
@@ -547,7 +593,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                                   color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(
+                                child: const Icon(
                                   Icons.person_rounded,
                                   color: MaterialYouTokens.primaryVibrant,
                                   size: 20,

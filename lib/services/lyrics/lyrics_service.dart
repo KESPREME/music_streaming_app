@@ -394,17 +394,6 @@ class LyricsService {
     if (kDebugMode) debugPrint('LyricsService: All caches cleared');
   }
   
-  /// Get cache statistics
-  Future<Map<String, dynamic>> getCacheStats() async {
-    final diskStats = await _diskCache.getStats();
-    return {
-      'memoryCount': _memCache.length,
-      'diskCount': diskStats['count'],
-      'inFlightCount': _inFlightRequests.length,
-      'prefetchQueueLength': _prefetchQueue.length,
-    };
-  }
-  
   void dispose() {
     _innerTubeService.dispose();
     _diskCache.close();

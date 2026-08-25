@@ -1,7 +1,23 @@
 /// Credit: Based on yt-dlp YouTube extractor implementation
 /// https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/youtube/_base.py
+library;
 
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+
+/// Canonical User-Agent strings shared by all services that talk to
+/// YouTube-backed endpoints (audio_service, innertube_service,
+/// youtube_stream_source, cobalt_service).
+const kBrowserUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const kAndroidUserAgent =
+    'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip';
+/// UA for ANDROID_VR stream URLs — must accompany every request to a
+/// VR-resolved googlevideo URL or the CDN answers 403.
+const kAndroidVrStreamUserAgent =
+    'com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; Quest 3 Build/SQ3A.220605.009.A1) gzip';
+
+const kIosUserAgent =
+    'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
 
 const customAndroidVr = YoutubeApiClient({
   'context': {

@@ -114,7 +114,7 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
         slivers: [
           _buildSliverAppBar(colorScheme),
           if (_isLoading)
-            SliverFillRemaining(
+            const SliverFillRemaining(
               child: Center(
                 child: CircularProgressIndicator(color: MaterialYouTokens.primaryVibrant),
               ),
@@ -146,7 +146,7 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
       elevation: 2,
       leading: Container(
         margin: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: MaterialYouTokens.surfaceContainerDark,
           shape: BoxShape.circle,
         ),
@@ -160,7 +160,7 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
       actions: [
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: MaterialYouTokens.surfaceContainerDark,
             shape: BoxShape.circle,
           ),

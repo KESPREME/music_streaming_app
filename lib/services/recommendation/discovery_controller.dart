@@ -175,22 +175,7 @@ class DiscoveryController {
     
     return result;
   }
-  
-  /// Reset session state
-  void resetSession() {
-    _sessionDiscoveries.clear();
-    _consecutiveRejections = 0;
-  }
-  
-  /// Get exploration stats
-  Map<String, dynamic> getStats() => {
-    'explorationTolerance': _explorationTolerance,
-    'noveltyBudget': _noveltyBudget,
-    'discoverySuccessRate': _discoverySuccessRate,
-    'knownArtistsCount': _knownArtists.length,
-    'sessionDiscoveriesCount': _sessionDiscoveries.length,
-  };
-  
+
   /// Load saved state
   void loadState(Map<String, dynamic> state) {
     _explorationTolerance = (state['explorationTolerance'] as num?)?.toDouble() ?? 0.3;

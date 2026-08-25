@@ -1,7 +1,12 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
-class GlassNavBar extends StatelessWidget {
+import 'glass_surface.dart';
+
+/// Floating liquid-glass navigation pill.
+///
+/// Identity: chrome-tier shader glass, accent glow on the active tab with a
+/// spring squish on press. Accent always comes from the live theme.
+class GlassNavBar extends StatefulWidget {
   final int currentIndex;
   final Function(int) onTap;
   final List<BottomNavigationBarItem> items;
@@ -14,84 +19,114 @@ class GlassNavBar extends StatelessWidget {
   });
 
   @override
+  State<GlassNavBar> createState() => _GlassNavBarState();
+}
+
+class _GlassNavBarState extends State<GlassNavBar> {
+  int? _pressedIndex;
+
+  @override
   Widget build(BuildContext context) {
-    final itemCount = items.length;
-    
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 25),
-      height: 65,
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF1E1E1E).withValues(alpha: 0.60)
-            : Colors.white.withValues(alpha: 0.70), 
-        borderRadius: BorderRadius.circular(40),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+    final itemCount = widget.items.length;
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+      child: GlassSurface(
+        tier: GlassTier.chrome,
+        borderRadius: 33,
+        child: SizedBox(
+          height: 66,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final itemWidth = constraints.maxWidth / itemCount;
-              const accentColor = Color(0xFFFF1744);
-              
               return Stack(
                 children: [
-                  // Animated Pill Indicator
+                  // Animated accent glow pill
                   AnimatedPositioned(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOutCubic,
-                    left: currentIndex * itemWidth + (itemWidth - 56) / 2,
-                    top: (65 - 44) / 2,
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeOutBack,
+                    left: widget.currentIndex * itemWidth +
+                        (itemWidth - 58) / 2,
+                    top: (66 - 46) / 2,
                     child: Container(
-                      width: 56,
-                      height: 44,
+                      width: 58,
+                      height: 46,
                       decoration: BoxDecoration(
-                        color: accentColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(22),
+                        color: accent.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(23),
                         border: Border.all(
-                          color: accentColor.withValues(alpha: 0.3),
+                          color: accent.withValues(alpha: 0.35),
                           width: 1,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(alpha: 0.25),
+                            blurRadius: 16,
+                            spreadRadius: 1,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  // Icons Row
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: items.asMap().entries.map((entry) {
+                    children: widget.items.asMap().entries.map((entry) {
                       final index = entry.key;
                       final item = entry.value;
-                      final isSelected = index == currentIndex;
-                      
-                      return InkWell(
-                        onTap: () => onTap(index),
-                        borderRadius: BorderRadius.circular(30),
-                        child: SizedBox(
-                          width: itemWidth,
-                          height: 65,
-                          child: Center(
-                            child: AnimatedScale(
-                              scale: isSelected ? 1.1 : 1.0,
-                              duration: const Duration(milliseconds: 200),
-                              child: IconTheme(
-                                data: IconThemeData(
-                                  color: isSelected
-                                      ? accentColor
-                                      : Colors.white.withValues(alpha: 0.5),
-                                  size: 26,
+                      final isSelected = index == widget.currentIndex;
+                      final isPressed = _pressedIndex == index;
+
+                      return Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (_) => setState(() => _pressedIndex = index),
+                          onTapCancel: () => setState(() => _pressedIndex = null),
+                          onTapUp: (_) {
+                            setState(() => _pressedIndex = null);
+                            widget.onTap(index);
+                          },
+                          child: AnimatedScale(
+                            scale: isPressed
+                                ? 0.88
+                                : isSelected
+                                    ? 1.08
+                                    : 1.0,
+                            duration: Duration(
+                                milliseconds: isPressed ? 90 : 220),
+                            curve: isPressed
+                                ? Curves.easeOut
+                                : Curves.easeOutBack,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconTheme(
+                                  data: IconThemeData(
+                                    color: isSelected
+                                        ? accent
+                                        : Colors.white.withValues(alpha: 0.55),
+                                    size: 24,
+                                  ),
+                                  child: isSelected
+                                      ? item.activeIcon
+                                      : item.icon,
                                 ),
-                                child: isSelected 
-                                    ? (item.activeIcon ?? item.icon) 
-                                    : item.icon,
-                              ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  item.label ?? '',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: isSelected
+                                        ? accent
+                                        : Colors.white.withValues(alpha: 0.55),
+                                    letterSpacing: -0.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -107,4 +142,3 @@ class GlassNavBar extends StatelessWidget {
     );
   }
 }
-

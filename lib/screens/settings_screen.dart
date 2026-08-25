@@ -8,6 +8,7 @@ import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../models/music_source.dart';
 import '../screens/login_screen.dart';
+import '../widgets/accent_settings_card.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -109,7 +110,7 @@ class SettingsScreen extends StatelessWidget {
                             onChanged: (value) {
                               themeProvider.toggleTheme();
                             },
-                            activeColor: const Color(0xFFFF1744),
+                            activeThumbColor: const Color(0xFFFF1744),
                           ),
                         ),
                         _buildDivider(isDark),
@@ -154,12 +155,45 @@ class SettingsScreen extends StatelessWidget {
                             onChanged: (value) {
                               themeProvider.setDynamicColorEnabled(value);
                             },
-                            activeColor: const Color(0xFFFF1744),
+                            activeThumbColor: const Color(0xFFFF1744),
                           ),
                         ),
                       ],
                     ),
-                    
+
+                    const SizedBox(height: 32),
+                    const AccentSettingsCard(),
+
+                    const SizedBox(height: 32),
+                    _buildSectionTitle('Playback', isDark),
+                    const SizedBox(height: 12),
+                    _buildGlassCard(
+                      isDark,
+                      children: [
+                        SwitchListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                          title: Text(
+                            'Auto Queue',
+                            style: GoogleFonts.splineSans(
+                              color: isDark ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Keep the music going with related tracks when a playlist ends',
+                            style: GoogleFonts.outfit(
+                              color: isDark ? Colors.white54 : Colors.black54,
+                              fontSize: 12,
+                            ),
+                          ),
+                          value: musicProvider.isAutoQueueEnabled,
+                          onChanged: (v) => musicProvider.setAutoQueueEnabled(v),
+                          activeThumbColor: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
+                    ),
+
                     const SizedBox(height: 32),
                     _buildSectionTitle('Music Source', isDark),
                     const SizedBox(height: 12),
@@ -434,7 +468,7 @@ class SettingsScreen extends StatelessWidget {
           fontSize: 13
         )
       ),
-      activeColor: const Color(0xFFEA80FC), // Purple accent
+      activeThumbColor: const Color(0xFFEA80FC), // Purple accent
       activeTrackColor: const Color(0xFFEA80FC).withValues(alpha: 0.3),
       inactiveThumbColor: isDark ? Colors.grey : Colors.white,
       inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],

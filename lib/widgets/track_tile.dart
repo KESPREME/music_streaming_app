@@ -112,6 +112,8 @@ class TrackTile extends StatelessWidget {
           ThemedOptionsSheet.show(
             context,
             track: track,
+            playlistId: playlistId,
+            isInQueueContext: isInQueueContext,
             isRecentlyPlayedContext: isRecentlyPlayedContext,
           );
         },

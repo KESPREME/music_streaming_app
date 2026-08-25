@@ -188,7 +188,7 @@ class MaterialYouTrackTile extends StatelessWidget {
                     color: MaterialYouTokens.primaryVibrant.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
+                  child: const Icon(
                     Icons.graphic_eq_rounded,
                     color: MaterialYouTokens.primaryVibrant,
                     size: 20,

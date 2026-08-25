@@ -1,111 +1,131 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:flutter/foundation.dart';
-import 'package:just_audio/just_audio.dart';
 import '../auth_service.dart';
-import '../youtube_stream_source.dart';
-import '../cobalt_service.dart';
-import '../piped_service.dart';
 import '../../models/track.dart';
-import '../../models/album.dart'; // Import Album model
-import '../youtube_clients.dart'; // Import custom clients
+import '../../models/discover_models.dart';
+import '../potoken/po_token_webview.dart';
+import '../../models/album.dart';
 
 /// YouTube client types for different use cases
 enum YouTubeClientType {
   webRemix,      // For search and browse
-  androidVr143,  // Primary player 
-  androidVr161,  // Secondary player
-  ios,           // Fallback player
+  visionos,      // Player (Vision Pro client, id 101 — token-free, Muzza's primary)
+  androidVr,     // Player (bot-gated Aug 2026, kept as fallback)
+  tvEmbedded,    // Player fallback
+  ios,           // Resolves but URLs may 403 (not in ladder)
 }
 
 /// InnerTube API client for YouTube Music
 
 class InnerTubeService {
+  static final InnerTubeService instance = InnerTubeService();
+
   static const String _apiUrl = 'https://music.youtube.com/youtubei/v1';
   static const String _origin = 'https://music.youtube.com';
   static const String _referer = 'https://music.youtube.com/';
   
   // WEB_REMIX client (for search, browse)
   static const String _webRemixClientName = 'WEB_REMIX';
-  static const String _webRemixClientVersion = '1.20251227.01.00';
+  // innertubex v0.1.2 parity (Metrolist's working pin, July 2026).
+  static const String _webRemixClientVersion = '1.20260707.12.00';
   static const String _webRemixClientId = '67';
-  static const String _webRemixUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
+  static const String _webRemixUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0';
   
-  // ANDROID_VR client 1.43.32 
-  // "Uses non adaptive bitrate, which fixes audio stuttering... Does not use AV1"
-  static const String _androidVr143ClientName = 'ANDROID_VR';
-  static const String _androidVr143ClientVersion = '1.43.32';
+  // ANDROID_VR client — the only InnerTube client that still serves
+  // direct signed stream URLs without a PO token (verified Feb 2026).
+  // Bump clientVersion + UA together when playback starts failing.
+  // Ref: https://github.com/Tyrrrz/YoutubeExplode/pull/936
+  // NOTE: client versions rotate as YouTube bot-gates old ones. If playback
+  // dies with LOGIN_REQUIRED, bump these (1.60.19 died Aug 2026).
+  // 1.65.10 + 1.43.32 are Metrolist's current pins (fallback ladder).
+  static const String _androidVrClientName = 'ANDROID_VR';
+  static const String _androidVrClientVersion = '1.65.10';
   static const String _androidVrClientId = '28';
-  static const String _androidVr143UserAgent = 'com.google.android.apps.youtube.vr.oculus/1.43.32 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/107.0.5284.2)';
-  
-  // ANDROID_VR client 1.61.48 (Fallback)
-  static const String _androidVr161ClientName = 'ANDROID_VR';
-  static const String _androidVr161ClientVersion = '1.61.48';
-  static const String _androidVr161UserAgent = 'com.google.android.apps.youtube.vr.oculus/1.61.48 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/132.0.6808.3)';
+  static const String _androidVrUserAgent = 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; Quest 3 Build/SQ3A.220605.009.A1) gzip';
 
   // iOS client (Fallback)
   static const String _iosClientName = 'IOS';
   static const String _iosClientVersion = '20.51.39';
   static const String _iosClientId = '5';
   static const String _iosUserAgent = 'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
+
+  // TV client — yt-dlp's current PO-token-free playback workhorse.
+  static const String _tvClientName = 'TVHTML5';
+  static const String _tvClientVersion = '7.20250312.16.00';
+  static const String _tvClientId = '7';
+  static const String _tvUserAgent =
+      'Mozilla/5.0 (ChromiumStyle) Sony/BDP/1.0 CE-HTML; smartTV';
+
+  /// Pick the stream User-Agent matching the client that signed [url].
+  /// googlevideo enforces UA/client consistency on full playback.
+  static String? userAgentForStreamUrl(String url) {
+    if (url.contains('c=IOS')) return _iosUserAgent;
+    if (url.contains('c=ANDROID_VR')) return _androidVrUserAgent;
+    if (url.contains('c=ANDROID')) {
+      return 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
+    }
+    return null;
+  }
   
   String? visitorData;
   String? cookie;
   
   final http.Client _httpClient = http.Client();
-  final CobaltService _cobaltService = CobaltService();
-  final YoutubeExplode _yt = YoutubeExplode(); // Persistent instance optimization
-  
-  // --- URL Cache ---
-  static final Map<String, _CachedUrlEntry> _urlCache = {};
-  static const Duration _cacheDuration = Duration(minutes: 90);
 
-  /// Prefetch a song's URL and cache it
-  Future<void> prefetch(String videoId) async {
-    if (_urlCache.containsKey(videoId)) {
-      final entry = _urlCache[videoId]!;
-      if (!entry.isExpired(_cacheDuration)) return;
+  static const Duration _cacheDuration = Duration(minutes: 30);
+
+  /// Browse-response memoization: TTL cache + in-flight coalescing, so
+  /// Discover tabs that mount simultaneously share one network round trip.
+  final Map<String, _CachedBrowseEntry> _browseCache = {};
+  final Map<String, Future<Object?>> _browseInFlight = {};
+
+  Future<T> _cachedBrowse<T>(
+    String key,
+    Future<T> Function() fetch, {
+    Duration ttl = _cacheDuration,
+  }) async {
+    final cached = _browseCache[key];
+    if (cached != null && !cached.isExpired(ttl)) {
+      return cached.value as T;
     }
-    
-    if (kDebugMode) debugPrint('InnerTubeService: Prefetching $videoId...');
-    try {
-      // Just call getAudioStreamUrl, it will handle fetching and caching
-      await getAudioStreamUrl(videoId);
-    } catch (e) {
-      if (kDebugMode) debugPrint('InnerTubeService: Prefetch failed for $videoId: $e');
+    final inFlight = _browseInFlight[key];
+    if (inFlight != null) {
+      return inFlight as Future<T>;
     }
-  }
-  
-  /// Helper to get cached URL if valid
-  Future<String?> _getCachedUrl(String videoId) async {
-    if (!_urlCache.containsKey(videoId)) return null;
-    
-    final entry = _urlCache[videoId]!;
-    if (entry.isExpired(_cacheDuration)) {
-      _urlCache.remove(videoId);
-      return null;
-    }
-    
-    // Optional: Validate if the URL is still accessible (HEAD request)
-    // This adds latency, so maybe skip for very recent entries (e.g. < 10 mins)
-    // For now, trusting the 90m expiration as Musify does.
-    return entry.url;
-  }
-  
-  void _cacheUrl(String videoId, String url) {
-    _urlCache[videoId] = _CachedUrlEntry(url, DateTime.now());
+    final future = fetch().then((value) {
+      _browseCache[key] = _CachedBrowseEntry(value);
+      return value;
+    }).whenComplete(() {
+      _browseInFlight.remove(key); // block body: must not return a Future
+    });
+    // Store before awaiting so concurrent callers coalesce onto this future.
+    _browseInFlight[key] = future;
+    return future;
   }
 
-  
   /// Build the context object required for all InnerTube requests
   Map<String, dynamic> _buildContext({YouTubeClientType clientType = YouTubeClientType.webRemix}) {
     switch (clientType) {
-      case YouTubeClientType.androidVr143:
+      case YouTubeClientType.visionos:
+        // Muzza-parity: Vision Pro client (id 101) — token-free, login-free.
         return {
           'client': {
-            'clientName': _androidVr143ClientName,
-            'clientVersion': _androidVr143ClientVersion,
+            'clientName': 'VISIONOS',
+            'clientVersion': '0.1',
+            'osName': 'visionOS',
+            'osVersion': '1.3.21O771',
+            'deviceMake': 'Apple',
+            'deviceModel': 'RealityDevice14,1',
+            'hl': 'en',
+            'gl': 'US',
+          },
+        };
+      case YouTubeClientType.androidVr:
+        return {
+          'client': {
+            'clientName': _androidVrClientName,
+            'clientVersion': _androidVrClientVersion,
             'osName': 'Android',
             'osVersion': '12',
             'deviceMake': 'Oculus',
@@ -115,16 +135,11 @@ class InnerTubeService {
             'gl': 'US',
           },
         };
-      case YouTubeClientType.androidVr161:
+      case YouTubeClientType.tvEmbedded:
         return {
           'client': {
-            'clientName': _androidVr161ClientName,
-            'clientVersion': _androidVr161ClientVersion,
-            'osName': 'Android',
-            'osVersion': '12',
-            'deviceMake': 'Oculus',
-            'deviceModel': 'Quest 3',
-            'androidSdkVersion': '32',
+            'clientName': _tvClientName,
+            'clientVersion': _tvClientVersion,
             'hl': 'en',
             'gl': 'US',
           },
@@ -140,7 +155,6 @@ class InnerTubeService {
           },
         };
       case YouTubeClientType.webRemix:
-      default:
         return {
           'client': {
             'clientName': _webRemixClientName,
@@ -160,15 +174,21 @@ class InnerTubeService {
     String clientVersion;
     
     switch (clientType) {
-      case YouTubeClientType.androidVr143:
-        userAgent = _androidVr143UserAgent;
-        clientId = _androidVrClientId;
-        clientVersion = _androidVr143ClientVersion;
+      case YouTubeClientType.visionos:
+        userAgent =
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+        clientId = '101';
+        clientVersion = '0.1';
         break;
-      case YouTubeClientType.androidVr161:
-        userAgent = _androidVr161UserAgent;
+      case YouTubeClientType.androidVr:
+        userAgent = _androidVrUserAgent;
         clientId = _androidVrClientId;
-        clientVersion = _androidVr161ClientVersion;
+        clientVersion = _androidVrClientVersion;
+        break;
+      case YouTubeClientType.tvEmbedded:
+        userAgent = _tvUserAgent;
+        clientId = _tvClientId;
+        clientVersion = _tvClientVersion;
         break;
       case YouTubeClientType.ios:
         userAgent = _iosUserAgent;
@@ -176,13 +196,12 @@ class InnerTubeService {
         clientVersion = _iosClientVersion;
         break;
       case YouTubeClientType.webRemix:
-      default:
         userAgent = _webRemixUserAgent;
         clientId = _webRemixClientId;
         clientVersion = _webRemixClientVersion;
         break;
     }
-    
+
     final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -195,11 +214,11 @@ class InnerTubeService {
       'Origin': _origin,
       'User-Agent': userAgent,
     };
-    
+
     if (visitorData != null) {
       headers['X-Goog-Visitor-Id'] = visitorData!;
     }
-    
+
     // Inject Authentication (Cookies + SAPISIDHASH)
     // This upgrades the client to a "Logged In" state
     final authHeaders = AuthService().getHeaders();
@@ -245,6 +264,7 @@ class InnerTubeService {
       
       // Parse Logic - pass allowBrowseIds: true for artist/playlist search
       // This allows UC/VL/PL browse IDs to be returned for navigation purposes
+      _captureVisitorData(data);
       return _parseSearchResults(data, limit, allowBrowseIds: true);
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: Search error: $e');
@@ -258,7 +278,7 @@ class InnerTubeService {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Searching for "$query"');
       }
-      return _searchWithParams(query, 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D', limit);
+      return await _searchWithParams(query, 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D', limit);
     } catch (e) {
        rethrow;
     }
@@ -486,7 +506,7 @@ class InnerTubeService {
         debugPrint('InnerTubeService: Getting player for $videoId using ANDROID_VR');
       }
       
-      final result = await _getPlayerWithClient(videoId, YouTubeClientType.androidVr143);
+      final result = await _getPlayerWithClient(videoId, YouTubeClientType.androidVr);
       
       // Check if playable
       final status = result['playabilityStatus']?['status'];
@@ -517,12 +537,25 @@ class InnerTubeService {
   }
   
   /// Get player response with specific client type
-  Future<Map<String, dynamic>> _getPlayerWithClient(String videoId, YouTubeClientType clientType) async {
+  Future<Map<String, dynamic>> _getPlayerWithClient(String videoId, YouTubeClientType clientType, {String? poToken}) async {
+    final context = _buildContext(clientType: clientType);
+    if (poToken != null && visitorData != null) {
+      (context['client'] as Map<String, dynamic>)['visitorData'] = visitorData;
+    }
     final body = jsonEncode({
-      'context': _buildContext(clientType: clientType),
+      'context': context,
       'videoId': videoId,
       'racyCheckOk': true,
       'contentCheckOk': true,
+      if (poToken != null)
+        'playbackContext': {
+          'contentPlaybackContext': {
+            if (_signatureTimestamp != null) 'signatureTimestamp': _signatureTimestamp,
+            'html5Preference': 'HTML5_PREF_WANTS',
+          },
+        },
+      if (poToken != null)
+        'serviceIntegrityDimensions': {'poToken': poToken},
     });
     
     final response = await _httpClient.post(
@@ -537,125 +570,146 @@ class InnerTubeService {
     
     return jsonDecode(response.body);
   }
-  
-  /// Get the best audio stream
-  /// Returns [AudioSource] (for YoutubeExplode proxy) or [String] (for URL fallback)
-  Future<dynamic> getAudioStream(String videoId, {int preferredBitrate = 128}) async {
-    // ... (This method logic remains the same as previously implemented)
-    // I am just inserting the legacy URL method below it or ensuring it exists
-    
-    // Actually, I can leave this method as is (it's new) and ADD the old one back.
-    // But since I can't "add" easily without context, I will replace the start of this method
-    // to include the OLD method above it.
-    
-    return await _getAudioStreamInternal(videoId, preferredBitrate, returnSource: true);
-  }
 
-  /// Get audio stream URL (Legacy/Download support)
-  /// Always returns a String URL.
-  Future<String> getAudioStreamUrl(String videoId, {int preferredBitrate = 128}) async {
-    // 1. Check Cache
-    final cached = await _getCachedUrl(videoId);
-    if (cached != null) {
-      if (kDebugMode) debugPrint('InnerTubeService: Cache HIT for $videoId');
+  int? _signatureTimestamp;
+  DateTime? _signatureFetchedAt;
+
+  /// YouTube player JS signature timestamp — WEB clients require it in
+  /// playbackContext or /player answers UNPLAYABLE.
+  Future<int?> _getSignatureTimestamp() async {
+    final cached = _signatureTimestamp;
+    if (cached != null &&
+        _signatureFetchedAt != null &&
+        DateTime.now().difference(_signatureFetchedAt!) < const Duration(hours: 6)) {
       return cached;
     }
-
-    final result = await _getAudioStreamInternal(videoId, preferredBitrate, returnSource: false);
-    if (result is String) {
-      // 2. Update Cache
-      _cacheUrl(videoId, result);
-      return result;
-    }
-    // If internal returned a Source (shouldn't happen if returnSource=false), throw
-    throw Exception('Failed to get URL string');
-  }
-
-  /// Internal implementation to avoid duplication
-  Future<dynamic> _getAudioStreamInternal(String videoId, int preferredBitrate, {required bool returnSource}) async {
-    // 1. Primary: YoutubeExplode (The "Dart NewPipe") -> ROBUST & FAST (with persistent instance)
     try {
-      if (kDebugMode) debugPrint('InnerTubeService: Fetching stream via YoutubeExplode for $videoId');
-      
-      // Use shared instance (Optimized)
-      // final yt = YoutubeExplode(); 
-
-      try {
-        if (kDebugMode) debugPrint('InnerTubeService: Fetching stream via YoutubeExplode (Optimized Clients) for $videoId');
-
-        // Use custom clients to avoid throttling (Android VR / Sdkless)
-        final manifest = await _yt.videos.streamsClient.getManifest(
-          videoId, 
-          ytClients: [customAndroidVr, customAndroidSdkless]
-        );
-        final audioStream = manifest.audioOnly.withHighestBitrate();
-        
-          if (returnSource) {
-             // ROBUSTNESS FIX: Return the stream proxy source directly.
-             // Inject Auth headers (Cookies + Auth)
-             final headers = AuthService().getHeaders();
-             if (kDebugMode) debugPrint('InnerTubeService: Using YoutubeExplode Stream Proxy (Fix 403) with Auth: ${headers.isNotEmpty}');
-             
-             // Cache the URL even if using Proxy Source, so parallel/future calls can benefit
-             _cacheUrl(videoId, audioStream.url.toString());
-             
-             return YoutubeExplodeSource(audioStream, headers: headers);
-          } else {
-             // For downloads: Return the URL string
-             final url = audioStream.url.toString();
-             if (await _validateStreamUrl(url)) {
-                return url;
-             }
-          }
-        
-      } catch (e) {
-          // _yt.close(); // Do not close shared instance
-          if (kDebugMode) debugPrint('InnerTubeService: YoutubeExplode failed: $e. Switching to Manual/Piped Fallbacks.');
-          
-          // Fallback 1: Manual InnerTube (Android VR / iOS)
-          try {
-            if (kDebugMode) debugPrint('InnerTubeService: Trying Manual InnerTube fallback...');
-            final playerResponse = await getPlayer(videoId);
-            final playabilityStatus = playerResponse['playabilityStatus'];
-            if (playabilityStatus?['status'] == 'OK') {
-              final streamingData = playerResponse['streamingData'];
-              if (streamingData != null) {
-                final directUrl = await _extractBestStream(streamingData, preferredBitrate);
-                if (directUrl != null && await _validateStreamUrl(directUrl)) {
-                   if (kDebugMode) debugPrint('InnerTubeService: Found valid stream via Manual InnerTube');
-                   return directUrl;
-                }
-              }
-            }
-          } catch (manualErr) {
-             if (kDebugMode) debugPrint('InnerTubeService: Manual InnerTube failed: $manualErr');
-          }
-
-          // Fallback 2: Cobalt
-          try {
-             if (kDebugMode) debugPrint('InnerTubeService: Trying Cobalt Fallback...');
-             final cobaltUrl = await CobaltService().getAudioStreamUrl(videoId);
-             // Always return the raw URL string: callers attach track metadata
-             // and build a properly-tagged source themselves.
-             _cacheUrl(videoId, cobaltUrl);
-             return cobaltUrl;
-          } catch (cobaltErr) {
-             if (kDebugMode) debugPrint('InnerTubeService: Cobalt failed: $cobaltErr');
-          }
+      final iframe = await _httpClient
+          .get(Uri.parse('https://www.youtube.com/iframe_api'))
+          .timeout(const Duration(seconds: 8));
+      final hashMatch =
+          RegExp(r'/s/player/([a-zA-Z0-9_-]+)/').firstMatch(iframe.body)?.group(1);
+      if (hashMatch == null) return null;
+      final playerJs = await _httpClient.get(Uri.parse(
+          'https://www.youtube.com/s/player/$hashMatch/player_ias.vflset/en_GB/base.js'));
+      final stsMatch = RegExp(r'signatureTimestamp\s*=\s*(\d+)')
+          .firstMatch(playerJs.body);
+      if (stsMatch == null) return null;
+      _signatureTimestamp = int.parse(stsMatch.group(1)!);
+      _signatureFetchedAt = DateTime.now();
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: signatureTimestamp=$_signatureTimestamp');
       }
-      // _yt.close(); // Do not close shared instance
+      return _signatureTimestamp;
     } catch (e) {
-      if (kDebugMode) debugPrint('InnerTubeService: YoutubeExplode wrapper failed: $e');
+      if (kDebugMode) debugPrint('InnerTubeService: sigTimestamp failed: $e');
+      return null;
+    }
+  }
+
+  /// Capture visitorData from any InnerTube response's responseContext so
+  /// PO-token player requests can bind to the same session.
+  void _captureVisitorData(Map<String, dynamic> data) {
+    if (visitorData != null) return;
+    final ctx = data['responseContext'];
+    if (ctx is Map<String, dynamic>) {
+      final vd = ctx['visitorData'];
+      if (vd is String && vd.isNotEmpty) {
+        visitorData = vd;
+        if (kDebugMode) debugPrint('InnerTubeService: visitorData captured');
+      }
+    }
+  }
+
+  Future<void> _ensureVisitorData() async {
+    if (visitorData != null) return;
+    try {
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: jsonEncode({'context': _buildContext(), 'browseId': 'FEmusic_home'}),
+      );
+      if (response.statusCode == 200) {
+        _captureVisitorData(jsonDecode(response.body));
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('InnerTubeService: visitorData fetch failed: $e');
+    }
+  }
+
+  /// Fast path used by [StreamResolutionService].
+  /// [preferredBitrate] is an upper bound in kbps; the closest stream at or
+  /// under it wins, else the highest available.
+  Future<String?> getDirectAudioStreamUrl(
+    String videoId, {
+    int preferredBitrate = 256,
+  }) async {
+    // PRIMARY: WEB_REMIX + BotGuard PO token (the only reliable path since
+    // YouTube bot-gated every token-less client in Aug 2026 — mirrors
+    // Metrolist's MAIN_CLIENT strategy).
+    try {
+      await _ensureVisitorData();
+      await _getSignatureTimestamp();
+      final pots = await PoTokenWebGenerator.instance.generateForVideo(videoId);
+      final playerResponse = await _getPlayerWithClient(
+        videoId,
+        YouTubeClientType.webRemix,
+        poToken: pots.playerRequest,
+      );
+      final status = playerResponse['playabilityStatus'];
+      if (status?['status'] == 'OK') {
+        final streamingData = playerResponse['streamingData'];
+        if (streamingData != null) {
+          final url = await _extractBestStream(streamingData, preferredBitrate);
+          if (url != null) {
+            final sep = url.contains('?') ? '&' : '?';
+            debugPrint('InnerTubeService: stream via webRemix+poToken');
+            return '$url${sep}pot=${Uri.encodeComponent(pots.streaming)}';
+          }
+        }
+      } else {
+        debugPrint(
+            'InnerTubeService: webRemix+poToken not OK: ${status?['status']} ${status?['reason']}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: webRemix+poToken failed: $e');
+      }
     }
 
-    // 2. Secondary: Piped API (Last Resort)
-    try {
-        if (kDebugMode) debugPrint('InnerTubeService: All internal methods failed. Trying Piped...');
-        return await PipedService().getAudioStreamUrl(videoId);
-    } catch (_) {}
-
-    throw Exception("No valid stream found for $videoId");
+    // FALLBACK ladder (token-less; usually bot-gated, kept for rotation waves
+    // where a client briefly opens up).
+    const ladder = <YouTubeClientType>[
+      YouTubeClientType.visionos,
+      YouTubeClientType.androidVr,
+      YouTubeClientType.tvEmbedded,
+    ];
+    for (final client in ladder) {
+      try {
+        final playerResponse =
+            await _getPlayerWithClient(videoId, client);
+        final status = playerResponse['playabilityStatus'];
+        if (status?['status'] != 'OK') {
+          debugPrint(
+              'InnerTubeService: $client not OK for $videoId: ${status?['status']} ${status?['reason']}');
+          continue;
+        }
+        final streamingData = playerResponse['streamingData'];
+        if (streamingData == null) continue;
+        final url = await _extractBestStream(streamingData, preferredBitrate);
+        if (url != null) {
+          debugPrint('InnerTubeService: stream via $client');
+          return url;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('InnerTubeService: $client stream failed: $e');
+        }
+      }
+    }
+    return null;
   }
+
 
   // Legacy Piped method removed. Use PipedService class.
 
@@ -699,37 +753,6 @@ class InnerTubeService {
     return null;
   }
 
-  /// Validate if a stream URL is accessible (not 403)
-  Future<bool> _validateStreamUrl(String url) async {
-    try {
-      // CRITICAL: Dynamic User-Agent for validation
-      // Must match AudioService logic to ensure valid streams aren't rejected (403).
-      String? userAgent;
-      if (url.contains('c=ANDROID')) {
-         userAgent = 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
-      } else if (url.contains('c=IOS')) {
-         userAgent = 'com.google.ios.youtube/19.29.1 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X)';
-      }
-      
-      final headers = <String, String>{
-        'Accept-Encoding': 'gzip',
-      };
-      if (userAgent != null) {
-        headers['User-Agent'] = userAgent;
-      }
-
-      final response = await _httpClient.head(
-        Uri.parse(url),
-        headers: headers,
-      );
-      if (kDebugMode) debugPrint('InnerTubeService: Stream validation status: ${response.statusCode}');
-      return response.statusCode == 200 || response.statusCode == 206;
-    } catch (e) {
-      if (kDebugMode) debugPrint('InnerTubeService: Stream validation failed: $e');
-      return false;
-    }
-  }
-  
   /// Get home/browse content (trending, recommendations)
   Future<List<Track>> getHomeTracks({int limit = 20}) async {
     try {
@@ -750,7 +773,7 @@ class InnerTubeService {
       
       final data = jsonDecode(response.body);
       return _parseHomeResults(data, limit);
-      
+
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Home error: $e');
@@ -758,9 +781,96 @@ class InnerTubeService {
       rethrow;
     }
   }
+
+  /// New Releases shelf (albums/singles/playlists). Items carry browse or
+  /// video ids — the UI routes PL/VL/OLAK ids to the playlist flow.
+  Future<List<Track>> getNewReleases({int limit = 20}) {
+    return _cachedBrowse('new_releases:$limit', () async {
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: jsonEncode({
+          'context': _buildContext(),
+          'browseId': 'FEmusic_new_releases',
+        }),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('New releases browse failed: ${response.statusCode}');
+      }
+      return _parseHomeResults(jsonDecode(response.body), limit,
+          allowBrowseIds: true);
+    });
+  }
+
+  /// Moods & Genres chips. The response nests navigation buttons at varying
+  /// depths, so collect them recursively instead of hardcoding a path.
+  Future<List<DiscoverMood>> getMoodsAndGenres() {
+    return _cachedBrowse('moods', () async {
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: jsonEncode({
+          'context': _buildContext(),
+          'browseId': 'FEmusic_moods_and_genres',
+        }),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Moods browse failed: ${response.statusCode}');
+      }
+      final moods = <DiscoverMood>[];
+      void walk(dynamic node) {
+        if (node is List) {
+          for (final child in node) {
+            walk(child);
+          }
+          return;
+        }
+        if (node is Map<String, dynamic>) {
+          final button = node['musicNavigationButtonRenderer'];
+          if (button != null) {
+            final title = button['title']?['simpleText'] ??
+                (button['title']?['runs'] as List?)?.firstOrNull?['text'];
+            final params = button['clickPayload'];
+            if (title is String && params is String && params.isNotEmpty) {
+              moods.add(DiscoverMood(title: title, params: params));
+            }
+            return;
+          }
+          node.values.forEach(walk);
+        }
+      }
+
+      walk(jsonDecode(response.body));
+      // Dedupe chips that repeat across sections.
+      final seen = <String>{};
+      return moods.where((m) => seen.add(m.params)).toList();
+    });
+  }
+
+  /// Tracks/playlists for a Moods & Genres category chip.
+  Future<List<Track>> getMoodTracks(String params, {int limit = 30}) {
+    return _cachedBrowse('mood_tracks:$params:$limit', () async {
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: jsonEncode({
+          'context': _buildContext(),
+          'browseId': 'FEmusic_moods_and_genres',
+          'params': params,
+        }),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Mood tracks failed: ${response.statusCode}');
+      }
+      return _parseHomeResults(jsonDecode(response.body), limit,
+          allowBrowseIds: true);
+    });
+  }
   
-  /// Parse home/browse results
-  List<Track> _parseHomeResults(Map<String, dynamic> data, int limit) {
+  /// Parse home/browse results. When [allowBrowseIds] is true, playlist and
+  /// album cards are kept (their ids route through the playlist flow).
+  List<Track> _parseHomeResults(Map<String, dynamic> data, int limit,
+      {bool allowBrowseIds = false}) {
     final tracks = <Track>[];
     
     try {
@@ -790,7 +900,8 @@ class InnerTubeService {
           // Try MusicTwoRowItemRenderer
           renderer = item['musicTwoRowItemRenderer'];
           if (renderer != null) {
-            final track = _parseTrackFromTwoRowRenderer(renderer);
+            final track = _parseTrackFromTwoRowRenderer(renderer,
+                allowBrowseIds: allowBrowseIds);
             if (track != null) {
               tracks.add(track);
             }
@@ -1322,7 +1433,7 @@ class InnerTubeService {
       
       if (response.statusCode != 200) {
         // Fallback to search for popular music
-        return searchSongs('top hits 2024', limit: limit);
+        return await searchSongs('top hits 2024', limit: limit);
       }
       
       final data = jsonDecode(response.body);
@@ -1330,7 +1441,7 @@ class InnerTubeService {
       
       if (tracks.isEmpty) {
         // Fallback to search
-        return searchSongs('trending music 2024', limit: limit);
+        return await searchSongs('trending music 2024', limit: limit);
       }
       
         return tracks;
@@ -1344,243 +1455,18 @@ class InnerTubeService {
     }
   }
   
-  /// Get search suggestions (autocomplete)
-  Future<List<String>> getSearchSuggestions(String query) async {
-    try {
-      final body = jsonEncode({
-        'context': _buildContext(),
-        'input': query,
-      });
-      
-      final response = await _httpClient.post(
-        Uri.parse('$_apiUrl/music/get_search_suggestions?prettyPrint=false'),
-        headers: _buildHeaders(),
-        body: body,
-      );
-      
-      if (response.statusCode != 200) return [];
-      
-      final data = jsonDecode(response.body);
-      final suggestions = <String>[];
-      
-      final contents = data['contents'] as List?;
-      if (contents != null) {
-        for (final section in contents) {
-          final sectionContents = section['searchSuggestionsSectionRenderer']?['contents'] as List?;
-          if (sectionContents == null) continue;
-          
-          for (final item in sectionContents) {
-            final suggestion = item['searchSuggestionRenderer']?['suggestion']?['runs'] as List?;
-            if (suggestion != null) {
-              final text = suggestion.map((r) => r['text'] ?? '').join('');
-              if (text.isNotEmpty) suggestions.add(text);
-            }
-          }
-        }
-      }
-      
-      return suggestions;
-      
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('InnerTubeService: Suggestions error: $e');
-      }
-      return [];
-    }
-  }
-  
-  /// Get explore page (new releases, moods & genres)
-  Future<Map<String, dynamic>> getExplorePage() async {
-    try {
-      final body = jsonEncode({
-        'context': _buildContext(),
-        'browseId': 'FEmusic_explore',
-      });
-      
-      final response = await _httpClient.post(
-        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
-        headers: _buildHeaders(),
-        body: body,
-      );
-      
-      if (response.statusCode != 200) {
-        throw Exception('Explore failed: ${response.statusCode}');
-      }
-      
-      final data = jsonDecode(response.body);
-      
-      final result = <String, dynamic>{
-        'newReleases': <Track>[],
-        'moodGenres': <Map<String, String>>[],
-      };
-      
-      // Parse explore page
-      final contents = data['contents']?['singleColumnBrowseResultsRenderer']
-          ?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'] as List?;
-      
-      if (contents != null) {
-        for (final section in contents) {
-          final carousel = section['musicCarouselShelfRenderer'];
-          if (carousel == null) continue;
-          
-          final header = carousel['header']?['musicCarouselShelfBasicHeaderRenderer'];
-          final browseId = header?['moreContentButton']?['buttonRenderer']
-              ?['navigationEndpoint']?['browseEndpoint']?['browseId'];
-          
-          // New releases albums
-          if (browseId == 'FEmusic_new_releases_albums') {
-            final items = carousel['contents'] as List?;
-            if (items != null) {
-              for (final item in items) {
-                final renderer = item['musicTwoRowItemRenderer'];
-                if (renderer != null) {
-                  final track = _parseTrackFromTwoRowRenderer(renderer);
-                  if (track != null) {
-                    (result['newReleases'] as List<Track>).add(track);
-                  }
-                }
-              }
-            }
-          }
-          
-          // Moods and genres
-          if (browseId == 'FEmusic_moods_and_genres') {
-            final items = carousel['contents'] as List?;
-            if (items != null) {
-              for (final item in items) {
-                final navButton = item['musicNavigationButtonRenderer'];
-                if (navButton != null) {
-                  final title = navButton['buttonText']?['runs']?[0]?['text'];
-                  final params = navButton['clickCommand']?['browseEndpoint']?['params'];
-                  final color = navButton['solid']?['leftStripeColor'];
-                  
-                  if (title != null) {
-                    (result['moodGenres'] as List<Map<String, String>>).add({
-                      'title': title,
-                      'params': params ?? '',
-                      'color': color?.toString() ?? '',
-                    });
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      return result;
-      
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('InnerTubeService: Explore error: $e');
-      }
-      return {'newReleases': <Track>[], 'moodGenres': <Map<String, String>>[]};
-    }
-  }
-  
-  /// Get tracks for a specific mood/genre
-  Future<List<Track>> getMoodGenreTracks(String params, {int limit = 30}) async {
-    try {
-      final body = jsonEncode({
-        'context': _buildContext(),
-        'browseId': 'FEmusic_moods_and_genres_category',
-        'params': params,
-      });
-      
-      final response = await _httpClient.post(
-        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
-        headers: _buildHeaders(),
-        body: body,
-      );
-      
-      if (response.statusCode != 200) {
-        throw Exception('Mood/Genre browse failed: ${response.statusCode}');
-      }
-      
-      final data = jsonDecode(response.body);
-      return _parseHomeResults(data, limit);
-      
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('InnerTubeService: Mood/Genre error: $e');
-      }
-      return [];
-    }
-  }
-  
-  /// Get new release albums
-  Future<List<Track>> getNewReleases({int limit = 20}) async {
-    try {
-      final body = jsonEncode({
-        'context': _buildContext(),
-        'browseId': 'FEmusic_new_releases_albums',
-      });
-      
-      final response = await _httpClient.post(
-        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
-        headers: _buildHeaders(),
-        body: body,
-      );
-      
-      if (response.statusCode != 200) {
-        return searchSongs('new releases 2024', limit: limit);
-      }
-      
-      final data = jsonDecode(response.body);
-      final tracks = <Track>[];
-      
-      // Parse grid of albums
-      final contents = data['contents']?['singleColumnBrowseResultsRenderer']
-          ?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']
-          ?['contents']?[0]?['gridRenderer']?['items'] as List?;
-      
-      if (contents != null) {
-        for (final item in contents) {
-          if (tracks.length >= limit) break;
-          
-          final renderer = item['musicTwoRowItemRenderer'];
-          if (renderer != null) {
-            final track = _parseTrackFromTwoRowRenderer(renderer);
-            if (track != null) tracks.add(track);
-          }
-        }
-      }
-      
-      if (tracks.isEmpty) {
-        return searchSongs('new music releases', limit: limit);
-      }
-      
-      return tracks;
-      
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('InnerTubeService: New releases error: $e');
-      }
-      return searchSongs('latest hits', limit: limit);
-    }
-  }
-  
-  /// Get related tracks for autoplay/radio
-  Future<List<Track>> getRelatedTracks(String videoId, {int limit = 25}) async {
-    // Use the existing suggestions method
-    return getSuggestions(videoId, limit: limit);
-  }
-  
   void dispose() {
     _httpClient.close();
-    _yt.close(); // FIX: Close YoutubeExplode instance to prevent memory leaks
   }
 }
 
-class _CachedUrlEntry {
-  final String url;
+class _CachedBrowseEntry {
+  final Object? value;
   final DateTime timestamp;
 
-  _CachedUrlEntry(this.url, this.timestamp);
+  _CachedBrowseEntry(this.value) : timestamp = DateTime.now();
 
   bool isExpired(Duration duration) {
     return DateTime.now().difference(timestamp) > duration;
   }
 }
-
-

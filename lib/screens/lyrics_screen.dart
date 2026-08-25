@@ -409,11 +409,11 @@ class _LyricsScreenState extends State<LyricsScreen> with TickerProviderStateMix
 
     return ShaderMask(
       shaderCallback: (Rect bounds) {
-        return LinearGradient(
+        return const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
-          stops: const [0.0, 0.15, 0.8, 1.0], 
+          stops: [0.0, 0.15, 0.8, 1.0], 
         ).createShader(bounds);
       },
       blendMode: BlendMode.dstIn,

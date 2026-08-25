@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
-import '../providers/theme_provider.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../widgets/global_music_overlay.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/glass_surface.dart';
 
 import '../widgets/themed_liked_songs_screen.dart';
 import '../widgets/themed_recently_played_screen.dart';
@@ -43,84 +43,55 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     });
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
 
   Widget _buildLiquidLibraryCard(BuildContext context, Map<String, dynamic> item) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final color = item['color'] as Color;
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return InkWell(
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => item['screen']));
       },
       borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
-        decoration: BoxDecoration(
-          color: themeProvider.isGlassmorphism
-              ? Colors.white.withValues(alpha: 0.05)
-              : colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: themeProvider.isGlassmorphism
-                ? Colors.white.withValues(alpha: 0.1)
-                : colorScheme.outlineVariant,
-          ),
-        ),
-        child: Row(
+      child: GlassSurface(
+        tier: GlassTier.card,
+        borderRadius: 20,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: (item['color'] as Color).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: (item['color'] as Color).withValues(alpha: 0.3)),
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
               ),
-              child: Icon(item['icon'] as IconData, color: item['color'], size: 26),
+              child: Icon(item['icon'] as IconData, color: color, size: 22),
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item['title'],
-                    style: GoogleFonts.splineSans(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 17,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  if (item['subtitle'] != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      item['subtitle'],
-                      style: GoogleFonts.splineSans(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ]
-                ],
+            const Spacer(),
+            Text(
+              item['title'],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.splineSans(
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                color: colorScheme.onSurface,
               ),
             ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: themeProvider.isGlassmorphism
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : colorScheme.surfaceContainerHighest,
+            if (item['subtitle'] != null) ...[
+              const SizedBox(height: 3),
+              Text(
+                item['subtitle'],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.splineSans(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 11.5,
+                ),
               ),
-              child: Icon(
-                Icons.arrow_forward_rounded,
-                color: colorScheme.onSurfaceVariant,
-                size: 16,
-              ),
-            ),
+            ],
           ],
         ),
       ),
@@ -232,17 +203,17 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFFF1744) : Colors.white.withValues(alpha: 0.05),
+                            color: isSelected ? const Color(0xFFFF1744) : theme.colorScheme.onSurface.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: isSelected ? const Color(0xFFFF1744) : Colors.white.withValues(alpha: 0.1)
+                              color: isSelected ? const Color(0xFFFF1744) : theme.colorScheme.onSurface.withValues(alpha: 0.1)
                             ),
                           ),
                           alignment: Alignment.center,
                           child: Text(
                             label,
                             style: GoogleFonts.splineSans(
-                              color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7),
+                              color: isSelected ? Colors.white : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                               fontSize: 13,
                             ),
@@ -281,57 +252,57 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         'title': 'Liked Songs',
         'icon': Icons.favorite_rounded,
         'color': const Color(0xFFFF1744),
-        'screen': ThemedLikedSongsScreen(),
+        'screen': const ThemedLikedSongsScreen(),
         'subtitle': 'Your heavy rotation',
       },
       {
         'title': 'Your Playlists',
         'icon': Icons.queue_music_rounded,
         'color': const Color(0xFF00E5FF),
-        'screen': ThemedUserPlaylistScreen(),
+        'screen': const ThemedUserPlaylistScreen(),
         'subtitle': 'Custom collections',
       },
       {
         'title': 'Recently Played',
         'icon': Icons.history_rounded,
         'color': const Color(0xFFFF9100),
-        'screen': ThemedRecentlyPlayedScreen(),
+        'screen': const ThemedRecentlyPlayedScreen(),
         'subtitle': 'Jump back in',
       },
       {
         'title': 'Downloaded',
         'icon': Icons.download_done_rounded,
         'color': const Color(0xFF00E676),
-        'screen': ThemedDownloadedSongsScreen(),
+        'screen': const ThemedDownloadedSongsScreen(),
         'subtitle': 'Offline music',
       },
       {
         'title': 'Local Files',
         'icon': Icons.folder_open_rounded,
         'color': const Color(0xFFEA80FC),
-        'screen': ThemedLocalMusicScreen(),
+        'screen': const ThemedLocalMusicScreen(),
         'subtitle': 'Device storage',
       },
       {
         'title': 'Import Playlists',
         'icon': Icons.playlist_add_check_rounded,
         'color': Colors.grey,
-        'screen': ThemedPlaylistImportScreen(),
+        'screen': const ThemedPlaylistImportScreen(),
         'subtitle': 'Sync from Spotify/YT',
       },
     ];
 
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-      sliver: SliverList(
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 1.35,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final item = libraryItems[index];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildLiquidLibraryCard(context, item),
-            );
-          },
+          (context, index) => _buildLiquidLibraryCard(context, libraryItems[index]),
           childCount: libraryItems.length,
         ),
       ),
@@ -483,7 +454,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                     icon: const Icon(Icons.delete, color: Colors.white54),
                     onPressed: () async {
                          await musicProvider.deleteDownloadedTrack(track.id);
-                         setState(() {}); // Force rebuild to refresh list
+                         if (mounted) setState(() {}); // Force rebuild to refresh list
                     },
                 ),
               );
@@ -539,11 +510,12 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                                  child: Column(
                                      mainAxisAlignment: MainAxisAlignment.center,
                                      children: [
-                                          CircleAvatar(
-                                              radius: 40,
-                                              backgroundImage: NetworkImage(artist.albumArtUrl),
-                                              backgroundColor: Colors.white10,
-                                          ),
+                                           CircleAvatar(
+                                               radius: 40,
+                                               backgroundImage: NetworkImage(artist.albumArtUrl),
+                                               onBackgroundImageError: (_, __) {},
+                                               backgroundColor: Colors.white10,
+                                           ),
                                           const SizedBox(height: 12),
                                           Padding(
                                             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -569,7 +541,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   }
 
   void _showCreatePlaylistDialog(BuildContext context) {
-    final theme = Theme.of(context);
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     final TextEditingController nameController = TextEditingController();
 
@@ -632,7 +603,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => ThemedUserPlaylistScreen(),
+                builder: (context) => const ThemedUserPlaylistScreen(),
               ),
             );
           },
@@ -700,16 +671,11 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           TextButton(
             child: const Text('Save', style: TextStyle(color: Color(0xFFFF1744))),
             onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                // Implement rename if provider supports it. 
-                // Currently Provider might not have renamePlaylist. 
-                // If not, we can't really rename. 
-                // Assuming provider update needed or just close for now if user didn't ask for rename backend.
-                // The task is "Tap and Hold", usually implies functionality. 
-                // I will add a placeholder or call provider if I recalled correctly.
-                // I don't recall rename in MusicProvider. I'll just close for safety.
-                Navigator.pop(context);
+              final newName = nameController.text.trim();
+              if (newName.isNotEmpty && newName != playlist.name) {
+                context.read<MusicProvider>().renamePlaylist(playlist.id, newName);
               }
+              Navigator.pop(context);
             },
           ),
         ],

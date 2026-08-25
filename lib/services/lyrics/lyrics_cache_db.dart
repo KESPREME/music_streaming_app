@@ -193,23 +193,6 @@ class LyricsCacheDb {
     }
   }
   
-  /// Get cache statistics
-  Future<Map<String, dynamic>> getStats() async {
-    if (!_isInitialized || _database == null) {
-      return {'count': 0, 'initialized': false};
-    }
-    
-    try {
-      final result = await _database!.rawQuery('SELECT COUNT(*) as count FROM $_tableName');
-      return {
-        'count': result.first['count'] ?? 0,
-        'initialized': true,
-      };
-    } catch (e) {
-      return {'count': 0, 'initialized': true, 'error': e.toString()};
-    }
-  }
-  
   /// Close the database
   Future<void> close() async {
     if (_database != null) {

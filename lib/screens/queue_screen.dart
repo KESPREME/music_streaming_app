@@ -80,7 +80,7 @@ class QueueScreen extends StatelessWidget {
                          color: Colors.white.withValues(alpha: 0.1),
                          borderRadius: BorderRadius.circular(12),
                          boxShadow: [
-                           BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0,4))
+                           const BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0,4))
                          ]
                        ),
                        child: child

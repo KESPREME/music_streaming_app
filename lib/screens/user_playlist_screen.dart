@@ -376,11 +376,11 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
           TextButton(
             child: const Text('Save', style: TextStyle(color: Color(0xFF00E5FF))),
             onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                // Implement rename functionality (Needs support in Provider/Model ideally)
-                // For now just close
-                Navigator.pop(context);
+              final newName = nameController.text.trim();
+              if (newName.isNotEmpty && newName != playlist.name) {
+                context.read<MusicProvider>().renamePlaylist(playlist.id, newName);
               }
+              Navigator.pop(context);
             },
           ),
         ],

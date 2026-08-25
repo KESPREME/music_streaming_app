@@ -98,7 +98,6 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -289,4 +288,3 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
       );
   }
 }
-
