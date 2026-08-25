@@ -8,6 +8,7 @@ import '../models/track.dart';
 import '../widgets/global_music_overlay.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/stagger_in.dart';
 
 import '../widgets/themed_liked_songs_screen.dart';
 import '../widgets/themed_recently_played_screen.dart';
@@ -48,11 +49,10 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     final color = item['color'] as Color;
     final colorScheme = Theme.of(context).colorScheme;
 
-    return InkWell(
+    return SquishOnPress(
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => item['screen']));
       },
-      borderRadius: BorderRadius.circular(20),
       child: GlassSurface(
         tier: GlassTier.card,
         borderRadius: 20,
@@ -302,7 +302,10 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           mainAxisSpacing: 12,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildLiquidLibraryCard(context, libraryItems[index]),
+          (context, index) => StaggerIn(
+            index: index,
+            child: _buildLiquidLibraryCard(context, libraryItems[index]),
+          ),
           childCount: libraryItems.length,
         ),
       ),
