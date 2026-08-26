@@ -12,12 +12,15 @@ import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
 import 'services/firestore_service.dart';
-import 'widgets/themed_social_screen.dart';
+import 'screens/discover_screen.dart';
+import 'screens/search_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';
 import 'widgets/themed_settings_screen.dart';
 import 'widgets/glass_surface.dart';
+import 'widgets/glass_circle_button.dart';
+import 'widgets/fade_indexed_stack.dart';
 import 'widgets/themed_library_screen.dart';
 import 'widgets/global_music_overlay.dart'; // Import Global Overlay
 
@@ -135,39 +138,43 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  late PageController _pageController;
+  bool _searchMode = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
 
-  final List<Widget> _screens = [
-    const ThemedHomeScreen(),
-    const ThemedSocialScreen(),
-    const ThemedLibraryScreen(),
+  final List<Widget> _screens = const [
+    ThemedHomeScreen(),
+    DiscoverScreen(),
+    ThemedLibraryScreen(),
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: _currentIndex);
-  }
-
-  @override
   void dispose() {
-    _pageController.dispose();
+    _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
   void _onItemTapped(int index) {
-    if (_currentIndex == index) return;
-    setState(() {
-      _currentIndex = index;
-    });
-    // Use jumpToPage to avoid scrolling through intermediate pages
-    _pageController.jumpToPage(index);
+    if (_currentIndex == index && !_searchMode) return;
+    if (_searchMode) _exitSearch();
+    setState(() => _currentIndex = index);
   }
 
-  void _onPageChanged(int index) {
-    setState(() {
-      _currentIndex = index;
+  void _enterSearch() {
+    HapticFeedback.lightImpact();
+    setState(() => _searchMode = true);
+    Future.delayed(const Duration(milliseconds: 180), () {
+      if (mounted) _searchFocus.requestFocus();
     });
+  }
+
+  void _exitSearch() {
+    HapticFeedback.lightImpact();
+    _searchFocus.unfocus();
+    _searchController.clear();
+    Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
+    setState(() => _searchMode = false);
   }
 
   @override
@@ -178,9 +185,10 @@ class _MainScreenState extends State<MainScreen> {
       (p) => p.isPlayerExpanded,
     );
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    final themeProvider = Provider.of<ThemeProvider>(context);
 
     return PopScope(
-      canPop: (_currentIndex == 0 && !isPanelOpen),
+      canPop: (_currentIndex == 0 && !_searchMode && !isPanelOpen),
       onPopInvoked: (didPop) {
         if (didPop) return;
 
@@ -190,88 +198,108 @@ class _MainScreenState extends State<MainScreen> {
            return;
         }
 
-        // Priority 2: Go to Home Tab if not there
+        // Priority 2: Exit search
+        if (_searchMode) {
+           _exitSearch();
+           return;
+        }
+
+        // Priority 3: Go to Home Tab if not there
         if (_currentIndex != 0) {
            _onItemTapped(0);
         }
       },
       child: Scaffold(
         extendBody: true,
-        body: PageView(
-          controller: _pageController,
-          onPageChanged: _onPageChanged,
-          physics: const BouncingScrollPhysics(), // Smooth bounce effect
-          children: _screens,
+        body: Stack(
+          children: [
+            FadeIndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
+            // Search overlay (Muzo-style in-place transition).
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(
+                    begin: const Offset(0, 0.03),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: _searchMode
+                  ? Builder(
+                      key: const ValueKey('search_overlay'),
+                      builder: (_) => themeProvider.isMaterialYou
+                          ? const ThemedSearchScreen()
+                          : SearchScreen(
+                              key: const ValueKey('embedded_search'),
+                              embedded: true,
+                              externalController: _searchController,
+                              externalFocusNode: _searchFocus,
+                            ),
+                    )
+                  : const SizedBox.shrink(key: ValueKey('search_gone')),
+            ),
+          ],
         ),
         bottomNavigationBar: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Row(
               children: [
-                _NavCircle(
-                  icon: Icons.search_rounded,
-                  label: 'Search',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ThemedSearchScreen()),
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Expanded(
                   child: ThemedNavBar(
                     currentIndex: _currentIndex,
                     onTap: _onItemTapped,
+                    searchMode: _searchMode,
+                    searchController: _searchController,
+                    searchFocusNode: _searchFocus,
+                    onSearchSubmitted: (query) {
+                      _searchFocus.unfocus();
+                      if (query.trim().isEmpty) return;
+                    },
                     items: const [
-                      BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-                      BottomNavigationBarItem(icon: Icon(Icons.people_rounded), label: 'Social'),
-                      BottomNavigationBarItem(icon: Icon(Icons.library_music_rounded), label: 'Library'),
+                      BottomNavigationBarItem(icon: Icon(Icons.home_rounded), activeIcon: Icon(Icons.home_filled), label: 'Home'),
+                      BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Discover'),
+                      BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
                     ],
                   ),
                 ),
                 const SizedBox(width: 10),
-                _NavCircle(
-                  icon: Icons.settings_outlined,
-                  label: 'Settings',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()),
+                // Companion circle: search <-> home (Muzo morph).
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutBack,
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
                   ),
+                  child: _searchMode
+                      ? GlassCircleButton(
+                          key: const ValueKey('home_circle'),
+                          icon: Icons.home_outlined,
+                          onTap: () {
+                            _exitSearch();
+                            _onItemTapped(0);
+                          },
+                          semanticLabel: 'Close search',
+                        )
+                      : GlassCircleButton(
+                          key: const ValueKey('search_circle'),
+                          icon: Icons.search_rounded,
+                          onTap: _enterSearch,
+                          semanticLabel: 'Search',
+                        ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-
-
-/// Floating glass circle for nav destinations outside the pill (Muzo-style).
-class _NavCircle extends StatelessWidget {
-  const _NavCircle({required this.icon, required this.label, required this.onTap});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassSurface(
-      tier: GlassTier.chrome,
-      borderRadius: 30,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: SizedBox(
-            width: 54,
-            height: 54,
-            child: Icon(icon, color: Colors.white.withValues(alpha: 0.9), size: 24,
-                semanticLabel: label),
           ),
         ),
       ),

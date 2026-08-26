@@ -32,7 +32,7 @@ void main() {
       tracks: [_t('a', 'Song A'), _t('b', 'Song B')],
       onAction: (t, a) => actions.add((t.id, a)),
     )));
-    await tester.tap(find.byIcon(Icons.favorite_rounded));
+    await tester.tap(find.byIcon(Icons.favorite_outline_rounded));
     await tester.pumpAndSettle(const Duration(milliseconds: 400));
     expect(actions, hasLength(1));
     expect(actions.first.$1, 'a');
@@ -58,6 +58,6 @@ void main() {
       tracks: const [],
       onAction: (_, __) {},
     )));
-    expect(find.text('Deck exhausted — pull to refresh'), findsOneWidget);
+    expect(find.text('Deck exhausted — pull down to refresh'), findsOneWidget);
   });
 }

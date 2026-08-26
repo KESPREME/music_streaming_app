@@ -11,6 +11,7 @@ import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
 import '../widgets/themed_settings_screen.dart';
+import '../widgets/glass_circle_button.dart';
 import '../widgets/hero_track_card.dart';
 import 'discover_screen.dart';
 
@@ -90,24 +91,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               color: Colors.white,
             ),
           ),
-          Container(
-             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-             decoration: BoxDecoration(
-               color: Colors.white.withValues(alpha: 0.05),
-               borderRadius: BorderRadius.circular(20),
-               border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-             ),
-             child: Row(
-               children: [
-                 Icon(Icons.bolt_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
-                 const SizedBox(width: 4),
-                 GestureDetector(
-                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedSettingsScreen())),
-                   child: const Icon(Icons.settings_outlined, size: 20, color: Colors.white),
-                 ),
-               ],
-             ),
-           ),
+          GlassCircleButton(
+            icon: Icons.settings_outlined,
+            iconSize: 22,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()));
+            },
+            semanticLabel: 'Settings',
+          ),
         ],
       ),
     );

@@ -101,7 +101,7 @@ class ArtistSearchTile extends StatelessWidget {
             ],
             border: Border.all(
               color: isGlass
-                  ? const Color(0xFFFF1744).withValues(alpha: 0.3)
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
                   : colorScheme.primary.withValues(alpha: 0.3),
               width: 1.5,
             ),
@@ -158,7 +158,19 @@ class ArtistSearchTile extends StatelessWidget {
 }
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({
+    super.key,
+    this.embedded = false,
+    this.externalController,
+    this.externalFocusNode,
+  });
+
+  /// Embedded mode: lives inside MainScreen's search overlay; the input
+  /// field lives in the nav pill (bound to [externalController]) so this
+  /// screen renders only tabs + results.
+  final bool embedded;
+  final TextEditingController? externalController;
+  final FocusNode? externalFocusNode;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -166,7 +178,8 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
+  late final TextEditingController _searchController =
+      widget.externalController ?? TextEditingController();
   String _searchQuery = "";
   Timer? _debounce;
   final List<String> _recentSearches = [];
@@ -175,7 +188,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this); 
+    _tabController = TabController(length: 3, vsync: this);
     _searchController.addListener(_onSearchChanged);
     _loadHistory();
   }
@@ -191,7 +204,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   void dispose() {
     _tabController.dispose();
     _searchController.removeListener(_onSearchChanged);
-    _searchController.dispose();
+    if (widget.externalController == null) _searchController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -208,9 +221,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           _searchQuery = newQuery;
         });
         if (_searchQuery.isNotEmpty) {
+           _addToHistory(_searchQuery);
            _performSearch(_searchQuery, forceRefresh: isSameQuery);
         } else {
-          Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
+           Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
         }
       }
     });
@@ -254,8 +268,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 elevation: 0,
                 floating: true,
                 pinned: true,
-                toolbarHeight: 90, 
-                flexibleSpace: ClipRRect( 
+                toolbarHeight: widget.embedded ? 8 : 90,
+                flexibleSpace: ClipRRect(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
@@ -263,7 +277,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     ),
                   ),
                 ),
-                title: Padding(
+                title: widget.embedded
+                    ? null
+                    : Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: TextField(
                     controller: _searchController,
@@ -283,7 +299,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: const Color(0xFFFF1744).withValues(alpha: 0.5), width: 1),
+                        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5), width: 1),
                       ),
                       prefixIcon: const Icon(Icons.search, color: Colors.white54),
                       suffixIcon: _searchQuery.isNotEmpty
@@ -321,11 +337,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     child: TabBar(
                       controller: _tabController,
                       indicator: BoxDecoration(
-                        color: const Color(0xFFFF1744).withValues(alpha: 0.15),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(25),
-                        border: Border.all(color: const Color(0xFFFF1744).withValues(alpha: 0.3)),
+                        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
                       ),
-                      labelColor: const Color(0xFFFF1744),
+                      labelColor: Theme.of(context).colorScheme.primary,
                       unselectedLabelColor: Colors.white.withValues(alpha: 0.5),
                       labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.bold),
                       unselectedLabelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w500),
@@ -571,7 +587,7 @@ class SearchTabContent extends StatelessWidget {
                            ),
                            TextButton(
                              onPressed: onClearHistory,
-                             child: Text("Clear All", style: GoogleFonts.splineSans(color: const Color(0xFFFF1744))),
+                             child: Text("Clear All", style: GoogleFonts.splineSans(color: Theme.of(context).colorScheme.primary)),
                            )
                         ],
                       ),
@@ -590,7 +606,7 @@ class SearchTabContent extends StatelessWidget {
                                   TextButton(onPressed: () {
                                     onRemoveHistoryItem(query);
                                     Navigator.pop(context);
-                                  }, child: const Text("Remove", style: TextStyle(color: Color(0xFFFF1744)))),
+                                  }, child: Text("Remove", style: TextStyle(color: Theme.of(context).colorScheme.primary))),
                                 ],
                               ),
                             );
