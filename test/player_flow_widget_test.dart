@@ -9,6 +9,7 @@ import 'package:music_streaming_app/screens/queue_screen.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_surface.dart';
 import 'package:music_streaming_app/widgets/mini_player.dart';
+import 'package:music_streaming_app/widgets/wavy_progress_bar.dart';
 
 class FakeMusicProvider extends MusicProvider {
   FakeMusicProvider({this.track, bool playing = false}) : _playing = playing;
@@ -266,5 +267,29 @@ void main() {
     } finally {
       provider.dispose();
     }
+  });
+
+  testWidgets('renders progress labels with reduced motion', (tester) async {
+    final provider = FakeMusicProvider();
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: Scaffold(
+            body: WavyProgressBar(
+              provider: provider,
+              accentColor: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('0:00'), findsOneWidget);
+    expect(find.text('3:00'), findsOneWidget);
+  });
+
+  test('default progress style has no halo', () {
+    expect(const WavyBarStyle().glowAlpha, 0.0);
   });
 }

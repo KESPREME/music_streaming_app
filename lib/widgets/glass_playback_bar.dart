@@ -1,9 +1,11 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
+import '../theme/glass_tokens.dart';
 import 'glass_options_sheet.dart';
+import 'glass_player_control.dart';
+import 'glass_surface.dart';
 import 'wavy_progress_bar.dart';
 
 class GlassPlaybackBar extends StatelessWidget {
@@ -20,143 +22,107 @@ class GlassPlaybackBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    
     if (!provider.isMiniPlayerVisible) return const SizedBox.shrink();
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 30), // Extra bottom padding for safe area
-          decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.15), // Dynamic glass tint
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                accentColor.withValues(alpha: 0.05),
-                Colors.black.withValues(alpha: 0.6),
-              ],
-            ),
-            border: Border(
-              top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 0.5),
+    return GlassSurface(
+      tier: GlassTier.floating,
+      borderRadius: GlassTokens.radiusCard,
+      padding: const EdgeInsets.fromLTRB(
+        GlassTokens.hMargin,
+        10,
+        GlassTokens.hMargin,
+        30,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. Wavy Progress Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: WavyProgressBar(
+              provider: provider,
+              accentColor: accentColor,
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+
+          const SizedBox(height: 4),
+
+          // 2. Control Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // 1. Wavy Progress Bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                child: WavyProgressBar(
-                   provider: provider,
-                   accentColor: accentColor,
+              // Share
+              Semantics(
+                label: 'Share',
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.share_outlined, color: Colors.white70),
+                  tooltip: 'Share',
+                  onPressed: () {
+                    SharePlus.instance.share(
+                      ShareParams(
+                        text:
+                            'Listening to ${track.trackName} by ${track.artistName}',
+                      ),
+                    );
+                  },
                 ),
               ),
-              
-              const SizedBox(height: 4),
-              
-              // 2. Control Row
+
+              // Playback Controls
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Share
-                  IconButton(
-                    icon: const Icon(Icons.share_outlined, color: Colors.white70),
-                    onPressed: () {
-                       SharePlus.instance.share(ShareParams(text: 'Listening to ${track.trackName} by ${track.artistName}'));
-                    },
+                  GlassPlayerControl(
+                    icon: Icons.skip_previous_rounded,
+                    onPressed: provider.skipToPrevious,
+                    semanticLabel: 'Previous track',
+                    tooltip: 'Previous track',
                   ),
-                  
-                  // Playback Controls
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildGlassControlButton(
-                        icon: Icons.skip_previous_rounded,
-                        onPressed: provider.skipToPrevious,
-                      ),
-                      const SizedBox(width: 20),
-                      
-                      // Play/Pause Liquid Button
-                      Container(
-                        height: 64, width: 64, // Slightly larger
-                        decoration: BoxDecoration(
-                           shape: BoxShape.circle,
-                           gradient: LinearGradient(
-                             begin: Alignment.topLeft,
-                             end: Alignment.bottomRight,
-                             colors: [
-                               accentColor.withValues(alpha: 0.9),
-                               accentColor.withValues(alpha: 0.5),
-                             ]
-                           ),
-                           boxShadow: [
-                             BoxShadow(color: accentColor.withValues(alpha: 0.4), blurRadius: 25, spreadRadius: -2)
-                           ],
-                           border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            provider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                            color: Colors.white, // White icon on colored button
-                            size: 36
-                          ),
-                          onPressed: () {
-                             if (provider.isPlaying) {
-                               provider.pauseTrack();
-                             } else {
-                               provider.resumeTrack();
-                             }
-                          },
-                        ),
-                      ),
-                      
-                      const SizedBox(width: 20),
-                      _buildGlassControlButton(
-                        icon: Icons.skip_next_rounded,
-                        onPressed: provider.skipToNext,
-                      ),
-                    ],
-                  ),
-                  
-                  // Options
-                  IconButton(
-                    icon: const Icon(Icons.more_vert_rounded, color: Colors.white70),
+                  const SizedBox(width: 20),
+                  GlassPlayerControl(
+                    icon: provider.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
                     onPressed: () {
-                       GlassOptionsSheet.show(context, track: track);
+                      if (provider.isPlaying) {
+                        provider.pauseTrack();
+                      } else {
+                        provider.resumeTrack();
+                      }
                     },
+                    semanticLabel: provider.isPlaying ? 'Pause' : 'Play',
+                    tooltip: provider.isPlaying ? 'Pause' : 'Play',
+                    selected: true,
+                    primary: true,
+                  ),
+                  const SizedBox(width: 20),
+                  GlassPlayerControl(
+                    icon: Icons.skip_next_rounded,
+                    onPressed: provider.skipToNext,
+                    semanticLabel: 'Next track',
+                    tooltip: 'Next track',
                   ),
                 ],
               ),
+
+              // Options
+              Semantics(
+                label: 'More options',
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.more_vert_rounded,
+                      color: Colors.white70),
+                  tooltip: 'More options',
+                  onPressed: () {
+                    GlassOptionsSheet.show(context, track: track);
+                  },
+                ),
+              ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-
-
-  Widget _buildGlassControlButton({required IconData icon, required VoidCallback onPressed}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          height: 48, width: 48,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          child: IconButton(
-            icon: Icon(icon, color: Colors.white, size: 28),
-            onPressed: onPressed,
-          ),
-        ),
+        ],
       ),
     );
   }
 }
-
