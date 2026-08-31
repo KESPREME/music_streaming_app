@@ -35,6 +35,10 @@ copy, colors, icons, or typography is copied.
 - No global glass treatment for grounded content.
 - No new Muzo-inspired features such as QR actions unless an existing app
   feature already provides them.
+- Existing `MusicProvider` public APIs remain unchanged. A narrow internal
+  error-policy guard is allowed for direct queue-row playback so queue contents
+  remain intact and the existing snackbar path can surface failures; normal
+  playback retains its current auto-failover behavior.
 
 ## Chosen Approach
 
@@ -132,6 +136,12 @@ near-black/charcoal.
   lyrics, and settings actions.
 - Surface provider playback errors through existing inline/snackbar mechanisms;
   never silently hide a failed track.
+- When `playTrack` is called for a queue row with
+  `setContext: false, clearQueue: false`, preserve the queue on validation or
+  playback failure, set the existing provider error, and rethrow so the caller
+  can show its mounted-safe snackbar. Other `playTrack` calls keep existing
+  error handling and auto-failover behavior. Internal auto-advance delegates
+  retain their existing behavior and are not treated as queue-row calls.
 - Keep modal visibility changes exception-safe so `hideMiniPlayer` cannot remain
   stuck after a dismissed or failed sheet.
 
