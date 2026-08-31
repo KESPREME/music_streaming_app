@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassTheme;
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' hide GlassTheme;
 
 import '../theme/glass_tokens.dart';
 
@@ -30,7 +29,6 @@ class GlassSurface extends StatelessWidget {
     this.borderRadius = 20,
     this.padding,
     this.accent,
-    this.borderColor,
   });
 
   final Widget child;
@@ -40,14 +38,14 @@ class GlassSurface extends StatelessWidget {
 
   /// Override the theme accent (rare — used for special surfaces).
   final Color? accent;
-  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final effectiveAccent = accent ?? scheme.primary;
 
-    final bool isFloating = tier == GlassTier.floating || tier == GlassTier.chrome;
+    final bool isFloating =
+        tier == GlassTier.floating || tier == GlassTier.chrome;
     final bool isSheet = tier == GlassTier.sheet;
     final bool isCard = tier == GlassTier.card;
 
@@ -68,12 +66,20 @@ class GlassSurface extends StatelessWidget {
           : isFloating
               ? GlassTokens.refractiveFloating
               : GlassTokens.refractiveCard,
-      lightIntensity: isFloating || isSheet ? GlassTokens.lightChrome : GlassTokens.lightCard,
-      fresnelStrength: isFloating || isSheet ? GlassTokens.fresnelChrome : GlassTokens.fresnelCard,
-      edgeAbsorption: isFloating || isSheet ? GlassTokens.edgeAbsorptionChrome : GlassTokens.edgeAbsorptionCard,
-      chromaticAberration: isFloating || isSheet ? GlassTokens.chromaticChrome : GlassTokens.chromaticCard,
-      saturation: 1.35,
-      glowIntensity: 0.55,
+      lightIntensity: isFloating || isSheet
+          ? GlassTokens.lightChrome
+          : GlassTokens.lightCard,
+      fresnelStrength: isFloating || isSheet
+          ? GlassTokens.fresnelChrome
+          : GlassTokens.fresnelCard,
+      edgeAbsorption: isFloating || isSheet
+          ? GlassTokens.edgeAbsorptionChrome
+          : GlassTokens.edgeAbsorptionCard,
+      chromaticAberration: isFloating || isSheet
+          ? GlassTokens.chromaticChrome
+          : GlassTokens.chromaticCard,
+      saturation: GlassTokens.glassSaturation,
+      glowIntensity: GlassTokens.glassGlowIntensity,
       shadowElevation: isCard ? 0.6 : 1.0,
     );
 

@@ -29,4 +29,14 @@ void main() {
     await pumpSurface(tester, GlassTier.chrome);
     expect(find.text('glass'), findsOneWidget);
   });
+
+  testWidgets('GlassSurface renders child in floating tier', (tester) async {
+    await pumpSurface(tester, GlassTier.floating);
+    expect(find.text('glass'), findsOneWidget);
+  });
+
+  testWidgets('GlassSurface renders child in sheet tier', (tester) async {
+    await pumpSurface(tester, GlassTier.sheet);
+    expect(find.text('glass'), findsOneWidget);
+  });
 }

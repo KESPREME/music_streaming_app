@@ -64,6 +64,19 @@ abstract class GlassTokens {
   static const double opacityFloating = 0.09;
   static const double opacityTransient = 0.14;
 
+  // -----------------------------------------------------------------
+  // Player controls and glass defaults
+  // -----------------------------------------------------------------
+  static const double playerBackdropBlur = 24.0;
+  static const double playerScrimOpacity = 0.68;
+  static const double playerPillHeight = 64.0;
+  static const double playerControlSize = 48.0;
+  static const double playerPrimaryControlSize = 64.0;
+  static const double playerControlFillOpacity = 0.14;
+  static const double playerProgressGlowAlpha = 0.0;
+  static const double glassGlowIntensity = 0.0;
+  static const double glassSaturation = 1.12;
+
   // Glass tint itself (white overlay) — keep glass, not colored panel
   static Color glassTint(Color accent) => Colors.white.withValues(alpha: 0.06);
 
@@ -71,7 +84,8 @@ abstract class GlassTokens {
   static Color borderCard = Colors.white.withValues(alpha: 0.09);
   static Color borderChrome = Colors.white.withValues(alpha: 0.13);
   static Color borderFloating = Colors.white.withValues(alpha: 0.14);
-  static Color borderInteractiveSelected(Color accent) => accent.withValues(alpha: 0.28);
+  static Color borderInteractiveSelected(Color accent) =>
+      accent.withValues(alpha: 0.28);
   static Color iconAccent(Color accent) => accent;
 
   // Shadows — subtle optical depth, not large halos
