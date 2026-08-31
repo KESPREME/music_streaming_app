@@ -20,6 +20,7 @@ class FakeMusicProvider extends MusicProvider {
   final List<Track> queueTracks = [];
   Track? lastPlayed;
   bool? lastClearQueue;
+  bool failQueuePlay = false;
 
   @override
   Track? get currentTrack => track;
@@ -65,6 +66,7 @@ class FakeMusicProvider extends MusicProvider {
     bool setContext = true,
     bool clearQueue = true,
   }) async {
+    if (failQueuePlay) throw StateError('Queue playback failed');
     lastPlayed = track;
     lastClearQueue = clearQueue;
   }
@@ -190,5 +192,60 @@ void main() {
 
     expect(provider.lastPlayed, same(track));
     expect(provider.lastClearQueue, isFalse);
+  });
+
+  testWidgets('queue row shows failure snackbar and keeps track',
+      (tester) async {
+    final provider = FakeMusicProvider()..failQueuePlay = true;
+    final track = buildTrack();
+    provider.queueTracks.add(track);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: const QueueScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Glass track'));
+    await tester.pump();
+
+    expect(provider.queue, hasLength(1));
+    expect(provider.queue.single, same(track));
+    expect(find.text('Could not play Glass track'), findsOneWidget);
+  });
+
+  test('queue-row validation failure rethrows without consuming queue',
+      () async {
+    final provider = MusicProvider();
+    final queuedTrack = buildTrack();
+    final invalidTrack = queuedTrack.copyWith(id: 'PL_test');
+    provider.addToQueue(queuedTrack);
+
+    try {
+      await expectLater(
+        provider.playTrack(
+          invalidTrack,
+          setContext: false,
+          clearQueue: false,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        provider.errorMessage,
+        'Cannot play Glass track - it is a playlist/album, not a song.',
+      );
+      expect(provider.queue, hasLength(1));
+      expect(provider.queue.single, same(queuedTrack));
+    } finally {
+      provider.dispose();
+    }
   });
 }

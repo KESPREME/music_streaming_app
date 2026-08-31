@@ -959,6 +959,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         bool setContext = true,
         bool clearQueue = true,
       }) async {
+    final isQueueRowPlayback = !setContext && !clearQueue;
+
     if (kDebugMode) {
       debugPrint('MusicProvider: Request playTrack: ${track.trackName} (ID: ${track.id})');
     }
@@ -992,8 +994,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         trackId.startsWith('OLAK') ||   // Album
         trackId.startsWith('MPREb')) {  // Album browse ID
       if (kDebugMode) debugPrint('MusicProvider: Skipping non-playable track: ${track.trackName} (ID: $trackId)');
-      _errorMessage = 'Cannot play ${track.trackName} - it is a ${trackId.startsWith("UC") ? "channel" : "playlist/album"}, not a song.';
+      final message = 'Cannot play ${track.trackName} - it is a ${trackId.startsWith("UC") ? "channel" : "playlist/album"}, not a song.';
+      _errorMessage = message;
       notifyListeners();
+      if (isQueueRowPlayback) {
+        throw StateError(message);
+      }
       return; // Don't try to play, don't skip - just return early
     }    
     try {
@@ -1164,7 +1170,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         debugPrint('Error: $e');
         debugPrint('Stack trace: $s');
       }
-      await _handlePlaybackError('Failed to play ${track.trackName}: ${e.toString()}');
+      final message = 'Failed to play ${track.trackName}: ${e.toString()}';
+      if (isQueueRowPlayback) {
+        _errorMessage = message.length > 150
+            ? '${message.substring(0, 147)}...'
+            : message;
+        notifyListeners();
+        rethrow;
+      }
+      await _handlePlaybackError(message);
     }
   }
 
