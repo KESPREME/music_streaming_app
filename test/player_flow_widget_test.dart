@@ -7,6 +7,7 @@ import 'package:music_streaming_app/now_playing_screen.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/screens/queue_screen.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
+import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/widgets/glass_surface.dart';
 import 'package:music_streaming_app/widgets/mini_player.dart';
 import 'package:music_streaming_app/widgets/wavy_progress_bar.dart';
@@ -291,5 +292,49 @@ void main() {
 
   test('default progress style has no halo', () {
     expect(const WavyBarStyle().glowAlpha, 0.0);
+  });
+
+  testWidgets('glass options sheet uses GlassSurface and restores mini player',
+      (tester) async {
+    final track = buildTrack();
+    final provider = FakeMusicProvider(track: track);
+    final theme = GlassTheme.build(AccentColors.peach)
+        .copyWith(splashFactory: NoSplash.splashFactory);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: Scaffold(body: GlassOptionsSheet(track: track)),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(GlassSurface), findsOneWidget);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: Scaffold(appBar: AppBar(), body: const SizedBox()),
+        ),
+      ),
+    );
+    await tester.pump();
+    final BuildContext context = tester.element(find.byType(Scaffold));
+    final Future<void> future = GlassOptionsSheet.show(context, track: track);
+    await tester.pumpAndSettle();
+    expect(provider.hideMiniPlayer, isTrue);
+    try {
+      await tester.pageBack();
+    } catch (_) {
+      // Fallback when no BackButton widget is present for the modal route.
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    }
+    await tester.pumpAndSettle();
+    await future;
+    expect(provider.hideMiniPlayer, isFalse);
   });
 }
