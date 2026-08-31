@@ -41,6 +41,14 @@ class WavyBarStyle {
       );
 }
 
+String _formatUnpadded(Duration d) {
+  final raw = formatDuration(d);
+  if (raw.length >= 2 && raw[0] == '0' && raw[1] != ':') {
+    return raw.substring(1);
+  }
+  return raw;
+}
+
 class WavyProgressBar extends StatefulWidget {
   final MusicProvider provider;
   final Color accentColor;
@@ -101,13 +109,7 @@ class _WavyProgressBarState extends State<WavyProgressBar>
         final double phase =
             animationsEnabled ? _controller.value * 2 * math.pi : 0.0;
 
-        String formatUnpadded(Duration d) {
-          final raw = formatDuration(d);
-          if (raw.length >= 2 && raw[0] == '0' && raw[1] != ':') {
-            return raw.substring(1);
-          }
-          return raw;
-        }
+        String formatUnpadded(Duration d) => _formatUnpadded(d);
 
         return Column(
           children: [
@@ -248,11 +250,13 @@ class WavySliderPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(lastX, lastY), 8.0, thumbPaint);
 
-    // Thumb Glow
-    final glowPaint = Paint()
-      ..color = color.withValues(alpha: glowAlpha)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(lastX, lastY), glowRadius, glowPaint);
+    // Thumb Glow — skip when invisible to avoid overdraw.
+    if (glowAlpha > 0.0) {
+      final glowPaint = Paint()
+        ..color = color.withValues(alpha: glowAlpha)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(lastX, lastY), glowRadius, glowPaint);
+    }
   }
 
   @override

@@ -267,9 +267,6 @@ class _LyricsScreenState extends State<LyricsScreen>
     );
   }
 
-  // ... [Header widget code remains same, skipping for brevity in this tool call context logic if I could, but I must replace contiguous block]
-  // Ideally, I should preserve _buildHeader unchanged, but let's re-include it concisely to be safe.
-
   Widget _buildHeader(
       BuildContext context, Track? track, MusicProvider provider) {
     return Container(
