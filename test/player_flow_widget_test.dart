@@ -248,4 +248,23 @@ void main() {
       provider.dispose();
     }
   });
+
+  test('non-queue invalid track does not rethrow queue-row error', () async {
+    final provider = MusicProvider();
+    final invalidTrack = buildTrack().copyWith(id: 'PL_test');
+
+    try {
+      await provider.playTrack(
+        invalidTrack,
+        setContext: false,
+        clearQueue: true,
+      );
+      expect(
+        provider.errorMessage,
+        'Cannot play Glass track - it is a playlist/album, not a song.',
+      );
+    } finally {
+      provider.dispose();
+    }
+  });
 }

@@ -896,9 +896,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     try { 
       if (offline) {
-        await playOfflineTrack(track, setContext: setContext, clearQueue: clearQueue);
+        await playOfflineTrack(track, setContext: setContext, clearQueue: setContext ? clearQueue : true);
       } else {
-        await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue);
+        await playTrack(track, playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: setContext ? clearQueue : true);
       } 
     } catch(e) { 
       debugPrint("Error in _playTrackInternal: $e"); 
