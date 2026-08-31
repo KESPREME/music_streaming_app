@@ -1,11 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/music_provider.dart';
 import '../screens/themed_now_playing_screen.dart'; // Use themed wrapper
+import '../theme/glass_tokens.dart';
 import '../utils/color_utils.dart';
+import 'glass_player_control.dart';
 import 'glass_surface.dart';
 
 /// Floating liquid-glass mini player.
@@ -73,6 +74,7 @@ class _PillBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentTrack = musicProvider.currentTrack!;
+    final textTheme = Theme.of(context).textTheme;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -80,7 +82,8 @@ class _PillBody extends StatelessWidget {
       curve: Curves.easeOutCubic,
       builder: (context, t, child) => Opacity(
         opacity: t,
-        child: Transform.translate(offset: Offset(0, 18 * (1 - t)), child: child),
+        child:
+            Transform.translate(offset: Offset(0, 18 * (1 - t)), child: child),
       ),
       child: _PressSquish(
         onTap: () => _openFullPlayer(context),
@@ -94,119 +97,115 @@ class _PillBody extends StatelessWidget {
             musicProvider.skipToPrevious();
           }
         },
-        child: GlassSurface(
-          tier: GlassTier.chrome,
-          borderRadius: 30,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
-                  child: Row(
-                    children: [
-                      // Album Art
-                      Hero(
-                        tag: 'albumArt_${currentTrack.id}',
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: currentTrack.albumArtUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: currentTrack.albumArtUrl,
-                                  width: 42,
-                                  height: 42,
-                                  fit: BoxFit.cover,
-                                  fadeInDuration:
-                                      const Duration(milliseconds: 200),
-                                  errorWidget: (_, __, ___) => Container(
-                                      width: 42,
-                                      height: 42,
-                                      color: Colors.grey[900]),
-                                )
-                              : Container(
-                                  width: 42,
-                                  height: 42,
-                                  color: Colors.grey[900]),
+        child: SizedBox(
+          height: GlassTokens.playerPillHeight,
+          child: GlassSurface(
+            tier: GlassTier.floating,
+            borderRadius: 30,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                    child: Row(
+                      children: [
+                        // Album Art
+                        Hero(
+                          tag: 'albumArt_${currentTrack.id}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: currentTrack.albumArtUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: currentTrack.albumArtUrl,
+                                    width: 42,
+                                    height: 42,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration:
+                                        const Duration(milliseconds: 200),
+                                    errorWidget: (_, __, ___) => Container(
+                                        width: 42,
+                                        height: 42,
+                                        color: Colors.grey[900]),
+                                  )
+                                : Container(
+                                    width: 42,
+                                    height: 42,
+                                    color: Colors.grey[900]),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Info
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              currentTrack.trackName,
-                              style: GoogleFonts.outfit(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              currentTrack.artistName,
-                              style: GoogleFonts.outfit(
-                                  color: Colors.white.withValues(alpha: 0.7),
-                                  fontSize: 12),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                        const SizedBox(width: 12),
+                        // Info
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                currentTrack.trackName,
+                                style: textTheme.titleSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                currentTrack.artistName,
+                                style: textTheme.bodySmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      // Play/Pause
-                      IconButton(
-                        icon: Icon(
-                          musicProvider.isPlaying
+                        // Play/Pause
+                        GlassPlayerControl(
+                          icon: musicProvider.isPlaying
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 32,
+                          semanticLabel:
+                              musicProvider.isPlaying ? 'Pause' : 'Play',
+                          onPressed: () {
+                            if (musicProvider.isPlaying) {
+                              musicProvider.pauseTrack();
+                            } else {
+                              musicProvider.resumeTrack();
+                            }
+                          },
                         ),
-                        padding: EdgeInsets.zero,
-                        onPressed: () {
-                          if (musicProvider.isPlaying) {
-                            musicProvider.pauseTrack();
-                          } else {
-                            musicProvider.resumeTrack();
-                          }
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              // Progress Bar - FIX: RepaintBoundary for independent repaints
-              RepaintBoundary(
-                child: StreamBuilder<Duration>(
-                  stream: musicProvider.positionStream,
-                  builder: (context, snapshot) {
-                    final position = snapshot.data ?? Duration.zero;
-                    final duration = musicProvider.duration;
-                    double progress = 0.0;
-                    if (duration.inSeconds > 0) {
-                      progress =
-                          (position.inSeconds / duration.inSeconds).clamp(0.0, 1.0);
-                    }
-                    // Dynamic Color: album palette wins, falls back to live accent
-                    final palette = musicProvider.paletteGenerator;
-                    final dynamicColor = ColorUtils.getVibrantAccent(
-                        palette, Theme.of(context).colorScheme.primary);
+                // Progress Bar - FIX: RepaintBoundary for independent repaints
+                RepaintBoundary(
+                  child: StreamBuilder<Duration>(
+                    stream: musicProvider.positionStream,
+                    builder: (context, snapshot) {
+                      final position = snapshot.data ?? Duration.zero;
+                      final duration = musicProvider.duration;
+                      double progress = 0.0;
+                      if (duration.inSeconds > 0) {
+                        progress = (position.inSeconds / duration.inSeconds)
+                            .clamp(0.0, 1.0);
+                      }
+                      // Dynamic Color: album palette wins, falls back to live accent
+                      final palette = musicProvider.paletteGenerator;
+                      final dynamicColor = ColorUtils.getVibrantAccent(
+                          palette, Theme.of(context).colorScheme.primary);
 
-                    return SizedBox(
-                      height: 2,
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: Colors.transparent,
-                        valueColor: AlwaysStoppedAnimation<Color>(dynamicColor),
-                      ),
-                    );
-                  },
+                      return SizedBox(
+                        height: 2,
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: Colors.transparent,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(dynamicColor),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

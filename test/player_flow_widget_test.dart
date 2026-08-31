@@ -1,0 +1,109 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+import 'package:music_streaming_app/models/track.dart';
+import 'package:music_streaming_app/providers/music_provider.dart';
+import 'package:music_streaming_app/theme/glass_theme.dart';
+import 'package:music_streaming_app/widgets/glass_surface.dart';
+import 'package:music_streaming_app/widgets/mini_player.dart';
+
+class FakeMusicProvider extends MusicProvider {
+  FakeMusicProvider({this.track, bool playing = false}) : _playing = playing;
+
+  Track? track;
+  bool _playing;
+  int resumeCalls = 0;
+  int pauseCalls = 0;
+
+  @override
+  Track? get currentTrack => track;
+
+  @override
+  bool get isPlaying => _playing;
+
+  @override
+  bool get isMiniPlayerVisible => true;
+
+  @override
+  Duration get duration => const Duration(minutes: 3);
+
+  @override
+  Stream<Duration> get positionStream => const Stream<Duration>.empty();
+
+  @override
+  Future<void> resumeTrack() async {
+    resumeCalls++;
+    _playing = true;
+  }
+
+  @override
+  Future<void> pauseTrack() async {
+    pauseCalls++;
+    _playing = false;
+  }
+
+  @override
+  Future<void> skipToPrevious() async {}
+
+  @override
+  Future<void> skipToNext() async {}
+}
+
+Track buildTrack() => Track(
+      id: 'track-1',
+      trackName: 'Glass track',
+      artistName: 'Glass artist',
+      albumName: 'Glass album',
+      previewUrl: '',
+    );
+
+Future<void> pumpMiniPlayer(
+  WidgetTester tester,
+  FakeMusicProvider provider,
+) async {
+  final theme = GlassTheme.build(AccentColors.peach).copyWith(
+    splashFactory: NoSplash.splashFactory,
+  );
+
+  await tester.pumpWidget(
+    ChangeNotifierProvider<MusicProvider>.value(
+      value: provider,
+      child: MaterialApp(
+        theme: theme,
+        home: const Scaffold(body: MiniPlayer()),
+      ),
+    ),
+  );
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+void main() {
+  testWidgets('renders no player content without a track', (tester) async {
+    final provider = FakeMusicProvider();
+
+    await pumpMiniPlayer(tester, provider);
+
+    expect(find.byType(GlassSurface), findsNothing);
+  });
+
+  testWidgets('renders track title and artist', (tester) async {
+    final provider = FakeMusicProvider(track: buildTrack());
+
+    await pumpMiniPlayer(tester, provider);
+
+    expect(find.text('Glass track'), findsOneWidget);
+    expect(find.text('Glass artist'), findsOneWidget);
+  });
+
+  testWidgets('play control calls resumeTrack', (tester) async {
+    final provider = FakeMusicProvider(track: buildTrack());
+
+    await pumpMiniPlayer(tester, provider);
+
+    await tester.tap(find.bySemanticsLabel('Play'));
+    await tester.pump();
+
+    expect(provider.resumeCalls, 1);
+  });
+}
