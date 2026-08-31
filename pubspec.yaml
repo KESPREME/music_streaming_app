@@ -12,7 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.1
-  youtube_explode_dart: ^3.0.5
+  youtube_explode_dart: ^3.1.0
   just_audio: ^0.10.5
   just_audio_background: ^0.0.1-beta.11
   cloud_firestore: ^6.1.0
@@ -48,7 +48,7 @@ dependencies:
 
 
   flutter_cache_manager: ^3.4.1
-  liquid_glass_widgets: ^0.30.2
+  liquid_glass_widgets: ^1.2.1
 
 dependency_overrides: {}
 

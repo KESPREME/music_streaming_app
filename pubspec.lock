@@ -700,10 +700,10 @@ packages:
     dependency: "direct main"
     description:
       name: liquid_glass_widgets
-      sha256: "6eb319af884c7269403089873dfe7a2d948cbbf384b856ea3518d4a187aa5314"
+      sha256: ffc33fc38ee3dddd2afe98a630f8805fcbed9191447aa7173c40d632be78ea76
       url: "https://pub.dev"
     source: hosted
-    version: "0.30.2"
+    version: "1.2.1"
   logging:
     dependency: transitive
     description:
@@ -1329,10 +1329,10 @@ packages:
     dependency: "direct main"
     description:
       name: youtube_explode_dart
-      sha256: "3d731d71df9901b1915bae806781df519cff32517e36db279f844ae619669e45"
+      sha256: "10134a53989b2f3dc576121735aec8fc6d88784956f4a2ad1a2525b006373a76"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.5"
+    version: "3.1.0"
 sdks:
   dart: ">=3.11.0-0 <4.0.0"
   flutter: ">=3.41.0"

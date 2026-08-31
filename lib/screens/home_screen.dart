@@ -10,8 +10,10 @@ import '../widgets/themed_trending_now_screen.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
+import '../theme/glass_tokens.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/glass_circle_button.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/hero_track_card.dart';
 import 'discover_screen.dart';
 
@@ -106,21 +108,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
   
   Widget _buildCustomTabBar(BuildContext context) {
-    return Container(
-      height: 48,
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-           expandedTabItem(0, "Feed"),
-           expandedTabItem(1, "Discover"),
-           expandedTabItem(2, "Explore"),
-        ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: GlassTokens.hMargin, vertical: 10),
+      child: GlassSurface(
+        tier: GlassTier.card,
+        borderRadius: 30,
+        padding: const EdgeInsets.all(4),
+        child: SizedBox(
+          height: 40,
+          child: Row(
+            children: [
+              expandedTabItem(0, "Feed"),
+              expandedTabItem(1, "Discover"),
+              expandedTabItem(2, "Explore"),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -135,26 +138,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
            child: GestureDetector(
              onTap: () => _tabController.animateTo(index),
              child: AnimatedContainer(
-               duration: const Duration(milliseconds: 200),
+               duration: const Duration(milliseconds: 220),
                curve: Curves.easeOutCubic,
                decoration: BoxDecoration(
-                 color: selected
-                     ? accent.withValues(alpha: 0.14)
-                     : Colors.transparent,
-                 borderRadius: BorderRadius.circular(24),
+                 gradient: selected ? GlassTokens.inkBloom(accent, strength: 0.16) : null,
+                 color: selected ? Colors.white.withValues(alpha: 0.07) : Colors.transparent,
+                 borderRadius: BorderRadius.circular(GlassTokens.radiusChip),
                  border: Border.all(
-                   color: selected
-                       ? accent.withValues(alpha: 0.30)
-                       : Colors.transparent,
+                   color: selected ? GlassTokens.borderInteractiveSelected(accent) : Colors.transparent,
+                   width: 0.8,
                  ),
                ),
                alignment: Alignment.center,
                child: Text(
                  title,
                  style: GoogleFonts.splineSans(
-                   fontSize: 15,
+                   fontSize: 14.5,
                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                   color: selected ? accent : Colors.grey[500],
+                   color: selected ? Colors.white : Colors.white.withValues(alpha: 0.55),
+                   letterSpacing: -0.2,
                  ),
                ),
              ),

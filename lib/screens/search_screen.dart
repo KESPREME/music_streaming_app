@@ -6,7 +6,9 @@ import 'package:provider/provider.dart';
 import '../services/search_history_store.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
+import '../theme/glass_tokens.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 
@@ -281,77 +283,73 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     ? null
                     : Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: TextField(
-                    controller: _searchController,
-                    style: GoogleFonts.splineSans(color: Colors.white, fontSize: 16),
-                    decoration: InputDecoration(
-                      hintText: 'Search songs, artists...',
-                      hintStyle: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4)),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.05),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  child: GlassSurface(
+                    tier: GlassTier.floating,
+                    borderRadius: GlassTokens.radiusButton,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: TextField(
+                      controller: _searchController,
+                      style: GoogleFonts.splineSans(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                      cursorColor: Theme.of(context).colorScheme.primary,
+                      decoration: InputDecoration(
+                        hintText: 'Search songs, artists...',
+                        hintStyle: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.45), fontWeight: FontWeight.w400),
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 22),
+                        prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded, color: Colors.white54, size: 20),
+                                onPressed: () => _searchController.clear(),
+                              )
+                            : null,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 8.0),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                         borderRadius: BorderRadius.circular(30),
-                         borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5), width: 1),
-                      ),
-                      prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.white54),
-                              onPressed: () {
-                                _searchController.clear();
-                              },
-                            )
-                          : null,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 20.0),
+                      onSubmitted: (query) {
+                        _debounce?.cancel();
+                        if (query != _searchQuery) {
+                           setState(() => _searchQuery = query);
+                        }
+                        if (query.isNotEmpty) {
+                          _addToHistory(query);
+                          _performSearch(query);
+                        }
+                      },
+                      textInputAction: TextInputAction.search,
                     ),
-                    onSubmitted: (query) {
-                      _debounce?.cancel();
-                      if (query != _searchQuery) {
-                         setState(() => _searchQuery = query);
-                      }
-                      if (query.isNotEmpty) {
-                        _addToHistory(query);
-                        _performSearch(query);
-                      }
-                    },
-                    textInputAction: TextInputAction.search,
                   ),
                 ),
                 bottom: PreferredSize(
                   preferredSize: const Size.fromHeight(50),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(25),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                    ),
-                    child: TabBar(
-                      controller: _tabController,
-                      indicator: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(25),
-                        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: GlassSurface(
+                      tier: GlassTier.card,
+                      borderRadius: 25,
+                      padding: EdgeInsets.zero,
+                      child: TabBar(
+                        controller: _tabController,
+                        indicator: BoxDecoration(
+                          gradient: GlassTokens.inkBloom(Theme.of(context).colorScheme.primary, strength: 0.18),
+                          color: Colors.white.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(color: GlassTokens.borderInteractiveSelected(Theme.of(context).colorScheme.primary), width: 0.8),
+                        ),
+                        labelColor: Colors.white,
+                        unselectedLabelColor: Colors.white.withValues(alpha: 0.55),
+                        labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w700, fontSize: 14),
+                        unselectedLabelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w500, fontSize: 14),
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        dividerColor: Colors.transparent,
+                        tabs: const [
+                          Tab(text: 'Tracks'),
+                          Tab(text: 'Artists'),
+                          Tab(text: 'Playlists'),
+                        ],
                       ),
-                      labelColor: Theme.of(context).colorScheme.primary,
-                      unselectedLabelColor: Colors.white.withValues(alpha: 0.5),
-                      labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.bold),
-                      unselectedLabelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w500),
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      dividerColor: Colors.transparent,
-                      tabs: const [
-                        Tab(text: 'Tracks'),
-                        Tab(text: 'Artists'),
-                        Tab(text: 'Playlists'),
-                      ],
                     ),
                   ),
                 ),

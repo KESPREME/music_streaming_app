@@ -54,22 +54,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
         HapticFeedback.lightImpact();
         Navigator.push(context, MaterialPageRoute(builder: (context) => item['screen']));
       },
-      child: GlassSurface(
-        tier: GlassTier.chrome,
-        borderRadius: 24,
+      child: Container(
         padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: color.withValues(alpha: 0.28)),
-                boxShadow: [
-                  BoxShadow(color: color.withValues(alpha: 0.18), blurRadius: 12),
-                ],
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withValues(alpha: 0.20)),
               ),
               child: Icon(item['icon'] as IconData, color: color, size: 22),
             ),
@@ -79,7 +79,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.splineSans(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 fontSize: 15,
                 letterSpacing: -0.2,
                 color: Colors.white,
@@ -91,7 +91,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.outfit(
-                color: Colors.white.withValues(alpha: 0.55),
+                color: Colors.white.withValues(alpha: 0.50),
                 fontSize: 12,
               ),
             ),
@@ -367,16 +367,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
         );
       },
       onLongPress: () => _showPlaylistOptions(context, playlist),
-      child: GlassSurface(
-        tier: GlassTier.card,
-        borderRadius: 22,
-        padding: EdgeInsets.zero,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
                 child: playlist.imageUrl.isNotEmpty
                     ? Image.network(playlist.imageUrl, fit: BoxFit.cover, width: double.infinity, errorBuilder: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.music_note, color: Colors.white54)))
                     : Container(color: Colors.white.withValues(alpha: 0.06), child: const Center(child: Icon(Icons.queue_music_rounded, color: Colors.white38, size: 40))),
@@ -387,7 +389,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(playlist.name, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(playlist.name, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
                   Text('${playlist.tracks.length} tracks', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 12)),
                 ],
@@ -463,16 +465,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       HapticFeedback.lightImpact();
                       Navigator.push(context, MaterialPageRoute(builder: (_) => ThemedArtistDetailScreen(artistId: "", artistName: artist.artistName, artistImage: artist.albumArtUrl, searchByName: true)));
                     },
-                    child: GlassSurface(
-                      tier: GlassTier.card,
-                      borderRadius: 24,
+                    child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                      ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircleAvatar(radius: 42, backgroundImage: NetworkImage(artist.albumArtUrl), onBackgroundImageError: (_, __) {}, backgroundColor: Colors.white10),
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.5),
+                            ),
+                            child: CircleAvatar(radius: 42, backgroundImage: NetworkImage(artist.albumArtUrl), onBackgroundImageError: (_, __) {}, backgroundColor: Colors.white10),
+                          ),
                           const SizedBox(height: 14),
-                          Text(artist.artistName, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          Text(artist.artistName, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),

@@ -107,14 +107,16 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-              // Appearance group
+              // Appearance group — grounded elevated, only switches are glass
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: GlassSurface(
-                    tier: GlassTier.card,
-                    borderRadius: 22,
-                    padding: EdgeInsets.zero,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                    ),
                     child: Column(
                       children: [
                         _GlassRow(
@@ -164,14 +166,16 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-              // Player & Playback
+              // Player & Playback — grounded
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: GlassSurface(
-                    tier: GlassTier.card,
-                    borderRadius: 22,
-                    padding: EdgeInsets.zero,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                    ),
                     child: Column(
                       children: [
                         _GlassRow(
@@ -216,14 +220,16 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-              // Streaming quality
+              // Streaming quality — grounded
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: GlassSurface(
-                    tier: GlassTier.card,
-                    borderRadius: 22,
-                    padding: EdgeInsets.zero,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                    ),
                     child: Column(
                       children: [
                         _NavTile(icon: Icons.wifi_rounded, title: 'Wi-Fi Quality', subtitle: '${musicProvider.wifiBitrate} kbps', badge: musicProvider.wifiBitrate >= 256 ? 'HIGH' : null, onTap: () => _showBitrateDialog(context, musicProvider, true, isDark)),
@@ -261,10 +267,12 @@ class SettingsScreen extends StatelessWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: GlassSurface(
-                    tier: GlassTier.card,
-                    borderRadius: 22,
-                    padding: EdgeInsets.zero,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                    ),
                     child: Column(
                       children: [
                         _NavTile(icon: Icons.person_outline_rounded, title: 'Account', subtitle: Provider.of<AuthService>(context, listen: false).isLoggedIn ? 'Connected' : 'Log in to YouTube', onTap: () { final a = Provider.of<AuthService>(context, listen: false); if (!a.isLoggedIn) Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())); }),
