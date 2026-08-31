@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:music_streaming_app/models/track.dart';
+import 'package:music_streaming_app/now_playing_screen.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_surface.dart';
@@ -105,5 +106,35 @@ void main() {
     await tester.pump();
 
     expect(provider.resumeCalls, 1);
+  });
+
+  testWidgets('renders Now Playing content and labeled player controls',
+      (tester) async {
+    final provider = FakeMusicProvider(track: buildTrack());
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: buildTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Glass track'), findsOneWidget);
+    expect(find.text('Glass artist'), findsOneWidget);
+    expect(find.text('NOW PLAYING'), findsOneWidget);
+    expect(find.bySemanticsLabel('Play'), findsOneWidget);
+    expect(find.bySemanticsLabel('Previous track'), findsOneWidget);
+    expect(find.bySemanticsLabel('Next track'), findsOneWidget);
+    expect(find.bySemanticsLabel('Shuffle'), findsOneWidget);
+    expect(find.bySemanticsLabel('Repeat'), findsOneWidget);
   });
 }
