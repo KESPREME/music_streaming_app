@@ -24,17 +24,18 @@ class GlassPlayerControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
+    final isDisabled = onPressed == null;
     final size = primary
         ? GlassTokens.playerPrimaryControlSize
         : GlassTokens.playerControlSize;
-    final iconColor = selected || primary
-        ? accent
-        : onPressed == null
-            ? Colors.white.withValues(alpha: 0.38)
+    final iconColor = isDisabled
+        ? Colors.white.withValues(alpha: 0.38)
+        : selected || primary
+            ? accent
             : Colors.white.withValues(alpha: 0.9);
 
     final controlContent = Material(
-      color: selected
+      color: !isDisabled && selected
           ? accent.withValues(alpha: GlassTokens.playerControlFillOpacity)
           : Colors.transparent,
       shape: const CircleBorder(),
