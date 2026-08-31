@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +5,8 @@ import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../screens/playlist_detail_screen.dart'; // Unified for Album View
-import '../screens/artist_detail_screen.dart'; // Unified
+import '../theme/glass_tokens.dart';
+import 'glass_surface.dart';
 import 'playlist_selection_dialog.dart';
 import 'glass_snackbar.dart';
 import 'artist_picker_sheet.dart'; // Multi-artist selection
@@ -27,17 +27,18 @@ class GlassOptionsSheet extends StatelessWidget {
   });
 
   /// Helper to show the options sheet while hiding the mini player
-  static Future<void> show(BuildContext context, {
+  static Future<void> show(
+    BuildContext context, {
     required Track track,
     String? playlistId,
     bool isInQueueContext = false,
     bool isRecentlyPlayedContext = false,
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
-    
+
     // Hide Mini Player
     provider.setHideMiniPlayer(true);
-    
+
     try {
       await showModalBottomSheet(
         context: context,
@@ -58,325 +59,367 @@ class GlassOptionsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    // Check if liked (requires listening to provider or passing in state, 
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Check if liked (requires listening to provider or passing in state,
     // but Consumer is safer for up-to-date state in a sheet)
-    
+
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
         final isLiked = provider.isSongLiked(track.id);
-        
-        return Container(
-          decoration: BoxDecoration(
-            color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.8),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 20,
-                offset: const Offset(0, -5),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle Bar
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white24 : Colors.black12,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    
-                    // Header (Track Info)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              track.albumArtUrl,
-                              width: 56,
-                              height: 56,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_,__,___) => Container(
-                                width: 56, 
-                                height: 56, 
-                                color: Colors.grey[900],
-                                child: const Icon(Icons.music_note, color: Colors.white24),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.trackName,
-                                  style: GoogleFonts.splineSans(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: isDark ? Colors.white : Colors.black,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  track.artistName,
-                                  style: GoogleFonts.splineSans(
-                                    fontSize: 14,
-                                    color: isDark ? Colors.white60 : Colors.black54,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => provider.toggleLike(track),
-                            icon: Icon(
-                              isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                              color: isLiked ? const Color(0xFFFF1744) : (isDark ? Colors.white : Colors.black),
-                              size: 28,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    const Divider(height: 1, thickness: 0.5),
-                    
-                    // Options List
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            _buildOption(
-                              context, 
-                              icon: Icons.queue_music_rounded, 
-                              label: 'Add to Queue',
-                              onTap: () {
-                                provider.addToQueue(track);
-                                Navigator.pop(context);
-                                showGlassSnackBar(context, 'Added to Queue');
-                              },
-                              isDark: isDark,
-                            ),
-                            _buildOption(
-                              context,
-                              icon: Icons.playlist_play_rounded,
-                              label: 'Play Next',
-                              onTap: () {
-                                provider.playNext(track);
-                                Navigator.pop(context);
-                                showGlassSnackBar(context, 'Playing Next');
-                              },
-                              isDark: isDark,
-                            ),
-                            _buildOption(
-                              context,
-                              icon: Icons.playlist_add_rounded,
-                              label: 'Add to Playlist',
-                              onTap: () async {
-                                final rootContext = context;
-                                Navigator.pop(context);
-                                // Use a small delay to ensure the bottom sheet is fully closed
-                                await Future.delayed(const Duration(milliseconds: 100));
-                                if (rootContext.mounted) {
-                                  await showPlaylistSelectionDialog(rootContext, track);
-                                }
-                              },
-                              isDark: isDark,
-                            ),
-                            
-                            // Download Option with status indicator
-                            Builder(
-                              builder: (context) {
-                                final isDownloaded = provider.isTrackDownloadedSync(track.id);
-                                final isDownloading = provider.isDownloading[track.id] == true;
-                                final isQueued = provider.downloadQueue.any((t) => t.id == track.id);
-                                final progress = provider.downloadProgress[track.id] ?? 0.0;
-                                
-                                String label = 'Download';
-                                IconData icon = Icons.download_rounded;
-                                Color? color;
-                                
-                                if (isDownloaded) {
-                                  label = 'Downloaded';
-                                  icon = Icons.download_done_rounded;
-                                  color = Colors.green;
-                                } else if (isDownloading) {
-                                  label = 'Downloading... ${(progress * 100).toInt()}%';
-                                  icon = Icons.downloading_rounded;
-                                  color = const Color(0xFFFF1744);
-                                } else if (isQueued) {
-                                  label = 'Queued';
-                                  icon = Icons.hourglass_top_rounded;
-                                }
-                                
-                                return _buildOption(
-                                  context,
-                                  icon: icon,
-                                  label: label,
-                                  color: color,
-                                  onTap: isDownloaded || isDownloading || isQueued ? () {
-                                    Navigator.pop(context);
-                                    if (isDownloaded) {
-                                      showGlassSnackBar(context, '${track.trackName} already downloaded');
-                                    } else {
-                                      showGlassSnackBar(context, 'Download in progress');
-                                    }
-                                  } : () async {
-                                    Navigator.pop(context);
-                                    showGlassSnackBar(context, 'Starting download: ${track.trackName}');
-                                    await provider.downloadTrack(track);
-                                  },
-                                  isDark: isDark,
-                                );
-                              },
-                            ),
-                            
-                            if (track.artistName.isNotEmpty && track.artistName != 'Unknown Artist')
-                              _buildOption(
-                                context,
-                                icon: Icons.person_outline_rounded,
-                                label: 'Go to Artist',
-                                onTap: () async {
-                                  Navigator.pop(context);
-                                  // FIX: Use ArtistPickerSheet for multi-artist tracks
-                                  await ArtistPickerSheet.showIfNeeded(context, provider, track.artistName);
-                                },
-                                isDark: isDark,
-                              ),
-                              
-                            if (track.albumName.isNotEmpty && track.albumName != 'Unknown Album')
-                              _buildOption(
-                                context,
-                                icon: Icons.album_outlined,
-                                label: 'Go to Album',
-                                onTap: () async {
-                                  Navigator.pop(context);
-                                  await _navigateToAlbum(context, provider, track.albumName, track.artistName);
-                                },
-                                isDark: isDark,
-                              ),
-                              
-                            _buildOption(
-                              context,
-                              icon: Icons.share_rounded,
-                              label: 'Share',
-                              onTap: () {
-                                Navigator.pop(context);
-                                SharePlus.instance.share(ShareParams(text: 'Check out this track: ${track.trackName} by ${track.artistName}\n${track.previewUrl}'));
-                              },
-                              isDark: isDark,
-                            ),
-                            
-                             if (playlistId != null)
-                              _buildOption(
-                                context,
-                                icon: Icons.remove_circle_outline_rounded,
-                                label: 'Remove from Playlist',
-                                color: Colors.redAccent,
-                                onTap: () {
-                                  provider.removeTrackFromPlaylist(playlistId!, track.id);
-                                  Navigator.pop(context);
-                                },
-                                isDark: isDark,
-                              ),
-                              
-                            if (isInQueueContext)
-                              _buildOption(
-                                context,
-                                icon: Icons.delete_sweep_rounded,
-                                label: 'Remove from Queue',
-                                color: Colors.redAccent,
-                                onTap: () {
-                                  provider.removeFromQueue(track);
-                                  Navigator.pop(context);
-                                },
-                                isDark: isDark,
-                              ),
-                              
-                            if (isRecentlyPlayedContext)
-                              _buildOption(
-                                context,
-                                icon: Icons.history_toggle_off_rounded,
-                                label: 'Remove from History',
-                                color: Colors.redAccent,
-                                onTap: () {
-                                  provider.removeFromRecentlyPlayed(track.id);
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from Recently Played')));
-                                },
-                                isDark: isDark,
-                              ),
 
-                            const SizedBox(height: 20),
+        return GlassSurface(
+          tier: GlassTier.sheet,
+          borderRadius: GlassTokens.radiusSheet,
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle Bar
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurface.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Header (Track Info)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          track.albumArtUrl,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 56,
+                            height: 56,
+                            color: Colors.grey[900],
+                            child: const Icon(
+                              Icons.music_note,
+                              color: Colors.white24,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              track.trackName,
+                              style: GoogleFonts.splineSans(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: colorScheme.onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              track.artistName,
+                              style: GoogleFonts.splineSans(
+                                fontSize: 14,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                  ],
+                      IconButton(
+                        onPressed: () => provider.toggleLike(track),
+                        icon: Icon(
+                          isLiked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: isLiked
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
+                          size: 28,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+
+                const Divider(height: 1, thickness: 0.5),
+
+                // Options List
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildOption(
+                          context,
+                          icon: Icons.queue_music_rounded,
+                          label: 'Add to Queue',
+                          onTap: () {
+                            provider.addToQueue(track);
+                            Navigator.pop(context);
+                            showGlassSnackBar(context, 'Added to Queue');
+                          },
+                        ),
+                        _buildOption(
+                          context,
+                          icon: Icons.playlist_play_rounded,
+                          label: 'Play Next',
+                          onTap: () {
+                            provider.playNext(track);
+                            Navigator.pop(context);
+                            showGlassSnackBar(context, 'Playing Next');
+                          },
+                        ),
+                        _buildOption(
+                          context,
+                          icon: Icons.playlist_add_rounded,
+                          label: 'Add to Playlist',
+                          onTap: () async {
+                            final rootContext = context;
+                            Navigator.pop(context);
+                            // Use a small delay to ensure the bottom sheet is fully closed
+                            await Future.delayed(
+                              const Duration(milliseconds: 100),
+                            );
+                            if (rootContext.mounted) {
+                              await showPlaylistSelectionDialog(
+                                rootContext,
+                                track,
+                              );
+                            }
+                          },
+                        ),
+
+                        // Download Option with status indicator
+                        Builder(
+                          builder: (context) {
+                            final isDownloaded = provider.isTrackDownloadedSync(
+                              track.id,
+                            );
+                            final isDownloading =
+                                provider.isDownloading[track.id] == true;
+                            final isQueued = provider.downloadQueue.any(
+                              (t) => t.id == track.id,
+                            );
+                            final progress =
+                                provider.downloadProgress[track.id] ?? 0.0;
+
+                            String label = 'Download';
+                            IconData icon = Icons.download_rounded;
+                            Color? color;
+
+                            if (isDownloaded) {
+                              label = 'Downloaded';
+                              icon = Icons.download_done_rounded;
+                              color = Colors.green;
+                            } else if (isDownloading) {
+                              label =
+                                  'Downloading... ${(progress * 100).toInt()}%';
+                              icon = Icons.downloading_rounded;
+                              color = colorScheme.primary;
+                            } else if (isQueued) {
+                              label = 'Queued';
+                              icon = Icons.hourglass_top_rounded;
+                            }
+
+                            return _buildOption(
+                              context,
+                              icon: icon,
+                              label: label,
+                              color: color,
+                              onTap: isDownloaded || isDownloading || isQueued
+                                  ? () {
+                                      Navigator.pop(context);
+                                      if (isDownloaded) {
+                                        showGlassSnackBar(
+                                          context,
+                                          '${track.trackName} already downloaded',
+                                        );
+                                      } else {
+                                        showGlassSnackBar(
+                                          context,
+                                          'Download in progress',
+                                        );
+                                      }
+                                    }
+                                  : () async {
+                                      Navigator.pop(context);
+                                      showGlassSnackBar(
+                                        context,
+                                        'Starting download: ${track.trackName}',
+                                      );
+                                      await provider.downloadTrack(track);
+                                    },
+                            );
+                          },
+                        ),
+
+                        if (track.artistName.isNotEmpty &&
+                            track.artistName != 'Unknown Artist')
+                          _buildOption(
+                            context,
+                            icon: Icons.person_outline_rounded,
+                            label: 'Go to Artist',
+                            onTap: () async {
+                              Navigator.pop(context);
+                              // FIX: Use ArtistPickerSheet for multi-artist tracks
+                              await ArtistPickerSheet.showIfNeeded(
+                                context,
+                                provider,
+                                track.artistName,
+                              );
+                            },
+                          ),
+
+                        if (track.albumName.isNotEmpty &&
+                            track.albumName != 'Unknown Album')
+                          _buildOption(
+                            context,
+                            icon: Icons.album_outlined,
+                            label: 'Go to Album',
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await _navigateToAlbum(
+                                context,
+                                provider,
+                                track.albumName,
+                                track.artistName,
+                              );
+                            },
+                          ),
+
+                        _buildOption(
+                          context,
+                          icon: Icons.share_rounded,
+                          label: 'Share',
+                          onTap: () {
+                            Navigator.pop(context);
+                            SharePlus.instance.share(
+                              ShareParams(
+                                text:
+                                    'Check out this track: ${track.trackName} by ${track.artistName}\n${track.previewUrl}',
+                              ),
+                            );
+                          },
+                        ),
+
+                        if (playlistId != null)
+                          _buildOption(
+                            context,
+                            icon: Icons.remove_circle_outline_rounded,
+                            label: 'Remove from Playlist',
+                            color: colorScheme.error,
+                            onTap: () {
+                              provider.removeTrackFromPlaylist(
+                                playlistId!,
+                                track.id,
+                              );
+                              Navigator.pop(context);
+                            },
+                          ),
+
+                        if (isInQueueContext)
+                          _buildOption(
+                            context,
+                            icon: Icons.delete_sweep_rounded,
+                            label: 'Remove from Queue',
+                            color: colorScheme.error,
+                            onTap: () {
+                              provider.removeFromQueue(track);
+                              Navigator.pop(context);
+                            },
+                          ),
+
+                        if (isRecentlyPlayedContext)
+                          _buildOption(
+                            context,
+                            icon: Icons.history_toggle_off_rounded,
+                            label: 'Remove from History',
+                            color: colorScheme.error,
+                            onTap: () {
+                              provider.removeFromRecentlyPlayed(track.id);
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Removed from Recently Played'),
+                                ),
+                              );
+                            },
+                          ),
+
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
-      }
+      },
     );
   }
 
-  Widget _buildOption(BuildContext context, {
-    required IconData icon, 
-    required String label, 
+  Widget _buildOption(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
     required VoidCallback onTap,
     Color? color,
-    required bool isDark,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final effectiveColor = color ?? colorScheme.onSurface;
     return ListTile(
-      leading: Icon(icon, color: color ?? (isDark ? Colors.white : Colors.black)),
+      leading: Icon(icon, color: effectiveColor),
       title: Text(
         label,
         style: GoogleFonts.splineSans(
-          color: color ?? (isDark ? Colors.white : Colors.black),
+          color: effectiveColor,
           fontWeight: FontWeight.w500,
-          fontSize: 16
+          fontSize: 16,
         ),
       ),
       onTap: onTap,
     );
   }
 
-  Future<void> _navigateToAlbum(BuildContext context, MusicProvider provider, String albumName, String artistName) async {
-     showGlassSnackBar(context, 'Loading album...', duration: const Duration(milliseconds: 500));
+  Future<void> _navigateToAlbum(
+    BuildContext context,
+    MusicProvider provider,
+    String albumName,
+    String artistName,
+  ) async {
+    showGlassSnackBar(
+      context,
+      'Loading album...',
+      duration: const Duration(milliseconds: 500),
+    );
     await provider.navigateToAlbum(albumName, artistName);
     if (context.mounted && provider.currentAlbumDetails != null) {
       // FIX: Ensure mini player is visible when going to details screen
       provider.setHideMiniPlayer(false);
-      
-      Navigator.push(context, MaterialPageRoute(builder: (_) => PlaylistDetailScreen(
-        playlistId: provider.currentAlbumDetails!.id,
-        playlistName: provider.currentAlbumDetails!.name,
-        playlistImage: provider.currentAlbumDetails!.imageUrl,
-        cachedTracks: provider.currentAlbumDetails!.tracks,
-      )));
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PlaylistDetailScreen(
+            playlistId: provider.currentAlbumDetails!.id,
+            playlistName: provider.currentAlbumDetails!.name,
+            playlistImage: provider.currentAlbumDetails!.imageUrl,
+            cachedTracks: provider.currentAlbumDetails!.tracks,
+          ),
+        ),
+      );
     }
   }
 }
@@ -393,7 +436,8 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
     required this.tracks,
   });
 
-  static Future<void> show(BuildContext context, {
+  static Future<void> show(
+    BuildContext context, {
     required String playlistName,
     String? playlistImage,
     required List<Track> tracks,
@@ -418,178 +462,167 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: (isDark ? const Color(0xFF1E1E1E) : Colors.white).withValues(alpha: 0.8),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                
-                // Content
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: playlistImage != null
-                            ? Image.network(
-                                playlistImage!,
-                                width: 56, height: 56,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_,__,___) => Container(color: Colors.grey[900], width: 56, height: 56),
-                              )
-                            : Container(color: Colors.grey[900], width: 56, height: 56, child: const Icon(Icons.music_note, color: Colors.white24)),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Text(
-                          playlistName,
-                          style: GoogleFonts.splineSans(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: isDark ? Colors.white : Colors.black,
+    return GlassSurface(
+      tier: GlassTier.sheet,
+      borderRadius: GlassTokens.radiusSheet,
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurface.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Content
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: playlistImage != null
+                        ? Image.network(
+                            playlistImage!,
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey[900],
+                              width: 56,
+                              height: 56,
+                            ),
+                          )
+                        : Container(
+                            color: Colors.grey[900],
+                            width: 56,
+                            height: 56,
+                            child: const Icon(
+                              Icons.music_note,
+                              color: Colors.white24,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
                   ),
-                ),
-                
-                const Divider(height: 1, thickness: 0.5),
-                
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                         _buildOption(
-                          context,
-                          icon: Icons.download_rounded,
-                          label: 'Download Playlist',
-                          onTap: () {
-                             Navigator.pop(context);
-                             provider.downloadTracks(tracks);
-                             showGlassSnackBar(context, 'Downloading ${tracks.length} tracks');
-                          },
-                          isDark: isDark,
-                        ),
-                        
-                         _buildOption(
-                          context,
-                          icon: Icons.checklist_rounded,
-                          label: 'Select to Download',
-                          onTap: () async {
-                             final rootContext = context;
-                             Navigator.pop(context);
-                             await Future.delayed(const Duration(milliseconds: 100));
-                             if (rootContext.mounted) {
-                               // Import lazily or use the widget reference if available 
-                               // Since it is in a separate file, we need to import it at top of file.
-                               // I'll add the import via another tool call or assume it's added.
-                               // Wait, I can't add imports with this replace call easily.
-                               // I will trust the user to add it? No, I must do it.
-                               // For now, I'll rely on a second edit to add imports.
-                               
-                               // Using dynamic dispatch to avoid compilation error if import missing? No, that fails.
-                               // I will assume I'll add imports in next step.
-                               await showModalBottomSheet(
-                                  context: rootContext,
-                                   isScrollControlled: true,
-                                   backgroundColor: Colors.transparent,
-                                  builder: (c) => GlassDownloadSelectionSheet(tracks: tracks, playlistName: playlistName),
-                               );
-                             }
-                          },
-                          isDark: isDark,
-                        ),
-                        
-                         _buildOption(
-                          context,
-                          icon: Icons.queue_music_rounded,
-                          label: 'Add All to Queue',
-                          onTap: () {
-                             Navigator.pop(context);
-                             for (var t in tracks) {
-                               provider.addToQueue(t);
-                             }
-                             showGlassSnackBar(context, 'Added ${tracks.length} to queue');
-                          },
-                          isDark: isDark,
-                        ),
-                        
-                        _buildOption(
-                          context,
-                          icon: Icons.shuffle_rounded,
-                          label: 'Shuffle Play',
-                          onTap: () {
-                             Navigator.pop(context);
-                             provider.shuffleAndPlay(tracks);
-                          },
-                          isDark: isDark,
-                        ),
-                        
-                        const SizedBox(height: 20),
-                      ],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      playlistName,
+                      style: GoogleFonts.splineSans(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: colorScheme.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+
+            const Divider(height: 1, thickness: 0.5),
+
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildOption(
+                      context,
+                      icon: Icons.download_rounded,
+                      label: 'Download Playlist',
+                      onTap: () {
+                        Navigator.pop(context);
+                        provider.downloadTracks(tracks);
+                        showGlassSnackBar(
+                          context,
+                          'Downloading ${tracks.length} tracks',
+                        );
+                      },
+                    ),
+                    _buildOption(
+                      context,
+                      icon: Icons.checklist_rounded,
+                      label: 'Select to Download',
+                      onTap: () async {
+                        final rootContext = context;
+                        Navigator.pop(context);
+                        await Future.delayed(const Duration(milliseconds: 100));
+                        if (rootContext.mounted) {
+                          await showModalBottomSheet(
+                            context: rootContext,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (c) => GlassDownloadSelectionSheet(
+                              tracks: tracks,
+                              playlistName: playlistName,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    _buildOption(
+                      context,
+                      icon: Icons.queue_music_rounded,
+                      label: 'Add All to Queue',
+                      onTap: () {
+                        Navigator.pop(context);
+                        for (var t in tracks) {
+                          provider.addToQueue(t);
+                        }
+                        showGlassSnackBar(
+                          context,
+                          'Added ${tracks.length} to queue',
+                        );
+                      },
+                    ),
+                    _buildOption(
+                      context,
+                      icon: Icons.shuffle_rounded,
+                      label: 'Shuffle Play',
+                      onTap: () {
+                        Navigator.pop(context);
+                        provider.shuffleAndPlay(tracks);
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildOption(BuildContext context, {
-    required IconData icon, 
-    required String label, 
+  Widget _buildOption(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
     required VoidCallback onTap,
     Color? color,
-    required bool isDark,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final effectiveColor = color ?? colorScheme.onSurface;
     return ListTile(
-      leading: Icon(icon, color: color ?? (isDark ? Colors.white : Colors.black)),
+      leading: Icon(icon, color: effectiveColor),
       title: Text(
         label,
         style: GoogleFonts.splineSans(
-          color: color ?? (isDark ? Colors.white : Colors.black),
+          color: effectiveColor,
           fontWeight: FontWeight.w500,
-          fontSize: 16
+          fontSize: 16,
         ),
       ),
       onTap: onTap,
     );
   }
 }
-
-
