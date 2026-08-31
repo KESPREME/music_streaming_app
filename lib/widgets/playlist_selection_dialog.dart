@@ -371,9 +371,9 @@ Widget _buildGlassInputDialog(
 
                     if (name.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please enter a playlist name'),
-                          backgroundColor: Colors.orange,
+                        SnackBar(
+                          content: const Text('Please enter a playlist name'),
+                          backgroundColor: Theme.of(context).colorScheme.error,
                         ),
                       );
                       return;

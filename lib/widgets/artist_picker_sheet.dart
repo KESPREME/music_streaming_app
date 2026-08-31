@@ -60,17 +60,20 @@ class ArtistPickerSheet extends StatelessWidget {
       provider.setHideMiniPlayer(true);
 
       // Show sheet and wait for result
-      final selectedArtist = await showModalBottomSheet<String>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        builder: (_) => ArtistPickerSheet(
-          artists: artists,
-          parentContext: context,
-        ),
-      );
-
-      provider.setHideMiniPlayer(false);
+      String? selectedArtist;
+      try {
+        selectedArtist = await showModalBottomSheet<String>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (_) => ArtistPickerSheet(
+            artists: artists,
+            parentContext: context,
+          ),
+        );
+      } finally {
+        provider.setHideMiniPlayer(false);
+      }
 
       // Navigate using the PARENT context
       if (selectedArtist != null && context.mounted) {
