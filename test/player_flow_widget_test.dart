@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/now_playing_screen.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
+import 'package:music_streaming_app/screens/queue_screen.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_surface.dart';
 import 'package:music_streaming_app/widgets/mini_player.dart';
@@ -16,6 +17,9 @@ class FakeMusicProvider extends MusicProvider {
   bool _playing;
   int resumeCalls = 0;
   int pauseCalls = 0;
+  final List<Track> queueTracks = [];
+  Track? lastPlayed;
+  bool? lastClearQueue;
 
   @override
   Track? get currentTrack => track;
@@ -49,6 +53,30 @@ class FakeMusicProvider extends MusicProvider {
 
   @override
   Future<void> skipToNext() async {}
+
+  @override
+  List<Track> get queue => List.unmodifiable(queueTracks);
+
+  @override
+  Future<void> playTrack(
+    Track track, {
+    String? playlistId,
+    List<Track>? playlistTracks,
+    bool setContext = true,
+    bool clearQueue = true,
+  }) async {
+    lastPlayed = track;
+    lastClearQueue = clearQueue;
+  }
+
+  @override
+  void removeFromQueue(dynamic item) => queueTracks.remove(item);
+
+  @override
+  void reorderQueueItem(int oldIndex, int newIndex) {}
+
+  @override
+  void clearQueue() => queueTracks.clear();
 }
 
 Track buildTrack() => Track(
@@ -136,5 +164,31 @@ void main() {
     expect(find.bySemanticsLabel('Next track'), findsOneWidget);
     expect(find.bySemanticsLabel('Shuffle'), findsOneWidget);
     expect(find.bySemanticsLabel('Repeat'), findsOneWidget);
+  });
+
+  testWidgets('queue row plays track without clearing queue', (tester) async {
+    final provider = FakeMusicProvider();
+    final track = buildTrack();
+    provider.queueTracks.add(track);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: const QueueScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Glass track'));
+    await tester.pump();
+
+    expect(provider.lastPlayed, same(track));
+    expect(provider.lastClearQueue, isFalse);
   });
 }
