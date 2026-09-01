@@ -63,6 +63,11 @@ class LiquidGlassNavBar extends StatelessWidget {
         hintStyle: type_tokens.Type.searchHint(context),
         controller: searchController,
         focusNode: searchFocusNode,
+        // cupertino_icons isn't a dependency, so the library's default
+        // CupertinoIcons.search renders as a missing-glyph box. Supply
+        // Material icons explicitly for both the collapsed pill and the
+        // expanded field prefix.
+        searchIcon: const Icon(Icons.search_rounded, size: 22),
         onSearchToggle: (active) => onSearchToggle?.call(active),
         onSubmitted: (query) {
           searchFocusNode?.unfocus();
