@@ -115,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: _LowerSections(
                     bottomInset: bottomInset,
                     excludeHeroSectionId:
-                        _heroSection(context.read<MusicProvider>())?.id,
+                        _heroCandidate(context.read<MusicProvider>())?.$1.id,
                   ),
                   builder: (context, version, lower) => lower!,
                 ),
@@ -152,19 +152,23 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Top Picks carousel ───────────────────────────────────────────────────
+  // ── Hero ─────────────────────────────────────────────────────────────────
 
-  /// Hero source priority: first curated-feed song shelf (honest title),
-  /// then recommendation engine, then trending.
-  HomeSection? _heroSection(MusicProvider provider) {
+  /// Hero eligibility (spec #28): source-nominated candidate from a strong
+  /// song shelf, ≥3 playable tracks. Never sections.first blindly.
+  /// Returns (section, tracks) or null → hero collapses entirely (spec #30:
+  /// a blank hero container must be impossible).
+  (HomeSection, List<Track>)? _heroCandidate(MusicProvider provider) {
     final feed = provider.homeFeed;
-    if (feed != null) {
-      for (final section in feed.sections) {
-        if (section.dominantType == HomeContentType.song &&
-            section.items.any((i) => i.videoId != null)) {
-          return section;
-        }
-      }
+    if (feed == null) return null;
+    for (final section in feed.sections) {
+      if (section.dominantType != HomeContentType.song) continue;
+      final picks = section.items
+          .map(_trackFromHomeItem)
+          .whereType<Track>()
+          .take(8)
+          .toList();
+      if (picks.length >= 3) return (section, picks);
     }
     return null;
   }
@@ -181,21 +185,18 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildTopPicks(BuildContext context) {
     final provider = context.watch<MusicProvider>();
-    final hero = _heroSection(provider);
+    final hero = _heroCandidate(provider);
 
-    // Curated feed available → render with the source's real shelf title.
+    // Curated feed hero → render with the source's real shelf title.
     if (hero != null) {
-      final picks = hero.items
-          .map(_trackFromHomeItem)
-          .whereType<Track>()
-          .take(8)
-          .toList();
-      if (picks.length >= 3) {
-        return _buildHeroCarousel(context, picks, hero.title, hero.id);
-      }
+      final (section, picks) = hero;
+      return _buildHeroCarousel(context, picks, section.title, section.id);
     }
 
+    // No valid hero: fall back to local data. If that's empty too, collapse
+    // the section completely — never reserve a giant blank region.
     final picks = _topPicksList(provider);
+    if (picks.isEmpty) return const SizedBox.shrink();
     return _buildTopPicksFallback(context, picks);
   }
 
@@ -341,6 +342,13 @@ class _FeedSection extends StatelessWidget {
                 onSeeAll: null,
               )
             : const SizedBox.shrink();
+      case HomePresentation.videoRail:
+        // Wide-thumbnail treatment not yet built — log instead of silently
+        // dropping VALID data (spec: VALID DATA / UNSUPPORTED PRESENTATION).
+        debugPrint('Home: VALID DATA / UNSUPPORTED PRESENTATION — '
+            'videoRail section "${section.title}" '
+            '(${section.items.length} items) not rendered');
+        return const SizedBox.shrink();
     }
   }
 

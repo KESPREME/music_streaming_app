@@ -418,4 +418,97 @@ void main() {
       expect(artists.items.every((i) => i.videoId == null), isTrue);
     });
   });
+
+  group('forensic accounting + hero', () {
+    test('accounting invariants hold on mixed fixture', () async {
+      final source = YouTubeMusicHomeSource(InnerTubeService.instance);
+      await source.parseResponse(_homeResponseFixture());
+      final report = source.lastReport!;
+
+      expect(report.discoveredShelves, 3); // 2 carousels + 1 podcast shelf
+      expect(report.parsedShelves, 2);
+      expect(report.unsupportedShelves, 1);
+      expect(report.invariantsHold, isTrue);
+    });
+
+    test('unsupported renderer is reported, not silently dropped', () async {
+      final source = YouTubeMusicHomeSource(InnerTubeService.instance);
+      await source.parseResponse(_homeResponseFixture());
+      final report = source.lastReport!;
+
+      final unsupported = report.shelves
+          .where((s) => s.status == ShelfStatus.unsupportedRenderer)
+          .toList();
+      expect(unsupported.length, 1);
+      expect(unsupported.first.renderer, 'musicPodcastShelfRenderer');
+    });
+
+    test('musicShelfRenderer is discovered and parsed', () async {
+      final source = YouTubeMusicHomeSource(InnerTubeService.instance);
+      final fixture = _homeResponseFixture(extraSections: [
+        {
+          'musicShelfRenderer': {
+            'title': {
+              'runs': [
+                {'text': 'Trending community playlists'}
+              ]
+            },
+            'contents': [
+              for (var i = 0; i < 3; i++)
+                {
+                  'musicResponsiveListItemRenderer': {
+                    'playlistItemData': {'videoId': 'shelfVID$i'},
+                    'flexColumns': [
+                      {
+                        'musicResponsiveListItemFlexColumnRenderer': {
+                          'text': {
+                            'runs': [
+                              {'text': 'Playlist item $i'}
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        'musicResponsiveListItemFlexColumnRenderer': {
+                          'text': {
+                            'runs': [
+                              {'text': 'Curator $i'}
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    'thumbnail': {
+                      'musicThumbnailRenderer': {
+                        'thumbnail': {
+                          'thumbnails': [
+                            {
+                              'url':
+                                  'https://lh3.googleusercontent.com/ms$i=w544-h544'
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+            ],
+          }
+        },
+      ]);
+      final feed = (await source.parseResponse(fixture))!;
+      final shelf = feed.sections
+          .singleWhere((s) => s.title == 'Trending community playlists');
+      expect(shelf.renderer, 'musicShelfRenderer');
+      expect(shelf.items.length, 3);
+      expect(shelf.sourcePath, isNotNull);
+    });
+
+    test('hero candidate = first playable song shelf item', () async {
+      final source = YouTubeMusicHomeSource(InnerTubeService.instance);
+      final feed = (await source.parseResponse(_homeResponseFixture()))!;
+      expect(feed.heroCandidate, isNotNull);
+      expect(feed.heroCandidate!.id, 'BddP6PYotfs');
+    });
+  });
 }

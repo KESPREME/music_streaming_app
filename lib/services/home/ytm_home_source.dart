@@ -11,6 +11,21 @@ import '../innertube/innertube_service.dart';
 import 'home_diagnostics.dart';
 import 'home_models.dart';
 
+/// Internal: a discovered shelf candidate before parsing.
+class _ShelfCandidate {
+  const _ShelfCandidate({
+    required this.path,
+    required this.renderer,
+    required this.shelf,
+    this.unsupported = false,
+  });
+
+  final String path;
+  final String renderer;
+  final Map<String, dynamic>? shelf;
+  final bool unsupported;
+}
+
 /// Native YouTube Music Home source (browseId = FEmusic_home).
 ///
 /// Preserves shelf semantics: each musicCarouselShelfRenderer becomes one
@@ -41,75 +56,233 @@ class YouTubeMusicHomeSource {
   }
 
   /// Testable parse entry: raw browse JSON → HomeFeed (no network).
+  /// Also exposes the forensic accounting report.
   Future<HomeFeed?> parseResponse(Map<String, dynamic> data,
           {int perShelfLimit = 10}) =>
       _parse(data, perShelfLimit);
 
+  ParseReport? lastReport;
+
   Future<HomeFeed?> _parse(Map<String, dynamic> data, int perShelfLimit) async {
     try {
       final sections = <HomeSection>[];
-      final contents = _findSectionList(data);
-      if (contents == null) return null;
+      final root = _findSectionListRoot(data);
+      if (root == null) {
+        lastReport = ParseReport(
+          discoveredShelves: 0,
+          parsedShelves: 0,
+          unsupportedShelves: 0,
+          malformedShelves: 0,
+          emptyShelves: 0,
+          rawItems: 0,
+          retainedItems: 0,
+          rejectedItems: 0,
+          duplicateItems: 0,
+          shelves: const [],
+          heroCandidate: null,
+        );
+        return null;
+      }
 
-      for (final section in contents) {
-        if (section is! Map<String, dynamic>) continue;
-        // Shelf header.
-        final shelf = section['musicCarouselShelfRenderer'];
-        if (shelf is! Map<String, dynamic>) {
-          if (kDebugMode) {
-            final kind =
-                section.keys.where((k) => k.endsWith('Renderer')).join(',');
-            if (kind.isNotEmpty) {
-              debugPrint('YTMHomeSource: ignored renderer: $kind');
-            }
+      // ── Stage A: discovery ───────────────────────────────────────────────
+      // Walk every node under the section list; collect candidate shelves
+      // with their JSON paths. Handles both flat carousel layouts and
+      // musicSectionListRenderer-wrapped nested groups (chip-filtered
+      // Home surfaces), which the previous walker silently dropped.
+      final candidates = <_ShelfCandidate>[];
+      void walk(dynamic node, String path, int depth) {
+        if (node is List) {
+          var i = 0;
+          for (final child in node) {
+            walk(child, '$path[$i]', depth + 1);
+            i++;
           }
+          return;
+        }
+        if (node is! Map<String, dynamic> || depth > 8) return;
+        node.forEach((key, value) {
+          if (key == 'musicCarouselShelfRenderer' ||
+              key == 'musicShelfRenderer') {
+            if (value is Map<String, dynamic>) {
+              candidates.add(_ShelfCandidate(
+                path: '$path.$key',
+                renderer: key,
+                shelf: value,
+              ));
+            }
+            return; // do not descend into a shelf we claimed
+          }
+          // Known non-shelf containers to traverse.
+          if (key == 'musicSectionListRenderer' ||
+              key == 'sectionListRenderer' ||
+              key == 'tabRenderer' ||
+              key == 'content' ||
+              key == 'contents') {
+            walk(value, '$path.$key', depth + 1);
+            return;
+          }
+          // Unknown top-level renderers → diagnostics, no silent drop.
+          if (value is Map<String, dynamic> && key.endsWith('Renderer')) {
+            candidates.add(_ShelfCandidate(
+              path: '$path.$key',
+              renderer: key,
+              shelf: null,
+              unsupported: true,
+            ));
+          }
+        });
+      }
+
+      walk(root, 'sectionList', 0);
+
+      // ── Stages B–E: parse each candidate with full accounting ───────────
+      final reports = <ShelfReport>[];
+      var parsed = 0, unsupported = 0, malformed = 0, empty = 0;
+      var rawTotal = 0, retainedTotal = 0, rejectedTotal = 0, dupTotal = 0;
+      HomeItem? heroCandidate;
+
+      for (final candidate in candidates) {
+        final shelf = candidate.shelf;
+        if (shelf == null) {
+          reports.add(ShelfReport(
+            path: candidate.path,
+            renderer: candidate.renderer,
+            status: ShelfStatus.unsupportedRenderer,
+            title: _shelfTitleOf(candidate.renderer, shelf),
+          ));
+          unsupported++;
           continue;
         }
 
-        final title = _headerText(shelf['header']);
-        if (title == null || title.isEmpty) continue;
+        final title = _headerText(shelf['header']) ??
+            _headerTextFromTitleNode(shelf['title']);
+        if (title == null || title.isEmpty) {
+          malformed++;
+          reports.add(ShelfReport(
+            path: candidate.path,
+            renderer: candidate.renderer,
+            status: ShelfStatus.malformed,
+            title: title,
+          ));
+          continue;
+        }
+
+        // Carousel shelves nest items under `contents`; list shelves keep
+        // them there too.
+        final carousel = shelf['contents'];
+        if (carousel is! List || carousel.isEmpty) {
+          empty++;
+          reports.add(ShelfReport(
+            path: candidate.path,
+            renderer: candidate.renderer,
+            status: ShelfStatus.empty,
+            title: title,
+            rawItemCount: 0,
+          ));
+          continue;
+        }
 
         final items = <HomeItem>[];
         final seenIds = <String>{};
-        final carousel = shelf['contents'];
-        if (carousel is! List) continue;
+        final reasons = <String>[];
+        var rejected = 0, dupes = 0;
 
         for (final wrapper in carousel) {
-          if (wrapper is! Map<String, dynamic>) continue;
           if (items.length >= perShelfLimit) break;
+          if (wrapper is! Map<String, dynamic>) continue;
 
+          HomeItem? item;
           final responsive = wrapper['musicResponsiveListItemRenderer'];
-          if (responsive is Map<String, dynamic>) {
-            final item = _itemFromResponsive(responsive);
-            if (item != null && seenIds.add(item.id)) items.add(item);
-            continue;
-          }
-
           final twoRow = wrapper['musicTwoRowItemRenderer'];
-          if (twoRow is Map<String, dynamic>) {
-            final item = _itemFromTwoRow(twoRow);
-            if (item != null && seenIds.add(item.id)) items.add(item);
-            continue;
+          if (responsive is Map<String, dynamic>) {
+            item = _itemFromResponsive(responsive);
+          } else if (twoRow is Map<String, dynamic>) {
+            item = _itemFromTwoRow(twoRow);
           }
 
-          if (kDebugMode) {
-            final kinds = wrapper.keys
-                .where((k) => (k as String).endsWith('Renderer'))
-                .join(',');
-            if (kinds.isNotEmpty) {
-              debugPrint('YTMHomeSource: unknown item renderer: $kinds');
-            }
+          if (item == null) {
+            rejected++;
+            final kinds =
+                wrapper.keys.where((k) => k.endsWith('Renderer')).join(',');
+            reasons.add(
+                'unparseable item renderer: ${kinds.isEmpty ? '?' : kinds}');
+            continue;
           }
+          if (!seenIds.add(item.id)) {
+            dupes++;
+            continue;
+          }
+          items.add(item);
         }
 
+        final rawCount = carousel.length;
+        rawTotal += rawCount;
+        retainedTotal += items.length;
+        rejectedTotal += rejected;
+        dupTotal += dupes;
+
         if (items.length >= 2) {
-          sections.add(HomeSection(
+          parsed++;
+          final section = HomeSection(
             id: _sectionId(title, items),
             title: title,
             items: items,
             presentation: _presentationFor(items),
+            sourcePath: candidate.path,
+            renderer: candidate.renderer,
+          );
+          sections.add(section);
+
+          // Hero: first strong song shelf's first playable item.
+          if (heroCandidate == null &&
+              section.dominantType == HomeContentType.song &&
+              items.any((i) => i.videoId != null)) {
+            heroCandidate = items.firstWhere((i) => i.videoId != null);
+          }
+
+          reports.add(ShelfReport(
+            path: candidate.path,
+            renderer: candidate.renderer,
+            status: ShelfStatus.parsed,
+            title: title,
+            rawItemCount: rawCount,
+            recognizedItemCount: items.length + rejected,
+            rejectedItemCount: rejected,
+            duplicateItemCount: dupes,
+            rejectionReasons: reasons,
+          ));
+        } else {
+          empty++;
+          reports.add(ShelfReport(
+            path: candidate.path,
+            renderer: candidate.renderer,
+            status: ShelfStatus.empty,
+            title: title,
+            rawItemCount: rawCount,
+            recognizedItemCount: items.length,
+            rejectedItemCount: rejected,
+            duplicateItemCount: dupes,
+            rejectionReasons: reasons,
           ));
         }
+      }
+
+      lastReport = ParseReport(
+        discoveredShelves: candidates.length,
+        parsedShelves: parsed,
+        unsupportedShelves: unsupported,
+        malformedShelves: malformed,
+        emptyShelves: empty,
+        rawItems: rawTotal,
+        retainedItems: retainedTotal,
+        rejectedItems: rejectedTotal,
+        duplicateItems: dupTotal,
+        shelves: reports,
+        heroCandidate: heroCandidate,
+      );
+      if (kDebugMode) debugPrint(lastReport.toString());
+      if (!lastReport!.invariantsHold && kDebugMode) {
+        debugPrint('YTMHomeSource: ⚠️ ACCOUNTING INVARIANT VIOLATION');
       }
 
       if (sections.isEmpty) return null;
@@ -117,6 +290,7 @@ class YouTubeMusicHomeSource {
         sections: sections,
         fetchedAt: DateTime.now(),
         source: 'ytm_home',
+        heroCandidate: heroCandidate,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('YTMHomeSource: parse error: $e');
@@ -124,29 +298,58 @@ class YouTubeMusicHomeSource {
     }
   }
 
-  /// Walks toward sectionListRenderer.contents defensively — the Home
-  /// response shape varies between tabs/shelf arrangements.
-  static List? _findSectionList(Map<String, dynamic> data) {
+  /// Walks toward the Home section list defensively. Handles both the
+  /// classic layout and chip-filtered layouts that wrap shelves inside
+  /// musicSectionListRenderer (handled by the deep walker below).
+  static Map<String, dynamic>? _findSectionListRoot(Map<String, dynamic> data) {
     final tabs =
         data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
     if (tabs is! List || tabs.isEmpty) return null;
-    return tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']
-        ?['contents'];
+    final content = tabs[0]?['tabRenderer']?['content'];
+    if (content is! Map<String, dynamic>) return null;
+    final sectionList = content['sectionListRenderer'];
+    if (sectionList is! Map<String, dynamic>) return null;
+    return sectionList;
   }
 
+  static String? _shelfTitleOf(String renderer, Map<String, dynamic>? shelf) {
+    if (shelf == null) return null;
+    return _headerText(shelf['header']) ??
+        _headerTextFromTitleNode(shelf['title']);
+  }
+
+  /// Header text from carousel or list shelf headers.
   static String? _headerText(dynamic header) {
     if (header is! Map<String, dynamic>) return null;
-    final r = header['musicCarouselShelfBasicHeaderRenderer'];
-    if (r is! Map<String, dynamic>) return null;
-    final title = r['title'];
-    if (title is Map<String, dynamic>) {
-      final simple = title['simpleText'];
-      if (simple is String && simple.isNotEmpty) return simple;
-      final runs = title['runs'];
-      if (runs is List && runs.isNotEmpty) {
-        final t = runs[0]?['text'];
-        if (t is String && t.isNotEmpty) return t;
+    final candidates = [
+      header['musicCarouselShelfBasicHeaderRenderer'],
+      header['musicResponsiveHeaderRenderer'],
+    ];
+    for (final r in candidates) {
+      if (r is! Map<String, dynamic>) continue;
+      final title = r['title'];
+      if (title is Map<String, dynamic>) {
+        final simple = title['simpleText'];
+        if (simple is String && simple.isNotEmpty) return simple;
+        final runs = title['runs'];
+        if (runs is List && runs.isNotEmpty) {
+          final t = runs[0]?['text'];
+          if (t is String && t.isNotEmpty) return t;
+        }
       }
+    }
+    return null;
+  }
+
+  /// List-shelf title lives in its own title node (musicShelfRenderer).
+  static String? _headerTextFromTitleNode(dynamic titleNode) {
+    if (titleNode is! Map<String, dynamic>) return null;
+    final simple = titleNode['simpleText'];
+    if (simple is String && simple.isNotEmpty) return simple;
+    final runs = titleNode['runs'];
+    if (runs is List && runs.isNotEmpty) {
+      final t = runs[0]?['text'];
+      if (t is String && t.isNotEmpty) return t;
     }
     return null;
   }

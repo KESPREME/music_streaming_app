@@ -6,10 +6,10 @@
 /// caches safely.
 library;
 
-/// v2: type resolution reworked (ID-prefix + nav-shape, never subtitle
-/// startsWith guesses alone), source provenance added. Old v1 snapshots
-/// invalidate automatically.
-const int kHomeFeedSchemaVersion = 2;
+/// v3: forensic parser (deep discovery, musicShelfRenderer support,
+/// accounting report, unknown type honesty, HeroCandidate). v1/v2
+/// snapshots invalidate automatically.
+const int kHomeFeedSchemaVersion = 3;
 
 enum HomeContentType { song, video, album, artist, playlist, unknown }
 
@@ -18,7 +18,125 @@ enum HomePresentation {
   artworkRail,
   playlistRail,
   artistRail,
-  grid
+  grid,
+  videoRail,
+}
+
+/// Per-shelf accounting record (debug): full reconciliation of what the
+/// raw response contained vs what survived. Invariants (spec #33):
+/// discovered = parsed + unsupported + malformed
+/// rawItems   = retained + rejected + duplicate
+class ShelfReport {
+  const ShelfReport({
+    required this.path,
+    required this.renderer,
+    required this.status,
+    this.title,
+    this.rawItemCount = 0,
+    this.recognizedItemCount = 0,
+    this.rejectedItemCount = 0,
+    this.duplicateItemCount = 0,
+    this.rejectionReasons = const [],
+  });
+
+  final String path;
+  final String renderer;
+  final ShelfStatus status;
+  final String? title;
+  final int rawItemCount;
+  final int recognizedItemCount;
+  final int rejectedItemCount;
+  final int duplicateItemCount;
+  final List<String> rejectionReasons;
+
+  Map<String, dynamic> toJson() => {
+        'path': path,
+        'renderer': renderer,
+        'status': status.name,
+        if (title != null) 'title': title,
+        'raw': rawItemCount,
+        'recognized': recognizedItemCount,
+        'rejected': rejectedItemCount,
+        'dupes': duplicateItemCount,
+        if (rejectionReasons.isNotEmpty)
+          'why': rejectionReasons.take(5).toList(),
+      };
+}
+
+enum ShelfStatus { parsed, unsupportedRenderer, malformed, empty, filtered }
+
+/// Aggregate accounting for one parse pass.
+class ParseReport {
+  const ParseReport({
+    required this.discoveredShelves,
+    required this.parsedShelves,
+    required this.unsupportedShelves,
+    required this.malformedShelves,
+    required this.emptyShelves,
+    required this.rawItems,
+    required this.retainedItems,
+    required this.rejectedItems,
+    required this.duplicateItems,
+    required this.shelves,
+    required this.heroCandidate,
+  });
+
+  final int discoveredShelves;
+  final int parsedShelves;
+  final int unsupportedShelves;
+  final int malformedShelves;
+  final int emptyShelves;
+  final int rawItems;
+  final int retainedItems;
+  final int rejectedItems;
+  final int duplicateItems;
+  final List<ShelfReport> shelves;
+
+  /// Eligible hero: immersive header feature or first strong song shelf.
+  final HomeItem? heroCandidate;
+
+  /// Invariant check — any violation is a parser bug.
+  bool get invariantsHold =>
+      discoveredShelves ==
+          parsedShelves +
+              unsupportedShelves +
+              malformedShelves +
+              emptyShelves &&
+      rawItems == retainedItems + rejectedItems + duplicateItems;
+
+  Map<String, dynamic> toJson() => {
+        'discovered': discoveredShelves,
+        'parsed': parsedShelves,
+        'unsupported': unsupportedShelves,
+        'malformed': malformedShelves,
+        'empty': emptyShelves,
+        'rawItems': rawItems,
+        'retained': retainedItems,
+        'rejected': rejectedItems,
+        'duplicates': duplicateItems,
+        'invariantsHold': invariantsHold,
+        'heroCandidate': heroCandidate?.id,
+        'shelves': shelves.map((s) => s.toJson()).toList(),
+      };
+
+  @override
+  String toString() {
+    final buf = StringBuffer(
+        'ParseReport: discovered=$discoveredShelves parsed=$parsedShelves '
+        'unsupported=$unsupportedShelves malformed=$malformedShelves empty=$emptyShelves | '
+        'items raw=$rawItems retained=$retainedItems rejected=$rejectedItems '
+        'dupes=$duplicateItems | invariants=${invariantsHold ? "OK" : "VIOLATED"} | '
+        'hero=${heroCandidate?.id ?? "none"}');
+    for (final s in shelves) {
+      buf.write('\n  [${s.status.name}] ${s.renderer} "${s.title ?? '?'}" '
+          'raw=${s.rawItemCount} ok=${s.recognizedItemCount} '
+          'rej=${s.rejectedItemCount} dupe=${s.duplicateItemCount}');
+      for (final reason in s.rejectionReasons.take(3)) {
+        buf.write('\n      reason: $reason');
+      }
+    }
+    return buf.toString();
+  }
 }
 
 class HomeItem {
@@ -78,6 +196,9 @@ class HomeSection {
     required this.title,
     required this.items,
     required this.presentation,
+    this.sourcePath,
+    this.renderer,
+    this.sourceSubtitle,
   });
 
   /// Stable section identity: normalized source title + dominant type.
@@ -85,6 +206,12 @@ class HomeSection {
   final String title;
   final List<HomeItem> items;
   final HomePresentation presentation;
+
+  /// Debug provenance: where this shelf lived in the raw response and
+  /// which renderer produced it. Serialized for forensics.
+  final String? sourcePath;
+  final String? renderer;
+  final String? sourceSubtitle;
 
   HomeContentType get dominantType {
     final counts = <HomeContentType, int>{};
@@ -106,6 +233,9 @@ class HomeSection {
         'id': id,
         'title': title,
         'p': presentation.index,
+        if (sourcePath != null) 'path': sourcePath,
+        if (renderer != null) 'renderer': renderer,
+        if (sourceSubtitle != null) 'sub': sourceSubtitle,
         'items': items.map((i) => i.toJson()).toList(),
       };
 
@@ -117,6 +247,9 @@ class HomeSection {
                 json['p'] < HomePresentation.values.length
             ? HomePresentation.values[json['p'] as int]
             : HomePresentation.artworkRail,
+        sourcePath: json['path'] as String?,
+        renderer: json['renderer'] as String?,
+        sourceSubtitle: json['sub'] as String?,
         items: ((json['items'] as List?) ?? [])
             .whereType<Map<String, dynamic>>()
             .map(HomeItem.fromJson)
@@ -129,13 +262,18 @@ class HomeFeed {
     required this.sections,
     required this.fetchedAt,
     required this.source,
+    this.heroCandidate,
   });
 
   final List<HomeSection> sections;
   final DateTime fetchedAt;
 
-  /// 'ytm_home' | 'fallback' — surfaces provenance in debug logging.
+  /// 'ytm_home' | 'fallback' - surfaces provenance in debug logging.
   final String source;
+
+  /// Parser-nominated hero (first strong song shelf's first playable item).
+  /// Eligibility enforced by the UI — never sections.first blindly.
+  final HomeItem? heroCandidate;
 
   Map<String, dynamic> toJson() => {
         'schema': kHomeFeedSchemaVersion,
