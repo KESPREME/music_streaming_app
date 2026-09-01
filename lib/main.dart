@@ -17,8 +17,6 @@ import 'screens/search_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';
-import 'widgets/themed_settings_screen.dart';
-import 'widgets/glass_surface.dart';
 import 'widgets/glass_circle_button.dart';
 import 'widgets/fade_indexed_stack.dart';
 import 'widgets/themed_library_screen.dart';
@@ -189,7 +187,7 @@ class _MainScreenState extends State<MainScreen> {
 
     return PopScope(
       canPop: (_currentIndex == 0 && !_searchMode && !isPanelOpen),
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
         // Priority 1: Close Player Panel

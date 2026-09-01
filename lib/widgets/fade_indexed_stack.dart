@@ -11,7 +11,7 @@ class FadeIndexedStack extends StatefulWidget {
     super.key,
     required this.index,
     required this.children,
-    this.duration = const Duration(milliseconds: 180),
+    this.duration = const Duration(milliseconds: 150),
   });
 
   final int index;

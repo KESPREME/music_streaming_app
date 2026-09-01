@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
-import '../widgets/swipe_deck.dart';
+import '../widgets/themed_card.dart';
+import '../widgets/themed_options_sheet.dart';
 
-/// Discover = pure swipe-discovery (dating-style deck).
+/// Discover screen with Muzo-style section layout.
 ///
-/// Every card decision feeds the taste engine: right = like + play,
-/// left = skip, play button = queue. Pool mixes trending + fresh releases.
+/// Shows curated sections: Trending, Recently Played, New Releases, Top Artists.
+/// Replaces the old swipe-deck approach with horizontal scrolling cards.
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
 
@@ -37,9 +39,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _error = null;
-    });
+    setState(() => _error = null);
     try {
       final releases = await _innerTube.getNewReleases(limit: 14);
       if (!mounted) return;
@@ -53,136 +53,258 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
+    final musicProvider = Provider.of<MusicProvider>(context);
 
     return RefreshIndicator(
       color: accent,
       onRefresh: _load,
       child: _error != null
-          ? ListView(
-              children: [
-                const SizedBox(height: 140),
-                const Icon(Icons.explore_off_rounded,
-                    size: 48, color: Colors.white24),
-                const SizedBox(height: 12),
-                Center(
-                  child: Text(
-                    'Could not load Discover',
-                    style: GoogleFonts.outfit(color: Colors.white54),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: FilledButton(onPressed: _load, child: const Text('Retry')),
-                ),
-              ],
-            )
+          ? _buildErrorState()
           : CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
                 const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 2),
-                    child: Row(
-                      children: [
-                        Icon(Icons.style_rounded,
-                            size: 18, color: accent.withValues(alpha: 0.8)),
-                        const SizedBox(width: 8),
-                        Text(
-                          'SWIPE TO DISCOVER',
-                          style: GoogleFonts.splineSans(
-                            color: Colors.white54,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                _buildDeckSliver(context),
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+
+                // Trending Now section
+                if (musicProvider.trendingTracks.isNotEmpty) ...[
+                  _buildSectionHeader(context, 'Trending Now'),
+                  _buildTrendingSection(context, musicProvider),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                ],
+
+                // Recently Played section
+                if (musicProvider.recentlyPlayed.isNotEmpty) ...[
+                  _buildSectionHeader(context, 'Recently Played'),
+                  _buildRecentlyPlayedSection(context, musicProvider),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                ],
+
+                // New Releases section
+                if (_newReleases != null && _newReleases!.isNotEmpty) ...[
+                  _buildSectionHeader(context, 'New Releases'),
+                  _buildNewReleasesSection(context),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                ],
+
+                // Top Artists section
+                if (musicProvider.trendingTracks.isNotEmpty) ...[
+                  _buildSectionHeader(context, 'Top Artists'),
+                  _buildTopArtistsSection(context, musicProvider),
+                ],
+
+                // Bottom padding for mini player + nav bar
+                const SliverPadding(padding: EdgeInsets.only(bottom: 140)),
               ],
             ),
     );
   }
 
-  Widget _buildDeckSliver(BuildContext context) {
-    return Consumer<MusicProvider>(
-      builder: (context, provider, _) {
-        final pool = <Track>{
-          for (final t in provider.trendingTracks.take(12)) t,
-          if (_newReleases != null)
-            for (final t in _newReleases!.take(12)) t,
-        }.toList();
-        if (pool.isEmpty) {
-          return const SliverToBoxAdapter(child: _DeckSkeleton());
-        }
-        return SliverToBoxAdapter(
-          child: SwipeDeck(
-            tracks: pool,
-            onAction: (track, action) {
-              switch (action) {
-                case SwipeAction.like:
-                  provider.recommendationService.recordSwipeOutcome(
-                    artistName: track.artistName,
-                    wasAccepted: true,
-                  );
-                  provider.playTrack(track);
-                  break;
-                case SwipeAction.skip:
-                  provider.recommendationService.recordSwipeOutcome(
-                    artistName: track.artistName,
-                    wasAccepted: false,
-                  );
-                  break;
-                case SwipeAction.queue:
-                  provider.addToQueue(track);
-                  break;
-              }
-            },
+  Widget _buildErrorState() {
+    return ListView(
+      children: [
+        const SizedBox(height: 140),
+        const Icon(Icons.explore_off_rounded, size: 48, color: Colors.white24),
+        const SizedBox(height: 12),
+        Center(
+          child: Text(
+            'Could not load Discover',
+            style: GoogleFonts.outfit(color: Colors.white54),
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: FilledButton(onPressed: _load, child: const Text('Retry')),
+        ),
+      ],
     );
   }
-}
 
-class _DeckSkeleton extends StatefulWidget {
-  const _DeckSkeleton();
-
-  @override
-  State<_DeckSkeleton> createState() => _DeckSkeletonState();
-}
-
-class _DeckSkeletonState extends State<_DeckSkeleton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Widget _buildSectionHeader(BuildContext context, String title) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Text(
+          title,
+          style: GoogleFonts.splineSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween(begin: 0.25, end: 0.6).animate(
-        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+  Widget _buildTrendingSection(BuildContext context, MusicProvider provider) {
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 200,
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          scrollDirection: Axis.horizontal,
+          itemCount: provider.trendingTracks.length.clamp(0, 10),
+          physics: const BouncingScrollPhysics(),
+          itemBuilder: (context, index) {
+            final track = provider.trendingTracks[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ThemedCard(
+                imageUrl: track.albumArtUrl,
+                title: track.trackName,
+                subtitle: track.artistName,
+                width: 150,
+                height: 150,
+                onTap: () => provider.playTrack(
+                  track,
+                  playlistTracks: provider.trendingTracks,
+                ),
+                onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+              ),
+            );
+          },
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 16),
-        child: Container(
-          height: 440,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(30),
-          ),
+    );
+  }
+
+  Widget _buildRecentlyPlayedSection(BuildContext context, MusicProvider provider) {
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 200,
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          scrollDirection: Axis.horizontal,
+          itemCount: provider.recentlyPlayed.length.clamp(0, 10),
+          physics: const BouncingScrollPhysics(),
+          itemBuilder: (context, index) {
+            final track = provider.recentlyPlayed[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ThemedCard(
+                imageUrl: track.albumArtUrl,
+                title: track.trackName,
+                subtitle: track.artistName,
+                width: 150,
+                height: 150,
+                onTap: () => provider.playTrack(
+                  track,
+                  playlistTracks: provider.recentlyPlayed,
+                ),
+                onLongPress: () => ThemedOptionsSheet.show(
+                  context,
+                  track: track,
+                  isRecentlyPlayedContext: true,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNewReleasesSection(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 200,
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          scrollDirection: Axis.horizontal,
+          itemCount: _newReleases!.length.clamp(0, 10),
+          physics: const BouncingScrollPhysics(),
+          itemBuilder: (context, index) {
+            final track = _newReleases![index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ThemedCard(
+                imageUrl: track.albumArtUrl,
+                title: track.trackName,
+                subtitle: track.artistName,
+                width: 150,
+                height: 150,
+                onTap: () => context.read<MusicProvider>().playTrack(
+                  track,
+                  playlistTracks: _newReleases!,
+                ),
+                onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopArtistsSection(BuildContext context, MusicProvider provider) {
+    // Extract unique artists from trending tracks
+    final uniqueArtists = <String, Track>{};
+    for (final track in provider.trendingTracks) {
+      if (!uniqueArtists.containsKey(track.artistName)) {
+        uniqueArtists[track.artistName] = track;
+      }
+    }
+    final artists = uniqueArtists.values.toList();
+
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 120,
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          scrollDirection: Axis.horizontal,
+          itemCount: artists.length.clamp(0, 8),
+          physics: const BouncingScrollPhysics(),
+          itemBuilder: (context, index) {
+            final track = artists[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  provider.fetchArtistTracks(track.artistName);
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                          width: 2,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 36,
+                        backgroundColor: Colors.grey[850],
+                        backgroundImage: track.albumArtUrl.isNotEmpty
+                            ? NetworkImage(track.albumArtUrl)
+                            : null,
+                        child: track.albumArtUrl.isEmpty
+                            ? const Icon(Icons.person, size: 36, color: Colors.white54)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: 80,
+                      child: Text(
+                        track.artistName,
+                        style: GoogleFonts.splineSans(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

@@ -258,7 +258,7 @@ class PlayerAwarePopScope extends StatelessWidget {
 
     return PopScope(
       canPop: !isPanelOpen,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
         if (isPanelOpen) {

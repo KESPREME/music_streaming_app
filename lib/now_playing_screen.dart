@@ -1,27 +1,38 @@
-import 'dart:ui';
 import 'dart:io';
+import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'widgets/waveform_visualizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-import 'models/track.dart';
-import 'providers/music_provider.dart';
-import 'widgets/playlist_selection_dialog.dart';
-import 'widgets/themed_playlist_detail_screen.dart';
-import 'widgets/themed_queue_screen.dart';
-import 'widgets/themed_lyrics_screen.dart';
-import 'screens/material_you_equalizer_screen.dart';
-import 'widgets/glass_snackbar.dart';
-import 'widgets/artist_picker_sheet.dart';
-import 'widgets/glass_player_control.dart';
+import '../models/track.dart';
+import '../providers/music_provider.dart';
+import '../widgets/playlist_selection_dialog.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
+import '../widgets/themed_queue_screen.dart';
+import '../screens/material_you_equalizer_screen.dart';
+import '../widgets/glass_snackbar.dart';
+import '../widgets/artist_picker_sheet.dart';
+import '../widgets/glass_player_control.dart';
+import '../widgets/wavy_progress_bar.dart';
+import '../main.dart';
+import '../utils/color_utils.dart';
+import '../theme/glass_tokens.dart';
 
-import 'widgets/wavy_progress_bar.dart';
-import 'main.dart';
-import 'utils/color_utils.dart';
-import 'theme/glass_tokens.dart';
-
+/// Full-screen player with Muzo-style visual design.
+///
+/// Features:
+/// - Pull-down handle at top (Muzo parity)
+/// - Compact header with album art thumbnail, title, artist, actions
+/// - Large centered album art
+/// - Waveform visualizer
+/// - Track info with like/download actions
+/// - Wavy progress bar
+/// - Player controls
+/// - Footer actions
 class NowPlayingScreen extends StatefulWidget {
   final Track track;
   final VoidCallback? onMinimize;
@@ -33,7 +44,6 @@ class NowPlayingScreen extends StatefulWidget {
 }
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
-  // Colors from the design (Default Fallbacks)
   static const Color _defaultPrimaryColor = Color(0xFF6200EE);
 
   @override
@@ -41,23 +51,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     return Consumer<MusicProvider>(
       builder: (context, musicProvider, child) {
         final currentTrack = musicProvider.currentTrack ?? widget.track;
-
-        // Colors from Provider Palette
         final palette = musicProvider.paletteGenerator;
         final accentColor =
             ColorUtils.getVibrantAccent(palette, _defaultPrimaryColor);
-
         final isPlaying = musicProvider.isPlaying;
 
-        // If onMinimize is provided, we assume we are managed by a parent stack (MainScreen),
-        // effectively disabling the PopScope's ability to block system back unless we handle it upstream.
-        // For now, allowPop is true to let system back work if not managed.
         return Scaffold(
           extendBodyBehindAppBar: true,
-          backgroundColor: const Color(0xFF121212), // Fallback dark
+          backgroundColor: const Color(0xFF121212),
           body: Stack(
             children: [
-              // Artwork is the only full-screen optical layer. Empty art stays grounded.
+              // Blurred album art background
               Positioned.fill(
                 child: currentTrack.albumArtUrl.isEmpty
                     ? const ColoredBox(color: Color(0xFF121212))
@@ -73,6 +77,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         ),
                       ),
               ),
+              // Scrim overlay
               Positioned.fill(
                 child: ColoredBox(
                   color: Colors.black.withValues(
@@ -81,14 +86,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 ),
               ),
 
-              // Main Content
+              // Main content
               SafeArea(
+                bottom: false,
                 child: Column(
                   children: [
-                    // Header
-                    _buildHeader(context, currentTrack, musicProvider),
+                    // Pull-down handle + compact header
+                    _buildPullDownHandle(context),
+                    _buildCompactHeader(context, currentTrack, musicProvider),
 
-                    // Body (Art + Controls)
+                    // Body: Album art, visualizer, info, controls
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -96,26 +103,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             _buildAlbumArt(currentTrack),
-                            const SizedBox(height: 12),
-                            WaveformVisualizer(
-                              isPlaying: isPlaying,
-                              color: accentColor,
-                              height: 52,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildNowPlayingInfo(context, currentTrack,
-                                musicProvider, accentColor),
-
-                            // Wavy Progress Bar
-                            WavyProgressBar(
-                              provider: musicProvider,
-                              accentColor: accentColor,
-                            ),
-
-                            _buildPlayerControls(
-                                context, musicProvider, isPlaying),
-                            _buildFooterActions(
-                                context, musicProvider, accentColor),
+                            const SizedBox(height: 8),
+                            _buildWaveformVisualizer(musicProvider, accentColor),
+                            const SizedBox(height: 8),
+                            _buildTrackInfo(context, currentTrack, musicProvider, accentColor),
+                            _buildProgressBar(context, musicProvider),
+                            _buildPlayerControls(context, musicProvider, isPlaying),
+                            _buildFooterActions(context, musicProvider, accentColor),
                           ],
                         ),
                       ),
@@ -131,86 +125,143 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildHeader(
-      BuildContext context, Track track, MusicProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          GlassPlayerControl(
-            icon: Icons.keyboard_arrow_down_rounded,
-            onPressed: () {
-              if (widget.onMinimize != null) {
-                widget.onMinimize!();
-              } else {
-                if (Navigator.canPop(context)) Navigator.pop(context);
-              }
-            },
-            semanticLabel: 'Minimize player',
-            tooltip: 'Minimize player',
-            selected: false,
-            primary: false,
-          ),
-          Text(
-            'NOW PLAYING',
-            style: GoogleFonts.plusJakartaSans(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2.0,
+  // ── Pull-down handle (Muzo parity) ──────────────────────────────────────
+
+  Widget _buildPullDownHandle(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        if (widget.onMinimize != null) {
+          widget.onMinimize!();
+        } else {
+          if (Navigator.canPop(context)) Navigator.pop(context);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        child: Center(
+          child: Container(
+            width: 36,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(2.5),
             ),
           ),
-          Row(
-            children: [
-              GlassPlayerControl(
-                icon: Icons.lyrics_rounded,
-                onPressed: () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (context) => const ThemedLyricsScreen(),
-                  );
-                },
-                semanticLabel: 'Lyrics',
-                tooltip: 'Open lyrics',
-                selected: false,
-                primary: false,
-              ),
-              const SizedBox(width: 12),
-              GlassPlayerControl(
-                icon: Icons.more_vert_rounded,
-                onPressed: () =>
-                    _showOptionsBottomSheet(context, track, provider),
-                semanticLabel: 'Options',
-                tooltip: 'Open options',
-                selected: false,
-                primary: false,
-              ),
-            ],
+        ),
+      ),
+    );
+  }
+
+  // ── Compact header (Muzo parity) ────────────────────────────────────────
+
+  Widget _buildCompactHeader(
+      BuildContext context, Track track, MusicProvider provider) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          // Album art thumbnail
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: track.albumArtUrl.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: track.albumArtUrl,
+                    width: 44,
+                    height: 44,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => Container(
+                      width: 44,
+                      height: 44,
+                      color: Colors.grey[900],
+                    ),
+                  )
+                : Container(
+                    width: 44,
+                    height: 44,
+                    color: Colors.grey[900],
+                  ),
+          ),
+          const SizedBox(width: 12),
+
+          // Title and Artist
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  track.trackName,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  track.artistName,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+
+          // Like button
+          GlassPlayerControl(
+            icon: provider.isSongLiked(track.id)
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+            onPressed: () => provider.toggleLike(track),
+            semanticLabel: 'Like',
+            tooltip: 'Like track',
+            selected: provider.isSongLiked(track.id),
+            primary: false,
+          ),
+
+          const SizedBox(width: 4),
+
+          // Options button
+          GlassPlayerControl(
+            icon: Icons.more_horiz,
+            onPressed: () => _showOptionsBottomSheet(context, track, provider),
+            semanticLabel: 'Options',
+            tooltip: 'Open options',
+            selected: false,
+            primary: false,
           ),
         ],
       ),
     );
   }
 
+  // ── Album art ───────────────────────────────────────────────────────────
+
   Widget _buildAlbumArt(Track track) {
     return AspectRatio(
       aspectRatio: 1,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 40,
-              offset: const Offset(0, 20),
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 32,
+              spreadRadius: -4,
+              offset: const Offset(0, 16),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           child: Hero(
             tag: 'albumArt_${track.id}',
             child: _buildAlbumArtImage(track),
@@ -220,11 +271,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  /// Resolves album art without sync IO on the build path for remote URLs.
   Widget _buildAlbumArtImage(Track track) {
     final art = track.albumArtUrl;
     if (art.isEmpty) return _buildArtPlaceholder();
-    // Only local paths (no scheme) justify a file lookup.
     if (!art.contains('://')) {
       final f = File(art);
       if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
@@ -233,7 +282,31 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildArtPlaceholder());
   }
 
-  Widget _buildNowPlayingInfo(BuildContext context, Track track,
+  Widget _buildArtPlaceholder() {
+    return Container(
+      color: Colors.grey[900],
+      child:
+          const Icon(Icons.music_note_rounded, size: 80, color: Colors.white24),
+    );
+  }
+
+  // ── Waveform visualizer ─────────────────────────────────────────────────
+
+  Widget _buildWaveformVisualizer(MusicProvider provider, Color accentColor) {
+    return SizedBox(
+      height: 40,
+      child: Center(
+        child: _WaveformPlaceholder(
+          isPlaying: provider.isPlaying,
+          color: accentColor,
+        ),
+      ),
+    );
+  }
+
+  // ── Track info ──────────────────────────────────────────────────────────
+
+  Widget _buildTrackInfo(BuildContext context, Track track,
       MusicProvider provider, Color accentColor) {
     return Column(
       children: [
@@ -241,7 +314,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Track Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,7 +323,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     track.trackName,
                     style: GoogleFonts.plusJakartaSans(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
                       height: 1.2,
                     ),
@@ -259,7 +331,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  // FIX: Make artist name tappable to navigate to artist
                   GestureDetector(
                     onTap: () async {
                       if (track.artistName.isNotEmpty &&
@@ -272,10 +343,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       track.artistName,
                       style: GoogleFonts.plusJakartaSans(
                         color: Colors.white.withValues(alpha: 0.6),
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        decoration: TextDecoration.underline,
-                        decorationColor: Colors.white.withValues(alpha: 0.3),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -284,12 +353,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 ],
               ),
             ),
-
-            // Actions: Download & Like
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Download Button
                 FutureBuilder<bool>(
                   future: provider.isTrackDownloaded(track.id),
                   builder: (context, snapshot) {
@@ -301,10 +367,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       return Padding(
                         padding: const EdgeInsets.all(12.0),
                         child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: accentColor)),
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: accentColor),
+                        ),
                       );
                     }
 
@@ -314,8 +381,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           : Icons.download_rounded,
                       onPressed: () async {
                         if (isDownloaded) {
-                          showGlassSnackBar(
-                              context, 'Track already downloaded');
+                          showGlassSnackBar(context, 'Track already downloaded');
                         } else {
                           await provider.downloadTrack(track);
                         }
@@ -327,8 +393,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     );
                   },
                 ),
-
-                // Like Button
                 GlassPlayerControl(
                   icon: provider.isSongLiked(track.id)
                       ? Icons.favorite_rounded
@@ -347,14 +411,23 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  // --- REPLACED: Simple ProgressBar with WavyProgressBar (Below) ---
+  // ── Progress bar ────────────────────────────────────────────────────────
+
+  Widget _buildProgressBar(BuildContext context, MusicProvider provider) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return WavyProgressBar(
+      provider: provider,
+      accentColor: accent,
+    );
+  }
+
+  // ── Player controls ─────────────────────────────────────────────────────
 
   Widget _buildPlayerControls(
       BuildContext context, MusicProvider provider, bool isPlaying) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Shuffle
         GlassPlayerControl(
           icon: Icons.shuffle_rounded,
           onPressed: provider.toggleShuffle,
@@ -363,8 +436,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           selected: provider.shuffleEnabled,
           primary: false,
         ),
-
-        // Previous
         GlassPlayerControl(
           icon: Icons.skip_previous_rounded,
           onPressed: provider.skipToPrevious,
@@ -373,8 +444,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           selected: false,
           primary: false,
         ),
-
-        // Play/Pause FAB
         GlassPlayerControl(
           icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
           onPressed: () {
@@ -389,8 +458,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           selected: true,
           primary: true,
         ),
-
-        // Next
         GlassPlayerControl(
           icon: Icons.skip_next_rounded,
           onPressed: provider.skipToNext,
@@ -399,8 +466,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           selected: false,
           primary: false,
         ),
-
-        // Repeat
         GlassPlayerControl(
           icon: provider.repeatMode == RepeatMode.one
               ? Icons.repeat_one_rounded
@@ -414,6 +479,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       ],
     );
   }
+
+  // ── Footer actions ──────────────────────────────────────────────────────
 
   Widget _buildFooterActions(
       BuildContext context, MusicProvider provider, Color accentColor) {
@@ -480,21 +547,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
+  // ── Options bottom sheet ────────────────────────────────────────────────
+
   void _showOptionsBottomSheet(
       BuildContext context, Track track, MusicProvider musicProvider) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent, // Transparent for glass effect
-      isScrollControlled: true, // Allow custom height/styling
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       elevation: 0,
       builder: (context) => Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E)
-              .withValues(alpha: 0.7), // Semi-transparent
+          color: const Color(0xFF1E1E1E).withValues(alpha: 0.7),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
-              width: 1), // Glass edge
+              color: Colors.white.withValues(alpha: 0.1), width: 1),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.3),
@@ -506,12 +573,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           child: BackdropFilter(
-            filter:
-                ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Liquid blur effect
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: SafeArea(
               child: Wrap(
                 children: [
-                  // Handle Bar for visual affordance
                   Center(
                     child: Container(
                       margin: const EdgeInsets.only(top: 12, bottom: 8),
@@ -540,29 +605,23 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         Navigator.pop(context);
                         String shareText =
                             'Listening to: ${track.trackName} by ${track.artistName}';
-                        await Share.share(shareText);
+                        await SharePlus.instance.share(ShareParams(text: shareText));
                       }),
                   _buildOptionTile(
                       icon: Icons.album_rounded,
                       title: 'Go to Album',
                       onTap: () {
-                        Navigator.pop(context); // Close sheet
-
-                        // Minimize Player First
+                        Navigator.pop(context);
                         if (widget.onMinimize != null) widget.onMinimize!();
-
-                        // Navigate immediately - PlaylistDetailScreen will fetch data
-                        // FIX: No await, single tap navigation
                         final albumName = track.albumName.isNotEmpty
                             ? track.albumName
                             : track.trackName;
                         rootNavigatorKey.currentState?.push(MaterialPageRoute(
                           builder: (_) => ThemedPlaylistDetailScreen(
-                            playlistId: '', // Will search by name
+                            playlistId: '',
                             playlistName: albumName,
                             playlistImage: track.albumArtUrl,
-                            searchAlbumByName:
-                                true, // New flag to indicate search-by-name mode
+                            searchAlbumByName: true,
                             artistNameHint: track.artistName,
                           ),
                         ));
@@ -571,16 +630,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       icon: Icons.person_rounded,
                       title: 'Go to Artist',
                       onTap: () async {
-                        // Read provider BEFORE popping: this context dies with the sheet.
                         final musicProvider =
                             Provider.of<MusicProvider>(context, listen: false);
                         final rootContext = rootNavigatorKey.currentContext;
-                        Navigator.pop(context); // Close sheet
-
-                        // Minimize Player First
+                        Navigator.pop(context);
                         if (widget.onMinimize != null) widget.onMinimize!();
-
-                        // FIX: Use the static method which handles mini player hiding
                         if (rootContext != null && rootContext.mounted) {
                           await ArtistPickerSheet.showIfNeeded(
                             rootContext,
@@ -594,12 +648,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       title: 'Equalizer',
                       onTap: () async {
                         final rootContext = rootNavigatorKey.currentContext;
-                        Navigator.pop(context); // Close the menu sheet
-
-                        // Small delay to let sheet close, then navigate
+                        Navigator.pop(context);
                         await Future.delayed(const Duration(milliseconds: 100));
-
-                        // FIX: Push to local navigator (not root) for proper back handling
                         if (rootContext != null && rootContext.mounted) {
                           Navigator.of(rootContext, rootNavigator: false).push(
                             MaterialPageRoute(
@@ -651,7 +701,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         return Container(
           decoration: BoxDecoration(
             color: const Color(0xFF1E1E1E).withValues(alpha: 0.7),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border.all(
                 color: Colors.white.withValues(alpha: 0.1), width: 1),
             boxShadow: [
@@ -663,7 +714,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             ],
           ),
           child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: SafeArea(
@@ -687,11 +739,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               fontSize: 18,
                               fontWeight: FontWeight.bold)),
                     ),
-                    _buildTimerOption(context, musicProvider, '15 Minutes', 15),
-                    _buildTimerOption(context, musicProvider, '30 Minutes', 30),
+                    _buildTimerOption(
+                        context, musicProvider, '15 Minutes', 15),
+                    _buildTimerOption(
+                        context, musicProvider, '30 Minutes', 30),
                     _buildTimerOption(context, musicProvider, '1 Hour', 60),
-                    _buildTimerOption(context, musicProvider, 'End of Track',
-                        0), // 0 means end of track
+                    _buildTimerOption(
+                        context, musicProvider, 'End of Track', 0),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -699,6 +753,18 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             ),
           ),
         );
+      },
+    );
+  }
+
+  Widget _buildTimerOption(
+      BuildContext context, MusicProvider provider, String title, int minutes) {
+    return ListTile(
+      title: Text(title,
+          style: GoogleFonts.plusJakartaSans(color: Colors.white70)),
+      onTap: () {
+        provider.setSleepTimer(minutes);
+        Navigator.pop(context);
       },
     );
   }
@@ -714,13 +780,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         builder: (context) {
           return Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E)
-                  .withValues(alpha: 0.7), // Semi-transparent
+              color: const Color(0xFF1E1E1E).withValues(alpha: 0.7),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  width: 1), // Glass edge
+                  color: Colors.white.withValues(alpha: 0.1), width: 1),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.3),
@@ -733,8 +797,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(24)),
               child: BackdropFilter(
-                filter: ImageFilter.blur(
-                    sigmaX: 20, sigmaY: 20), // Liquid blur effect
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                 child: SizedBox(
                   height: 400,
                   child: Column(
@@ -749,9 +812,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 24.0),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
                           children: [
                             Text('Connect to a Device',
                                 style: GoogleFonts.plusJakartaSans(
@@ -776,7 +841,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           provider.castDevices.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(20.0),
-                          child: CircularProgressIndicator(color: Colors.white),
+                          child: CircularProgressIndicator(
+                              color: Colors.white),
                         ),
                       Expanded(
                         child: Consumer<MusicProvider>(
@@ -793,7 +859,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             itemBuilder: (context, index) {
                               final device = provider.castDevices[index];
                               final isConnected =
-                                  provider.castService.connectedDevice?.host ==
+                                  provider.castService.connectedDevice
+                                          ?.host ==
                                       device.host;
 
                               return ListTile(
@@ -829,26 +896,72 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       provider.stopCastingDiscovery();
     });
   }
+}
 
-  Widget _buildTimerOption(
-      BuildContext context, MusicProvider provider, String title, int minutes) {
-    return ListTile(
-      title: Text(title,
-          style: GoogleFonts.plusJakartaSans(color: Colors.white70)),
-      onTap: () {
-        provider.setSleepTimer(minutes);
-        Navigator.pop(context);
-      },
+/// Simple waveform placeholder that animates when playing.
+class _WaveformPlaceholder extends StatefulWidget {
+  final bool isPlaying;
+  final Color color;
+
+  const _WaveformPlaceholder({required this.isPlaying, required this.color});
+
+  @override
+  State<_WaveformPlaceholder> createState() => _WaveformPlaceholderState();
+}
+
+class _WaveformPlaceholderState extends State<_WaveformPlaceholder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
     );
+    if (widget.isPlaying) _controller.repeat();
   }
 
-  // --- UI Helpers ---
+  @override
+  void didUpdateWidget(_WaveformPlaceholder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.isPlaying && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
 
-  Widget _buildArtPlaceholder() {
-    return Container(
-      color: Colors.grey[900],
-      child:
-          const Icon(Icons.music_note_rounded, size: 80, color: Colors.white24),
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(24, (i) {
+            final phase = (_controller.value * 6.28) + (i * 0.4);
+            final h = 8.0 + (16.0 * (0.5 + 0.5 * sin(phase)));
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              width: 3,
+              height: h,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(1.5),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
