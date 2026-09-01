@@ -18,6 +18,7 @@ abstract class MusicProviderLike {
   String? get currentPlaylistId;
   bool get shuffleEnabled;
   RepeatMode get repeatMode;
+  double get playbackSpeed;
 }
 
 /// Single read-projection over [AudioService] streams.
@@ -129,6 +130,7 @@ class PlaybackController extends ChangeNotifier {
       contextId: p.currentPlaylistId,
       shuffle: p.shuffleEnabled,
       repeat: p.repeatMode,
+      speed: p.playbackSpeed,
     );
     notifyListeners();
   }

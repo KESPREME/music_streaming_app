@@ -30,17 +30,19 @@ class QueueScreen extends StatelessWidget {
         elevation: 0,
         iconTheme: IconThemeData(color: colorScheme.onSurface),
         actions: [
-          if (queue.isNotEmpty)
-            IconButton(
-              icon: Icon(
-                Icons.delete_sweep_rounded,
-                color: colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-              tooltip: "Clear Queue",
-              onPressed: () {
-                _showClearDialog(context, theme, musicProvider);
-              },
+          IconButton(
+            icon: Icon(
+              Icons.delete_sweep_rounded,
+              color: colorScheme.onSurface.withValues(
+                  alpha: musicProvider.canClearQueue ? 0.7 : 0.25),
             ),
+            tooltip: "Clear Queue",
+            onPressed: musicProvider.canClearQueue
+                ? () {
+                    _showClearDialog(context, theme, musicProvider);
+                  }
+                : null,
+          ),
         ],
       ),
       body: SafeArea(

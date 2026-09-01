@@ -293,6 +293,10 @@ class AudioService {
       _isConfiguring = true;
       try {
         await _audioPlayer.setAudioSource(finalSource, initialIndex: initialIndex);
+        // Speed survives source swaps (ExoPlayer resets it on setAudioSource).
+        if (_speed != 1.0) {
+          await _audioPlayer.setSpeed(_speed);
+        }
         await _audioPlayer.play();
       } finally {
         // Ensure flag is reset even if play fails
@@ -440,8 +444,12 @@ class AudioService {
   }
 
   Future<void> setSpeed(double speed) async {
+    _speed = speed;
     await _audioPlayer.setSpeed(speed);
   }
+
+  double _speed = 1.0;
+  double get speed => _speed;
 
   // Handle playback errors
   void _handlePlaybackError(dynamic error) {
@@ -514,9 +522,12 @@ class AudioService {
           if (position > Duration.zero) {
             await _audioPlayer.seek(position);
           }
+          if (_speed != 1.0) {
+            await _audioPlayer.setSpeed(_speed);
+          }
 
           await _audioPlayer.play();
-          return; 
+          return;
         } finally {
            Future.delayed(const Duration(milliseconds: 500), () {
              _isConfiguring = false;

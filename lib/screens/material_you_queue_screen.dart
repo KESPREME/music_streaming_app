@@ -28,14 +28,18 @@ class MaterialYouQueueScreen extends StatelessWidget {
         elevation: 0,
         iconTheme: IconThemeData(color: colorScheme.onSurface),
         actions: [
-          if (queue.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.delete_sweep_rounded, color: colorScheme.onSurfaceVariant),
-              tooltip: "Clear Queue",
-              onPressed: () {
-                _showClearDialog(context, colorScheme, musicProvider);
-              },
-            ),
+          IconButton(
+            icon: Icon(Icons.delete_sweep_rounded,
+                color: musicProvider.canClearQueue
+                    ? colorScheme.onSurfaceVariant
+                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.38)),
+            tooltip: "Clear Queue",
+            onPressed: musicProvider.canClearQueue
+                ? () {
+                    _showClearDialog(context, colorScheme, musicProvider);
+                  }
+                : null,
+          ),
         ],
       ),
       body: queue.isEmpty

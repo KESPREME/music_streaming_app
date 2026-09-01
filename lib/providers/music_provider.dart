@@ -784,6 +784,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   // continuations (e.g. autoplay fetches) compare and abort.
   int _playbackGeneration = 0;
 
+  /// v5.2 autoqueue: true while playback context came from autoplay
+  /// recommendations. Clearing the queue empties the upcoming autoqueue and
+  /// shrinks context to the active song.
+  bool _isAutoQueueContext = false;
+
+  /// Set when the user cleared an autoqueue context — the next
+  /// end-of-playlist must stop instead of re-spawning autoplay.
+  bool _suppressAutoplayOnce = false;
+
   /// Force-reloads the current track, bypassing play/pause toggle logic.
   /// Needed because after auto-advance the player sits on a silent dummy item,
   /// so seek(Duration.zero)/resume would target the wrong source.
@@ -795,7 +804,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   }
 
 
-  void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { debugPrint("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); debugPrint("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) {
+  void _setPlaybackContext(List<Track>? tracks, {String? playlistId, bool clearQueue = true}) { if (!listEquals(_currentPlayingTracks, tracks) || _currentPlaylistId != playlistId) { _isAutoQueueContext = false; debugPrint("Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue"); _currentPlayingTracks = tracks != null ? List.from(tracks) : null; _currentPlaylistId = playlistId; if (clearQueue && _queue.isNotEmpty) { _queue.clear(); debugPrint("Playback context changed, queue cleared."); } if (_shuffleEnabled && _currentPlayingTracks != null) {
     _shufflePlaylist();
   } else {
     _updateCurrentIndex();
@@ -929,8 +938,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
            // Multi-track playlists loop
            if (kDebugMode) debugPrint('MusicProvider: End of Online Playlist -> Looping to start');
            _playTrackInternal(list[0], setContext: false, clearQueue: false);
-        } else {
+          } else {
             // ENHANCED: Single track or For You context -> Smart Autoplay
+            if (_suppressAutoplayOnce) {
+              _suppressAutoplayOnce = false;
+              if (kDebugMode) debugPrint('MusicProvider: Autoplay suppressed after queue clear.');
+              stopTrack();
+              return;
+            }
             if (!_isAutoQueueEnabled) {
               if (kDebugMode) debugPrint('MusicProvider: Auto Queue disabled, stopping.');
               stopTrack();
@@ -1013,6 +1028,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
       if (kDebugMode) debugPrint('MusicProvider: Autoplay -> ${nextTrack.trackName}');
       
       // Set remaining as new playlist context
+      _isAutoQueueContext = true;
       _setPlaybackContext(ranked, clearQueue: false);
       await _playTrackInternal(nextTrack, setContext: false, clearQueue: false);
       
@@ -1488,6 +1504,29 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
     notifyListeners();
   }
 
+  // --- Volume & Speed (v5.2: player controls; speed reused by Lofi later) ---
+  double _volume = 1.0;
+  double _playbackSpeed = 1.0;
+
+  double get volume => _volume;
+  double get playbackSpeed => _playbackSpeed;
+
+  Future<void> setVolume(double value) async {
+    final clamped = value.clamp(0.0, 1.0);
+    if (clamped == _volume) return;
+    _volume = clamped;
+    await _audioService.setVolume(_volume);
+    notifyListeners();
+  }
+
+  Future<void> setPlaybackSpeed(double value) async {
+    final clamped = value.clamp(0.5, 2.0);
+    if (clamped == _playbackSpeed) return;
+    _playbackSpeed = clamped;
+    await _audioService.setSpeed(_playbackSpeed);
+    notifyListeners();
+  }
+
   Future<void> seekTo(Duration position) async {
     if (_isCasting) {
       await _castService.seek(position.inSeconds.toDouble());
@@ -1674,7 +1713,37 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
     }
   }
 
-  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); debugPrint("Queue cleared."); notifyListeners(); }
+  void clearQueue() {
+    if (_queue.isEmpty && !_isAutoQueueContext) return;
+    _queue.clear();
+    // v5.2 semantics: clearing during an autoplay (autoqueue) context also
+    // empties the upcoming autoqueue — the context shrinks to just the
+    // active song, and the player stops after it.
+    if (_isAutoQueueContext) {
+      _isAutoQueueContext = false;
+      _suppressAutoplayOnce = true;
+      final tracks = _currentPlayingTracks;
+      final idx = _currentIndex;
+      if (tracks != null && idx >= 0 && idx < tracks.length) {
+        _currentPlayingTracks = [tracks[idx]];
+        if (_shuffleEnabled) {
+          _shuffledPlaylist = List.from(_currentPlayingTracks!);
+        }
+        _currentIndex = 0;
+      }
+    }
+    debugPrint("Queue cleared (autoqueue upcoming ${_isAutoQueueContext ? 'kept' : 'emptied'}).");
+    notifyListeners();
+  }
+
+  /// v5.2: clear affordance enabled only while something is actually
+  /// upcoming (user queue entries or autoqueue tracks).
+  bool get canClearQueue {
+    if (_queue.isNotEmpty) return true;
+    if (!_isAutoQueueContext) return false;
+    final list = _getActivePlaylist();
+    return _currentIndex >= 0 && _currentIndex < list.length - 1;
+  }
 
 
   // Lyrics prefetch for upcoming tracks
