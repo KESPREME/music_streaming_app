@@ -46,6 +46,7 @@ dependencies:
 
   flutter_cache_manager: ^3.4.1
   liquid_glass_widgets: ^1.2.1
+  liquid_glass_easy: ^4.2.0
 
 dependency_overrides: {}
 
