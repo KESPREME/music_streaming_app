@@ -36,6 +36,7 @@ import '../services/local_music_service.dart';
 import '../services/network_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/stream_resolution_service.dart';
+import '../services/downloads/download_manager.dart';
 import 'accent_controller.dart';
 import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
@@ -170,14 +171,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   Album? _currentAlbumDetails; // Added state for album screen
   bool _isLoadingArtist = false; // Loading state for artist screen
   bool _isLoadingAlbum = false; // Loading state for album screen
-  final Map<String, double> _downloadProgress = {};
-  final Map<String, DateTime> _lastProgressNotify = {};
-  final Map<String, bool> _isDownloading = {};
-  final List<Track> _currentlyDownloadingTracks = [];
-  final Map<String, CancelToken> _downloadCancelTokens = {};
-  int _concurrentDownloads = 0;
-  final List<Track> _downloadQueue = [];
-  Map<String, Map<String, dynamic>> _downloadedTracksMetadata = {};
+  
+  
+  
+  
+  
+  
   final Map<String, List<Track>> _cachedTracks = {};
   
   // FIX: Audio subscription management for proper cleanup
@@ -206,6 +205,50 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   final StreamResolutionService _streamResolution = StreamResolutionService.instance;
   final CastService _castService = CastService(); // Cast Service Instance
 
+  /// Download engine (state owner). MusicProvider stays the façade.
+  late final DownloadManager _downloads = DownloadManager(
+    resolveStreamForTrack: _resolveForDownload,
+    onMessage: (m) { _errorMessage = m; notifyListeners(); },
+    onTransientFailure: (description, retry) =>
+        _addToRetryQueue(_RetryOperation(description, retry)),
+    isOffline: () => _isOfflineMode,
+    isConnected: () => _networkService.isConnected,
+    stopActiveTrack: (trackId) async {
+      if (_isPlaying && _isOfflineTrack && _currentTrack?.id == trackId) {
+        await stopTrack();
+      }
+    },
+    removeLocalTrackByPath: (path) {
+      final before = _localTracks.length;
+      _localTracks.removeWhere((t) => t.previewUrl == path);
+      if (_localTracks.length != before) {
+        _localTracks = LocalMusicService.sortTracks(_localTracks, _localTracksSortCriteria);
+        notifyListeners();
+      }
+    },
+  );
+  DownloadManager get downloads => _downloads;
+
+  Future<ResolvedDownload?> _resolveForDownload(Track track) async {
+    String sId = track.id;
+    if (track.source == 'spotify') {
+      final yt = await _spotifyService.findYouTubeTrack(track);
+      if (yt != null) {
+        sId = yt.id;
+      } else {
+        throw Exception("No playable version.");
+      }
+    }
+    final dlResolved = await _streamResolution.resolve(ResolveRequest(
+      videoId: sId,
+      title: track.trackName,
+      artist: track.artistName,
+      durationMs: track.durationMs,
+    ));
+    if (dlResolved == null) return null;
+    return ResolvedDownload(url: dlResolved.url, userAgent: dlResolved.userAgent);
+  }
+
   // Cast State
   bool _isCasting = false;
   bool _isSearchingDevices = false;
@@ -226,7 +269,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   AudioService get audioService => _audioService;
   
   // Download Status Check (sync for UI)
-  bool isTrackDownloadedSync(String trackId) => _downloadedTracksMetadata.containsKey(trackId);
+  bool isTrackDownloadedSync(String trackId) => _downloads.isDownloadedMetadataSync(trackId);
 
   // Audio State // YouTube Music InnerTube API
   final LyricsService _lyricsService = LyricsService(); // Multi-provider lyrics service
@@ -332,10 +375,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   String? get currentPlaylistId => _currentPlaylistId;
   MusicSource get currentMusicSource => _currentMusicSource; // Music source getter
   NetworkQuality get networkQuality => _networkService.networkQuality;
-  Map<String, double> get downloadProgress => Map.unmodifiable(_downloadProgress);
-  Map<String, bool> get isDownloading => Map.unmodifiable(_isDownloading);
-  List<Track> get currentlyDownloadingTracks => List.unmodifiable(_currentlyDownloadingTracks);
-  List<Track> get downloadQueue => List.unmodifiable(_downloadQueue);
+  Map<String, double> get downloadProgress => _downloads.downloadProgress;
+  Map<String, bool> get isDownloading => _downloads.isDownloading;
+  List<Track> get currentlyDownloadingTracks => _downloads.currentlyDownloadingTracks;
+  List<Track> get downloadQueue => _downloads.downloadQueue;
   List<Track> get queue => List.unmodifiable(_queue); // Added queue getter
   Stream<Duration> get positionStream => _audioService.onPositionChanged;
   
@@ -355,7 +398,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     await _loadLikedSongs();
     await _loadRecentlyPlayed();
     await loadUserPlaylists();
-    await _loadDownloadedTracksMetadata();
+    await _downloads.loadMetadata();
     await _loadRecentlyShownIds(); // For You diversity persistence
     
     // Initialize lyrics service (disk cache)
@@ -523,14 +566,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
        if (error == "Source error" && _currentTrack != null) {
            if (kDebugMode) debugPrint("MusicProvider: Source error detected for ${_currentTrack!.trackName}");
            final id = _currentTrack!.id;
-           final isDownloaded = _downloadedTracksMetadata.containsKey(id);
+           final isDownloaded = _downloads.metadata.containsKey(id);
            
            if (isDownloaded || _currentTrack!.source == 'local') {
                final path = _currentTrack!.source == 'local' ? _currentTrack!.previewUrl : 
-                            (_downloadedTracksMetadata[id]?['filePath'] ?? '');
+                            (_downloads.metadata[id]?['filePath'] ?? '');
                             
                if (path.isNotEmpty) {
-                  await _handleMissingOfflineFile(id, path);
+                  await _downloads.handleMissingFile(id, path);
                   if (!_isOfflineMode && _networkService.isConnected) {
                        playTrack(_currentTrack!); 
                   } else {
@@ -778,7 +821,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
        // Check playback context type
        bool isListNotEmpty = list.isNotEmpty;
        bool isFirstLocal = isListNotEmpty && list.first.source == 'local';
-       bool isFirstDownloaded = isListNotEmpty && _downloadedTracksMetadata.containsKey(list.first.id);
+       bool isFirstDownloaded = isListNotEmpty && _downloads.metadata.containsKey(list.first.id);
        bool isOfflineContext = isListNotEmpty && (isFirstLocal || isFirstDownloaded || _isOfflineTrack || _isOfflineContext);
        
        if (isOfflineContext) {
@@ -1183,7 +1226,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> playOfflineTrack(Track track, {bool setContext = true, bool clearQueue = true, List<Track>? contextList}) async {
-    bool knownOffline = track.source == 'local' || _downloadedTracksMetadata.containsKey(track.id);
+    bool knownOffline = track.source == 'local' || _downloads.metadata.containsKey(track.id);
     
     if (!knownOffline) {
       await playTrack(track, playlistTracks: contextList ?? _currentPlayingTracks, playlistId: _currentPlaylistId, setContext: setContext, clearQueue: clearQueue);
@@ -1225,12 +1268,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       if (_isPlaying) await _audioService.stop();
       
       String filePath;
-      bool isDownloaded = _downloadedTracksMetadata.containsKey(track.id);
+      bool isDownloaded = _downloads.metadata.containsKey(track.id);
       
       if (track.source == 'local') {
         filePath = track.previewUrl;
       } else if (isDownloaded) {
-        final meta = _downloadedTracksMetadata[track.id];
+        final meta = _downloads.metadata[track.id];
         filePath = meta?['filePath'] as String? ?? '';
       } else {
         throw Exception('Track is not local or downloaded.');
@@ -1250,7 +1293,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
              debugPrint("MusicProvider: File exists but too small ($fileSize bytes). Deleting: $filePath");
              try { await file.delete(); } catch (_) {}
         }
-        await _handleMissingOfflineFile(track.id, filePath);
+        await _downloads.handleMissingFile(track.id, filePath);
         
         // Fallback to online if possible
         if (!_isOfflineMode && _networkService.isConnected) {
@@ -1797,8 +1840,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     // No need to notifyListeners() here as this primarily affects background player behavior
   }
 
-  void _handleConnectivityChange(bool isConnected) { if (!isConnected && !_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = false; _saveSettings(); _showOfflineModeNotification('Connection lost.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } else if (isConnected && _isOfflineMode && !_userManuallySetOffline) { goOnline(); } else if (isConnected && _isOfflineMode && _userManuallySetOffline) { if (!_isReconnecting) _showReconnectionPrompt(); _processRetryQueue(); _processDownloadQueue(); } else if (isConnected && !_isOfflineMode) { if (_isReconnecting) { _isReconnecting = false; _errorMessage = null; notifyListeners(); } _processRetryQueue(); _processDownloadQueue(); } }
-  void goOnline() { if (_isOfflineMode) { bool wasOffline = _isOfflineMode; _isOfflineMode = false; _userManuallySetOffline = false; _isReconnecting = false; _saveSettings(); _errorMessage = 'You are now online.'; notifyListeners(); if (wasOffline) _refreshDataOnReconnect(); _processRetryQueue(); _processDownloadQueue(); } }
+  void _handleConnectivityChange(bool isConnected) { if (!isConnected && !_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = false; _saveSettings(); _showOfflineModeNotification('Connection lost.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } else if (isConnected && _isOfflineMode && !_userManuallySetOffline) { goOnline(); } else if (isConnected && _isOfflineMode && _userManuallySetOffline) { if (!_isReconnecting) _showReconnectionPrompt(); _processRetryQueue(); _downloads.processQueue(); } else if (isConnected && !_isOfflineMode) { if (_isReconnecting) { _isReconnecting = false; _errorMessage = null; notifyListeners(); } _processRetryQueue(); _downloads.processQueue(); } }
+  void goOnline() { if (_isOfflineMode) { bool wasOffline = _isOfflineMode; _isOfflineMode = false; _userManuallySetOffline = false; _isReconnecting = false; _saveSettings(); _errorMessage = 'You are now online.'; notifyListeners(); if (wasOffline) _refreshDataOnReconnect(); _processRetryQueue(); _downloads.processQueue(); } }
   void goOffline() { if (!_isOfflineMode) { _isOfflineMode = true; _userManuallySetOffline = true; _isReconnecting = false; _saveSettings(); _showOfflineModeNotification('Offline mode enabled.'); _switchToOfflineVersionIfAvailable(); pauseAllDownloads(); notifyListeners(); } }
   void toggleOfflineMode() => _isOfflineMode ? goOnline() : goOffline();
   void toggleLowDataMode() { _isLowDataMode = !_isLowDataMode; if (_isLowDataMode) { _wifiBitrate = NetworkConfig.moderateNetworkBitrate; _cellularBitrate = NetworkConfig.poorNetworkBitrate; _errorMessage = "Low data mode enabled."; } else { _handleNetworkQualityChange(_networkService.networkQuality); _errorMessage = "Low data mode disabled."; } _saveSettings(); notifyListeners(); }
@@ -2004,168 +2047,45 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _userPlaylists.add(playlist);
   } await saveUserPlaylists(); _errorMessage = "Imported '${playlist.name}'."; notifyListeners(); } catch (e) { _errorMessage = 'Failed to import playlist.'; _addToRetryQueue(_RetryOperation('Import: ${playlist.name}', () => importPlaylist(playlist))); notifyListeners(); } }
 
-  // --- Downloading ---
-  Future<Directory> _getDownloadsDirectory() async { try { final d = await getApplicationSupportDirectory(); final dl = Directory('${d.path}/offline_music'); if (!await dl.exists()) await dl.create(recursive: true); return dl; } catch (e) { throw Exception("Could not access downloads directory."); } }
-  Future<String> _buildDownloadFilePath(String trackId) async { final d = await _getDownloadsDirectory(); return '${d.path}/$trackId.mp3'; }
-  Future<String> _buildArtDownloadPath(String trackId) async { final d = await _getDownloadsDirectory(); return '${d.path}/$trackId.jpg'; }
-  Future<void> downloadTrack(Track track) async { final id = track.id; if (await isTrackDownloaded(id)) { _errorMessage = "${track.trackName} downloaded."; notifyListeners(); return; } if (_isDownloading[id] == true) { _errorMessage = "${track.trackName} downloading."; notifyListeners(); return; } if (track.source == 'local') { _errorMessage = "Cannot download local files."; notifyListeners(); return; } if (_isOfflineMode || !_networkService.isConnected) { _errorMessage = 'Offline: Cannot download.'; notifyListeners(); return; } if (_concurrentDownloads >= 6) { _addToDownloadQueue(track); return; } CancelToken cT = CancelToken(); _isDownloading[id] = true; _downloadProgress[id] = 0.0; _downloadCancelTokens[id] = cT; _concurrentDownloads++; if (!_currentlyDownloadingTracks.any((t)=> t.id == id)) _currentlyDownloadingTracks.add(track); notifyListeners(); String fP = ''; try { String sId = id; if (track.source == 'spotify') { final yt = await _spotifyService.findYouTubeTrack(track); if (yt != null) {
-    sId = yt.id;
-  } else {
-    throw Exception("No playable version.");
-  } } final dlResolved = await _streamResolution.resolve(ResolveRequest(
-        videoId: sId,
-        title: track.trackName,
-        artist: track.artistName,
-        durationMs: track.durationMs,
-      ));
-      final sUrl = dlResolved?.url;
-      if (sUrl == null) throw Exception('No downloadable stream found.');
-      fP = await _buildDownloadFilePath(id);
-      
-      // Download Artwork simultaneously (if available)
-      String aP = '';
-      if (track.albumArtUrl.isNotEmpty) {
-          aP = await _buildArtDownloadPath(id);
-          try {
-              await _networkService.downloadFile(track.albumArtUrl, aP);
-          } catch (e) {
-              if (kDebugMode) debugPrint('MusicProvider: Art download failed: $e');
-              aP = ''; // Fallback to network if local art fails
-          }
-      }
+  // --- Downloading (delegates to DownloadManager) ---
+  Future<void> downloadTrack(Track track) => _downloads.downloadTrack(track);
+  void cancelDownload(String trackId) => _downloads.cancelDownload(trackId);
+  Future<void> deleteDownloadedTrack(String trackId) => _downloads.deleteDownloadedTrack(trackId);
+  Future<bool> isTrackDownloaded(String trackId) => _downloads.isTrackDownloaded(trackId);
+  Future<String?> getDownloadedTrackPath(String trackId) => _downloads.getDownloadedTrackPath(trackId);
+  Future<List<Track>> getDownloadedTracks() => _downloads.getDownloadedTracks();
+  Future<void> saveDownloadedTracksMetadata() => _downloads.saveMetadata();
+  void pauseAllDownloads({bool clearQueue = false}) => _downloads.pauseAllDownloads(clearQueue: clearQueue);
+  Future<Directory> getDownloadsDirectory() => _downloads.getDownloadsDirectory();
 
-      await _networkService.downloadFile(sUrl, fP, cancelToken: cT, onProgress: (p) {
-        if (_isDownloading[id] == true) {
-          _downloadProgress[id] = p;
-          // Throttle global notifications: Dio fires per-chunk (10-50x/sec per
-          // file, xN concurrent). Mirrors the position-tick throttle below.
-          final now = DateTime.now();
-          if (!_lastProgressNotify.containsKey(id) ||
-              now.difference(_lastProgressNotify[id]!) >= const Duration(milliseconds: 250)) {
-            _lastProgressNotify[id] = now;
-            notifyListeners();
-          }
-        }
-      });
-      
-      if (!cT.isCancelled) {
-         // Validate file size before saving metadata
-         final file = File(fP);
-         if (await file.exists() && await file.length() > 50 * 1024) { // 50KB min
-            _downloadedTracksMetadata[id] = {
-              'track': track,
-              'filePath': fP,
-              'artPath': aP,
-              'downloadDate': DateTime.now()
-            };
-            await saveDownloadedTracksMetadata();
-            _invalidateDownloadedTracksCache();
-            _errorMessage = "${track.trackName} downloaded.";
-         } else {
-             // File too small or missing - likely an error page or empty
-             if (await file.exists()) await file.delete();
-             throw Exception("Download failed: File corrupt or too small.");
-         }
-      } else {
-        _errorMessage = "${track.trackName} cancelled.";
-        if (fP.isNotEmpty) {
-           try { final f = File(fP); if (await f.exists()) await f.delete(); } catch (_) {}
-        }
-      }
-  } catch (e) { if (!cT.isCancelled) { _errorMessage = 'Download failed: ${track.trackName}'; if (fP.isNotEmpty) try { final f = File(fP); if (await f.exists()) await f.delete(); } catch (_) {} bool retry = e is DioException && [DioExceptionType.connectionTimeout, DioExceptionType.sendTimeout, DioExceptionType.receiveTimeout, DioExceptionType.connectionError, DioExceptionType.unknown].contains(e.type); if (retry) _addToRetryQueue(_RetryOperation('Download: ${track.trackName}', () => downloadTrack(track))); } } finally { if (_isDownloading.containsKey(id)) { _isDownloading.remove(id); _downloadProgress.remove(id); _downloadCancelTokens.remove(id); _currentlyDownloadingTracks.removeWhere((t) => t.id == id); _concurrentDownloads = max(0, _concurrentDownloads - 1); } notifyListeners(); _processDownloadQueue(); } }
-  void cancelDownload(String trackId) { _downloadQueue.removeWhere((t) => t.id == trackId); _downloadCancelTokens[trackId]?.cancel('Cancelled by user.'); }
-  Future<void> deleteDownloadedTrack(String trackId) async { final meta = _downloadedTracksMetadata[trackId]; if (meta == null) { _errorMessage = "Not downloaded."; notifyListeners(); return; } final fp = meta['filePath'] as String?; final ap = meta['artPath'] as String?; final tn = (meta['track'] as Track?)?.trackName ?? '?'; try { if (_isPlaying && _isOfflineTrack && _currentTrack?.id == trackId) await stopTrack(); if (fp != null) { final f = File(fp); if (await f.exists()) await f.delete(); } if (ap != null) { final af = File(ap); if (await af.exists()) await af.delete(); } _downloadedTracksMetadata.remove(trackId); await saveDownloadedTracksMetadata(); _invalidateDownloadedTracksCache(); _errorMessage = "Removed $tn."; } catch (_) { _errorMessage = 'Failed to delete $tn.'; } finally { notifyListeners(); } }
-  Future<bool> isTrackDownloaded(String trackId) async { final meta = _downloadedTracksMetadata[trackId]; if (meta != null) { final p = meta['filePath'] as String?; if (p != null && p.isNotEmpty) { if (await File(p).exists()) {
-    // Also check file size to ensure it's not a corrupt/empty file
-    if (await File(p).length() > 50 * 1024) { // 50KB min
-      return true;
-    } else {
-      if (kDebugMode) debugPrint("MusicProvider: Found downloaded file for $trackId but it's too small. Treating as missing.");
-      await _handleMissingOfflineFile(trackId, p);
-      return false;
-    }
-  } else { await _handleMissingOfflineFile(trackId, p); return false; } } } return false; }
-  Future<String?> getDownloadedTrackPath(String trackId) async { if (await isTrackDownloaded(trackId)) return _downloadedTracksMetadata[trackId]?['filePath'] as String?; return null; }
-  Future<List<Track>> getDownloadedTracks() async {
-    // Cached: FutureBuilders call this on every tab re-entry; each uncached
-    // call costs one disk stat per downloaded track.
-    final cached = _downloadedTracksCache;
-    if (cached != null) return cached;
-    List<String> r = []; for (var e in _downloadedTracksMetadata.entries) { final p = e.value['filePath'] as String?; if (p == null || !(await File(p).exists())) r.add(e.key); } if (r.isNotEmpty) { for (var id in r) {
-    _downloadedTracksMetadata.remove(id);
-  } await _saveDownloadedTracksMetadataInternal(); _invalidateDownloadedTracksCache(); notifyListeners(); }
-    final result = _downloadedTracksMetadata.values.where((m) => m['track'] is Track).map((m) => m['track'] as Track).toList();
-    _downloadedTracksCache = result;
-    return result; }
-  List<Track>? _downloadedTracksCache;
-  void _invalidateDownloadedTracksCache() => _downloadedTracksCache = null;
-  Future<void> _loadDownloadedTracksMetadata() async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      final s = p.getString('downloadedTracks');
-      if (s != null) {
-        final l = await compute(_jsonDecode, s);
-        final dDir = await _getDownloadsDirectory();
-        
-        _downloadedTracksMetadata = {};
-        for (var i in l) {
-          if (i['id'] != null && i['filePath'] != null && i['track'] != null) {
-            String storedPath = i['filePath'];
-            String id = i['id'];
-            
-            // FIX: Normalize path if it doesn't exist at stored location 
-            // but exists in the current downloads directory.
-            String finalPath = storedPath;
-            if (!await File(storedPath).exists()) {
-               // Try to resolve relative to current directory
-               final filename = storedPath.split('/').last;
-               final currentPath = '${dDir.path}/$filename';
-               if (await File(currentPath).exists()) {
-                  if (kDebugMode) debugPrint("MusicProvider: Corrected path for $id: $storedPath -> $currentPath");
-                  finalPath = currentPath;
-               }
-            }
-            
-            _downloadedTracksMetadata[id] = {
-              'track': Track.fromJson(i['track']),
-              'filePath': finalPath,
-              'artPath': i['artPath'] as String?,
-              'downloadDate': i['downloadDate'] != null ? DateTime.fromMillisecondsSinceEpoch(i['downloadDate']) : null
-            };
-          }
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint("MusicProvider: Error loading download metadata: $e");
-      _downloadedTracksMetadata = {};
-    }
+  /// Palette engine recovers legacy artwork from the download store.
+  Future<String?> recoverDownloadedArtPath(String trackId) async {
+    final meta = _downloads.metadata[trackId];
+    if (meta == null) return null;
+    final ap = meta['artPath'] as String?;
+    if (ap != null && ap.isNotEmpty && await File(ap).exists()) return ap;
+    final fp = meta['filePath'] as String?;
+    if (fp == null) return null;
+    final legacy = fp.replaceAll('.mp3', '.jpg');
+    return await File(legacy).exists() ? legacy : null;
   }
-  Future<void> saveDownloadedTracksMetadata() async => await _saveDownloadedTracksMetadataInternal();
-  Future<void> _saveDownloadedTracksMetadataInternal() async { final l = _downloadedTracksMetadata.values.map((m) => {'id': (m['track'] as Track).id, 'filePath': m['filePath'], 'artPath': m['artPath'], 'downloadDate': (m['downloadDate'] as DateTime?)?.millisecondsSinceEpoch, 'track': (m['track'] as Track).toJson()}).toList(); try { final p = await SharedPreferences.getInstance(); await p.setString('downloadedTracks', await compute(_jsonEncode, l)); } catch (e) { _addToRetryQueue(_RetryOperation('Save dl meta', _saveDownloadedTracksMetadataInternal)); } }
-  Future<void> _handleMissingOfflineFile(String trackId, String expectedPath) async { bool mRem = _downloadedTracksMetadata.remove(trackId) != null; if (mRem) await _saveDownloadedTracksMetadataInternal(); _invalidateDownloadedTracksCache(); int cB = _localTracks.length; _localTracks.removeWhere((t) => t.previewUrl == expectedPath); bool lRem = _localTracks.length < cB; if (mRem || lRem) notifyListeners(); }
-  void _addToDownloadQueue(Track track) { if (_isDownloading[track.id]==true || _downloadQueue.any((t)=>t.id==track.id) || _downloadedTracksMetadata.containsKey(track.id)) return; _downloadQueue.add(track); _errorMessage = '${track.trackName} queued.'; notifyListeners(); _processDownloadQueue(); }
-  Future<void> _processDownloadQueue() async { if (_downloadQueue.isEmpty || _isOfflineMode || !_networkService.isConnected || _concurrentDownloads >= 6) return; final t = _downloadQueue.removeAt(0); notifyListeners(); await downloadTrack(t); }
-  void pauseAllDownloads({bool clearQueue = false}) { final ids = List<String>.from(_downloadCancelTokens.keys); int c = 0; for (final id in ids) { _downloadCancelTokens[id]?.cancel("Downloads paused"); c++; } if (c > 0) debugPrint("Paused $c downloads."); if (clearQueue && _downloadQueue.isNotEmpty) { _downloadQueue.clear(); notifyListeners(); } }
-  
+
   /// Batch download multiple tracks - adds to queue efficiently
   Future<void> downloadTracks(List<Track> tracks, {bool skipDownloaded = true}) async {
     int added = 0;
     for (final track in tracks) {
       if (skipDownloaded && await isTrackDownloaded(track.id)) continue;
-      if (_isDownloading[track.id] == true) continue;
-      if (_downloadQueue.any((t) => t.id == track.id)) continue;
+      if (_downloads.isDownloadingSync(track.id)) continue;
+      if (_downloads.downloadQueue.any((t) => t.id == track.id)) continue;
       if (track.source == 'local') continue;
-      _downloadQueue.add(track);
+      unawaited(_downloads.downloadTrack(track)); // manager enforces concurrency + queue
       added++;
     }
     if (added > 0) {
       _errorMessage = 'Queued $added tracks for download';
       notifyListeners();
-      // Start processing queue (will respect concurrent limit)
-      _processDownloadQueue();
     }
   }
-
   // --- Spotify Integration ---
 
   // --- API Content Fetching ---
@@ -2697,7 +2617,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       bool isLocalFile = false;
       
       // Determine ImageProvider with high priority for offline/local sources
-      final offlineMeta = _downloadedTracksMetadata[trackId];
+      final offlineMeta = _downloads.metadata[trackId];
       final artPath = offlineMeta?['artPath'] as String?;
 
       if (artPath != null && artPath.isNotEmpty && File(artPath).existsSync()) {
@@ -2705,15 +2625,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
           isLocalFile = true;
           imageProvider = FileImage(File(artPath));
           if (kDebugMode) debugPrint('MusicProvider: Using offline art for ${track.trackName}');
-      } else if (_downloadedTracksMetadata.containsKey(trackId)) {
+      } else if (_downloads.metadata.containsKey(trackId)) {
           // LEGACY FALLBACK: Check if art file exists even if not in metadata
-          final fallbackPath = await _buildArtDownloadPath(trackId);
-          if (File(fallbackPath).existsSync()) {
+          final fallbackPath = await recoverDownloadedArtPath(trackId);
+          if (fallbackPath != null && File(fallbackPath).existsSync()) {
              isLocalFile = true;
              imageProvider = FileImage(File(fallbackPath));
              // Update metadata for next time (entry may have been removed
              // mid-flight — never force-unwrap)
-             _downloadedTracksMetadata[trackId]?['artPath'] = fallbackPath;
+             _downloads.metadata[trackId]?['artPath'] = fallbackPath;
              saveDownloadedTracksMetadata();
              if (kDebugMode) debugPrint('MusicProvider: Recovered legacy art for ${track.trackName}');
           }
@@ -2757,11 +2677,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
         if (kDebugMode) debugPrint('MusicProvider: Palette updated for ${track.trackName} (${isLocalFile ? "Local" : "Network"})');
 
         // PROACTIVE FIX: If played online but missing local art, download it now
-        if (!isLocalFile && _downloadedTracksMetadata.containsKey(trackId)) {
-           final aP = await _buildArtDownloadPath(trackId);
+        if (!isLocalFile && _downloads.metadata.containsKey(trackId)) {
+           final dDir = await _downloads.getDownloadsDirectory();
+           final aP = '${dDir.path}/$trackId.jpg';
            if (track.albumArtUrl.isNotEmpty) {
              _networkService.downloadFile(track.albumArtUrl, aP).then((_) {
-                final meta = _downloadedTracksMetadata[trackId];
+                final meta = _downloads.metadata[trackId];
                 if (meta == null) return; // entry removed while downloading
                 meta['artPath'] = aP;
                 saveDownloadedTracksMetadata();
@@ -2796,8 +2717,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _networkQualitySubscription?.cancel();
     _connectivityStatusSubscription?.cancel();
     _sleepTimer?.cancel();
-    _downloadCancelTokens.forEach((_, token) { if (!token.isCancelled) token.cancel("Provider disposed"); });
-    _downloadCancelTokens.clear();
+    _downloads.dispose();
     debugPrint('MusicProvider: Disposed.');
     super.dispose();
   }
