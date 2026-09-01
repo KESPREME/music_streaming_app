@@ -33,8 +33,8 @@ class HomeSectionHeader extends StatelessWidget {
                 child: Text(
                   'See all',
                   style: type_tokens.Type.caption(context).copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             ),
@@ -46,7 +46,8 @@ class HomeSectionHeader extends StatelessWidget {
 
 /// Pressable wrapper: 0.98 compression while the finger is down.
 class PressableScale extends StatefulWidget {
-  const PressableScale({super.key, required this.child, this.onTap, this.onLongPress});
+  const PressableScale(
+      {super.key, required this.child, this.onTap, this.onLongPress});
 
   final Widget child;
   final VoidCallback? onTap;
@@ -144,7 +145,9 @@ class RailCard extends StatelessWidget {
   }
 }
 
-/// Compact list row for For You: artwork, two text lines, glass play chip.
+/// Compact open track row for Made-for-you: artwork, two lines, glass play
+/// chip. Deliberately NOT a card — tonal separation only, so repeated rows
+/// read as a list, not a wall of rounded rectangles.
 class ForYouRow extends StatelessWidget {
   const ForYouRow({
     super.key,
@@ -166,85 +169,77 @@ class ForYouRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-      child: PressableScale(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.035),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: SizedBox(
-                  width: 52,
-                  height: 52,
-                  child: artUrl.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: artUrl,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 120,
-                          fadeInDuration: const Duration(milliseconds: 180),
-                          errorWidget: (_, __, ___) => Container(
-                              color: Colors.white.withValues(alpha: 0.06)),
-                        )
-                      : Container(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          child: const Icon(Icons.music_note_rounded,
-                              color: Colors.white24),
-                        ),
-                ),
+    return PressableScale(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 50,
+                height: 50,
+                child: artUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: artUrl,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 120,
+                        fadeInDuration: const Duration(milliseconds: 180),
+                        errorWidget: (_, __, ___) => Container(
+                            color: Colors.white.withValues(alpha: 0.06)),
+                      )
+                    : Container(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        child: const Icon(Icons.music_note_rounded,
+                            color: Colors.white24),
+                      ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: type_tokens.Type.body(context).copyWith(
-                            color: isPlaying ? accent : null,
-                            fontWeight:
-                                isPlaying ? FontWeight.w600 : FontWeight.w500,
-                          ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: type_tokens.Type.body(context).copyWith(
+                      color: isPlaying ? accent : null,
+                      fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: type_tokens.Type.metadata(context),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              GlassSurface(
-                tier: GlassTier.card,
-                borderRadius: 30,
-                padding: EdgeInsets.zero,
-                child: SizedBox(
-                  width: 38,
-                  height: 38,
-                  child: Icon(
-                    isPlaying
-                        ? Icons.graphic_eq_rounded
-                        : Icons.play_arrow_rounded,
-                    size: 20,
-                    color: isPlaying ? accent : Colors.white.withValues(alpha: 0.85),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: type_tokens.Type.metadata(context),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            GlassSurface(
+              tier: GlassTier.card,
+              borderRadius: 30,
+              padding: EdgeInsets.zero,
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  isPlaying
+                      ? Icons.graphic_eq_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 19,
+                  color:
+                      isPlaying ? accent : Colors.white.withValues(alpha: 0.85),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -276,10 +271,12 @@ class ArtistPortrait extends StatelessWidget {
             CircleAvatar(
               radius: 36,
               backgroundColor: Colors.white.withValues(alpha: 0.06),
-              backgroundImage:
-                  imageUrl.isNotEmpty ? CachedNetworkImageProvider(imageUrl) : null,
+              backgroundImage: imageUrl.isNotEmpty
+                  ? CachedNetworkImageProvider(imageUrl)
+                  : null,
               child: imageUrl.isEmpty
-                  ? const Icon(Icons.person_rounded, size: 32, color: Colors.white24)
+                  ? const Icon(Icons.person_rounded,
+                      size: 32, color: Colors.white24)
                   : null,
             ),
             const SizedBox(height: 8),

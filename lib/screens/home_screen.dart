@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,12 +19,12 @@ import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/themed_trending_now_screen.dart';
 
-/// Home: one continuous, artwork-driven listening surface.
+/// Home: a curated listening environment.
 ///
-/// Hierarchy — hero (continue listening) dominates; rails and rows support;
-/// genres/artists stay quiet. No internal tabs: Discover lives in the bottom
-/// navigation, not duplicated here. Playback always flows through the global
-/// MusicProvider; Home only observes.
+/// One primary carousel (top picks), then increasingly quiet sections.
+/// Distinct presentations per content type — no card wall, no repeated
+/// poster. Playback flows through the global MusicProvider; Home only
+/// observes. Glass is reserved for interactive controls.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -38,8 +36,11 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entry = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 620),
+    duration: const Duration(milliseconds: 560),
     value: 0,
+  );
+  late final PageController _topPicksController = PageController(
+    viewportFraction: 0.86,
   );
 
   @override
@@ -53,19 +54,18 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _entry.dispose();
+    _topPicksController.dispose();
     super.dispose();
-  }
-
-  String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 5) return 'Late night listening';
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
   }
 
   @override
   Widget build(BuildContext context) {
+    // Bottom inset derived from the actual persistent surfaces: mini-player
+    // inset token + navigation bar + breathing gap + system gesture area.
+    final bottomInset = GlassTokens.playerBottomInset +
+        88 +
+        MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.transparent, // Ambient canvas behind
@@ -77,44 +77,60 @@ class _HomeScreenState extends State<HomeScreen>
           onRefresh: () => context
               .read<MusicProvider>()
               .fetchTrendingTracks(forceRefresh: true),
-          child: ListView(
+          child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 130),
-            children: [
-              _buildHeader(context),
-              const SizedBox(height: 16),
-              StaggerIn(
-                controller: _entry,
-                interval: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
-                child: _buildHeroSection(context),
+            slivers: [
+              SliverToBoxAdapter(child: _buildHeader(context)),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(
+                child: StaggerIn(
+                  controller: _entry,
+                  interval:
+                      const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
+                  child: _buildTopPicks(context),
+                ),
               ),
-              StaggerIn(
-                controller: _entry,
-                interval: const Interval(0.25, 0.75, curve: Curves.easeOutCubic),
-                child: _buildJumpBackIn(context),
+              SliverToBoxAdapter(
+                child: StaggerIn(
+                  controller: _entry,
+                  interval:
+                      const Interval(0.2, 0.65, curve: Curves.easeOutCubic),
+                  child: _buildJumpBackIn(context),
+                ),
               ),
-              StaggerIn(
-                controller: _entry,
-                interval: const Interval(0.4, 0.9, curve: Curves.easeOutCubic),
-                child: _buildForYou(context),
+              SliverToBoxAdapter(
+                child: StaggerIn(
+                  controller: _entry,
+                  interval:
+                      const Interval(0.35, 0.8, curve: Curves.easeOutCubic),
+                  child: _buildMadeForYou(context),
+                ),
               ),
-              StaggerIn(
-                controller: _entry,
-                interval: const Interval(0.55, 1.0, curve: Curves.easeOutCubic),
-                child: _buildWhatsHot(context),
+              SliverToBoxAdapter(
+                child: StaggerIn(
+                  controller: _entry,
+                  interval:
+                      const Interval(0.5, 0.9, curve: Curves.easeOutCubic),
+                  child: _buildWhatsHot(context),
+                ),
               ),
-              const SizedBox(height: 8),
-              StaggerIn(
-                controller: _entry,
-                interval: const Interval(0.65, 1.0, curve: Curves.easeOutCubic),
-                child: _buildArtists(context),
+              SliverToBoxAdapter(
+                child: StaggerIn(
+                  controller: _entry,
+                  interval:
+                      const Interval(0.6, 1.0, curve: Curves.easeOutCubic),
+                  child: _buildArtists(context),
+                ),
               ),
-              const SizedBox(height: 4),
-              StaggerIn(
-                controller: _entry,
-                interval: const Interval(0.75, 1.0, curve: Curves.easeOutCubic),
-                child: _buildGenres(context),
+              SliverToBoxAdapter(
+                child: StaggerIn(
+                  controller: _entry,
+                  interval:
+                      const Interval(0.7, 1.0, curve: Curves.easeOutCubic),
+                  child: _buildMoods(context),
+                ),
               ),
+              SliverPadding(padding: EdgeInsets.only(top: bottomInset - 88)),
             ],
           ),
         ),
@@ -122,18 +138,17 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Header ───────────────────────────────────────────────────────────────
+  // ── Header: one title, small utility action ──────────────────────────────
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(_greeting(), style: type_tokens.Type.title(context)),
+          Expanded(child: Text('Home', style: type_tokens.Type.title(context))),
           GlassCircleButton(
             icon: Icons.settings_outlined,
-            iconSize: 22,
+            iconSize: 20,
             onTap: () {
               HapticFeedback.lightImpact();
               Navigator.push(
@@ -148,39 +163,53 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Hero: continue listening ─────────────────────────────────────────────
+  // ── Top Picks carousel ───────────────────────────────────────────────────
 
-  Widget _buildHeroSection(BuildContext context) {
-    final provider = context.watch<MusicProvider>();
-    final Track? heroTrack = provider.currentTrack ??
-        (provider.recentlyPlayed.isNotEmpty ? provider.recentlyPlayed.first : null) ??
-        (provider.recommendedTracks.isNotEmpty ? provider.recommendedTracks.first : null) ??
-        (provider.trendingTracks.isNotEmpty ? provider.trendingTracks.first : null);
-
-    if (heroTrack == null) return const _HeroSkeleton();
-
-    final fromHistory = provider.recentlyPlayed.any((t) => t.id == heroTrack.id);
-    final eyebrow = fromHistory ? 'Jump back in' : 'Picked for you';
-
-    final size = MediaQuery.sizeOf(context);
-    final heroHeight = (size.height * 0.46).clamp(300.0, 400.0);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: GlassTokens.hMargin),
-      child: _HeroCard(
-        track: heroTrack,
-        eyebrow: eyebrow,
-        height: heroHeight,
-        onPlay: () => _play(context, heroTrack, _heroContextList(provider)),
-        onOverflow: () => ThemedOptionsSheet.show(context, track: heroTrack),
-      ),
-    );
+  List<Track> _topPicksList(MusicProvider provider) {
+    if (provider.recommendedTracks.isNotEmpty) {
+      return provider.recommendedTracks.take(5).toList();
+    }
+    if (provider.trendingTracks.isNotEmpty) {
+      return provider.trendingTracks.take(5).toList();
+    }
+    return const [];
   }
 
-  List<Track> _heroContextList(MusicProvider provider) {
-    if (provider.recentlyPlayed.isNotEmpty) return provider.recentlyPlayed;
-    if (provider.recommendedTracks.isNotEmpty) return provider.recommendedTracks;
-    return provider.trendingTracks;
+  Widget _buildTopPicks(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final picks = _topPicksList(provider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const HomeSectionHeader(title: 'Top picks for you'),
+        if (picks.isEmpty)
+          const _HeroSkeleton()
+        else
+          SizedBox(
+            height:
+                (MediaQuery.sizeOf(context).height * 0.40).clamp(280.0, 360.0),
+            child: PageView.builder(
+              controller: _topPicksController,
+              padEnds: false,
+              physics: const BouncingScrollPhysics(),
+              itemCount: picks.length,
+              itemBuilder: (context, index) {
+                final track = picks[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: _TopPickCard(
+                    track: track,
+                    onPlay: () => _play(context, track, picks),
+                    onOverflow: () =>
+                        ThemedOptionsSheet.show(context, track: track),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
   }
 
   void _play(BuildContext context, Track track, List<Track> contextList) {
@@ -188,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen>
     context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
   }
 
-  // ── Jump Back In rail ────────────────────────────────────────────────────
+  // ── Jump back in: compact continuation rail ──────────────────────────────
 
   Widget _buildJumpBackIn(BuildContext context) {
     final provider = context.watch<MusicProvider>();
@@ -200,10 +229,10 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 28),
+        const SizedBox(height: 32),
         const HomeSectionHeader(title: 'Jump back in'),
         SizedBox(
-          height: 176,
+          height: 148,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -212,12 +241,12 @@ class _HomeScreenState extends State<HomeScreen>
             itemBuilder: (context, index) {
               final track = recents[index];
               return Padding(
-                padding: const EdgeInsets.only(right: 14),
+                padding: const EdgeInsets.only(right: 12),
                 child: RailCard(
                   artUrl: track.albumArtUrl,
                   title: track.trackName,
                   subtitle: track.artistName,
-                  size: 132,
+                  size: 116,
                   onTap: () => _play(context, track, recents),
                   onLongPress: () => ThemedOptionsSheet.show(
                     context,
@@ -233,40 +262,37 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── For You rows ─────────────────────────────────────────────────────────
+  // ── Made for you: compact open rows (grounded, not cards) ────────────────
 
-  Widget _buildForYou(BuildContext context) {
+  Widget _buildMadeForYou(BuildContext context) {
     final provider = context.watch<MusicProvider>();
     final recs = provider.recommendedTracks.isNotEmpty
-        ? provider.recommendedTracks
-        : provider.trendingTracks.take(10).toList();
+        ? provider.recommendedTracks.skip(5).take(6).toList()
+        : provider.trendingTracks.take(6).toList();
+    if (recs.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 30),
-        const HomeSectionHeader(title: 'For you'),
-        if (recs.isEmpty)
-          const _RowsSkeleton()
-        else
-          ...recs.map((track) {
-            final isPlaying = provider.currentTrack?.id == track.id &&
-                provider.isPlaying;
-            return ForYouRow(
-              artUrl: track.albumArtUrl,
-              title: track.trackName,
-              subtitle: track.artistName,
-              isPlaying: isPlaying,
-              onTap: () => _play(context, track, recs),
-              onLongPress: () =>
-                  ThemedOptionsSheet.show(context, track: track),
-            );
-          }),
+        const SizedBox(height: 32),
+        const HomeSectionHeader(title: 'Made for you'),
+        ...recs.map((track) {
+          final isPlaying =
+              provider.currentTrack?.id == track.id && provider.isPlaying;
+          return ForYouRow(
+            artUrl: track.albumArtUrl,
+            title: track.trackName,
+            subtitle: track.artistName,
+            isPlaying: isPlaying,
+            onTap: () => _play(context, track, recs),
+            onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+          );
+        }),
       ],
     );
   }
 
-  // ── What's Hot rail ──────────────────────────────────────────────────────
+  // ── What's hot: medium artwork rail ──────────────────────────────────────
 
   Widget _buildWhatsHot(BuildContext context) {
     final provider = context.watch<MusicProvider>();
@@ -276,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 30),
+        const SizedBox(height: 32),
         HomeSectionHeader(
           title: "What's hot",
           onViewAll: () => Navigator.push(
@@ -285,7 +311,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
         SizedBox(
-          height: 196,
+          height: 190,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -299,7 +325,7 @@ class _HomeScreenState extends State<HomeScreen>
                   artUrl: track.albumArtUrl,
                   title: track.trackName,
                   subtitle: track.artistName,
-                  size: 152,
+                  size: 148,
                   onTap: () => _play(context, track, trending),
                   onLongPress: () =>
                       ThemedOptionsSheet.show(context, track: track),
@@ -318,8 +344,10 @@ class _HomeScreenState extends State<HomeScreen>
     final provider = context.watch<MusicProvider>();
     final seen = <String>{};
     final artists = <Track>[];
-    for (final track
-        in [...provider.recentlyPlayed, ...provider.trendingTracks]) {
+    for (final track in [
+      ...provider.recentlyPlayed,
+      ...provider.trendingTracks
+    ]) {
       if (track.artistName.isEmpty) continue;
       if (seen.add(track.artistName)) artists.add(track);
       if (artists.length >= 10) break;
@@ -329,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 30),
+        const SizedBox(height: 32),
         HomeSectionHeader(
           title: 'Artists',
           onViewAll: () => Navigator.push(
@@ -377,11 +405,11 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Genres ───────────────────────────────────────────────────────────────
+  // ── Moods: quiet typographic chips, lowest on the page ───────────────────
 
-  Widget _buildGenres(BuildContext context) {
+  Widget _buildMoods(BuildContext context) {
     final provider = context.read<MusicProvider>();
-    const genres = [
+    const moods = [
       (name: 'Pop', icon: Icons.music_note_rounded),
       (name: 'Hip-Hop', icon: Icons.mic_rounded),
       (name: 'Rock', icon: Icons.electric_bolt_rounded),
@@ -391,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 30),
+        const SizedBox(height: 32),
         HomeSectionHeader(
           title: 'Moods',
           onViewAll: () => Navigator.push(
@@ -405,21 +433,21 @@ class _HomeScreenState extends State<HomeScreen>
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             physics: const BouncingScrollPhysics(),
-            itemCount: genres.length,
+            itemCount: moods.length,
             itemBuilder: (context, index) {
-              final genre = genres[index];
+              final mood = moods[index];
               return Padding(
                 padding: const EdgeInsets.only(right: 10),
                 child: GenreChip(
-                  label: genre.name,
-                  icon: genre.icon,
+                  label: mood.name,
+                  icon: mood.icon,
                   onTap: () {
-                    provider.fetchGenreTracks(genre.name);
+                    provider.fetchGenreTracks(mood.name);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) =>
-                            ThemedGenreSongsScreen(genre: genre.name),
+                            ThemedGenreSongsScreen(genre: mood.name),
                       ),
                     );
                   },
@@ -433,28 +461,24 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ── Hero card ────────────────────────────────────────────────────────────────
+// ── Top pick carousel card ───────────────────────────────────────────────────
 
-class _HeroCard extends StatefulWidget {
-  const _HeroCard({
+class _TopPickCard extends StatefulWidget {
+  const _TopPickCard({
     required this.track,
-    required this.eyebrow,
-    required this.height,
     required this.onPlay,
     required this.onOverflow,
   });
 
   final Track track;
-  final String eyebrow;
-  final double height;
   final VoidCallback onPlay;
   final VoidCallback onOverflow;
 
   @override
-  State<_HeroCard> createState() => _HeroCardState();
+  State<_TopPickCard> createState() => _TopPickCardState();
 }
 
-class _HeroCardState extends State<_HeroCard> {
+class _TopPickCardState extends State<_TopPickCard> {
   bool _pressed = false;
 
   @override
@@ -473,93 +497,86 @@ class _HeroCardState extends State<_HeroCard> {
         duration: Motion.fast,
         curve: Curves.easeOut,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: SizedBox(
-            height: widget.height,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Artwork carries the visual weight.
-                if (widget.track.albumArtUrl.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: widget.track.albumArtUrl,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 720,
-                    fadeInDuration: const Duration(milliseconds: 250),
-                    errorWidget: (_, __, ___) =>
-                        Container(color: Colors.white.withValues(alpha: 0.04)),
-                  )
-                else
-                  Container(color: Colors.white.withValues(alpha: 0.04)),
-                // Legibility scrim, grounded and quiet.
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: const [0.30, 1.0],
-                      colors: [
-                        Colors.black.withValues(alpha: 0.0),
-                        Colors.black.withValues(alpha: 0.86),
-                      ],
-                    ),
-                  ),
-                ),
-                // Bottom content layer.
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 18,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.eyebrow.toUpperCase(),
-                              style: type_tokens.Type.caption(context)
-                                  .copyWith(letterSpacing: 1.2),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              widget.track.trackName,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: type_tokens.Type.title(context)
-                                  .copyWith(fontSize: 25),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.track.artistName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: type_tokens.Type.metadata(context),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Glass play control (tier 5: active control).
-                      GlassSurface(
-                        tier: GlassTier.floating,
-                        borderRadius: 30,
-                        padding: EdgeInsets.zero,
-                        child: SizedBox(
-                          width: 56,
-                          height: 56,
-                          child: Icon(Icons.play_arrow_rounded,
-                              size: 32,
-                              color: accent.withValues(alpha: 0.95)),
-                        ),
-                      ),
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Artwork is the material; no glass over it.
+              if (widget.track.albumArtUrl.isNotEmpty)
+                CachedNetworkImage(
+                  imageUrl: widget.track.albumArtUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 640,
+                  fadeInDuration: const Duration(milliseconds: 220),
+                  errorWidget: (_, __, ___) =>
+                      Container(color: Colors.white.withValues(alpha: 0.04)),
+                )
+              else
+                Container(color: Colors.white.withValues(alpha: 0.04)),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0.32, 1.0],
+                    colors: [
+                      Colors.black.withValues(alpha: 0.0),
+                      Colors.black.withValues(alpha: 0.84),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: 16,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Picked for you',
+                            style: type_tokens.Type.caption(context)
+                                .copyWith(letterSpacing: 1.1),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            widget.track.trackName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: type_tokens.Type.title(context)
+                                .copyWith(fontSize: 23),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            widget.track.artistName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: type_tokens.Type.metadata(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    GlassSurface(
+                      tier: GlassTier.floating,
+                      borderRadius: 30,
+                      padding: EdgeInsets.zero,
+                      child: SizedBox(
+                        width: 50,
+                        height: 50,
+                        child: Icon(Icons.play_arrow_rounded,
+                            size: 28, color: accent.withValues(alpha: 0.95)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -595,45 +612,7 @@ class _HeroSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final heroHeight = (size.height * 0.46).clamp(300.0, 400.0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: GlassTokens.hMargin),
-      child: _SkeletonBox(height: heroHeight, radius: 24),
-    );
-  }
-}
-
-class _RowsSkeleton extends StatelessWidget {
-  const _RowsSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (int i = 0; i < 3; i++)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-            child: Row(
-              children: [
-                const _SkeletonBox(width: 52, height: 52, radius: 10),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SkeletonBox(
-                          height: 13,
-                          width: (180.0 - i * 30).clamp(80.0, 180.0),
-                          radius: 6),
-                      const SizedBox(height: 6),
-                      const _SkeletonBox(height: 11, width: 110, radius: 6),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
+    final heroHeight = (size.height * 0.40).clamp(280.0, 360.0);
+    return _SkeletonBox(height: heroHeight, radius: 22);
   }
 }
