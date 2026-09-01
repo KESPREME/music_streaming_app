@@ -37,6 +37,7 @@ import '../services/network_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/stream_resolution_service.dart';
 import '../services/downloads/download_manager.dart';
+import '../services/palette/palette_service.dart';
 import 'accent_controller.dart';
 import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
@@ -254,10 +255,67 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   bool _isSearchingDevices = false;
   List<CastDevice> _castDevices = [];
   
-  // Palette State
-  PaletteGenerator? _paletteGenerator;
-  PaletteGenerator? get paletteGenerator => _paletteGenerator;
-  final Map<String, PaletteGenerator> _paletteCache = {}; // Cache for fast transitions
+  // Palette: delegated to PaletteService
+  late final PaletteService _paletteService = PaletteService(
+    artSourceResolver: _resolvePaletteArtSource,
+    feedAlbumAccent: _feedAlbumAccent,
+    isInBackground: () => isInBackground,
+    backfillArtwork: _backfillDownloadedArtwork,
+  );
+  PaletteService get paletteService => _paletteService;
+  PaletteGenerator? get paletteGenerator => _paletteService.palette;
+
+  Future<PaletteArtSource> _resolvePaletteArtSource(Track track) async {
+    ImageProvider? imageProvider;
+    bool isLocalFile = false;
+
+    // High priority for offline/local sources
+    final offlineMeta = _downloads.metadata[track.id];
+    final artPath = offlineMeta?['artPath'] as String?;
+
+    if (artPath != null && artPath.isNotEmpty && File(artPath).existsSync()) {
+      // 1. Downloaded track artwork
+      isLocalFile = true;
+      imageProvider = FileImage(File(artPath));
+      if (kDebugMode) debugPrint('MusicProvider: Using offline art for ${track.trackName}');
+    } else if (_downloads.metadata.containsKey(track.id)) {
+      // LEGACY FALLBACK: art file exists even if not in metadata
+      final fallbackPath = await recoverDownloadedArtPath(track.id);
+      if (fallbackPath != null && File(fallbackPath).existsSync()) {
+        isLocalFile = true;
+        imageProvider = FileImage(File(fallbackPath));
+        // Persist for next time (entry may be removed mid-flight)
+        _downloads.metadata[track.id]?['artPath'] = fallbackPath;
+        await saveDownloadedTracksMetadata();
+      }
+    }
+
+    if (imageProvider == null && track.source == 'local') {
+      // 2. Local device track artwork (via MediaStore)
+      final bytes = await _localMusicService.getTrackArtwork(track.id);
+      if (bytes != null) {
+        imageProvider = MemoryImage(bytes);
+        isLocalFile = true;
+      } else if (track.albumArtUrl.isNotEmpty && File(track.albumArtUrl).existsSync()) {
+        imageProvider = FileImage(File(track.albumArtUrl));
+        isLocalFile = true;
+      }
+    }
+
+    return PaletteArtSource(provider: imageProvider, isLocalFile: isLocalFile);
+  }
+
+  Future<void> _backfillDownloadedArtwork(Track track) async {
+    final dDir = await _downloads.getDownloadsDirectory();
+    final aP = '${dDir.path}/${track.id}.jpg';
+    if (track.albumArtUrl.isEmpty) return;
+    await _networkService.downloadFile(track.albumArtUrl, aP);
+    final meta = _downloads.metadata[track.id];
+    if (meta == null) return; // entry removed while downloading
+    meta['artPath'] = aP;
+    await saveDownloadedTracksMetadata();
+    if (kDebugMode) debugPrint('MusicProvider: Proactively saved artwork for ${track.id}');
+  }
 
   // Cast Getters
   bool get isCasting => _isCasting;
@@ -388,6 +446,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   DateTime? _lastPositionNotify;
   MusicProvider({AccentController? accentController})
       : _accentController = accentController {
+    _paletteService.clearAlbumAccentOnEmptyArt = () {
+      _accentController?.setAlbumAccent(null);
+    };
+    _paletteService.isCurrentTrackImpl = (id) => _currentTrack?.id == id;
+    _paletteService.addListener(notifyListeners);
+    _downloads.addListener(notifyListeners);
     _initialize();
   }
   
@@ -463,7 +527,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         // App returning to foreground - resume normal operation
         // Force refresh palette if track changed while in background
-        if (_currentTrack != null && _paletteGenerator == null) {
+        if (_currentTrack != null && paletteGenerator == null) {
           updatePalette();
         }
         break;
@@ -1074,7 +1138,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
       // Update current track state
       _currentTrack = track;
-      _paletteGenerator = null; // Reset palette immediately
+      _paletteService.clear(); // Reset palette immediately
       _isOfflineTrack = false;
       _updateCurrentIndex();
       notifyListeners();
@@ -1256,7 +1320,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // Sync current track metadata immediately for UI consistency
     _currentTrack = track;
-    _paletteGenerator = null;
+    _paletteService.clear();
     _isOfflineTrack = true;
     _updateCurrentIndex();
     notifyListeners();
@@ -1314,7 +1378,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
       
       _currentTrack = track;
-      _paletteGenerator = null; // Reset palette immediately
+      _paletteService.clear(); // Reset palette immediately
       _isOfflineTrack = true;
       
       if (setContext) {
@@ -2561,7 +2625,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
 
 
-  // --- Palette Generation ---
+  // --- Palette (delegates to PaletteService) ---
   /// Feed the dominant palette color to the app accent when album-adaptive
   /// mode is on. No-op otherwise (zero cost when the feature is off).
   void _feedAlbumAccent(PaletteGenerator palette) {
@@ -2575,125 +2639,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     controller.setAlbumAccent(color);
   }
 
-  Future<void> updatePalette() async {
+  Future<void> updatePalette() {
     final track = _currentTrack;
     if (track == null) {
-      _paletteGenerator = null;
-      notifyListeners();
-      return;
+      _paletteService.clear();
+      return Future.value();
     }
-    
-    // Explicit check for artwork
-    if (track.albumArtUrl.isEmpty) {
-       _paletteGenerator = null;
-       _accentController?.setAlbumAccent(null);
-       notifyListeners();
-       return;
-    }
-
-    // BATTERY FIX: Skip expensive palette generation if app is in background
-    if (isInBackground) {
-      if (kDebugMode) debugPrint('MusicProvider: Skipping palette generation (background)');
-      return; 
-    }
-
-    final trackId = track.id;
-    
-    // 1. Check Cache first for instant update
-    if (_paletteCache.containsKey(trackId)) {
-        if (kDebugMode) debugPrint('MusicProvider: Using cached palette for ${track.trackName}');
-        _paletteGenerator = _paletteCache[trackId];
-        _feedAlbumAccent(_paletteCache[trackId]!);
-        // Note: We don't notifyListeners() here IF it's already set
-        // but since we reset it to null on track change, we should notify.
-        notifyListeners();
-        return;
-    }
-    
-    try {
-      if (kDebugMode) debugPrint('MusicProvider: Generating palette for ${track.trackName}...');
-      
-      ImageProvider? imageProvider;
-      bool isLocalFile = false;
-      
-      // Determine ImageProvider with high priority for offline/local sources
-      final offlineMeta = _downloads.metadata[trackId];
-      final artPath = offlineMeta?['artPath'] as String?;
-
-      if (artPath != null && artPath.isNotEmpty && File(artPath).existsSync()) {
-          // 1. Downloaded YouTube Track Artwork
-          isLocalFile = true;
-          imageProvider = FileImage(File(artPath));
-          if (kDebugMode) debugPrint('MusicProvider: Using offline art for ${track.trackName}');
-      } else if (_downloads.metadata.containsKey(trackId)) {
-          // LEGACY FALLBACK: Check if art file exists even if not in metadata
-          final fallbackPath = await recoverDownloadedArtPath(trackId);
-          if (fallbackPath != null && File(fallbackPath).existsSync()) {
-             isLocalFile = true;
-             imageProvider = FileImage(File(fallbackPath));
-             // Update metadata for next time (entry may have been removed
-             // mid-flight — never force-unwrap)
-             _downloads.metadata[trackId]?['artPath'] = fallbackPath;
-             saveDownloadedTracksMetadata();
-             if (kDebugMode) debugPrint('MusicProvider: Recovered legacy art for ${track.trackName}');
-          }
-      } 
-      
-      if (imageProvider == null && track.source == 'local') {
-          // 2. Local Device Track Artwork (via MediaStore)
-          final bytes = await _localMusicService.getTrackArtwork(track.id);
-          if (bytes != null) {
-              imageProvider = MemoryImage(bytes);
-              isLocalFile = true;
-          } else if (track.albumArtUrl.isNotEmpty && File(track.albumArtUrl).existsSync()) {
-              imageProvider = FileImage(File(track.albumArtUrl));
-              isLocalFile = true;
-          }
-      } 
-      
-      // Final fallback to Network
-      imageProvider ??= NetworkImage(track.albumArtUrl);
-
-      final gen = await PaletteGenerator.fromImageProvider(
-        ResizeImage(imageProvider, width: 100, height: 100),
-        maximumColorCount: 15,
-      );
-
-      // 3. Post-processing: Boost Vibrancy and Harmony
-      final palette = gen;
-      
-      // Strict check: Ensure we are still playing the same track to avoid race conditions
-      if (_currentTrack?.id == trackId) {
-        _paletteGenerator = palette;
-        _feedAlbumAccent(palette);
-        
-        // Update cache (LRU management: remove oldest if full)
-        if (_paletteCache.length > 15) {
-            _paletteCache.remove(_paletteCache.keys.first);
-        }
-        _paletteCache[trackId] = palette;
-        
-        notifyListeners();
-        if (kDebugMode) debugPrint('MusicProvider: Palette updated for ${track.trackName} (${isLocalFile ? "Local" : "Network"})');
-
-        // PROACTIVE FIX: If played online but missing local art, download it now
-        if (!isLocalFile && _downloads.metadata.containsKey(trackId)) {
-           final dDir = await _downloads.getDownloadsDirectory();
-           final aP = '${dDir.path}/$trackId.jpg';
-           if (track.albumArtUrl.isNotEmpty) {
-             _networkService.downloadFile(track.albumArtUrl, aP).then((_) {
-                final meta = _downloads.metadata[trackId];
-                if (meta == null) return; // entry removed while downloading
-                meta['artPath'] = aP;
-                saveDownloadedTracksMetadata();
-                if (kDebugMode) debugPrint('MusicProvider: Proactively saved artwork for $trackId');
-             }).catchError((_) {});
-           }
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('MusicProvider: Error generating palette for ${track.trackName}: $e');
-    }
+    return _paletteService.updateForTrack(track);
   }
 
   // --- Dispose ---
