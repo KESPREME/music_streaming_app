@@ -106,6 +106,31 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   List<Track> _genreTracks = [];
   List<Track> _recommendedTracks = []; // New field for "For You"
   List<Playlist> _userPlaylists = [];
+
+  /// Home-page content version: bumped ONLY when one of the lists the Home
+  /// screen renders changes. Playback position ticks and palette updates do
+  /// NOT bump it, so Home sections can select on this int and stay idle
+  /// during playback.
+  int _homeContentVersion = 0;
+  int get homeContentVersion => _homeContentVersion;
+  void _bumpHomeContent() => _homeContentVersion++;
+
+  /// New releases (InnerTube browse, service-level TTL cache).
+  List<Track> _newReleases = [];
+  List<Track> get newReleases => List.unmodifiable(_newReleases);
+
+  Future<void> fetchNewReleases({bool forceRefresh = false}) async {
+    if (!forceRefresh && _newReleases.isNotEmpty) return;
+    if (_isOfflineMode || !_networkService.isConnected) return;
+    try {
+      final releases = await _innerTubeService.getNewReleases(limit: 12);
+      _newReleases = releases;
+      _bumpHomeContent();
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: New releases failed: $e');
+    }
+  }
   List<Track> _localTracks = [];
   SortCriteria _localTracksSortCriteria = SortCriteria.nameAsc;
   
@@ -551,7 +576,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
       try {
         await Future.wait([
           fetchTracks(),
-          fetchTrendingTracks()
+          fetchTrendingTracks(),
+          fetchNewReleases()
         ]);
       } catch (e) {
         _errorMessage = 'Could not load initial content.';
@@ -2136,7 +2162,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   Future<void> _saveLikedSongs() async { try { final p = await SharedPreferences.getInstance(); await p.setString('likedSongs', await compute(_jsonEncode, _likedSongs.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save liked', _saveLikedSongs)); } }
 
   // --- Recently Played ---
-  Future<void> _updateRecentlyPlayed(Track track) async { _recentlyPlayed.removeWhere((t) => t.id == track.id); _recentlyPlayed.insert(0, track); if (_recentlyPlayed.length > 20) _recentlyPlayed = _recentlyPlayed.take(20).toList(); await _saveRecentlyPlayed(); }
+  Future<void> _updateRecentlyPlayed(Track track) async { _recentlyPlayed.removeWhere((t) => t.id == track.id); _recentlyPlayed.insert(0, track); if (_recentlyPlayed.length > 20) _recentlyPlayed = _recentlyPlayed.take(20).toList(); await _saveRecentlyPlayed(); _bumpHomeContent(); }
   void removeFromRecentlyPlayed(String trackId) { int count = _recentlyPlayed.length; _recentlyPlayed.removeWhere((t) => t.id == trackId); if (_recentlyPlayed.length < count) { _saveRecentlyPlayed(); notifyListeners(); } }
   Future<void> _loadRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('recentlyPlayed'); if (s != null) _recentlyPlayed = (await compute(_jsonDecode, s)).map((j) => Track.fromJson(Map<String, dynamic>.from(j as Map))).toList(); } catch (_) { _recentlyPlayed = []; } }
   Future<void> _saveRecentlyPlayed() async { try { final p = await SharedPreferences.getInstance(); await p.setString('recentlyPlayed', await compute(_jsonEncode, _recentlyPlayed.map((t) => t.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save recent', _saveRecentlyPlayed)); } }
@@ -2210,7 +2236,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   Future<void> addLocalMusicFolder() async { String? iMsg="Adding folder..."; _errorMessage=iMsg; notifyListeners(); try { final String? p = await _localMusicService.pickDirectory(); if(p!=null){await loadLocalMusicFiles(forceRescan:true); if(_errorMessage==iMsg) _errorMessage="Local music refreshed.";} else if(_errorMessage==iMsg) _errorMessage=null;} catch(e) {_errorMessage='Failed to add folder: ${e.toString()}';} finally {notifyListeners();} }
 
   // --- Playlist Management ---
-  Future<void> loadUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('userPlaylists'); if (s != null) _userPlaylists = (await compute(_jsonDecode, s)).map((j) => Playlist.fromJson(Map<String, dynamic>.from(j as Map))).toList(); } catch (_) { _userPlaylists = []; } }
+  Future<void> loadUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); final s = p.getString('userPlaylists'); if (s != null) _userPlaylists = (await compute(_jsonDecode, s)).map((j) => Playlist.fromJson(Map<String, dynamic>.from(j as Map))).toList(); _bumpHomeContent(); } catch (_) { _userPlaylists = []; } }
   Future<void> saveUserPlaylists() async { try { final p = await SharedPreferences.getInstance(); await p.setString('userPlaylists', await compute(_jsonEncode, _userPlaylists.map((pl) => pl.toJson()).toList())); } catch (e) { _addToRetryQueue(_RetryOperation('Save playlists', saveUserPlaylists)); } }
   Future<void> createPlaylist(String name, {List<Track>? initialTracks, String? imageUrl}) async { 
     if (name.trim().isEmpty) { 
@@ -2395,10 +2421,11 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
       final processed = _processForYouTracks(personalized, 20);
       
       _tracks = processed;
-      _recommendedTracks = processed; 
-      _cachedTracks[k] = _tracks; _capCache(_cachedTracks, 60); 
+      _recommendedTracks = processed;
+      _bumpHomeContent();
+      _cachedTracks[k] = _tracks; _capCache(_cachedTracks, 60);
       _discoveryCacheTimes[k] = now;
-      notifyListeners(); 
+      notifyListeners();
       return _tracks; 
     } catch (e) { 
       _errorMessage = 'Failed to load tracks.'; 
@@ -2594,6 +2621,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
       _cachedTracks[k] = _fullTrendingTracks; _capCache(_cachedTracks, 60); 
       _discoveryCacheTimes[k] = now;
       _trendingTracks = _fullTrendingTracks.take(5).toList(); 
+      _bumpHomeContent();
       notifyListeners(); 
       return _fullTrendingTracks; 
     } catch (e) { 

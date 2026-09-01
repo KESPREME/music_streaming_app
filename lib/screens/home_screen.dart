@@ -16,6 +16,7 @@ import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/themed_trending_now_screen.dart';
 
@@ -94,47 +95,15 @@ class _HomeScreenState extends State<HomeScreen>
                   child: _buildTopPicks(context),
                 ),
               ),
+              // Second+ tiers: rebuild only when Home content lists change,
+              // never on playback ticks or palette updates.
               SliverToBoxAdapter(
-                child: StaggerIn(
-                  controller: _entry,
-                  interval:
-                      const Interval(0.2, 0.65, curve: Curves.easeOutCubic),
-                  child: _buildJumpBackIn(context),
+                child: Selector<MusicProvider, int>(
+                  selector: (_, p) => p.homeContentVersion,
+                  child: _LowerSections(bottomInset: bottomInset),
+                  builder: (context, version, lower) => lower!,
                 ),
               ),
-              SliverToBoxAdapter(
-                child: StaggerIn(
-                  controller: _entry,
-                  interval:
-                      const Interval(0.35, 0.8, curve: Curves.easeOutCubic),
-                  child: _buildMadeForYou(context),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: StaggerIn(
-                  controller: _entry,
-                  interval:
-                      const Interval(0.5, 0.9, curve: Curves.easeOutCubic),
-                  child: _buildWhatsHot(context),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: StaggerIn(
-                  controller: _entry,
-                  interval:
-                      const Interval(0.6, 1.0, curve: Curves.easeOutCubic),
-                  child: _buildArtists(context),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: StaggerIn(
-                  controller: _entry,
-                  interval:
-                      const Interval(0.7, 1.0, curve: Curves.easeOutCubic),
-                  child: _buildMoods(context),
-                ),
-              ),
-              SliverPadding(padding: EdgeInsets.only(top: bottomInset - 88)),
             ],
           ),
         ),
@@ -220,20 +189,163 @@ class _HomeScreenState extends State<HomeScreen>
     HapticFeedback.lightImpact();
     context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
   }
+}
 
-  // ── Jump back in: compact continuation rail ──────────────────────────────
+void _openArtist(BuildContext context, Track artistTrack) {
+  HapticFeedback.selectionClick();
+  final provider = context.read<MusicProvider>();
+  provider.navigateToArtistObject(artistTrack);
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => ThemedArtistDetailScreen(
+        artistId: artistTrack.id,
+        artistName: artistTrack.artistName,
+        artistImage: artistTrack.albumArtUrl,
+      ),
+    ),
+  );
+}
 
-  Widget _buildJumpBackIn(BuildContext context) {
+/// Data-driven lower-Home renderer. Observes only [homeContentVersion], so
+/// playback ticks and palette updates never rebuild these sections. Order
+/// adapts to available data; empty sections collapse entirely (spacing
+/// included).
+class _LowerSections extends StatelessWidget {
+  const _LowerSections({required this.bottomInset});
+
+  final double bottomInset;
+
+  @override
+  Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
+    final sections = <Widget>[];
+
+    // SECONDARY — continue listening (compact rail).
     final recents = provider.recentlyPlayed
         .where((t) => t.id != provider.currentTrack?.id)
         .toList();
-    if (recents.isEmpty) return const SizedBox.shrink();
+    if (recents.isNotEmpty) {
+      sections.add(_JumpBackInSection(
+        recents: recents,
+        onPlay: (track) => _play(context, track, recents),
+        onOptions: (track) => ThemedOptionsSheet.show(
+          context,
+          track: track,
+          isRecentlyPlayedContext: true,
+        ),
+      ));
+    }
+
+    // SECONDARY — made for you rows (skip the 5 in the hero carousel).
+    final recs = provider.recommendedTracks;
+    final mfy =
+        (recs.length > 5 ? recs.skip(5).take(6) : recs.take(6)).toList();
+    final mfyFallback =
+        mfy.isEmpty ? provider.trendingTracks.take(6).toList() : mfy;
+    if (mfyFallback.isNotEmpty) {
+      sections.add(_MadeForYouSection(
+        tracks: mfyFallback,
+        isPlaying: (t) =>
+            provider.currentTrack?.id == t.id && provider.isPlaying,
+        onPlay: (track) => _play(context, track, mfyFallback),
+        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+      ));
+    }
+
+    // TERTIARY — what's hot (editorial parallax rail).
+    final trending = provider.trendingTracks;
+    if (trending.isNotEmpty) {
+      sections.add(_WhatsHotSection(
+        tracks: trending,
+        onPlay: (track) => _play(context, track, trending),
+        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        onSeeAll: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()),
+        ),
+      ));
+    }
+
+    // DISCOVERY — new releases (2-up editorial grid; distinct data source).
+    final newReleases = provider.newReleases;
+    if (newReleases.isNotEmpty) {
+      sections.add(_NewReleasesSection(
+        tracks: newReleases.take(6).toList(),
+        onPlay: (track) => _play(context, track, newReleases),
+        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+      ));
+    }
+
+    // COLLECTIONS — user playlists (editorial rail).
+    final playlists = provider.userPlaylists;
+    if (playlists.isNotEmpty) {
+      sections.add(_PlaylistsSection(playlists: playlists));
+    }
+
+    // PEOPLE — artists.
+    final artists = _dedupeArtists(provider);
+    if (artists.isNotEmpty) {
+      sections.add(_ArtistsSection(
+        artists: artists,
+        onTap: (artist) => _openArtist(context, artist),
+      ));
+    }
+    // EXPLORATION — moods (editorial tiles), intentional quiet ending.
+    sections.add(const _MoodsSection());
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
+        for (final section in sections)
+          Padding(
+            padding: const EdgeInsets.only(top: 34),
+            child: section,
+          ),
+        SizedBox(height: bottomInset - 88 + 28),
+      ],
+    );
+  }
+
+  List<Track> _dedupeArtists(MusicProvider provider) {
+    final seen = <String>{};
+    final artists = <Track>[];
+    for (final track in [
+      ...provider.recentlyPlayed,
+      ...provider.trendingTracks
+    ]) {
+      if (track.artistName.isEmpty) continue;
+      if (seen.add(track.artistName)) artists.add(track);
+      if (artists.length >= 10) break;
+    }
+    return artists;
+  }
+
+  static void _play(
+      BuildContext context, Track track, List<Track> contextList) {
+    HapticFeedback.lightImpact();
+    context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
+  }
+}
+
+// ── Lower sections ───────────────────────────────────────────────────────────
+
+class _JumpBackInSection extends StatelessWidget {
+  const _JumpBackInSection({
+    required this.recents,
+    required this.onPlay,
+    required this.onOptions,
+  });
+
+  final List<Track> recents;
+  final void Function(Track) onPlay;
+  final void Function(Track) onOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         const HomeSectionHeader(title: 'Jump back in'),
         SizedBox(
           height: 148,
@@ -251,12 +363,8 @@ class _HomeScreenState extends State<HomeScreen>
                   title: track.trackName,
                   subtitle: track.artistName,
                   size: 116,
-                  onTap: () => _play(context, track, recents),
-                  onLongPress: () => ThemedOptionsSheet.show(
-                    context,
-                    track: track,
-                    isRecentlyPlayedContext: true,
-                  ),
+                  onTap: () => onPlay(track),
+                  onLongPress: () => onOptions(track),
                 ),
               );
             },
@@ -265,72 +373,89 @@ class _HomeScreenState extends State<HomeScreen>
       ],
     );
   }
+}
 
-  // ── Made for you: compact open rows (grounded, not cards) ────────────────
+class _MadeForYouSection extends StatelessWidget {
+  const _MadeForYouSection({
+    required this.tracks,
+    required this.isPlaying,
+    required this.onPlay,
+    required this.onOptions,
+  });
 
-  Widget _buildMadeForYou(BuildContext context) {
-    final provider = context.watch<MusicProvider>();
-    final recs = provider.recommendedTracks.isNotEmpty
-        ? provider.recommendedTracks.skip(5).take(6).toList()
-        : provider.trendingTracks.take(6).toList();
-    if (recs.isEmpty) return const SizedBox.shrink();
+  final List<Track> tracks;
+  final bool Function(Track) isPlaying;
+  final void Function(Track) onPlay;
+  final void Function(Track) onOptions;
 
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
         const HomeSectionHeader(title: 'Made for you'),
-        ...recs.map((track) {
-          final isPlaying =
-              provider.currentTrack?.id == track.id && provider.isPlaying;
-          return ForYouRow(
-            artUrl: track.albumArtUrl,
-            title: track.trackName,
-            subtitle: track.artistName,
-            isPlaying: isPlaying,
-            onTap: () => _play(context, track, recs),
-            onLongPress: () => ThemedOptionsSheet.show(context, track: track),
-          );
-        }),
+        ...tracks.map((track) => ForYouRow(
+              artUrl: track.albumArtUrl,
+              title: track.trackName,
+              subtitle: track.artistName,
+              isPlaying: isPlaying(track),
+              onTap: () => onPlay(track),
+              onLongPress: () => onOptions(track),
+            )),
       ],
     );
   }
+}
 
-  // ── What's hot: editorial parallax rail ──────────────────────────────────
+class _WhatsHotSection extends StatefulWidget {
+  const _WhatsHotSection({
+    required this.tracks,
+    required this.onPlay,
+    required this.onOptions,
+    required this.onSeeAll,
+  });
 
-  Widget _buildWhatsHot(BuildContext context) {
-    final provider = context.watch<MusicProvider>();
-    final trending = provider.trendingTracks;
-    if (trending.isEmpty) return const SizedBox.shrink();
+  final List<Track> tracks;
+  final void Function(Track) onPlay;
+  final void Function(Track) onOptions;
+  final VoidCallback onSeeAll;
 
+  @override
+  State<_WhatsHotSection> createState() => _WhatsHotSectionState();
+}
+
+class _WhatsHotSectionState extends State<_WhatsHotSection> {
+  late final PageController _controller = PageController(
+    viewportFraction: 0.52,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
-        HomeSectionHeader(
-          title: "What's hot",
-          onViewAll: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()),
-          ),
-        ),
+        HomeSectionHeader(title: "What's hot", onViewAll: widget.onSeeAll),
         SizedBox(
           height: 224,
           child: ParallaxMediaCarousel(
-            controller: _whatsHotController,
-            count: trending.length,
+            controller: _controller,
+            count: widget.tracks.length,
             itemBuilder: (context, index, pageOffset) {
-              final track = trending[index];
+              final track = widget.tracks[index];
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: PressableScale(
-                  onTap: () => _play(context, track, trending),
-                  onLongPress: () =>
-                      ThemedOptionsSheet.show(context, track: track),
+                  onTap: () => widget.onPlay(track),
+                  onLongPress: () => widget.onOptions(track),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Artwork = the card's dominant object, open (no chrome).
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
@@ -343,7 +468,6 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Metadata anchored to the card, calm hierarchy.
                       Text(
                         track.trackName,
                         maxLines: 1,
@@ -367,34 +491,187 @@ class _HomeScreenState extends State<HomeScreen>
       ],
     );
   }
+}
 
-  // ── Artists ──────────────────────────────────────────────────────────────
+/// Two-up editorial grid — visually distinct from rails and rows.
+class _NewReleasesSection extends StatelessWidget {
+  const _NewReleasesSection({
+    required this.tracks,
+    required this.onPlay,
+    required this.onOptions,
+  });
 
-  Widget _buildArtists(BuildContext context) {
-    final provider = context.watch<MusicProvider>();
-    final seen = <String>{};
-    final artists = <Track>[];
-    for (final track in [
-      ...provider.recentlyPlayed,
-      ...provider.trendingTracks
-    ]) {
-      if (track.artistName.isEmpty) continue;
-      if (seen.add(track.artistName)) artists.add(track);
-      if (artists.length >= 10) break;
-    }
-    if (artists.isEmpty) return const SizedBox.shrink();
+  final List<Track> tracks;
+  final void Function(Track) onPlay;
+  final void Function(Track) onOptions;
 
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
-        HomeSectionHeader(
-          title: 'Artists',
-          onViewAll: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ThemedAllArtistsScreen()),
+        const HomeSectionHeader(title: 'New releases'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final tileW = (constraints.maxWidth - 16) / 2;
+              return Wrap(
+                spacing: 16,
+                runSpacing: 18,
+                children: [
+                  for (final track in tracks)
+                    SizedBox(
+                      width: tileW,
+                      child: PressableScale(
+                        onTap: () => onPlay(track),
+                        onLongPress: () => onOptions(track),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: AspectRatio(
+                                aspectRatio: 1,
+                                child: track.albumArtUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: track.albumArtUrl,
+                                        fit: BoxFit.cover,
+                                        memCacheWidth: 340,
+                                        fadeInDuration:
+                                            const Duration(milliseconds: 200),
+                                        errorWidget: (_, __, ___) => Container(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.05)),
+                                      )
+                                    : Container(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.05)),
+                              ),
+                            ),
+                            const SizedBox(height: 9),
+                            Text(
+                              track.trackName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: type_tokens.Type.label(context),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              track.artistName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: type_tokens.Type.metadata(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _PlaylistsSection extends StatelessWidget {
+  const _PlaylistsSection({required this.playlists});
+
+  final List playlists;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const HomeSectionHeader(title: 'Your playlists'),
+        SizedBox(
+          height: 158,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: playlists.length,
+            itemBuilder: (context, index) {
+              final playlist = playlists[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: PressableScale(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ThemedPlaylistDetailScreen(
+                        playlistId: playlist.id,
+                        playlistName: playlist.name,
+                        playlistImage: playlist.imageUrl,
+                        cachedTracks: playlist.tracks,
+                      ),
+                    ),
+                  ),
+                  child: SizedBox(
+                    width: 132,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox(
+                            width: 132,
+                            height: 74,
+                            child: playlist.imageUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: playlist.imageUrl,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 280,
+                                    errorWidget: (_, __, ___) => Container(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.05)),
+                                  )
+                                : Container(
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                    child: const Icon(Icons.queue_music_rounded,
+                                        color: Colors.white24)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          playlist.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.label(context),
+                        ),
+                        Text(
+                          '${playlist.tracks.length} tracks',
+                          style: type_tokens.Type.metadata(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ArtistsSection extends StatelessWidget {
+  const _ArtistsSection({required this.artists, required this.onTap});
+
+  final List<Track> artists;
+  final void Function(Track) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const HomeSectionHeader(title: 'Artists'),
         SizedBox(
           height: 132,
           child: ListView.builder(
@@ -405,12 +682,11 @@ class _HomeScreenState extends State<HomeScreen>
             itemBuilder: (context, index) {
               final artist = artists[index];
               return Padding(
-                // Spacious: each portrait independent, next one peeks.
                 padding: const EdgeInsets.only(right: 28),
                 child: ArtistPortrait(
                   name: artist.artistName,
                   imageUrl: artist.albumArtUrl,
-                  onTap: () => _openArtist(context, artist),
+                  onTap: () => onTap(artist),
                 ),
               );
             },
@@ -419,38 +695,19 @@ class _HomeScreenState extends State<HomeScreen>
       ],
     );
   }
+}
 
-  void _openArtist(BuildContext context, Track artistTrack) {
-    HapticFeedback.selectionClick();
+class _MoodsSection extends StatelessWidget {
+  const _MoodsSection();
+
+  @override
+  Widget build(BuildContext context) {
     final provider = context.read<MusicProvider>();
-    provider.navigateToArtistObject(artistTrack);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ThemedArtistDetailScreen(
-          artistId: artistTrack.id,
-          artistName: artistTrack.artistName,
-          artistImage: artistTrack.albumArtUrl,
-        ),
-      ),
-    );
-  }
-
-  // ── Moods: editorial text-led tiles, lowest on the page ──────────────────
-
-  Widget _buildMoods(BuildContext context) {
-    final provider = context.read<MusicProvider>();
-    const moods = [
-      'Pop',
-      'Hip-Hop',
-      'Rock',
-      'Chill',
-    ];
+    const moods = ['Pop', 'Hip-Hop', 'Rock', 'Chill'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
         HomeSectionHeader(
           title: 'Moods',
           onViewAll: () => Navigator.push(
@@ -458,7 +715,6 @@ class _HomeScreenState extends State<HomeScreen>
             MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()),
           ),
         ),
-        // Wrap: widths follow labels, reads as a word cloud not filter pills.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Wrap(
@@ -482,8 +738,6 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
         ),
-        // Deliberate quiet ending before mini-player/navigation.
-        const SizedBox(height: 28),
       ],
     );
   }
