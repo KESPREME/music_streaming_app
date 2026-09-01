@@ -111,18 +111,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return PlayerAwarePopScope(
       child: Scaffold(
         extendBodyBehindAppBar: true,
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isDark
-                  ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-                  : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
-            ),
-          ),
-          child: SafeArea(
-            child: CustomScrollView(
+        backgroundColor: Colors.transparent, // Ambient canvas behind
+        body: SafeArea(
+          child: CustomScrollView(
               slivers: [
                 SliverAppBar(
                   surfaceTintColor: Colors.transparent,
@@ -256,8 +247,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildMainLibraryList(BuildContext context) {

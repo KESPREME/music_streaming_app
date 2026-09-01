@@ -41,21 +41,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     return Scaffold(
-      extendBody: true, 
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark 
-              ? [const Color(0xFF141414), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
-          ),
-        ),
-        child: SafeArea(
+      extendBody: true,
+      backgroundColor: Colors.transparent, // Ambient canvas behind
+       body: SafeArea(
           bottom: false,
           child: Column(
              children: [
@@ -73,8 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                ),
              ],
           ),
-        ),
-      ),
+       ),
     );
   }
 
