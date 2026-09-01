@@ -487,9 +487,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       BuildContext context, MusicProvider provider, Color accentColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -510,6 +512,31 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 provider.isCasting ? 'Casting' : 'Devices',
                 style: GoogleFonts.plusJakartaSans(
                   color: provider.isCasting ? accentColor : Colors.white60,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          // Lofi mode (v5.2): 0.9x speed + pitch drop; active pill shows state.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GlassPlayerControl(
+                icon: Icons.nights_stay_rounded,
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  provider.lofi.toggle();
+                },
+                semanticLabel: 'Lofi mode',
+                tooltip: 'Lofi mode (0.9x + pitch drop)',
+                selected: provider.isLofiEnabled,
+                primary: provider.isLofiEnabled,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Lofi',
+                style: GoogleFonts.plusJakartaSans(
+                  color: provider.isLofiEnabled ? accentColor : Colors.white60,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -543,7 +570,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               ),
             ],
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

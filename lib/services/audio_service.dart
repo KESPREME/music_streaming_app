@@ -293,9 +293,12 @@ class AudioService {
       _isConfiguring = true;
       try {
         await _audioPlayer.setAudioSource(finalSource, initialIndex: initialIndex);
-        // Speed survives source swaps (ExoPlayer resets it on setAudioSource).
+        // Speed/pitch survive source swaps (ExoPlayer resets on setAudioSource).
         if (_speed != 1.0) {
           await _audioPlayer.setSpeed(_speed);
+        }
+        if (_pitch != 1.0) {
+          await setPitch(_pitch);
         }
         await _audioPlayer.play();
       } finally {
@@ -450,6 +453,19 @@ class AudioService {
 
   double _speed = 1.0;
   double get speed => _speed;
+
+  Future<void> setPitch(double pitch) async {
+    _pitch = pitch;
+    try {
+      await _audioPlayer.setPitch(pitch);
+    } catch (e) {
+      // setPitch unsupported off Android (just_audio logs internally).
+      debugPrint('AudioService: setPitch unavailable: $e');
+    }
+  }
+
+  double _pitch = 1.0;
+  double get pitch => _pitch;
 
   // Handle playback errors
   void _handlePlaybackError(dynamic error) {

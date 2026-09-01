@@ -39,6 +39,7 @@ import '../services/stream_resolution_service.dart';
 import '../services/downloads/download_manager.dart';
 import '../services/palette/palette_service.dart';
 import 'accent_controller.dart';
+import 'lofi_controller.dart';
 import 'playback/playback_state.dart';
 import 'playback/playback_controller.dart';
 export 'playback/playback_state.dart' show RepeatMode;
@@ -448,6 +449,20 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   /// Shares the same AudioService instance as playback itself.
   late final PlaybackController playback = PlaybackController(_audioService);
   late final PlaybackController _playback = playback;
+  late final LofiController _lofi = LofiController(
+    onChanged: (enabled) {
+      unawaited(_audioService.setSpeed(
+          enabled ? LofiController.speed : LofiController.normalSpeed));
+      unawaited(_audioService.setPitch(
+          enabled ? LofiController.pitch : LofiController.normalPitch));
+      final prefsSet = SharedPreferences.getInstance().then(
+          (p) => p.setBool('lofiEnabled', enabled));
+      unawaited(prefsSet);
+      notifyListeners();
+    },
+  );
+  LofiController get lofi => _lofi;
+  bool get isLofiEnabled => _lofi.enabled;
   Stream<Duration> get positionStream => _audioService.onPositionChanged;
   
 
@@ -680,6 +695,12 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
       _isAutoBitrate = p.getBool('isAutoBitrate') ?? true;
       _shuffleEnabled = p.getBool('shuffleEnabled') ?? false; 
       _isAutoQueueEnabled = p.getBool('autoQueueEnabled') ?? true;
+      final lofiEnabled = p.getBool('lofiEnabled') ?? false;
+      if (lofiEnabled && !_lofi.enabled) {
+        _lofi.setEnabled(lofiEnabled);
+        await _audioService.setSpeed(LofiController.speed);
+        await _audioService.setPitch(LofiController.pitch);
+      }
       
       final sourceValue = p.getString('musicSource') ?? 'youtube'; 
       _currentMusicSource = MusicSource.fromString(sourceValue); 
