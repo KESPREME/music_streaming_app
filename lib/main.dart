@@ -298,7 +298,9 @@ class _MainScreenState extends State<MainScreen> {
               index: _currentIndex,
               children: _screens,
             ),
-            // Search overlay (Muzo-style in-place transition).
+            // Search overlay (in-place transition). The nav bar's search
+            // pill morphs into the input; the overlay shows only tabs +
+            // results.
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOutCubic,
@@ -331,57 +333,75 @@ class _MainScreenState extends State<MainScreen> {
         ),
         bottomNavigationBar: SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ThemedNavBar(
-                    currentIndex: _currentIndex,
-                    onTap: _onItemTapped,
-                    searchMode: _searchMode,
-                    searchController: _searchController,
-                    searchFocusNode: _searchFocus,
-                    onSearchSubmitted: (query) {
-                      _searchFocus.unfocus();
-                      if (query.trim().isEmpty) return;
-                    },
-                    items: const [
-                      BottomNavigationBarItem(icon: Icon(Icons.home_rounded), activeIcon: Icon(Icons.home_filled), label: 'Home'),
-                      BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Discover'),
-                      BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
-                    ],
-                  ),
+          child: themeProvider.isMaterialYou
+              ? Row(
+                  children: [
+                    Expanded(
+                      child: ThemedNavBar(
+                        currentIndex: _currentIndex,
+                        onTap: _onItemTapped,
+                        items: const [
+                          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), activeIcon: Icon(Icons.home_filled), label: 'Home'),
+                          BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Discover'),
+                          BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Companion circle: search <-> home (Muzo morph).
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutBack,
+                      transitionBuilder: (child, animation) => ScaleTransition(
+                        scale: animation,
+                        child: FadeTransition(opacity: animation, child: child),
+                      ),
+                      child: _searchMode
+                          ? GlassCircleButton(
+                              key: const ValueKey('home_circle'),
+                              icon: Icons.home_outlined,
+                              onTap: () {
+                                _exitSearch();
+                                _onItemTapped(0);
+                              },
+                              semanticLabel: 'Close search',
+                            )
+                          : GlassCircleButton(
+                              key: const ValueKey('search_circle'),
+                              icon: Icons.search_rounded,
+                              onTap: _enterSearch,
+                              semanticLabel: 'Search',
+                            ),
+                    ),
+                  ],
+                )
+              : ThemedNavBar(
+                  currentIndex: _currentIndex,
+                  onTap: _onItemTapped,
+                  searchMode: _searchMode,
+                  onSearchToggle: (active) {
+                    if (active) {
+                      _enterSearch();
+                    } else {
+                      _exitSearch();
+                    }
+                  },
+                  searchController: _searchController,
+                  searchFocusNode: _searchFocus,
+                  onSearchSubmitted: (query) {
+                    _searchFocus.unfocus();
+                    if (query.trim().isEmpty) return;
+                  },
+                  onSearchCancel: () {
+                    _exitSearch();
+                    _onItemTapped(0);
+                  },
+                  items: const [
+                    BottomNavigationBarItem(icon: Icon(Icons.home_rounded), activeIcon: Icon(Icons.home_filled), label: 'Home'),
+                    BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Discover'),
+                    BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                // Companion circle: search <-> home (Muzo morph).
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
-                  switchInCurve: Curves.easeOutBack,
-                  transitionBuilder: (child, animation) => ScaleTransition(
-                    scale: animation,
-                    child: FadeTransition(opacity: animation, child: child),
-                  ),
-                  child: _searchMode
-                      ? GlassCircleButton(
-                          key: const ValueKey('home_circle'),
-                          icon: Icons.home_outlined,
-                          onTap: () {
-                            _exitSearch();
-                            _onItemTapped(0);
-                          },
-                          semanticLabel: 'Close search',
-                        )
-                      : GlassCircleButton(
-                          key: const ValueKey('search_circle'),
-                          icon: Icons.search_rounded,
-                          onTap: _enterSearch,
-                          semanticLabel: 'Search',
-                        ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

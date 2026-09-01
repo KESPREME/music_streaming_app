@@ -60,6 +60,14 @@ abstract final class Type {
         color: _onSurface(context, 0.5),
       );
 
+  // Search hint — inside the glass search pill.
+  static TextStyle searchHint(BuildContext context) => GoogleFonts.outfit(
+        fontSize: 15,
+        fontWeight: FontWeight.w400,
+        height: 1.2,
+        color: _onSurface(context, 0.45),
+      );
+
   static Color _onSurface(BuildContext context, [double opacity = 0.95]) =>
       Colors.white.withValues(alpha: opacity);
 }
