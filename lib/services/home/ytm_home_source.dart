@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/track.dart';
 import '../innertube/innertube_service.dart';
+import 'home_diagnostics.dart';
 import 'home_models.dart';
 
 /// Native YouTube Music Home source (browseId = FEmusic_home).
@@ -19,6 +21,10 @@ class YouTubeMusicHomeSource {
   YouTubeMusicHomeSource(this._innerTube);
 
   final InnerTubeService _innerTube;
+
+  /// Whether a visitor context was established before the Home request
+  /// (degraded-context detection for diagnostics).
+  bool get hasVisitorData => _innerTube.visitorData != null;
 
   static const _homeBrowseId = 'FEmusic_home';
 
@@ -34,6 +40,11 @@ class YouTubeMusicHomeSource {
     }
   }
 
+  /// Testable parse entry: raw browse JSON → HomeFeed (no network).
+  Future<HomeFeed?> parseResponse(Map<String, dynamic> data,
+          {int perShelfLimit = 10}) =>
+      _parse(data, perShelfLimit);
+
   Future<HomeFeed?> _parse(Map<String, dynamic> data, int perShelfLimit) async {
     try {
       final sections = <HomeSection>[];
@@ -41,6 +52,7 @@ class YouTubeMusicHomeSource {
       if (contents == null) return null;
 
       for (final section in contents) {
+        if (section is! Map<String, dynamic>) continue;
         // Shelf header.
         final shelf = section['musicCarouselShelfRenderer'];
         if (shelf is! Map<String, dynamic>) {
@@ -63,6 +75,7 @@ class YouTubeMusicHomeSource {
         if (carousel is! List) continue;
 
         for (final wrapper in carousel) {
+          if (wrapper is! Map<String, dynamic>) continue;
           if (items.length >= perShelfLimit) break;
 
           final responsive = wrapper['musicResponsiveListItemRenderer'];
@@ -80,8 +93,9 @@ class YouTubeMusicHomeSource {
           }
 
           if (kDebugMode) {
-            final kinds =
-                wrapper.keys.where((k) => k.endsWith('Renderer')).join(',');
+            final kinds = wrapper.keys
+                .where((k) => (k as String).endsWith('Renderer'))
+                .join(',');
             if (kinds.isNotEmpty) {
               debugPrint('YTMHomeSource: unknown item renderer: $kinds');
             }
@@ -403,6 +417,9 @@ class FallbackHomeSource {
 /// Cache + orchestration: stale-while-revalidate, schema-validated,
 /// in-flight coalescing, exponential backoff on repeated failures.
 /// Publishes one coherent snapshot — never partial updates.
+///
+/// Cache key binds to (schema, parserVersion, source, locale) — a feed
+/// generated under one context is never reused under another.
 class HomeRepository {
   HomeRepository({
     required YouTubeMusicHomeSource primary,
@@ -413,7 +430,7 @@ class HomeRepository {
   final YouTubeMusicHomeSource _primary;
   final FallbackHomeSource _fallback;
 
-  static const _cacheKey = 'home_feed_snapshot_v1';
+  static const _cachePrefix = 'home_feed_snapshot_v3';
   static const _freshTtl = Duration(minutes: 45);
   static const _maxBackoff = Duration(hours: 2);
 
@@ -431,15 +448,22 @@ class HomeRepository {
     return DateTime.now().difference(_current!.fetchedAt) > _freshTtl;
   }
 
+  /// Cache key bound to the context the feed was generated under.
+  static String _cacheKeyFor(String source, String locale) =>
+      '${_cachePrefix}_${source}_$locale';
+
+  static String _localeTag() => PlatformDispatcher.instance.locale.toString();
+
   /// Load: cache-first (immediate), then validate + refresh if due.
   /// Concurrent callers coalesce onto one request.
   Future<HomeFeed?> load() async {
     if (!_loadedFromCache) {
       _loadedFromCache = true;
-      _current = await _readCache();
+      _current = await _readCache(source: _currentSourceTag());
       if (kDebugMode && _current != null) {
         debugPrint(
-            'HomeRepository: cache hit (${_current!.sections.length} sections)');
+            'HomeRepository: cache hit (${_current!.sections.length} sections, '
+            'age=${DateTime.now().difference(_current!.fetchedAt).inMinutes}min)');
       }
     }
     if (_current == null || isRefreshDue) {
@@ -458,26 +482,68 @@ class HomeRepository {
     return _inFlight;
   }
 
+  String _currentSourceTag() => 'primary';
+
+  bool _primaryHasVisitor() => _primary.hasVisitorData;
+
   Future<HomeFeed?> _fetchFresh() async {
     try {
+      final sw = Stopwatch()..start();
       // Primary → fallback. Never merge degraded sources.
       var feed = await _primary.fetch();
+      String sourceTag = 'primary';
       if (feed == null) {
         feed = await _fallback.fetch();
+        sourceTag = 'fallback';
+        if (kDebugMode && feed != null) {
+          debugPrint('HomeRepository: FALLBACK active (primary failed)');
+        }
       }
+      final requestMs = sw.elapsedMilliseconds;
+
       if (feed == null) {
         _failureCount++;
         _scheduleBackoff();
         if (kDebugMode) debugPrint('HomeRepository: all sources failed');
         return _current; // keep cached content
       }
+
+      // Quality gate: a fresh feed must be structurally sane before it
+      // replaces a known-good cache (spec: bad fresh data must not poison
+      // good cache).
+      if (!feedPassesQualityGate(feed)) {
+        _failureCount++;
+        _scheduleBackoff();
+        if (kDebugMode) {
+          debugPrint(
+              'HomeRepository: fresh feed FAILED quality gate — keeping cache');
+        }
+        return _current;
+      }
+
       _failureCount = 0;
       _current = feed;
-      unawaited(_writeCache(feed));
+      unawaited(_writeCache(feed, sourceTag));
+      HomeDiagnostics.logRequestContext(
+        source: feed.source,
+        clientName: 'WEB_REMIX',
+        clientVersion: 'dynamic (1.YYYYMMDD.01.00)',
+        hl: PlatformDispatcher.instance.locale.languageCode,
+        hasVisitorId: _primaryHasVisitor(),
+        hasSignatureTimestamp: true,
+      );
+      HomeDiagnostics.logFeedReport(
+        feed: feed,
+        cacheHit: false,
+        requestMs: requestMs,
+        fallbackActive: sourceTag == 'fallback',
+      );
+      HomeDiagnostics.logProvenance(feed);
       if (kDebugMode) {
+        final items = feed.sections.fold<int>(0, (n, s) => n + s.items.length);
         debugPrint(
-            'HomeRepository: fresh feed (${feed.source}, ${feed.sections.length} sections, '
-            '${feed.sections.fold<int>(0, (n, s) => n + s.items.length)} items)');
+            'HomeRepository: fresh feed source=${feed.source} sections=${feed.sections.length} '
+            'items=$items requestMs=$requestMs qualityScore=${HomeDiagnostics.computeQualityScore(feed)}');
       }
       return feed;
     } catch (e) {
@@ -488,6 +554,20 @@ class HomeRepository {
     }
   }
 
+  /// Structural sanity: ≥2 sections, ≥1 item per section already enforced
+  /// by the parser; here we guard against catastrophic regressions.
+  static bool feedPassesQualityGate(HomeFeed feed) {
+    if (feed.sections.isEmpty) return false;
+    if (feed.sections.length < 2) return false;
+    final items = feed.sections.fold<int>(0, (n, s) => n + s.items.length);
+    if (items < 4) return false;
+    // Every section must have a non-empty title and ≥2 items.
+    for (final s in feed.sections) {
+      if (s.title.isEmpty || s.items.length < 2) return false;
+    }
+    return true;
+  }
+
   void _scheduleBackoff() {
     final seconds = (30 * (1 << _failureCount.clamp(0, 7))) +
         DateTime.now().millisecondsSinceEpoch % 1000;
@@ -496,10 +576,11 @@ class HomeRepository {
         DateTime.now().add(delay > _maxBackoff ? _maxBackoff : delay);
   }
 
-  Future<HomeFeed?> _readCache() async {
+  Future<HomeFeed?> _readCache({required String source}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_cacheKey);
+      final key = _cacheKeyFor(source, _localeTag());
+      final raw = prefs.getString(key);
       if (raw == null) return null;
       // Defensive: corrupt cache must not crash Home.
       final json = jsonDecode(raw);
@@ -511,12 +592,26 @@ class HomeRepository {
     }
   }
 
-  Future<void> _writeCache(HomeFeed feed) async {
+  Future<void> _writeCache(HomeFeed feed, String source) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey, jsonEncode(feed.toJson()));
+      await prefs.setString(
+          _cacheKeyFor(source, _localeTag()), jsonEncode(feed.toJson()));
     } catch (e) {
       if (kDebugMode) debugPrint('HomeRepository: cache write failed: $e');
     }
+  }
+
+  /// Dev-only: clear Home cache without touching anything else.
+  Future<void> clearHomeCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith(_cachePrefix)) await prefs.remove(key);
+    }
+    _current = null;
+    _loadedFromCache = false;
+    _failureCount = 0;
+    _nextAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);
   }
 }

@@ -6,7 +6,10 @@
 /// caches safely.
 library;
 
-const int kHomeFeedSchemaVersion = 1;
+/// v2: type resolution reworked (ID-prefix + nav-shape, never subtitle
+/// startsWith guesses alone), source provenance added. Old v1 snapshots
+/// invalidate automatically.
+const int kHomeFeedSchemaVersion = 2;
 
 enum HomeContentType { song, video, album, artist, playlist, unknown }
 

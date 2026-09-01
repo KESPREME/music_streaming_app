@@ -226,14 +226,16 @@ class InnerTubeService {
       headers['X-Goog-Visitor-Id'] = visitorData!;
     }
 
-    // Inject Authentication (Cookies + SAPISIDHASH)
-    // This upgrades the client to a "Logged In" state
+    // Muzo parity: anonymous requests carry a consent cookie; without it
+    // google can serve an EU-consent-gated degraded surface.
     final authHeaders = AuthService().getHeaders();
     if (authHeaders.isNotEmpty) {
       headers.addAll(authHeaders);
     } else if (cookie != null && clientType == YouTubeClientType.webRemix) {
       // Legacy/Manual cookie fallback (if AuthService specific logic not used)
       headers['Cookie'] = cookie!;
+    } else {
+      headers['Cookie'] = 'CONSENT=YES+1';
     }
 
     return headers;
@@ -791,14 +793,25 @@ class InnerTubeService {
 
   /// Raw browse endpoint for dedicated sources (e.g. the Home feed).
   /// Additive passthrough — no parsing here; the caller owns semantics.
+  ///
+  /// Muzo-parity browse context: dynamic clientVersion (1.YYYYMMDD.01.00),
+  /// platform-locale hl, no gl override (hardcoded gl=US served US-centric
+  /// content to every user), playbackContext with the real signature
+  /// timestamp, CONSENT cookie when no auth is present. Player contexts
+  /// keep the frozen static clientVersion — the playback pipeline
+  /// (BotGuard/PO token) is version-sensitive and deliberately untouched.
   Future<Map<String, dynamic>> browseJson(String browseId,
       {String? params}) async {
     await _ensureVisitorData();
+    // Signature timestamp for playbackContext — best-effort, cached 6h.
+    if (_signatureTimestamp == null) {
+      await _getSignatureTimestamp();
+    }
     final response = await _httpClient.post(
       Uri.parse('$_apiUrl/browse?prettyPrint=false'),
       headers: _buildHeaders(),
       body: jsonEncode({
-        'context': _buildContext(),
+        'context': _buildBrowseContext(),
         'browseId': browseId,
         if (params != null && params.isNotEmpty) 'params': params,
       }),
@@ -812,6 +825,37 @@ class InnerTubeService {
       return decoded;
     }
     throw Exception('Browse $browseId returned unexpected payload');
+  }
+
+  /// Browse-only context (Muzo v3.9 parity). Dynamic clientVersion —
+  /// stale versions receive a degraded/limited Home surface.
+  Map<String, dynamic> _buildBrowseContext() {
+    final now = DateTime.now();
+    final clientVersion =
+        '1.${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.01.00';
+    final hl = PlatformDispatcher.instance.locale.languageCode;
+
+    final context = <String, dynamic>{
+      'client': {
+        'clientName': _webRemixClientName,
+        'clientVersion': clientVersion,
+        'hl': hl,
+        'platform': 'DESKTOP',
+      },
+      'user': {},
+      // Real signature timestamp (Muzo approximates with now-86400s; ours
+      // comes from the player JS pipeline and is fresher).
+      if (_signatureTimestamp != null)
+        'playbackContext': {
+          'contentPlaybackContext': {
+            'signatureTimestamp': _signatureTimestamp,
+          },
+        },
+    };
+    if (visitorData != null) {
+      (context['client'] as Map<String, dynamic>)['visitorData'] = visitorData;
+    }
+    return context;
   }
 
   /// Get home/browse content (trending, recommendations)
@@ -1503,7 +1547,13 @@ class InnerTubeService {
     return tracks;
   }
 
-  /// Search for trending/charts
+  /// Trusted trending/charts browse (FEmusic_charts).
+  ///
+  /// NO search-keyword fallback: hardcoded searches ('top hits 2024') were
+  /// returning stale arbitrary uploads under the "Trending" name. Empty or
+  /// failed chart browse now propagates — the Home pipeline falls back to
+  /// new releases, and callers decide, instead of silently getting random
+  /// search results dressed as trending.
   Future<List<Track>> getTrendingTracks({int limit = 20}) async {
     try {
       final body = jsonEncode({
@@ -1519,25 +1569,20 @@ class InnerTubeService {
       );
 
       if (response.statusCode != 200) {
-        // Fallback to search for popular music
-        return await searchSongs('top hits 2024', limit: limit);
+        if (kDebugMode) {
+          debugPrint(
+              'InnerTubeService: charts browse failed: ${response.statusCode}');
+        }
+        return [];
       }
 
-      final data = jsonDecode(response.body);
-      final tracks = _parseHomeResults(data, limit);
-
-      if (tracks.isEmpty) {
-        // Fallback to search
-        return await searchSongs('trending music 2024', limit: limit);
-      }
-
+      final tracks = _parseHomeResults(jsonDecode(response.body), limit);
       return tracks;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Trending error: $e');
       }
-      // Fallback to search
-      return searchSongs('popular songs', limit: limit);
+      return [];
     }
   }
 

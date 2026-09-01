@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -79,9 +82,18 @@ class _HomeScreenState extends State<HomeScreen>
         child: RefreshIndicator(
           color: Theme.of(context).colorScheme.primary,
           backgroundColor: const Color(0xFF141414),
-          onRefresh: () => context
-              .read<MusicProvider>()
-              .fetchTrendingTracks(forceRefresh: true),
+          onRefresh: () async {
+            final previous = context.read<MusicProvider>().homeFeed;
+            await context.read<MusicProvider>().refreshHomeFeed();
+            // Also refresh trusted discovery sources in background.
+            final provider = context.read<MusicProvider>();
+            unawaited(provider.fetchTrendingTracks(forceRefresh: true));
+            if (kDebugMode) {
+              debugPrint('Home: pull-to-refresh complete, '
+                  'sections=${provider.homeFeed?.sections.length ?? 0} '
+                  '(previous: ${previous?.sections.length ?? 0})');
+            }
+          },
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [

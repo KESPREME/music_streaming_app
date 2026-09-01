@@ -38,6 +38,7 @@ import '../services/network_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/stream_resolution_service.dart';
 import '../services/downloads/download_manager.dart';
+import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
 import '../services/home/ytm_home_source.dart';
 import '../services/home/home_composer.dart';
@@ -148,8 +149,18 @@ class MusicProvider
   }
 
   Future<void> refreshHomeFeed() async {
+    final previous = _homeFeed;
     final feed = await _homeRepository.refresh();
+    if (kDebugMode) HomeDiagnostics.logRefreshDiff(previous: previous, next: feed);
     _publishHomeFeed(feed);
+  }
+
+  /// Dev action: clear Home cache only, reinit context, refetch, log.
+  Future<void> debugRefreshHomeSource() async {
+    if (!kDebugMode) return;
+    await _homeRepository.clearHomeCache();
+    debugPrint('HomeDiagnostics: cache cleared, requesting fresh feed');
+    await refreshHomeFeed();
   }
 
   void _publishHomeFeed(HomeFeed? raw) {
