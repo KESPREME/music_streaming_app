@@ -601,10 +601,15 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       }
       
       // FIX: Detect track completion and advance to next track
-      // ProcessingState.completed means the current track finished playing
+      // ProcessingState.completed with the always-windowed playlist only
+      // fires when a silent padding item finishes — a trailing echo of the
+      // real end. Nav-monitor (dummy skip) is the true advance signal, so
+      // ignore completions while parked on padding; the 2s duplicate guard
+      // below remains as belt-and-braces.
       if (state.processingState == ProcessingState.completed && 
           _currentTrack != null && 
-          !_isStopping) {
+          !_isStopping &&
+          !_audioService.isOnPaddingItem) {
         if (kDebugMode) debugPrint('MusicProvider: Track completed naturally, calling _onTrackComplete');
         _onTrackComplete();
       }
@@ -791,39 +796,57 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> _handleAutoSkipToNext() async {
     if (_consumeDuplicateAutoAdvance(_currentTrack?.id)) return;
 
+    // Sleep timer is honored here, at the authoritative advance signal —
+    // ProcessingState.completed only ever fires on padding items, so the
+    // old completed-path stop check was effectively unreachable.
+    if (_stopAfterCurrentTrack) {
+      _stopAfterCurrentTrack = false;
+      stopTrack();
+      return;
+    }
+
+    _recordListenSignal();
+
     if (_repeatMode == RepeatMode.one && _currentTrack != null) {
       // Replay the actual track: after auto-advance the player is parked on
       // the next dummy item, so seeking/resuming there would play silence.
       await _replayCurrentTrack();
-     
+      
       return;
     }
     await skipToNext();
   }
 
+  String? _lastSignalTrackId;
+
+  /// Records the recommendation-agent listen signal for the outgoing track.
+  /// Called once per track from the authoritative advance path.
+  void _recordListenSignal() {
+    final track = _currentTrack;
+    if (track == null || track.id == _lastSignalTrackId) return;
+    _lastSignalTrackId = track.id;
+
+    final listenTimeMs = _position.inMilliseconds;
+    final durationMs = _duration.inMilliseconds;
+
+    // Calculate completion rate (0-1)
+    final completionRate = durationMs > 0 
+        ? (listenTimeMs / durationMs).clamp(0.0, 1.0) 
+        : 1.0;
+    
+    // Skip timing if skipped early
+    final skipTimingMs = completionRate < 0.5 ? listenTimeMs : null;
+    
+    _recommendationService.recordPlay(
+      track,
+      completionRate: completionRate,
+      listenTimeMs: listenTimeMs,
+      skipTimingMs: skipTimingMs,
+    );
+  }
+
   Future<void> _onTrackComplete() async {
     if (kDebugMode) debugPrint('MusicProvider: _onTrackComplete event for ${_currentTrack?.trackName}');
-    
-    // Record enhanced play signal for recommendation agent
-    if (_currentTrack != null) {
-      final listenTimeMs = _position.inMilliseconds;
-      final durationMs = _duration.inMilliseconds;
-      
-      // Calculate completion rate (0-1)
-      final completionRate = durationMs > 0 
-          ? (listenTimeMs / durationMs).clamp(0.0, 1.0) 
-          : 1.0;
-      
-      // Skip timing if skipped early
-      final skipTimingMs = completionRate < 0.5 ? listenTimeMs : null;
-      
-      _recommendationService.recordPlay(
-        _currentTrack!,
-        completionRate: completionRate,
-        listenTimeMs: listenTimeMs,
-        skipTimingMs: skipTimingMs,
-      );
-    }
     
     if (_stopAfterCurrentTrack) {
       _stopAfterCurrentTrack = false;
@@ -833,7 +856,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
     if (_repeatMode == RepeatMode.one) {
        await _replayCurrentTrack();
-      
+       
        return;
     }
 

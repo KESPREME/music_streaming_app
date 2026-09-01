@@ -8,6 +8,8 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import '../services/network_service.dart';
 import '../utils/network_config.dart';
+import '../core/constants/user_agents.dart';
+import 'innertube/innertube_service.dart';
 import 'dart:math';
 
 
@@ -39,6 +41,20 @@ class AudioService {
   Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream; 
   Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
       .map((state) => state == ProcessingState.completed);
+
+  /// True when parked on a silent padding item (prev/next dummy) rather than
+  /// real content. With the always-windowed playlist, ProcessingState.
+  /// completed fires only when a dummy finishes — i.e. it is always a
+  /// trailing echo of the real track's end, never a fresh completion.
+  bool get isOnPaddingItem {
+    final index = _audioPlayer.currentIndex;
+    if (index == null) return false;
+    final sequence = _audioPlayer.sequence;
+    if (sequence == null || index < 0 || index >= sequence.length) return false;
+    final tag = sequence[index].tag;
+    return tag is MediaItem &&
+        (tag.id == 'prev_dummy' || tag.id == 'next_dummy');
+  }
 
   // Navigation Streams
   final _onSkipToNextController = StreamController<void>.broadcast();
@@ -460,13 +476,16 @@ class AudioService {
 
         final position = _audioPlayer.position;
 
+        // CRITICAL: UA must match the client that signed the URL or
+        // googlevideo returns 403. Re-derive from the URL itself, falling
+        // back to the WEB_REMIX UA — never a plain Chrome UA (which is what
+        // caused 403s here before).
         final headers = <String, String>{
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': InnerTubeService.userAgentForStreamUrl(_currentUrl!) ?? kWebRemixUserAgent,
           'Accept': '*/*',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate',
+          'Accept-Encoding': 'gzip',
           'Connection': 'keep-alive',
-          'DNT': '1',
         };
         
         if (_currentUrl!.contains('googlevideo.com') || _currentUrl!.contains('youtube.com')) {
@@ -522,13 +541,14 @@ class AudioService {
     if (kDebugMode) debugPrint("AudioService: Preloading track $url");
     _preloadedUrl = url;
     try {
+      // Same UA discipline as play(): if the caller doesn't specify one,
+      // derive it from the URL — never default to a generic Chrome UA.
       final headers = <String, String>{
-        'User-Agent': userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': userAgent ?? InnerTubeService.userAgentForStreamUrl(url) ?? kWebRemixUserAgent,
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate',
+        'Accept-Encoding': 'gzip',
         'Connection': 'keep-alive',
-        'DNT': '1',
       };
       
       if (url.contains('googlevideo.com') || url.contains('youtube.com')) {
