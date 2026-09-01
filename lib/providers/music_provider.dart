@@ -9,7 +9,7 @@ import 'dart:math';
 
 // Flutter Foundation & Material
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart'; // Added for NetworkImage
+import 'package:flutter/material.dart' hide RepeatMode; // Added for NetworkImage
 
 // Flutter Packages
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -39,6 +39,9 @@ import '../services/stream_resolution_service.dart';
 import '../services/downloads/download_manager.dart';
 import '../services/palette/palette_service.dart';
 import 'accent_controller.dart';
+import 'playback/playback_state.dart';
+import 'playback/playback_controller.dart';
+export 'playback/playback_state.dart' show RepeatMode;
 import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
 import '../services/lyrics/lyrics_service.dart'; // Multi-provider lyrics service
@@ -55,8 +58,7 @@ import '../models/music_source.dart'; // Music source enum
 import 'package:palette_generator/palette_generator.dart'; // Dynamic colors
 
 // Enums
-enum RepeatMode { off, all, one }
-// SortCriteria enum is imported from local_music_service.dart
+// RepeatMode now lives in providers/playback/playback_state.dart (re-exported above).
 
 // Helper function for list comparison (can be moved to a utils file)
 bool listEquals<T>(List<T>? a, List<T>? b) {
@@ -76,7 +78,8 @@ String _jsonEncode(Object data) => jsonEncode(data);
 
 List<dynamic> _jsonDecode(String s) => jsonDecode(s) as List<dynamic>;
 
-class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
+class MusicProvider with ChangeNotifier, WidgetsBindingObserver
+    implements MusicProviderLike {
   /// Album-art accent feed (null when not injected).
   final AccentController? _accentController;
 
@@ -438,6 +441,13 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   List<Track> get currentlyDownloadingTracks => _downloads.currentlyDownloadingTracks;
   List<Track> get downloadQueue => _downloads.downloadQueue;
   List<Track> get queue => List.unmodifiable(_queue); // Added queue getter
+  int get currentIndex => _currentIndex;
+  @override
+  List<Track>? get currentPlayingTracks => _currentPlayingTracks;
+  /// Immutable playback projection for shell/player/queue/lyrics surfaces.
+  /// Shares the same AudioService instance as playback itself.
+  late final PlaybackController playback = PlaybackController(_audioService);
+  late final PlaybackController _playback = playback;
   Stream<Duration> get positionStream => _audioService.onPositionChanged;
   
 
@@ -2693,8 +2703,21 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _connectivityStatusSubscription?.cancel();
     _sleepTimer?.cancel();
     _downloads.dispose();
+    _playback.dispose();
     debugPrint('MusicProvider: Disposed.');
     super.dispose();
+  }
+
+  // --- Playback projection sync ---
+  // Single sync point: every provider notification re-projects queue,
+  // context, and track identity into the immutable PlaybackState consumed
+  // by shell/player/queue/lyrics surfaces. Position/duration/buffering
+  // ticks stream directly into PlaybackController without going through
+  // here.
+  @override
+  void notifyListeners() {
+    _playback.projectFromProvider(this);
+    super.notifyListeners();
   }
 
 
