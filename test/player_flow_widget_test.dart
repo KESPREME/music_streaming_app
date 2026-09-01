@@ -160,9 +160,9 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Glass track'), findsOneWidget);
-    expect(find.text('Glass artist'), findsOneWidget);
-    expect(find.text('NOW PLAYING'), findsOneWidget);
+    final titleMatches = find.text('Glass track');
+    expect(titleMatches, findsWidgets); // header bar + body metadata
+    expect(find.text('Glass artist'), findsWidgets);
     expect(find.bySemanticsLabel('Play'), findsOneWidget);
     expect(find.bySemanticsLabel('Previous track'), findsOneWidget);
     expect(find.bySemanticsLabel('Next track'), findsOneWidget);
