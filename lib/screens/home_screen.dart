@@ -1,22 +1,32 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // For HapticFeedback
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../providers/music_provider.dart';
+
 import '../models/track.dart';
-import '../widgets/themed_card.dart';
-import '../widgets/themed_options_sheet.dart';
-import '../widgets/themed_trending_now_screen.dart';
-import '../widgets/themed_all_genres_screen.dart';
-import '../widgets/themed_all_artists_screen.dart';
-import '../widgets/themed_genre_songs_screen.dart';
+import '../providers/music_provider.dart';
+import '../design/tokens/motion.dart';
+import '../design/tokens/type.dart' as type_tokens;
 import '../theme/glass_tokens.dart';
-import '../widgets/themed_settings_screen.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/glass_surface.dart';
-import '../widgets/hero_track_card.dart';
-import 'discover_screen.dart';
+import '../widgets/home_sections.dart';
+import '../widgets/themed_all_artists_screen.dart';
+import '../widgets/themed_all_genres_screen.dart';
+import '../widgets/themed_genre_songs_screen.dart';
+import '../widgets/themed_artist_detail_screen.dart';
+import '../widgets/themed_options_sheet.dart';
+import '../widgets/themed_settings_screen.dart';
+import '../widgets/themed_trending_now_screen.dart';
 
+/// Home: one continuous, artwork-driven listening surface.
+///
+/// Hierarchy — hero (continue listening) dominates; rails and rows support;
+/// genres/artists stay quiet. No internal tabs: Discover lives in the bottom
+/// navigation, not duplicated here. Playback always flows through the global
+/// MusicProvider; Home only observes.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -24,19 +34,34 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entry = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+    value: 0,
+  );
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _entry.forward();
+    });
   }
-  
+
   @override
   void dispose() {
-    _tabController.dispose();
+    _entry.dispose();
     super.dispose();
+  }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 5) return 'Late night listening';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
   }
 
   @override
@@ -44,49 +69,77 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.transparent, // Ambient canvas behind
-       body: SafeArea(
-          bottom: false,
-          child: Column(
-             children: [
-               _buildCustomHeader(context),
-               _buildCustomTabBar(context),
-               Expanded(
-                 child: TabBarView(
-                   controller: _tabController,
-                   children: [
-                      _buildFeedTab(context),
-                      const DiscoverScreen(),
-                      _buildExploreTab(context),
-                   ],
-                 ),
-               ),
-             ],
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: Theme.of(context).colorScheme.primary,
+          backgroundColor: const Color(0xFF141414),
+          onRefresh: () => context
+              .read<MusicProvider>()
+              .fetchTrendingTracks(forceRefresh: true),
+          child: ListView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 130),
+            children: [
+              _buildHeader(context),
+              const SizedBox(height: 16),
+              StaggerIn(
+                controller: _entry,
+                interval: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+                child: _buildHeroSection(context),
+              ),
+              StaggerIn(
+                controller: _entry,
+                interval: const Interval(0.25, 0.75, curve: Curves.easeOutCubic),
+                child: _buildJumpBackIn(context),
+              ),
+              StaggerIn(
+                controller: _entry,
+                interval: const Interval(0.4, 0.9, curve: Curves.easeOutCubic),
+                child: _buildForYou(context),
+              ),
+              StaggerIn(
+                controller: _entry,
+                interval: const Interval(0.55, 1.0, curve: Curves.easeOutCubic),
+                child: _buildWhatsHot(context),
+              ),
+              const SizedBox(height: 8),
+              StaggerIn(
+                controller: _entry,
+                interval: const Interval(0.65, 1.0, curve: Curves.easeOutCubic),
+                child: _buildArtists(context),
+              ),
+              const SizedBox(height: 4),
+              StaggerIn(
+                controller: _entry,
+                interval: const Interval(0.75, 1.0, curve: Curves.easeOutCubic),
+                child: _buildGenres(context),
+              ),
+            ],
           ),
-       ),
+        ),
+      ),
     );
   }
 
-  Widget _buildCustomHeader(BuildContext context) {
+  // ── Header ───────────────────────────────────────────────────────────────
+
+  Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'Discover',
-            style: GoogleFonts.splineSans(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: Colors.white,
-            ),
-          ),
+          Text(_greeting(), style: type_tokens.Type.title(context)),
           GlassCircleButton(
             icon: Icons.settings_outlined,
             iconSize: 22,
             onTap: () {
               HapticFeedback.lightImpact();
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()),
+              );
             },
             semanticLabel: 'Settings',
           ),
@@ -94,450 +147,493 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
-  
-  Widget _buildCustomTabBar(BuildContext context) {
+
+  // ── Hero: continue listening ─────────────────────────────────────────────
+
+  Widget _buildHeroSection(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final Track? heroTrack = provider.currentTrack ??
+        (provider.recentlyPlayed.isNotEmpty ? provider.recentlyPlayed.first : null) ??
+        (provider.recommendedTracks.isNotEmpty ? provider.recommendedTracks.first : null) ??
+        (provider.trendingTracks.isNotEmpty ? provider.trendingTracks.first : null);
+
+    if (heroTrack == null) return const _HeroSkeleton();
+
+    final fromHistory = provider.recentlyPlayed.any((t) => t.id == heroTrack.id);
+    final eyebrow = fromHistory ? 'Jump back in' : 'Picked for you';
+
+    final size = MediaQuery.sizeOf(context);
+    final heroHeight = (size.height * 0.46).clamp(300.0, 400.0);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: GlassTokens.hMargin, vertical: 10),
-      child: GlassSurface(
-        tier: GlassTier.card,
-        borderRadius: 30,
-        padding: const EdgeInsets.all(4),
-        child: SizedBox(
-          height: 40,
-          child: Row(
-            children: [
-              expandedTabItem(0, "Feed"),
-              expandedTabItem(1, "Discover"),
-              expandedTabItem(2, "Explore"),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
-  Widget expandedTabItem(int index, String title) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return AnimatedBuilder(
-      animation: _tabController,
-      builder: (context, _) {
-         final selected = _tabController.index == index;
-         return Expanded(
-           child: GestureDetector(
-             onTap: () => _tabController.animateTo(index),
-             child: AnimatedContainer(
-               duration: const Duration(milliseconds: 220),
-               curve: Curves.easeOutCubic,
-               decoration: BoxDecoration(
-                 gradient: selected ? GlassTokens.inkBloom(accent, strength: 0.16) : null,
-                 color: selected ? Colors.white.withValues(alpha: 0.07) : Colors.transparent,
-                 borderRadius: BorderRadius.circular(GlassTokens.radiusChip),
-                 border: Border.all(
-                   color: selected ? GlassTokens.borderInteractiveSelected(accent) : Colors.transparent,
-                   width: 0.8,
-                 ),
-               ),
-               alignment: Alignment.center,
-               child: Text(
-                 title,
-                 style: GoogleFonts.splineSans(
-                   fontSize: 14.5,
-                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                   color: selected ? Colors.white : Colors.white.withValues(alpha: 0.55),
-                   letterSpacing: -0.2,
-                 ),
-               ),
-             ),
-           ),
-         );
-      }
-    );
-  }
-
-  Widget _buildFeedTab(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
-    
-    return RefreshIndicator(
-      color: Theme.of(context).colorScheme.primary,
-      backgroundColor: const Color(0xFF1E1E1E),
-      onRefresh: () async {
-        await musicProvider.fetchTracks(forceRefresh: true);
-      },
-      child: ListView(
-        padding: const EdgeInsets.only(top: 10, bottom: 100),
-        physics: const BouncingScrollPhysics(),
-        children: [
-           // 0. Top Picks (Hero Cards)
-           if (musicProvider.recommendedTracks.isNotEmpty) ...[
-             _buildSectionHeader("Top Picks"),
-             SizedBox(
-               height: 224,
-               child: PageView.builder(
-                 padEnds: false,
-                 controller: PageController(viewportFraction: 0.82),
-                 itemCount: musicProvider.recommendedTracks
-                     .take(5)
-                     .length,                 physics: const BouncingScrollPhysics(),
-                 itemBuilder: (context, index) {
-                   final track = musicProvider.recommendedTracks[index];
-                   return Padding(
-                     padding: EdgeInsets.only(
-                       left: index == 0 ? 20 : 6,
-                       right: index == musicProvider.recommendedTracks.take(5).length - 1 ? 20 : 6,
-                     ),
-                     child: HeroTrackCard(
-                       track: track,
-                       onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.recommendedTracks),
-                       onLongPress: () => ThemedOptionsSheet.show(context, track: track),
-                     ),
-                   );
-                 },
-               ),
-             ),
-             const SizedBox(height: 10),
-           ],
-
-           // 1. Recently Played (Horizontal)
-           if (musicProvider.recentlyPlayed.isNotEmpty) ...[
-             _buildSectionHeader("Jump Back In"),
-             SizedBox(
-               height: 190,
-               child: ListView.builder(
-                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                 scrollDirection: Axis.horizontal,
-                 itemCount: musicProvider.recentlyPlayed.length,
-                 physics: const BouncingScrollPhysics(),
-                 itemBuilder: (context, index) {
-                    final item = musicProvider.recentlyPlayed[index];
-                    return ThemedCard(
-                      imageUrl: item.albumArtUrl, 
-                      title: item.trackName, 
-                      subtitle: item.artistName,
-                      width: 140, 
-                      height: 140,
-                      onTap: () => musicProvider.playTrack(item, playlistTracks: musicProvider.recentlyPlayed),
-                      onLongPress: () {
-                      ThemedOptionsSheet.show(
-                        context,
-                        track: item,
-                        isRecentlyPlayedContext: true,
-                      );
-                      },
-                    );
-                 },
-               ),
-             ),
-           ],
-           
-            // 2. For You (Vertical List) — falls back to trending while the
-            // recommendation engine has no history to learn from yet.
-            const SizedBox(height: 10),
-            _buildSectionHeader("For You"),
-            ..._buildForYouList(musicProvider),
-            const SizedBox(height: 20),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: GlassTokens.hMargin),
+      child: _HeroCard(
+        track: heroTrack,
+        eyebrow: eyebrow,
+        height: heroHeight,
+        onPlay: () => _play(context, heroTrack, _heroContextList(provider)),
+        onOverflow: () => ThemedOptionsSheet.show(context, track: heroTrack),
       ),
     );
   }
 
-  List<Widget> _buildForYouList(MusicProvider musicProvider) {
-    final recs = musicProvider.recommendedTracks.isNotEmpty
-        ? musicProvider.recommendedTracks
-        : musicProvider.trendingTracks;
-    if (recs.isEmpty) {
-      return [
-        const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            ),
-          ),
-        ),
-      ];
-    }
-    return recs.map((track) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        child: InkWell(
-          onTap: () => musicProvider.playTrack(track, playlistTracks: recs),
-          onLongPress: () {
-            HapticFeedback.mediumImpact(); // Premium haptic feedback
-            ThemedOptionsSheet.show(context, track: track);
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04), // Glassy list
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    track.albumArtUrl,
-                    width: 60, height: 60, fit: BoxFit.cover,
-                    errorBuilder: (_,__,___) => Container(color: Colors.grey[800], width: 60, height: 60),
+  List<Track> _heroContextList(MusicProvider provider) {
+    if (provider.recentlyPlayed.isNotEmpty) return provider.recentlyPlayed;
+    if (provider.recommendedTracks.isNotEmpty) return provider.recommendedTracks;
+    return provider.trendingTracks;
+  }
+
+  void _play(BuildContext context, Track track, List<Track> contextList) {
+    HapticFeedback.lightImpact();
+    context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
+  }
+
+  // ── Jump Back In rail ────────────────────────────────────────────────────
+
+  Widget _buildJumpBackIn(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final recents = provider.recentlyPlayed
+        .where((t) => t.id != provider.currentTrack?.id)
+        .toList();
+    if (recents.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 28),
+        const HomeSectionHeader(title: 'Jump back in'),
+        SizedBox(
+          height: 176,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: recents.length,
+            itemBuilder: (context, index) {
+              final track = recents[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: RailCard(
+                  artUrl: track.albumArtUrl,
+                  title: track.trackName,
+                  subtitle: track.artistName,
+                  size: 132,
+                  onTap: () => _play(context, track, recents),
+                  onLongPress: () => ThemedOptionsSheet.show(
+                    context,
+                    track: track,
+                    isRecentlyPlayedContext: true,
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── For You rows ─────────────────────────────────────────────────────────
+
+  Widget _buildForYou(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final recs = provider.recommendedTracks.isNotEmpty
+        ? provider.recommendedTracks
+        : provider.trendingTracks.take(10).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30),
+        const HomeSectionHeader(title: 'For you'),
+        if (recs.isEmpty)
+          const _RowsSkeleton()
+        else
+          ...recs.map((track) {
+            final isPlaying = provider.currentTrack?.id == track.id &&
+                provider.isPlaying;
+            return ForYouRow(
+              artUrl: track.albumArtUrl,
+              title: track.trackName,
+              subtitle: track.artistName,
+              isPlaying: isPlaying,
+              onTap: () => _play(context, track, recs),
+              onLongPress: () =>
+                  ThemedOptionsSheet.show(context, track: track),
+            );
+          }),
+      ],
+    );
+  }
+
+  // ── What's Hot rail ──────────────────────────────────────────────────────
+
+  Widget _buildWhatsHot(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final trending = provider.trendingTracks;
+    if (trending.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30),
+        HomeSectionHeader(
+          title: "What's hot",
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()),
+          ),
+        ),
+        SizedBox(
+          height: 196,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: trending.length,
+            itemBuilder: (context, index) {
+              final track = trending[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: RailCard(
+                  artUrl: track.albumArtUrl,
+                  title: track.trackName,
+                  subtitle: track.artistName,
+                  size: 152,
+                  onTap: () => _play(context, track, trending),
+                  onLongPress: () =>
+                      ThemedOptionsSheet.show(context, track: track),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Artists ──────────────────────────────────────────────────────────────
+
+  Widget _buildArtists(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final seen = <String>{};
+    final artists = <Track>[];
+    for (final track
+        in [...provider.recentlyPlayed, ...provider.trendingTracks]) {
+      if (track.artistName.isEmpty) continue;
+      if (seen.add(track.artistName)) artists.add(track);
+      if (artists.length >= 10) break;
+    }
+    if (artists.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30),
+        HomeSectionHeader(
+          title: 'Artists',
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ThemedAllArtistsScreen()),
+          ),
+        ),
+        SizedBox(
+          height: 104,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: artists.length,
+            itemBuilder: (context, index) {
+              final artist = artists[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: ArtistPortrait(
+                  name: artist.artistName,
+                  imageUrl: artist.albumArtUrl,
+                  onTap: () => _openArtist(context, artist),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openArtist(BuildContext context, Track artistTrack) {
+    HapticFeedback.selectionClick();
+    final provider = context.read<MusicProvider>();
+    provider.navigateToArtistObject(artistTrack);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ThemedArtistDetailScreen(
+          artistId: artistTrack.id,
+          artistName: artistTrack.artistName,
+          artistImage: artistTrack.albumArtUrl,
+        ),
+      ),
+    );
+  }
+
+  // ── Genres ───────────────────────────────────────────────────────────────
+
+  Widget _buildGenres(BuildContext context) {
+    final provider = context.read<MusicProvider>();
+    const genres = [
+      (name: 'Pop', icon: Icons.music_note_rounded),
+      (name: 'Hip-Hop', icon: Icons.mic_rounded),
+      (name: 'Rock', icon: Icons.electric_bolt_rounded),
+      (name: 'Chill', icon: Icons.nightlight_round),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30),
+        HomeSectionHeader(
+          title: 'Moods',
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()),
+          ),
+        ),
+        SizedBox(
+          height: 48,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: genres.length,
+            itemBuilder: (context, index) {
+              final genre = genres[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: GenreChip(
+                  label: genre.name,
+                  icon: genre.icon,
+                  onTap: () {
+                    provider.fetchGenreTracks(genre.name);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ThemedGenreSongsScreen(genre: genre.name),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Hero card ────────────────────────────────────────────────────────────────
+
+class _HeroCard extends StatefulWidget {
+  const _HeroCard({
+    required this.track,
+    required this.eyebrow,
+    required this.height,
+    required this.onPlay,
+    required this.onOverflow,
+  });
+
+  final Track track;
+  final String eyebrow;
+  final double height;
+  final VoidCallback onPlay;
+  final VoidCallback onOverflow;
+
+  @override
+  State<_HeroCard> createState() => _HeroCardState();
+}
+
+class _HeroCardState extends State<_HeroCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onPlay,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onLongPress: widget.onOverflow,
+      child: AnimatedScale(
+        scale: _pressed ? 0.985 : 1.0,
+        duration: Motion.fast,
+        curve: Curves.easeOut,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: SizedBox(
+            height: widget.height,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Artwork carries the visual weight.
+                if (widget.track.albumArtUrl.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: widget.track.albumArtUrl,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 720,
+                    fadeInDuration: const Duration(milliseconds: 250),
+                    errorWidget: (_, __, ___) =>
+                        Container(color: Colors.white.withValues(alpha: 0.04)),
+                  )
+                else
+                  Container(color: Colors.white.withValues(alpha: 0.04)),
+                // Legibility scrim, grounded and quiet.
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.30, 1.0],
+                      colors: [
+                        Colors.black.withValues(alpha: 0.0),
+                        Colors.black.withValues(alpha: 0.86),
+                      ],
+                    ),
+                  ),
+                ),
+                // Bottom content layer.
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 18,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                       Text(
-                         track.trackName,
-                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
-                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                       ),
-                       const SizedBox(height: 4),
-                       Text(
-                         track.artistName,
-                         style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
-                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                       ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.eyebrow.toUpperCase(),
+                              style: type_tokens.Type.caption(context)
+                                  .copyWith(letterSpacing: 1.2),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              widget.track.trackName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: type_tokens.Type.title(context)
+                                  .copyWith(fontSize: 25),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.track.artistName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: type_tokens.Type.metadata(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Glass play control (tier 5: active control).
+                      GlassSurface(
+                        tier: GlassTier.floating,
+                        borderRadius: 30,
+                        padding: EdgeInsets.zero,
+                        child: SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: Icon(Icons.play_arrow_rounded,
+                              size: 32,
+                              color: accent.withValues(alpha: 0.95)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const Icon(Icons.play_circle_fill, size: 30),
               ],
             ),
           ),
         ),
-      );
-    }).toList();
-  }
-
-  Widget _buildExploreTab(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
-    
-    return RefreshIndicator(
-      color: Theme.of(context).colorScheme.primary,
-      backgroundColor: const Color(0xFF1E1E1E),
-      onRefresh: () async {
-        await musicProvider.fetchTrendingTracks(forceRefresh: true);
-      },
-      child: ListView(
-        padding: const EdgeInsets.only(top: 10, bottom: 100), 
-        physics: const BouncingScrollPhysics(),
-        children: [
-           // 1. Trending Now
-           _buildSectionHeader("What's Hot", onViewAll: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()));
-           }),
-           SizedBox(
-             height: 220,
-             child: ListView.builder(
-               padding: const EdgeInsets.symmetric(horizontal: 20),
-               scrollDirection: Axis.horizontal,
-               itemCount: musicProvider.trendingTracks.length,
-               physics: const BouncingScrollPhysics(),
-               itemBuilder: (context, index) {
-                  final track = musicProvider.trendingTracks[index];
-                  return ThemedCard(
-                    imageUrl: track.albumArtUrl,
-                    title: track.trackName,
-                    subtitle: track.artistName,
-                    width: 170, 
-                    height: 170,
-                    onTap: () => musicProvider.playTrack(track, playlistTracks: musicProvider.trendingTracks),
-                  );
-               },
-             ),
-           ),
-           
-           // 2. Genres
-           const SizedBox(height: 20),
-           _buildSectionHeader("Vibe Check", onViewAll: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()));
-           }),
-           _buildGenresSection(context, musicProvider),
-           
-           // 3. Top Artists
-           const SizedBox(height: 20),
-           _buildSectionHeader("Top Artists", onViewAll: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedAllArtistsScreen()));
-           }),
-           _buildTopArtistsSection(context),
-           
-           const SizedBox(height: 80), 
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, {VoidCallback? onViewAll}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-           Text(
-             title,
-             style: GoogleFonts.splineSans(
-               fontSize: 20,
-               fontWeight: FontWeight.bold,
-               color: Colors.white,
-             ),
-           ),
-           if (onViewAll != null)
-             GestureDetector(
-               onTap: onViewAll,
-               child: Container(
-                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                 decoration: BoxDecoration(
-                   color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                   borderRadius: BorderRadius.circular(12),
-                   border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
-                 ),
-                 child: Text(
-                   "SEE ALL",
-                   style: GoogleFonts.splineSans(
-                     fontSize: 10,
-                     fontWeight: FontWeight.bold,
-                     color: Theme.of(context).colorScheme.primary, 
-                     letterSpacing: 0.5,
-                   ),
-                 ),
-               ),
-             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGenresSection(BuildContext context, MusicProvider musicProvider) {
-    final genres = [
-      {'name': 'Pop', 'color': const Color(0xFFFF1744), 'icon': Icons.music_note}, 
-      {'name': 'Hip-Hop', 'color': Colors.blueAccent, 'icon': Icons.mic},
-      {'name': 'Rock', 'color': Colors.amber[800], 'icon': Icons.electric_bolt},
-      {'name': 'Chill', 'color': Colors.tealAccent[400], 'icon': Icons.nightlight_round},
-    ];
-
-    return SizedBox(
-      height: 110,
-      child: ListView.builder(
-         padding: const EdgeInsets.symmetric(horizontal: 20),
-         scrollDirection: Axis.horizontal,
-         itemCount: genres.length,
-         physics: const BouncingScrollPhysics(),
-         itemBuilder: (context, index) {
-            final genre = genres[index];
-            return Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: InkWell(
-                onTap: () {
-                   musicProvider.fetchGenreTracks(genre['name'] as String);
-                   Navigator.push(context, MaterialPageRoute(builder: (_) => ThemedGenreSongsScreen(genre: genre['name'] as String)));
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                   width: 130,
-                   padding: const EdgeInsets.all(12),
-                   decoration: BoxDecoration(
-                     gradient: LinearGradient(
-                       begin: Alignment.topLeft,
-                       end: Alignment.bottomRight,
-                       colors: [
-                         (genre['color'] as Color).withValues(alpha: 0.6),
-                         (genre['color'] as Color).withValues(alpha: 0.3),
-                       ],
-                     ),
-                     borderRadius: BorderRadius.circular(20),
-                     border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                   ),
-                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     mainAxisAlignment: MainAxisAlignment.center,
-                     children: [
-                        Icon(genre['icon'] as IconData, color: Colors.white, size: 28),
-                        const SizedBox(height: 8),
-                        Text(
-                          genre['name'] as String,
-                          style: GoogleFonts.splineSans(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
-                        )
-                     ],
-                   ),
-                ),
-              ),
-            );
-         },
-      ),
-    );
-  }
-  
-  Widget _buildTopArtistsSection(BuildContext context) {
-    return SizedBox(
-      height: 150, // Increased height for better spacing
-      child: FutureBuilder(
-         future: Provider.of<MusicProvider>(context, listen: false).fetchTrendingTracks(), 
-         builder: (context, snapshot) {
-            if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
-            final tracks = snapshot.data as List<Track>;
-            final uniqueNames = <String>{};
-            final uniqueTracks = tracks.where((t) => uniqueNames.add(t.artistName)).toList();
-            
-            if (uniqueTracks.isEmpty) return const SizedBox.shrink();
-
-            return ListView.separated( // Use separated for consistent spacing
-               padding: const EdgeInsets.symmetric(horizontal: 20),
-               scrollDirection: Axis.horizontal,
-               itemCount: uniqueTracks.length,
-               physics: const BouncingScrollPhysics(),
-               separatorBuilder: (ctx, index) => const SizedBox(width: 20), // Proper spacing
-               itemBuilder: (context, index) {
-                  final artistName = uniqueTracks[index].artistName;
-                  final imageUrl = uniqueTracks[index].albumArtUrl;
-                  
-                  return InkWell(
-                    onTap: () {
-                      Provider.of<MusicProvider>(context, listen: false).fetchArtistTracks(artistName);
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Loading $artistName..."), duration: const Duration(seconds: 1)));
-                    },
-                    borderRadius: BorderRadius.circular(50),
-                    child: Column(
-                       mainAxisSize: MainAxisSize.min,
-                       children: [
-                          Container(
-                            padding: const EdgeInsets.all(3), 
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5), width: 2),
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 5, offset: const Offset(0, 3))],
-                            ),
-                            child: CircleAvatar(
-                              radius: 40, // 80x80
-                              backgroundColor: Colors.grey[850],
-                              backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
-                              child: imageUrl.isEmpty 
-                                ? const Icon(Icons.person, size: 40, color: Colors.white54)
-                                : null,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: 90, // Constrain text width
-                            child: Text(
-                              artistName, 
-                              style: GoogleFonts.splineSans(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600), 
-                              maxLines: 1,
-                              textAlign: TextAlign.center,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          )
-                       ],
-                    ),
-                  );
-               },
-            );
-         },
       ),
     );
   }
 }
 
+// ── Skeletons (geometry-matched, no spinner) ─────────────────────────────────
+
+class _SkeletonBox extends StatelessWidget {
+  const _SkeletonBox({this.width, required this.height, this.radius = 14});
+
+  final double? width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+class _HeroSkeleton extends StatelessWidget {
+  const _HeroSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final heroHeight = (size.height * 0.46).clamp(300.0, 400.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: GlassTokens.hMargin),
+      child: _SkeletonBox(height: heroHeight, radius: 24),
+    );
+  }
+}
+
+class _RowsSkeleton extends StatelessWidget {
+  const _RowsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (int i = 0; i < 3; i++)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+            child: Row(
+              children: [
+                const _SkeletonBox(width: 52, height: 52, radius: 10),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SkeletonBox(
+                          height: 13,
+                          width: (180.0 - i * 30).clamp(80.0, 180.0),
+                          radius: 6),
+                      const SizedBox(height: 6),
+                      const _SkeletonBox(height: 11, width: 110, radius: 6),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
