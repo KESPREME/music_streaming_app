@@ -42,6 +42,9 @@ class _HomeScreenState extends State<HomeScreen>
   late final PageController _topPicksController = PageController(
     viewportFraction: 0.86,
   );
+  late final PageController _whatsHotController = PageController(
+    viewportFraction: 0.52,
+  );
 
   @override
   void initState() {
@@ -55,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _entry.dispose();
     _topPicksController.dispose();
+    _whatsHotController.dispose();
     super.dispose();
   }
 
@@ -189,17 +193,17 @@ class _HomeScreenState extends State<HomeScreen>
           SizedBox(
             height:
                 (MediaQuery.sizeOf(context).height * 0.40).clamp(280.0, 360.0),
-            child: PageView.builder(
+            child: ParallaxMediaCarousel(
               controller: _topPicksController,
-              padEnds: false,
-              physics: const BouncingScrollPhysics(),
-              itemCount: picks.length,
-              itemBuilder: (context, index) {
+              count: picks.length,
+              itemBuilder: (context, index, pageOffset) {
                 final track = picks[index];
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: _TopPickCard(
                     track: track,
+                    pageOffset: pageOffset,
+                    parallaxFactor: 0.16,
                     onPlay: () => _play(context, track, picks),
                     onOverflow: () =>
                         ThemedOptionsSheet.show(context, track: track),
@@ -292,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── What's hot: medium artwork rail ──────────────────────────────────────
+  // ── What's hot: editorial parallax rail ──────────────────────────────────
 
   Widget _buildWhatsHot(BuildContext context) {
     final provider = context.watch<MusicProvider>();
@@ -311,24 +315,50 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
         SizedBox(
-          height: 190,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            physics: const BouncingScrollPhysics(),
-            itemCount: trending.length,
-            itemBuilder: (context, index) {
+          height: 224,
+          child: ParallaxMediaCarousel(
+            controller: _whatsHotController,
+            count: trending.length,
+            itemBuilder: (context, index, pageOffset) {
               final track = trending[index];
               return Padding(
-                padding: const EdgeInsets.only(right: 14),
-                child: RailCard(
-                  artUrl: track.albumArtUrl,
-                  title: track.trackName,
-                  subtitle: track.artistName,
-                  size: 148,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: PressableScale(
                   onTap: () => _play(context, track, trending),
                   onLongPress: () =>
                       ThemedOptionsSheet.show(context, track: track),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Artwork = the card's dominant object, open (no chrome).
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: ParallaxArtwork(
+                            artUrl: track.albumArtUrl,
+                            pageOffset: pageOffset,
+                            parallaxFactor: 0.12,
+                            memCacheWidth: 420,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Metadata anchored to the card, calm hierarchy.
+                      Text(
+                        track.trackName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: type_tokens.Type.label(context),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        track.artistName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: type_tokens.Type.metadata(context),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -366,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
         SizedBox(
-          height: 104,
+          height: 132,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -375,7 +405,8 @@ class _HomeScreenState extends State<HomeScreen>
             itemBuilder: (context, index) {
               final artist = artists[index];
               return Padding(
-                padding: const EdgeInsets.only(right: 16),
+                // Spacious: each portrait independent, next one peeks.
+                padding: const EdgeInsets.only(right: 28),
                 child: ArtistPortrait(
                   name: artist.artistName,
                   imageUrl: artist.albumArtUrl,
@@ -405,15 +436,15 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── Moods: quiet typographic chips, lowest on the page ───────────────────
+  // ── Moods: editorial text-led tiles, lowest on the page ──────────────────
 
   Widget _buildMoods(BuildContext context) {
     final provider = context.read<MusicProvider>();
     const moods = [
-      (name: 'Pop', icon: Icons.music_note_rounded),
-      (name: 'Hip-Hop', icon: Icons.mic_rounded),
-      (name: 'Rock', icon: Icons.electric_bolt_rounded),
-      (name: 'Chill', icon: Icons.nightlight_round),
+      'Pop',
+      'Hip-Hop',
+      'Rock',
+      'Chill',
     ];
 
     return Column(
@@ -427,35 +458,32 @@ class _HomeScreenState extends State<HomeScreen>
             MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()),
           ),
         ),
-        SizedBox(
-          height: 48,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            physics: const BouncingScrollPhysics(),
-            itemCount: moods.length,
-            itemBuilder: (context, index) {
-              final mood = moods[index];
-              return Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: GenreChip(
-                  label: mood.name,
-                  icon: mood.icon,
+        // Wrap: widths follow labels, reads as a word cloud not filter pills.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final mood in moods)
+                EditorialMoodTile(
+                  label: mood,
                   onTap: () {
-                    provider.fetchGenreTracks(mood.name);
+                    HapticFeedback.selectionClick();
+                    provider.fetchGenreTracks(mood);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            ThemedGenreSongsScreen(genre: mood.name),
+                        builder: (_) => ThemedGenreSongsScreen(genre: mood),
                       ),
                     );
                   },
                 ),
-              );
-            },
+            ],
           ),
         ),
+        // Deliberate quiet ending before mini-player/navigation.
+        const SizedBox(height: 28),
       ],
     );
   }
@@ -466,13 +494,17 @@ class _HomeScreenState extends State<HomeScreen>
 class _TopPickCard extends StatefulWidget {
   const _TopPickCard({
     required this.track,
+    required this.pageOffset,
     required this.onPlay,
     required this.onOverflow,
+    this.parallaxFactor = 0.16,
   });
 
   final Track track;
+  final double pageOffset;
   final VoidCallback onPlay;
   final VoidCallback onOverflow;
+  final double parallaxFactor;
 
   @override
   State<_TopPickCard> createState() => _TopPickCardState();
@@ -501,18 +533,15 @@ class _TopPickCardState extends State<_TopPickCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Artwork is the material; no glass over it.
-              if (widget.track.albumArtUrl.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: widget.track.albumArtUrl,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 640,
-                  fadeInDuration: const Duration(milliseconds: 220),
-                  errorWidget: (_, __, ___) =>
-                      Container(color: Colors.white.withValues(alpha: 0.04)),
-                )
-              else
-                Container(color: Colors.white.withValues(alpha: 0.04)),
+              // Layer 1-2: artwork + parallax (oversized, clipped inside).
+              ParallaxArtwork(
+                artUrl: widget.track.albumArtUrl,
+                pageOffset: widget.pageOffset,
+                parallaxFactor: widget.parallaxFactor,
+                memCacheWidth: 640,
+              ),
+              // Layer 3: readability scrim — anchored to the CARD, not the
+              // moving artwork, so text stays stable during the drag.
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -587,16 +616,14 @@ class _TopPickCardState extends State<_TopPickCard> {
 // ── Skeletons (geometry-matched, no spinner) ─────────────────────────────────
 
 class _SkeletonBox extends StatelessWidget {
-  const _SkeletonBox({this.width, required this.height, this.radius = 14});
+  const _SkeletonBox({required this.height, this.radius = 14});
 
-  final double? width;
   final double height;
   final double radius;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: width,
       height: height,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),

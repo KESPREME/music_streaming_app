@@ -246,7 +246,7 @@ class ForYouRow extends StatelessWidget {
   }
 }
 
-/// Circular artist portrait with name beneath.
+/// Circular artist portrait with name beneath — spacious, artwork-led.
 class ArtistPortrait extends StatelessWidget {
   const ArtistPortrait({
     super.key,
@@ -264,22 +264,22 @@ class ArtistPortrait extends StatelessWidget {
     return PressableScale(
       onTap: onTap,
       child: SizedBox(
-        width: 84,
+        width: 104,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
-              radius: 36,
+              radius: 42,
               backgroundColor: Colors.white.withValues(alpha: 0.06),
               backgroundImage: imageUrl.isNotEmpty
                   ? CachedNetworkImageProvider(imageUrl)
                   : null,
               child: imageUrl.isEmpty
                   ? const Icon(Icons.person_rounded,
-                      size: 32, color: Colors.white24)
+                      size: 36, color: Colors.white24)
                   : null,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
               name,
               maxLines: 1,
@@ -294,35 +294,147 @@ class ArtistPortrait extends StatelessWidget {
   }
 }
 
-/// Quiet typographic genre chip — no color gradients (artwork owns color).
-class GenreChip extends StatelessWidget {
-  const GenreChip({
+// ── Parallax carousel primitives ─────────────────────────────────────────────
+
+/// PageView wrapper that feeds each item its normalized page offset
+/// (−1..1 relative to viewport center). Rebuilds only the PageView subtree
+/// on scroll; item content is transform-only, so frames stay cheap.
+/// Reduced motion is resolved downstream by [ParallaxArtwork], which reads
+/// MediaQuery directly — this component stays pure presentation.
+class ParallaxMediaCarousel extends StatelessWidget {
+  const ParallaxMediaCarousel({
     super.key,
-    required this.label,
-    required this.icon,
-    required this.onTap,
+    required this.controller,
+    required this.count,
+    required this.itemBuilder,
   });
 
+  final PageController controller;
+  final int count;
+  final Widget Function(BuildContext context, int index, double pageOffset)
+      itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final hasPage =
+            controller.hasClients && controller.position.haveDimensions;
+        final page = hasPage
+            ? (controller.page ?? controller.initialPage.toDouble())
+            : controller.initialPage.toDouble();
+        return PageView.builder(
+          controller: controller,
+          padEnds: false,
+          physics: const BouncingScrollPhysics(),
+          itemCount: count,
+          itemBuilder: (context, index) =>
+              itemBuilder(context, index, (page - index).clamp(-1.0, 1.0)),
+        );
+      },
+    );
+  }
+}
+
+/// Artwork layer with horizontal parallax: the image is oversized relative
+/// to its clip so it can drift inside the card without exposing edges.
+/// Text/controls stay anchored to the card — only this layer moves.
+class ParallaxArtwork extends StatelessWidget {
+  const ParallaxArtwork({
+    super.key,
+    required this.artUrl,
+    required this.pageOffset,
+    this.parallaxFactor = 0.14,
+    this.memCacheWidth = 480,
+  });
+
+  final String artUrl;
+  final double pageOffset;
+
+  /// Fraction of card width the artwork may drift. Drives the oversize so
+  /// edges can never show.
+  final double parallaxFactor;
+  final int memCacheWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = MediaQuery.disableAnimationsOf(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+
+        if (reduced || artUrl.isEmpty) {
+          return CachedNetworkImage(
+            imageUrl: artUrl,
+            fit: BoxFit.cover,
+            memCacheWidth: memCacheWidth,
+            fadeInDuration: const Duration(milliseconds: 220),
+            errorWidget: (_, __, ___) =>
+                Container(color: Colors.white.withValues(alpha: 0.04)),
+          );
+        }
+
+        // Oversize enough that a full-deflection shift never exposes edges.
+        final imgW = w * (1 + 2 * parallaxFactor) + 24;
+        final shift = -pageOffset * parallaxFactor * w;
+
+        // Adjacent cards recede a touch — depth, not CoverFlow.
+        final scale = 1.0 - 0.02 * pageOffset.abs();
+
+        return ClipRect(
+          child: OverflowBox(
+            maxWidth: imgW,
+            minWidth: imgW,
+            maxHeight: h,
+            alignment: Alignment.center,
+            child: Transform.translate(
+              offset: Offset(shift, 0),
+              child: Transform.scale(
+                scale: scale,
+                child: SizedBox(
+                  width: imgW,
+                  height: h,
+                  child: CachedNetworkImage(
+                    imageUrl: artUrl,
+                    fit: BoxFit.cover,
+                    memCacheWidth: memCacheWidth,
+                    fadeInDuration: const Duration(milliseconds: 220),
+                    errorWidget: (_, __, ___) =>
+                        Container(color: Colors.white.withValues(alpha: 0.04)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Editorial mood tile: text-led tonal surface, width follows the label.
+/// No icon soup, no saturated color coding — typography does the work.
+class EditorialMoodTile extends StatelessWidget {
+  const EditorialMoodTile(
+      {super.key, required this.label, required this.onTap});
+
   final String label;
-  final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return PressableScale(
       onTap: onTap,
-      child: GlassSurface(
-        tier: GlassTier.card,
-        borderRadius: 18,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.7)),
-            const SizedBox(width: 8),
-            Text(label, style: type_tokens.Type.label(context)),
-          ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.055),
+          borderRadius: BorderRadius.circular(16),
         ),
+        child: Text(label, style: type_tokens.Type.label(context)),
       ),
     );
   }
