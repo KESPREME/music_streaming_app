@@ -58,13 +58,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
 
         return Scaffold(
           extendBodyBehindAppBar: true,
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.transparent, // Ambient canvas behind
           body: Stack(
             children: [
-              // Blurred album art background
+              // Blurred album art background (falls back to ambient canvas
+              // when no art; keeps its own blur for full-bleed richness)
               Positioned.fill(
                 child: currentTrack.albumArtUrl.isEmpty
-                    ? const ColoredBox(color: Color(0xFF121212))
+                    ? const SizedBox.shrink()
                     : RepaintBoundary(
                         child: ImageFiltered(
                           imageFilter: ImageFilter.blur(

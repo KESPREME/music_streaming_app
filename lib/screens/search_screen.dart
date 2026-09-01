@@ -246,22 +246,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
-      extendBodyBehindAppBar: true, 
-      body: Container(
-        decoration: BoxDecoration(
-           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark 
-              ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
-          ),
-        ),
-        child: SafeArea(
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent, // Ambient canvas behind
+      body: SafeArea(
           child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) => [
               SliverAppBar(
@@ -383,7 +371,6 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   ],
                 ),
           ),
-        ),
       ),
     );
   }
