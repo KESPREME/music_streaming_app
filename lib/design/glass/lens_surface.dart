@@ -3,7 +3,8 @@ import 'package:liquid_glass_easy/liquid_glass_easy.dart' as easy;
 
 import 'glass_materials.dart';
 
-export 'glass_materials.dart' show GlassTier, LiquidGlassStyle;
+export 'glass_materials.dart' show GlassTier;
+export 'package:liquid_glass_easy/liquid_glass_easy.dart' show LiquidGlassStyle;
 
 /// liquid_glass_easy lens wrapper for shell-authored components.
 ///

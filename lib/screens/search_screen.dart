@@ -182,7 +182,8 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin {
+class _SearchScreenState extends State<SearchScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late final TextEditingController _searchController =
       widget.externalController ?? TextEditingController();
@@ -195,6 +196,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _searchController.addListener(_onSearchChanged);
     _loadHistory();
     final initial = widget.initialQuery;
@@ -203,6 +205,16 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       _searchQuery = initial;
       _addToHistory(initial);
       _performSearch(initial);
+    }
+  }
+
+  /// Switching result kind re-runs the active query for that kind so the
+  /// tab always reflects the current query (per-kind caches make this
+  /// cheap — cache hits resolve synchronously in the provider).
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    if (_searchQuery.trim().isNotEmpty) {
+      _performSearch(_searchQuery);
     }
   }
 
@@ -215,6 +227,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _searchController.removeListener(_onSearchChanged);
     if (widget.externalController == null) _searchController.dispose();
@@ -259,7 +272,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: Colors.transparent, // Ambient canvas behind
+      // OPAQUE: this screen lives inside MainScreen's Stack ABOVE the home
+      // content. Without a solid background the home screen bleeds through
+      // and its text collides with search results.
+      backgroundColor: const Color(0xFF0A0A0C),
       body: SafeArea(
           child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -270,13 +286,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 floating: true,
                 pinned: true,
                 toolbarHeight: widget.embedded ? 8 : 90,
-                flexibleSpace: ClipRRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.5),
-                    ),
-                  ),
+                // Grounded dark scrim (no BackdropFilter: solid backdrop
+                // makes blur invisible work for the GPU).
+                flexibleSpace: Container(
+                  color: Colors.black.withValues(alpha: 0.6),
                 ),
                 title: widget.embedded
                     ? null
@@ -376,7 +389,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                         });
                         _historyStore.remove(query);
                       },
-                    ), 
+                      onRetry: () => _performSearch(_searchQuery),
+                    ),
                     _buildArtistsTab(context, _searchQuery),
                     _buildPlaylistsTab(context, _searchQuery),
                   ],
@@ -403,29 +417,29 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   Widget _buildArtistsTab(BuildContext context, String query) {
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
+        if (provider.searchPhase == SearchPhase.loading &&
+            query.trim().isNotEmpty &&
+            provider.activeSearchQuery == query) {
+          return const _SearchLoadingView();
+        }
+
+        if (provider.searchPhase == SearchPhase.error &&
+            provider.activeSearchQuery == query) {
+          return _SearchErrorView(
+            message: provider.errorMessage ?? 'Search failed.',
+            onRetry: () => _performSearch(query, forceRefresh: true),
+          );
+        }
+
         if (query.trim().isEmpty && provider.artistTracks.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.person_search_outlined, size: 60, color: Colors.white.withValues(alpha: 0.1)),
-                const SizedBox(height: 16),
-                Text(
-                  'Search for your favorite artists',
-                  style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 16),
-                ),
-              ],
-            ),
+          return const _SearchIdleView(
+            icon: Icons.person_search_outlined,
+            message: 'Search for your favorite artists',
           );
         }
 
         if (provider.artistTracks.isEmpty && query.trim().isNotEmpty) {
-           return Center(
-            child: Text(
-              'No artists found.',
-              style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4)),
-            ),
-          );
+          return _SearchEmptyView(message: 'No artists found for "$query"');
         }
 
         // Fix: Do not group by artistName. The results are already unique Artist objects.
@@ -469,29 +483,29 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   Widget _buildPlaylistsTab(BuildContext context, String query) {
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
-        if (query.trim().isEmpty && provider.playlistSearchResults.isEmpty) {
-             return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.queue_music_rounded, size: 60, color: Colors.white.withValues(alpha: 0.1)),
-                const SizedBox(height: 16),
-                Text(
-                  'Search for playlists',
-                  style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 16),
-                ),
-              ],
-            ),
+        if (provider.searchPhase == SearchPhase.loading &&
+            query.trim().isNotEmpty &&
+            provider.activeSearchQuery == query) {
+          return const _SearchLoadingView();
+        }
+
+        if (provider.searchPhase == SearchPhase.error &&
+            provider.activeSearchQuery == query) {
+          return _SearchErrorView(
+            message: provider.errorMessage ?? 'Search failed.',
+            onRetry: () => _performSearch(query, forceRefresh: true),
           );
         }
-        
-        if (provider.playlistSearchResults.isEmpty && query.trim().isNotEmpty) {
-           return Center(
-            child: Text(
-              'No playlists found.',
-              style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4)),
-            ),
+
+        if (query.trim().isEmpty && provider.playlistSearchResults.isEmpty) {
+          return const _SearchIdleView(
+            icon: Icons.queue_music_rounded,
+            message: 'Search for playlists',
           );
+        }
+
+        if (provider.playlistSearchResults.isEmpty && query.trim().isNotEmpty) {
+          return _SearchEmptyView(message: 'No playlists found for "$query"');
         }
 
         return ListView.builder(
@@ -550,6 +564,7 @@ class SearchTabContent extends StatelessWidget {
   final Function(String) onSearchSelected;
   final VoidCallback onClearHistory;
   final Function(String) onRemoveHistoryItem;
+  final VoidCallback onRetry;
 
   const SearchTabContent({
     super.key,
@@ -557,87 +572,247 @@ class SearchTabContent extends StatelessWidget {
     required this.onSearchSelected,
     required this.onClearHistory,
     required this.onRemoveHistoryItem,
+    required this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return Consumer<MusicProvider>(
       builder: (context, musicProvider, child) {
         final searchResults = musicProvider.searchedTracks;
+        final phase = musicProvider.searchPhase;
+        final activeQuery = musicProvider.activeSearchQuery;
 
-        if (searchResults.isEmpty) {
-            // Show History if available
+        switch (phase) {
+          case SearchPhase.loading:
+            return const _SearchLoadingView();
+
+          case SearchPhase.error:
+            return _SearchErrorView(
+              message: musicProvider.errorMessage ?? "Couldn't complete the search.",
+              onRetry: onRetry,
+            );
+
+          case SearchPhase.empty:
+            return _SearchEmptyView(message: 'No results for "$activeQuery"');
+
+          case SearchPhase.idle:
+            // Show history if available; otherwise the quiet discovery hint.
             if (recentSearches.isNotEmpty) {
-                 return ListView(
-                   padding: const EdgeInsets.all(16),
-                   children: [
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                           Text(
-                             "Recent Searches",
-                             style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                           ),
-                           TextButton(
-                             onPressed: onClearHistory,
-                             child: Text("Clear All", style: GoogleFonts.splineSans(color: Theme.of(context).colorScheme.primary)),
-                           )
-                        ],
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Recent Searches",
+                        style: GoogleFonts.splineSans(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18),
                       ),
-                      ...recentSearches.map((query) => ListTile(
-                        leading: const Icon(Icons.history_rounded, color: Colors.white54),
-                        title: Text(query, style: GoogleFonts.splineSans(color: Colors.white)),
+                      TextButton(
+                        onPressed: onClearHistory,
+                        child: Text("Clear All",
+                            style: GoogleFonts.splineSans(
+                                color:
+                                    Theme.of(context).colorScheme.primary)),
+                      ),
+                    ],
+                  ),
+                  ...recentSearches.map((query) => ListTile(
+                        leading: const Icon(Icons.history_rounded,
+                            color: Colors.white54),
+                        title: Text(query,
+                            style: GoogleFonts.splineSans(
+                                color: Colors.white)),
                         onTap: () => onSearchSelected(query),
                         onLongPress: () {
-                             showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                backgroundColor: const Color(0xFF1E1E1E), // Dark background for Glass UI
-                                title: const Text("Remove from history?", style: TextStyle(color: Colors.white)),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
-                                  TextButton(onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: const Color(0xFF1E1E1E),
+                              title: const Text("Remove from history?",
+                                  style: TextStyle(color: Colors.white)),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text("Cancel",
+                                      style:
+                                          TextStyle(color: Colors.grey)),
+                                ),
+                                TextButton(
+                                  onPressed: () {
                                     onRemoveHistoryItem(query);
                                     Navigator.pop(context);
-                                  }, child: Text("Remove", style: TextStyle(color: Theme.of(context).colorScheme.primary))),
-                                ],
-                              ),
-                            );
+                                  },
+                                  child: Text("Remove",
+                                      style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary)),
+                                ),
+                              ],
+                            ),
+                          );
                         },
                       )),
-                   ],
-                 );
+                ],
+              );
             }
+            return _SearchIdleView(
+              icon: Icons.search_rounded,
+              message: 'Search for tracks, artists, or albums.',
+            );
 
-          return Center(
-            child: Text(
-              'Search for tracks, artists, or albums.', // Updated to match screenshot
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-            ),
-          );
-        }
+          case SearchPhase.results:
+            return ListView.builder(
+              padding: EdgeInsets.fromLTRB(0, 8, 0, 100 + MediaQuery.viewInsetsOf(context).bottom),
+              itemExtent: 72.0,
+              itemCount: searchResults.length,
+              itemBuilder: (context, index) {
+                final track = searchResults[index];
+                final isPlaying = musicProvider.currentTrack?.id == track.id &&
+                    musicProvider.isPlaying;
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          itemExtent: 72.0, 
-          itemCount: searchResults.length,
-          itemBuilder: (context, index) {
-            final track = searchResults[index];
-            final isPlaying = musicProvider.currentTrack?.id == track.id && musicProvider.isPlaying;
-
-            return TrackTile(
-              track: track,
-              isPlaying: isPlaying,
-              onTap: () {
-                musicProvider.playTrack(track, playlistTracks: searchResults);
+                return TrackTile(
+                  key: ValueKey(track.id),
+                  track: track,
+                  isPlaying: isPlaying,
+                  onTap: () {
+                    musicProvider.playTrack(track, playlistTracks: searchResults);
+                  },
+                );
               },
             );
-          },
-        );
+        }
       },
+    );
+  }
+}
+
+/// Quiet, shared search-state views. One visual language: icon + one line,
+/// no cards, no decoration.
+
+class _SearchLoadingView extends StatelessWidget {
+  const _SearchLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchIdleView extends StatelessWidget {
+  const _SearchIdleView({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 44, color: Colors.white.withValues(alpha: 0.12)),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.splineSans(
+                color: Colors.white.withValues(alpha: 0.4), fontSize: 15),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchEmptyView extends StatelessWidget {
+  const _SearchEmptyView({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded,
+                size: 44, color: Colors.white.withValues(alpha: 0.12)),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.splineSans(
+                  color: Colors.white.withValues(alpha: 0.65), fontSize: 15),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Try a different search.',
+              style: GoogleFonts.splineSans(
+                  color: Colors.white.withValues(alpha: 0.35), fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchErrorView extends StatelessWidget {
+  const _SearchErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.wifi_off_rounded,
+                size: 44, color: Colors.white.withValues(alpha: 0.12)),
+            const SizedBox(height: 12),
+            Text(
+              "Couldn't complete the search",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.splineSans(
+                  color: Colors.white.withValues(alpha: 0.65), fontSize: 15),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Try again',
+                  style: GoogleFonts.splineSans(
+                      fontWeight: FontWeight.w600, fontSize: 14)),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

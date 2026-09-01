@@ -61,6 +61,10 @@ import 'package:palette_generator/palette_generator.dart'; // Dynamic colors
 // Enums
 // RepeatMode now lives in providers/playback/playback_state.dart (re-exported above).
 
+/// Search screen lifecycle — one phase at a time, shared across the three
+/// result kinds (tracks/artists/playlists).
+enum SearchPhase { idle, loading, results, empty, error }
+
 // Helper function for list comparison (can be moved to a utils file)
 bool listEquals<T>(List<T>? a, List<T>? b) {
   if (a == null) return b == null;
@@ -80,8 +84,7 @@ String _jsonEncode(Object data) => jsonEncode(data);
 List<dynamic> _jsonDecode(String s) => jsonDecode(s) as List<dynamic>;
 
 class MusicProvider with ChangeNotifier, WidgetsBindingObserver
-    implements MusicProviderLike {
-  /// Album-art accent feed (null when not injected).
+    implements MusicProviderLike {  /// Album-art accent feed (null when not injected).
   final AccentController? _accentController;
 
 
@@ -114,6 +117,46 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   // Search State
   List<Track> _playlistSearchResults = []; 
   List<Track> get playlistSearchResults => List.unmodifiable(_playlistSearchResults);
+
+  /// Explicit search lifecycle shared by all three result kinds
+  /// (tracks/artists/playlists). One search session at a time — the UI
+  /// renders exactly one of idle/loading/results/empty/error, no
+  /// contradictory boolean combinations.
+  SearchPhase _searchPhase = SearchPhase.idle;
+  SearchPhase get searchPhase => _searchPhase;
+  String _activeSearchQuery = '';
+  String get activeSearchQuery => _activeSearchQuery;
+
+  /// Bumped per search session; completions from superseded sessions are
+  /// discarded so an older response can never overwrite a newer query.
+  int _searchGeneration = 0;
+
+  void _beginSearchSession(String query) {
+    _searchGeneration++;
+    _searchPhase = SearchPhase.loading;
+    _activeSearchQuery = query;
+    notifyListeners();
+  }
+
+  bool _isCurrentSearchSession(int gen) => gen == _searchGeneration;
+
+  void _finishSearchSession(
+    int gen, {
+    required bool hasResults,
+    String? error,
+  }) {
+    if (!_isCurrentSearchSession(gen)) return;
+    _searchPhase = error != null
+        ? SearchPhase.error
+        : (hasResults ? SearchPhase.results : SearchPhase.empty);
+    notifyListeners();
+  }
+
+  void _resetSearchSession() {
+    _searchGeneration++;
+    _searchPhase = SearchPhase.idle;
+    _activeSearchQuery = '';
+  }
   
   // Getters
   
@@ -2572,15 +2615,21 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
     
     if (query.trim().isEmpty) {
       _searchedTracks = [];
+      _resetSearchSession();
       notifyListeners();
       return [];
     }
+
+    // Open the session BEFORE the cache check so even a synchronous cache
+    // hit invalidates any still-in-flight older request.
+    _beginSearchSession(query);
+    final gen = _searchGeneration;
     
     // Check Search Cache for speed
     if (!forceRefresh && _searchCache.containsKey(query)) {
        if (kDebugMode) debugPrint('MusicProvider: Search Cache HIT for "$query"');
        _searchedTracks = _searchCache[query]!;
-       notifyListeners();
+       _finishSearchSession(gen, hasResults: _searchedTracks.isNotEmpty);
        return _searchedTracks;
     }
     
@@ -2611,6 +2660,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
            if (kDebugMode) debugPrint("Online search failed: $e");
         }
       }
+
+      // Stale guard: a newer query superseded this request.
+      if (!_isCurrentSearchSession(gen)) return _searchedTracks;
       
       // Combine results (Local first)
       _searchedTracks = [...localResults, ...onlineResults];
@@ -2625,13 +2677,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
         debugPrint('MusicProvider: Found ${_searchedTracks.length} results (Local: ${localResults.length}, Online: ${onlineResults.length}) for "$query"');
       }
       
-      notifyListeners(); // Notify listeners that new search results are available
+      _finishSearchSession(gen, hasResults: _searchedTracks.isNotEmpty);
       return _searchedTracks;
     } catch (e) {
+      if (!_isCurrentSearchSession(gen)) return _searchedTracks;
       _errorMessage = 'Search failed for "$query": ${e.toString()}';
       _searchedTracks = []; // Clear results on error
       _addToRetryQueue(_RetryOperation('Search tracks: $query', () => searchTracks(query, forceRefresh: true)));
-      notifyListeners();
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
       return []; // Return empty list on error
     }
   }
@@ -2640,23 +2693,29 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   Future<void> searchPlaylists(String query) async {
      if (query.trim().isEmpty) {
        _playlistSearchResults = [];
+       _resetSearchSession();
        notifyListeners();
        return;
      }
-     
+
      if (_isOfflineMode) {
         // Could search local playlists if implemented
         return;
      }
 
+     _beginSearchSession(query);
+     final gen = _searchGeneration;
      try {
        final playlists = await _innerTubeService.searchPlaylists(query, limit: 20);
+       if (!_isCurrentSearchSession(gen)) return;
        _playlistSearchResults = playlists;
+       _finishSearchSession(gen, hasResults: playlists.isNotEmpty);
      } catch (e) {
+       if (!_isCurrentSearchSession(gen)) return;
        debugPrint("Playlist Search Error: $e");
        _playlistSearchResults = [];
+       _finishSearchSession(gen, hasResults: false, error: e.toString());
      }
-     notifyListeners();
   }
 
   Future<void> fetchArtistTracks(String artistName, {bool forceRefresh = false}) async { 
@@ -2671,6 +2730,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
       notifyListeners(); 
       return; 
     } 
+    _beginSearchSession(artistName);
+    final gen = _searchGeneration;
     try { 
       if (kDebugMode) {
         debugPrint('MusicProvider: Fetching artist tracks for "$artistName" using ${_currentMusicSource.displayName}');
@@ -2688,12 +2749,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
         _artistTracks = await _innerTubeService.searchArtists(artistName, limit: 30);
       }
       
+      if (!_isCurrentSearchSession(gen)) return;
       _cachedTracks[k] = _artistTracks; _capCache(_cachedTracks, 60); 
-      notifyListeners(); 
+      _finishSearchSession(gen, hasResults: _artistTracks.isNotEmpty);
     } catch (e) { 
+      if (!_isCurrentSearchSession(gen)) return;
       _errorMessage = 'Failed for $artistName.'; 
       _addToRetryQueue(_RetryOperation('Fetch artist: $artistName', () => fetchArtistTracks(artistName, forceRefresh: true))); 
-      notifyListeners(); 
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
     } 
   }
 
@@ -2758,7 +2821,8 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   void clearSearchResults() {
     _searchedTracks.clear();
     _artistTracks.clear();
-    // Potentially clear other search-related lists here if they exist
+    _playlistSearchResults.clear();
+    _resetSearchSession();
     notifyListeners();
   }
 

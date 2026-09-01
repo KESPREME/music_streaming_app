@@ -17,7 +17,6 @@ import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
 import 'screens/discover_screen.dart';
-import 'screens/search_screen.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';
