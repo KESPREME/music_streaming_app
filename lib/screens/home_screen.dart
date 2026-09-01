@@ -5,13 +5,13 @@ import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
+import '../services/home/home_models.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/type.dart' as type_tokens;
 import '../theme/glass_tokens.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/home_sections.dart';
-import '../widgets/themed_all_artists_screen.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_genre_songs_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
@@ -100,7 +100,11 @@ class _HomeScreenState extends State<HomeScreen>
               SliverToBoxAdapter(
                 child: Selector<MusicProvider, int>(
                   selector: (_, p) => p.homeContentVersion,
-                  child: _LowerSections(bottomInset: bottomInset),
+                  child: _LowerSections(
+                    bottomInset: bottomInset,
+                    excludeHeroSectionId:
+                        _heroSection(context.read<MusicProvider>())?.id,
+                  ),
                   builder: (context, version, lower) => lower!,
                 ),
               ),
@@ -138,6 +142,21 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ── Top Picks carousel ───────────────────────────────────────────────────
 
+  /// Hero source priority: first curated-feed song shelf (honest title),
+  /// then recommendation engine, then trending.
+  HomeSection? _heroSection(MusicProvider provider) {
+    final feed = provider.homeFeed;
+    if (feed != null) {
+      for (final section in feed.sections) {
+        if (section.dominantType == HomeContentType.song &&
+            section.items.any((i) => i.videoId != null)) {
+          return section;
+        }
+      }
+    }
+    return null;
+  }
+
   List<Track> _topPicksList(MusicProvider provider) {
     if (provider.recommendedTracks.isNotEmpty) {
       return provider.recommendedTracks.take(5).toList();
@@ -150,8 +169,59 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildTopPicks(BuildContext context) {
     final provider = context.watch<MusicProvider>();
-    final picks = _topPicksList(provider);
+    final hero = _heroSection(provider);
 
+    // Curated feed available → render with the source's real shelf title.
+    if (hero != null) {
+      final picks = hero.items
+          .map(_trackFromHomeItem)
+          .whereType<Track>()
+          .take(8)
+          .toList();
+      if (picks.length >= 3) {
+        return _buildHeroCarousel(context, picks, hero.title, hero.id);
+      }
+    }
+
+    final picks = _topPicksList(provider);
+    return _buildTopPicksFallback(context, picks);
+  }
+
+  Widget _buildHeroCarousel(
+      BuildContext context, List<Track> picks, String title, String sectionId) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(title: title),
+        SizedBox(
+          height:
+              (MediaQuery.sizeOf(context).height * 0.40).clamp(280.0, 360.0),
+          child: ParallaxMediaCarousel(
+            key: ValueKey('hero_$sectionId'),
+            controller: _topPicksController,
+            count: picks.length,
+            itemBuilder: (context, index, pageOffset) {
+              final track = picks[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: _TopPickCard(
+                  track: track,
+                  pageOffset: pageOffset,
+                  parallaxFactor: 0.16,
+                  onPlay: () => _play(context, track, picks),
+                  onOverflow: () =>
+                      ThemedOptionsSheet.show(context, track: track),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Top-picks fallback body (recommendation engine / trending).
+  Widget _buildTopPicksFallback(BuildContext context, List<Track> picks) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -185,6 +255,20 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Track? _trackFromHomeItem(HomeItem item) {
+    final videoId = item.videoId;
+    if (videoId == null) return null;
+    return Track(
+      id: videoId,
+      trackName: item.title,
+      artistName: item.subtitle,
+      albumName: '',
+      previewUrl: '',
+      albumArt: item.artworkUrl,
+      source: 'youtube',
+    );
+  }
+
   void _play(BuildContext context, Track track, List<Track> contextList) {
     HapticFeedback.lightImpact();
     context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
@@ -207,21 +291,234 @@ void _openArtist(BuildContext context, Track artistTrack) {
   );
 }
 
+/// One curated-feed shelf, rendered by its dominant content type.
+/// Presentation is derived from the section model — the shelf's own title
+/// is displayed verbatim.
+class _FeedSection extends StatelessWidget {
+  const _FeedSection({required this.section});
+
+  final HomeSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    final tracks =
+        section.items.map(_homeItemToTrack).whereType<Track>().toList();
+
+    switch (section.presentation) {
+      case HomePresentation.artistRail:
+        return _ArtistShelf(section: section);
+      case HomePresentation.playlistRail:
+        return _PlaylistShelf(section: section, tracks: tracks);
+      case HomePresentation.grid:
+        return tracks.isNotEmpty
+            ? _NewReleasesSection(
+                tracks: tracks,
+                onPlay: (track) => _playTracks(context, track, tracks),
+                onOptions: (track) =>
+                    ThemedOptionsSheet.show(context, track: track),
+              )
+            : const SizedBox.shrink();
+      case HomePresentation.compactTracks:
+      case HomePresentation.artworkRail:
+        return tracks.length >= 3
+            ? _WhatsHotSection(
+                tracks: tracks,
+                onPlay: (track) => _playTracks(context, track, tracks),
+                onOptions: (track) =>
+                    ThemedOptionsSheet.show(context, track: track),
+                onSeeAll: null,
+              )
+            : const SizedBox.shrink();
+    }
+  }
+
+  static void _playTracks(
+      BuildContext context, Track track, List<Track> contextList) {
+    HapticFeedback.lightImpact();
+    context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
+  }
+
+  static Track? _homeItemToTrack(HomeItem item) {
+    final videoId = item.videoId;
+    if (videoId == null) return null;
+    return Track(
+      id: videoId,
+      trackName: item.title,
+      artistName: item.subtitle,
+      albumName: '',
+      previewUrl: '',
+      albumArt: item.artworkUrl,
+      source: 'youtube',
+    );
+  }
+}
+
+/// Artist shelf from curated feed items.
+class _ArtistShelf extends StatelessWidget {
+  const _ArtistShelf({required this.section});
+
+  final HomeSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(title: section.title),
+        SizedBox(
+          height: 132,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: section.items.length,
+            itemBuilder: (context, index) {
+              final item = section.items[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 28),
+                child: ArtistPortrait(
+                  name: item.title,
+                  imageUrl: item.artworkUrl,
+                  onTap: () {
+                    final browseId = item.browseId;
+                    if (browseId == null || !browseId.startsWith('UC')) {
+                      return;
+                    }
+                    HapticFeedback.selectionClick();
+                    final provider = context.read<MusicProvider>();
+                    provider.navigateToArtistById(browseId).then((_) {
+                      final artist = provider.currentArtistDetails;
+                      if (artist == null || !context.mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ThemedArtistDetailScreen(
+                            artistId: artist.id,
+                            artistName: artist.name,
+                            artistImage: artist.imageUrl,
+                          ),
+                        ),
+                      );
+                    });
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Playlist shelf from curated feed items (landscape editorial covers).
+class _PlaylistShelf extends StatelessWidget {
+  const _PlaylistShelf({required this.section, required this.tracks});
+
+  final HomeSection section;
+  final List<Track> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(title: section.title),
+        SizedBox(
+          height: 158,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: section.items.length,
+            itemBuilder: (context, index) {
+              final item = section.items[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: PressableScale(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ThemedPlaylistDetailScreen(
+                        playlistId: item.browseId ?? item.id,
+                        playlistName: item.title,
+                        playlistImage: item.artworkUrl,
+                      ),
+                    ),
+                  ),
+                  child: SizedBox(
+                    width: 132,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox(
+                            width: 132,
+                            height: 74,
+                            child: item.artworkUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: item.artworkUrl,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 280,
+                                    errorWidget: (_, __, ___) => Container(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.05)),
+                                  )
+                                : Container(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.05)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.label(context),
+                        ),
+                        Text(
+                          item.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.metadata(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Data-driven lower-Home renderer. Observes only [homeContentVersion], so
 /// playback ticks and palette updates never rebuild these sections. Order
 /// adapts to available data; empty sections collapse entirely (spacing
 /// included).
+///
+/// Content priority: curated feed shelves (honest source titles) > local
+/// overlays (jump back in, playlists, moods) > legacy fallback sections
+/// when no feed exists yet.
 class _LowerSections extends StatelessWidget {
-  const _LowerSections({required this.bottomInset});
+  const _LowerSections({
+    required this.bottomInset,
+    this.excludeHeroSectionId,
+  });
 
   final double bottomInset;
+  final String? excludeHeroSectionId;
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
     final sections = <Widget>[];
 
-    // SECONDARY — continue listening (compact rail).
+    // Local overlay — continue listening, always first when meaningful.
     final recents = provider.recentlyPlayed
         .where((t) => t.id != provider.currentTrack?.id)
         .toList();
@@ -237,60 +534,67 @@ class _LowerSections extends StatelessWidget {
       ));
     }
 
-    // SECONDARY — made for you rows (skip the 5 in the hero carousel).
-    final recs = provider.recommendedTracks;
-    final mfy =
-        (recs.length > 5 ? recs.skip(5).take(6) : recs.take(6)).toList();
-    final mfyFallback =
-        mfy.isEmpty ? provider.trendingTracks.take(6).toList() : mfy;
-    if (mfyFallback.isNotEmpty) {
-      sections.add(_MadeForYouSection(
-        tracks: mfyFallback,
-        isPlaying: (t) =>
-            provider.currentTrack?.id == t.id && provider.isPlaying,
-        onPlay: (track) => _play(context, track, mfyFallback),
-        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-      ));
+    final feed = provider.homeFeed;
+    if (feed != null) {
+      // Curated shelves in source order — titles come from the source.
+      for (final section in feed.sections) {
+        if (section.id == excludeHeroSectionId) continue;
+        sections.add(_FeedSection(section: section));
+      }
+    } else {
+      // No feed yet → legacy fallback sections (trusted sources only).
+      final recs = provider.recommendedTracks;
+      final mfy =
+          (recs.length > 5 ? recs.skip(5).take(6) : recs.take(6)).toList();
+      final mfyFallback =
+          mfy.isEmpty ? provider.trendingTracks.take(6).toList() : mfy;
+      if (mfyFallback.isNotEmpty) {
+        sections.add(_MadeForYouSection(
+          tracks: mfyFallback,
+          isPlaying: (t) =>
+              provider.currentTrack?.id == t.id && provider.isPlaying,
+          onPlay: (track) => _play(context, track, mfyFallback),
+          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        ));
+      }
+
+      final trending = provider.trendingTracks;
+      if (trending.isNotEmpty) {
+        sections.add(_WhatsHotSection(
+          tracks: trending,
+          onPlay: (track) => _play(context, track, trending),
+          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+          onSeeAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()),
+          ),
+        ));
+      }
+
+      final newReleases = provider.newReleases;
+      if (newReleases.isNotEmpty) {
+        sections.add(_NewReleasesSection(
+          tracks: newReleases.take(6).toList(),
+          onPlay: (track) => _play(context, track, newReleases),
+          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        ));
+      }
+
+      final artists = _dedupeArtists(provider);
+      if (artists.isNotEmpty) {
+        sections.add(_ArtistsSection(
+          artists: artists,
+          onTap: (artist) => _openArtist(context, artist),
+        ));
+      }
     }
 
-    // TERTIARY — what's hot (editorial parallax rail).
-    final trending = provider.trendingTracks;
-    if (trending.isNotEmpty) {
-      sections.add(_WhatsHotSection(
-        tracks: trending,
-        onPlay: (track) => _play(context, track, trending),
-        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-        onSeeAll: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()),
-        ),
-      ));
-    }
-
-    // DISCOVERY — new releases (2-up editorial grid; distinct data source).
-    final newReleases = provider.newReleases;
-    if (newReleases.isNotEmpty) {
-      sections.add(_NewReleasesSection(
-        tracks: newReleases.take(6).toList(),
-        onPlay: (track) => _play(context, track, newReleases),
-        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-      ));
-    }
-
-    // COLLECTIONS — user playlists (editorial rail).
+    // COLLECTIONS — user playlists (distinct from external recommendations).
     final playlists = provider.userPlaylists;
     if (playlists.isNotEmpty) {
       sections.add(_PlaylistsSection(playlists: playlists));
     }
 
-    // PEOPLE — artists.
-    final artists = _dedupeArtists(provider);
-    if (artists.isNotEmpty) {
-      sections.add(_ArtistsSection(
-        artists: artists,
-        onTap: (artist) => _openArtist(context, artist),
-      ));
-    }
     // EXPLORATION — moods (editorial tiles), intentional quiet ending.
     sections.add(const _MoodsSection());
 
@@ -412,13 +716,13 @@ class _WhatsHotSection extends StatefulWidget {
     required this.tracks,
     required this.onPlay,
     required this.onOptions,
-    required this.onSeeAll,
+    this.onSeeAll,
   });
 
   final List<Track> tracks;
   final void Function(Track) onPlay;
   final void Function(Track) onOptions;
-  final VoidCallback onSeeAll;
+  final VoidCallback? onSeeAll;
 
   @override
   State<_WhatsHotSection> createState() => _WhatsHotSectionState();

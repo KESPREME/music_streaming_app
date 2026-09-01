@@ -9,11 +9,11 @@ import '../../models/album.dart';
 
 /// YouTube client types for different use cases
 enum YouTubeClientType {
-  webRemix,      // For search and browse
-  visionos,      // Player (Vision Pro client, id 101 — token-free, Muzza's primary)
-  androidVr,     // Player (bot-gated Aug 2026, kept as fallback)
-  tvEmbedded,    // Player fallback
-  ios,           // Resolves but URLs may 403 (not in ladder)
+  webRemix, // For search and browse
+  visionos, // Player (Vision Pro client, id 101 — token-free, Muzza's primary)
+  androidVr, // Player (bot-gated Aug 2026, kept as fallback)
+  tvEmbedded, // Player fallback
+  ios, // Resolves but URLs may 403 (not in ladder)
 }
 
 /// InnerTube API client for YouTube Music
@@ -26,14 +26,15 @@ class InnerTubeService {
   static const String _apiUrl = 'https://music.youtube.com/youtubei/v1';
   static const String _origin = 'https://music.youtube.com';
   static const String _referer = 'https://music.youtube.com/';
-  
+
   // WEB_REMIX client (for search, browse)
   static const String _webRemixClientName = 'WEB_REMIX';
   // innertubex v0.1.2 parity (Metrolist's working pin, July 2026).
   static const String _webRemixClientVersion = '1.20260707.12.00';
   static const String _webRemixClientId = '67';
-  static const String _webRemixUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0';
-  
+  static const String _webRemixUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0';
+
   // ANDROID_VR client — the only InnerTube client that still serves
   // direct signed stream URLs without a PO token (verified Feb 2026).
   // Bump clientVersion + UA together when playback starts failing.
@@ -44,13 +45,15 @@ class InnerTubeService {
   static const String _androidVrClientName = 'ANDROID_VR';
   static const String _androidVrClientVersion = '1.65.10';
   static const String _androidVrClientId = '28';
-  static const String _androidVrUserAgent = 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; Quest 3 Build/SQ3A.220605.009.A1) gzip';
+  static const String _androidVrUserAgent =
+      'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; Quest 3 Build/SQ3A.220605.009.A1) gzip';
 
   // iOS client (Fallback)
   static const String _iosClientName = 'IOS';
   static const String _iosClientVersion = '20.51.39';
   static const String _iosClientId = '5';
-  static const String _iosUserAgent = 'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
+  static const String _iosUserAgent =
+      'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
 
   // TV client — yt-dlp's current PO-token-free playback workhorse.
   static const String _tvClientName = 'TVHTML5';
@@ -69,10 +72,10 @@ class InnerTubeService {
     }
     return null;
   }
-  
+
   String? visitorData;
   String? cookie;
-  
+
   final http.Client _httpClient = http.Client();
 
   static const Duration _cacheDuration = Duration(minutes: 30);
@@ -107,7 +110,8 @@ class InnerTubeService {
   }
 
   /// Build the context object required for all InnerTube requests
-  Map<String, dynamic> _buildContext({YouTubeClientType clientType = YouTubeClientType.webRemix}) {
+  Map<String, dynamic> _buildContext(
+      {YouTubeClientType clientType = YouTubeClientType.webRemix}) {
     switch (clientType) {
       case YouTubeClientType.visionos:
         // Muzza-parity: Vision Pro client (id 101) — token-free, login-free.
@@ -168,13 +172,14 @@ class InnerTubeService {
         };
     }
   }
-  
+
   /// Build headers for InnerTube requests
-  Map<String, String> _buildHeaders({YouTubeClientType clientType = YouTubeClientType.webRemix}) {
+  Map<String, String> _buildHeaders(
+      {YouTubeClientType clientType = YouTubeClientType.webRemix}) {
     String userAgent;
     String clientId;
     String clientVersion;
-    
+
     switch (clientType) {
       case YouTubeClientType.visionos:
         userAgent =
@@ -225,34 +230,36 @@ class InnerTubeService {
     // This upgrades the client to a "Logged In" state
     final authHeaders = AuthService().getHeaders();
     if (authHeaders.isNotEmpty) {
-       headers.addAll(authHeaders);
+      headers.addAll(authHeaders);
     } else if (cookie != null && clientType == YouTubeClientType.webRemix) {
-       // Legacy/Manual cookie fallback (if AuthService specific logic not used)
-       headers['Cookie'] = cookie!;
+      // Legacy/Manual cookie fallback (if AuthService specific logic not used)
+      headers['Cookie'] = cookie!;
     }
-    
+
     return headers;
   }
-  
-
 
   /// Search for artists
   Future<List<Track>> searchArtists(String query, {int limit = 20}) async {
-    return _searchWithParams(query, 'EgWKAQIgAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_ARTIST
+    return _searchWithParams(
+        query, 'EgWKAQIgAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_ARTIST
   }
 
   /// Search for playlists
   Future<List<Track>> searchPlaylists(String query, {int limit = 20}) async {
-    return _searchWithParams(query, 'EgWKAQIoAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_PLAYLIST
+    return _searchWithParams(
+        query, 'EgWKAQIoAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_PLAYLIST
   }
 
-  Future<List<Track>> _searchWithParams(String query, String params, int limit) async {
+  Future<List<Track>> _searchWithParams(
+      String query, String params, int limit) async {
     try {
-      if (kDebugMode) debugPrint('InnerTubeService: Searching "$query" with params $params');
+      if (kDebugMode)
+        debugPrint('InnerTubeService: Searching "$query" with params $params');
       final body = jsonEncode({
         'context': _buildContext(clientType: YouTubeClientType.webRemix),
-         'query': query,
-         'params': params,
+        'query': query,
+        'params': params,
       });
 
       final response = await _httpClient.post(
@@ -261,9 +268,10 @@ class InnerTubeService {
         body: body,
       );
 
-      if (response.statusCode != 200) throw Exception('Search failed: ${response.statusCode}');
+      if (response.statusCode != 200)
+        throw Exception('Search failed: ${response.statusCode}');
       final data = jsonDecode(response.body);
-      
+
       // Parse Logic - pass allowBrowseIds: true for artist/playlist search
       // This allows UC/VL/PL browse IDs to be returned for navigation purposes
       _captureVisitorData(data);
@@ -280,82 +288,92 @@ class InnerTubeService {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Searching for "$query"');
       }
-      return await _searchWithParams(query, 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D', limit);
+      return await _searchWithParams(
+          query, 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D', limit);
     } catch (e) {
-       rethrow;
+      rethrow;
     }
   }
-  
+
   /// Parse search results into Track objects
   /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
-  List<Track> _parseSearchResults(Map<String, dynamic> data, int limit, {bool allowBrowseIds = false}) {
+  List<Track> _parseSearchResults(Map<String, dynamic> data, int limit,
+      {bool allowBrowseIds = false}) {
     final tracks = <Track>[];
-    
+
     try {
       // Navigate to the music shelf renderer
       final tabs = data['contents']?['tabbedSearchResultsRenderer']?['tabs'];
       if (tabs == null || tabs.isEmpty) return tracks;
-      
-      final contents = tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'];
+
+      final contents = tabs[0]?['tabRenderer']?['content']
+          ?['sectionListRenderer']?['contents'];
       if (contents == null) return tracks;
-      
+
       for (final section in contents) {
         // 1. Check for standard MusicShelfRenderer (List)
         final shelfContents = section['musicShelfRenderer']?['contents'];
         if (shelfContents != null) {
           for (final item in shelfContents) {
             if (tracks.length >= limit) break;
-            
+
             // Try responsive list item
             if (item['musicResponsiveListItemRenderer'] != null) {
-               final track = _parseTrackFromRenderer(item['musicResponsiveListItemRenderer'], allowBrowseIds: allowBrowseIds);
-               if (track != null) tracks.add(track);
+              final track = _parseTrackFromRenderer(
+                  item['musicResponsiveListItemRenderer'],
+                  allowBrowseIds: allowBrowseIds);
+              if (track != null) tracks.add(track);
             }
             // Try multi-row item (sometimes used)
             else if (item['musicTwoRowItemRenderer'] != null) {
-               final track = _parseTrackFromTwoRowRenderer(item['musicTwoRowItemRenderer'], allowBrowseIds: allowBrowseIds);
-               if (track != null) tracks.add(track);
+              final track = _parseTrackFromTwoRowRenderer(
+                  item['musicTwoRowItemRenderer'],
+                  allowBrowseIds: allowBrowseIds);
+              if (track != null) tracks.add(track);
             }
           }
         }
-        
+
         // 2. Check for MusicCardShelfRenderer (Top Result / Artist Card)
         final cardShelf = section['musicCardShelfRenderer'];
         if (cardShelf != null && tracks.length < limit) {
-           final title = cardShelf['title']?['runs']?[0]?['text'];
-           final subtitle = cardShelf['subtitle']?['runs']?[0]?['text'];
-           final videoId = cardShelf['onTap']?['watchEndpoint']?['videoId'] ?? 
-                           cardShelf['buttons']?[0]?['buttonRenderer']?['command']?['watchEndpoint']?['videoId'];
-           // Thumbnail
-           final thumbnails = cardShelf['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
-           String? thumbnail = (thumbnails != null && thumbnails.isNotEmpty) ? thumbnails.last['url'] : null;
+          final title = cardShelf['title']?['runs']?[0]?['text'];
+          final subtitle = cardShelf['subtitle']?['runs']?[0]?['text'];
+          final videoId = cardShelf['onTap']?['watchEndpoint']?['videoId'] ??
+              cardShelf['buttons']?[0]?['buttonRenderer']?['command']
+                  ?['watchEndpoint']?['videoId'];
+          // Thumbnail
+          final thumbnails = cardShelf['thumbnail']?['musicThumbnailRenderer']
+              ?['thumbnail']?['thumbnails'] as List?;
+          String? thumbnail = (thumbnails != null && thumbnails.isNotEmpty)
+              ? thumbnails.last['url']
+              : null;
 
-           if (videoId != null || title != null) {
-              // Create a synthesized track for the card (Artist/Top Result)
-              // For Artist mode, the "videoId" might be a browseId, which generic Track doesn't fully support as ID?
-              // But searchArtists returns Track objects. If videoId is null, we might need a browseId logic.
-              // However, our Track model expects ID. 
-              // Usually Top Result for Song has ID. Top Result for Artist has navigationEndpoint -> browseId.
-              // If we are searching Artists, we might want to skip if no ID, OR use browseId as ID.
-              // Let's rely on standard parsing for now, or minimal ID generation.
-              // For now, if videoId is missing, we skip, as playback requires videoId.
-              // UNLESS it's an Artist search where we just want metadata? 
-              // The UI likely tries to play it or open artist page. 
-              // Let's handle the Card carefully.
-              
-              if (videoId != null) {
-                  tracks.add(Track(
-                    id: videoId,
-                    trackName: title ?? 'Unknown',
-                    artistName: subtitle ?? '',
-                    albumName: '', 
-                    previewUrl: '', // Added missing required parameter
-                    albumArt: thumbnail ?? '',
-                    source: 'youtube',
-                    durationMs: 0
-                  ));
-              }
-           }
+          if (videoId != null || title != null) {
+            // Create a synthesized track for the card (Artist/Top Result)
+            // For Artist mode, the "videoId" might be a browseId, which generic Track doesn't fully support as ID?
+            // But searchArtists returns Track objects. If videoId is null, we might need a browseId logic.
+            // However, our Track model expects ID.
+            // Usually Top Result for Song has ID. Top Result for Artist has navigationEndpoint -> browseId.
+            // If we are searching Artists, we might want to skip if no ID, OR use browseId as ID.
+            // Let's rely on standard parsing for now, or minimal ID generation.
+            // For now, if videoId is missing, we skip, as playback requires videoId.
+            // UNLESS it's an Artist search where we just want metadata?
+            // The UI likely tries to play it or open artist page.
+            // Let's handle the Card carefully.
+
+            if (videoId != null) {
+              tracks.add(Track(
+                  id: videoId,
+                  trackName: title ?? 'Unknown',
+                  artistName: subtitle ?? '',
+                  albumName: '',
+                  previewUrl: '', // Added missing required parameter
+                  albumArt: thumbnail ?? '',
+                  source: 'youtube',
+                  durationMs: 0));
+            }
+          }
         }
 
         if (tracks.length >= limit) break;
@@ -365,71 +383,77 @@ class InnerTubeService {
         debugPrint('InnerTubeService: Parse error: $e');
       }
     }
-    
+
     return tracks;
   }
-  
+
   /// Parse a track from MusicResponsiveListItemRenderer
   /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
-  Track? _parseTrackFromRenderer(Map<String, dynamic> renderer, {bool allowBrowseIds = false}) {
+  Track? _parseTrackFromRenderer(Map<String, dynamic> renderer,
+      {bool allowBrowseIds = false}) {
     try {
       // Get video ID or Browse ID (for playlists/artists)
       String? videoId = renderer['playlistItemData']?['videoId'];
-      
+
       // Check watch endpoint
       videoId ??= renderer['overlay']?['musicItemThumbnailOverlayRenderer']
-            ?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']
-            ?['watchEndpoint']?['videoId'];
-            
+              ?['content']?['musicPlayButtonRenderer']
+          ?['playNavigationEndpoint']?['watchEndpoint']?['videoId'];
+
       // Check navigation endpoint (Browse ID for artists/playlists fallback)
       if (videoId == null) {
-          final navEndpoint = renderer['navigationEndpoint'];
-          videoId = navEndpoint?['watchEndpoint']?['videoId'] ?? 
-                    navEndpoint?['browseEndpoint']?['browseId'];
+        final navEndpoint = renderer['navigationEndpoint'];
+        videoId = navEndpoint?['watchEndpoint']?['videoId'] ??
+            navEndpoint?['browseEndpoint']?['browseId'];
       }
-      
+
       // If still null, return null (item not usable)
       if (videoId == null) return null;
-      
+
       // Filter out non-playable items (artists, playlists, albums) when NOT in browse mode
       // These IDs start with specific prefixes and can't be streamed directly
-      if (!allowBrowseIds && (
-          videoId.startsWith('UC') ||    // Artist/Channel
-          videoId.startsWith('VL') ||    // Playlist
-          videoId.startsWith('PL') ||    // Playlist  
-          videoId.startsWith('OLAK') ||  // Album
-          videoId.startsWith('MPREb'))) { // Album browse ID
-        if (kDebugMode) debugPrint('InnerTubeService: Skipping non-playable ID: $videoId');
+      if (!allowBrowseIds &&
+          (videoId.startsWith('UC') || // Artist/Channel
+              videoId.startsWith('VL') || // Playlist
+              videoId.startsWith('PL') || // Playlist
+              videoId.startsWith('OLAK') || // Album
+              videoId.startsWith('MPREb'))) {
+        // Album browse ID
+        if (kDebugMode)
+          debugPrint('InnerTubeService: Skipping non-playable ID: $videoId');
         return null;
       }
-      
+
       // Get flex columns for title and artist
       final flexColumns = renderer['flexColumns'] as List?;
       if (flexColumns == null || flexColumns.isEmpty) return null;
-      
+
       // Title from first column
       String title = 'Unknown';
-      final titleRuns = flexColumns[0]?['musicResponsiveListItemFlexColumnRenderer']
-          ?['text']?['runs'] as List?;
+      final titleRuns = flexColumns[0]
+              ?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
+          as List?;
       if (titleRuns != null && titleRuns.isNotEmpty) {
         title = titleRuns[0]['text'] ?? 'Unknown';
       }
-      
+
       // Artist from second column
       String artist = 'Unknown Artist';
       if (flexColumns.length > 1) {
-        final artistRuns = flexColumns[1]?['musicResponsiveListItemFlexColumnRenderer']
-            ?['text']?['runs'] as List?;
+        final artistRuns = flexColumns[1]
+                ?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
+            as List?;
         if (artistRuns != null && artistRuns.isNotEmpty) {
           // Join all artist names
           artist = artistRuns
-              .where((r) => r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
+              .where((r) =>
+                  r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
               .map((r) => r['text'])
               .take(3)
               .join(', ');
         }
       }
-      
+
       // Thumbnail
       String? thumbnail;
       final thumbnails = renderer['thumbnail']?['musicThumbnailRenderer']
@@ -438,16 +462,18 @@ class InnerTubeService {
         // Get highest quality thumbnail
         thumbnail = thumbnails.last['url'];
         // Convert to high quality if it's a YouTube thumbnail
-        if (thumbnail != null && thumbnail.contains('lh3.googleusercontent.com')) {
+        if (thumbnail != null &&
+            thumbnail.contains('lh3.googleusercontent.com')) {
           thumbnail = thumbnail.replaceAll(RegExp(r'=w\d+-h\d+'), '=w500-h500');
         }
       }
-      
+
       // Duration (from third column or fixed columns)
       int? durationMs;
       if (flexColumns.length > 2) {
-        final durationText = flexColumns[2]?['musicResponsiveListItemFlexColumnRenderer']
-            ?['text']?['runs']?[0]?['text'];
+        final durationText = flexColumns[2]
+                ?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
+            ?[0]?['text'];
         if (durationText != null) {
           durationMs = _parseDuration(durationText);
         }
@@ -455,13 +481,14 @@ class InnerTubeService {
       // Also try fixed columns
       final fixedColumns = renderer['fixedColumns'] as List?;
       if (fixedColumns != null && fixedColumns.isNotEmpty) {
-        final durationText = fixedColumns[0]?['musicResponsiveListItemFixedColumnRenderer']
-            ?['text']?['runs']?[0]?['text'];
+        final durationText = fixedColumns[0]
+                ?['musicResponsiveListItemFixedColumnRenderer']?['text']
+            ?['runs']?[0]?['text'];
         if (durationText != null) {
           durationMs = _parseDuration(durationText);
         }
       }
-      
+
       return Track(
         id: videoId,
         trackName: title,
@@ -472,7 +499,6 @@ class InnerTubeService {
         source: 'youtube',
         durationMs: durationMs,
       );
-      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Track parse error: $e');
@@ -480,7 +506,7 @@ class InnerTubeService {
       return null;
     }
   }
-  
+
   /// Parse duration string (e.g., "3:45") to milliseconds
   int? _parseDuration(String duration) {
     try {
@@ -498,34 +524,37 @@ class InnerTubeService {
     } catch (_) {}
     return null;
   }
-  
+
   /// Get player response for a video (contains stream URLs)
   /// Uses ANDROID_VR client which doesn't require authentication
   Future<Map<String, dynamic>> getPlayer(String videoId) async {
     // Try ANDROID_VR first (no auth required)
     try {
       if (kDebugMode) {
-        debugPrint('InnerTubeService: Getting player for $videoId using ANDROID_VR');
+        debugPrint(
+            'InnerTubeService: Getting player for $videoId using ANDROID_VR');
       }
-      
-      final result = await _getPlayerWithClient(videoId, YouTubeClientType.androidVr);
-      
+
+      final result =
+          await _getPlayerWithClient(videoId, YouTubeClientType.androidVr);
+
       // Check if playable
       final status = result['playabilityStatus']?['status'];
       if (status == 'OK') {
         return result;
       }
-      
+
       // If not OK, try iOS client as fallback
       if (kDebugMode) {
-        debugPrint('InnerTubeService: ANDROID_VR failed ($status), trying iOS client');
+        debugPrint(
+            'InnerTubeService: ANDROID_VR failed ($status), trying iOS client');
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: ANDROID_VR error: $e, trying iOS');
       }
     }
-    
+
     // Fallback to iOS client
     try {
       final result = await _getPlayerWithClient(videoId, YouTubeClientType.ios);
@@ -537,9 +566,11 @@ class InnerTubeService {
       rethrow;
     }
   }
-  
+
   /// Get player response with specific client type
-  Future<Map<String, dynamic>> _getPlayerWithClient(String videoId, YouTubeClientType clientType, {String? poToken}) async {
+  Future<Map<String, dynamic>> _getPlayerWithClient(
+      String videoId, YouTubeClientType clientType,
+      {String? poToken}) async {
     final context = _buildContext(clientType: clientType);
     if (poToken != null && visitorData != null) {
       (context['client'] as Map<String, dynamic>)['visitorData'] = visitorData;
@@ -552,24 +583,24 @@ class InnerTubeService {
       if (poToken != null)
         'playbackContext': {
           'contentPlaybackContext': {
-            if (_signatureTimestamp != null) 'signatureTimestamp': _signatureTimestamp,
+            if (_signatureTimestamp != null)
+              'signatureTimestamp': _signatureTimestamp,
             'html5Preference': 'HTML5_PREF_WANTS',
           },
         },
-      if (poToken != null)
-        'serviceIntegrityDimensions': {'poToken': poToken},
+      if (poToken != null) 'serviceIntegrityDimensions': {'poToken': poToken},
     });
-    
+
     final response = await _httpClient.post(
       Uri.parse('$_apiUrl/player?prettyPrint=false'),
       headers: _buildHeaders(clientType: clientType),
       body: body,
     );
-    
+
     if (response.statusCode != 200) {
       throw Exception('Player request failed: ${response.statusCode}');
     }
-    
+
     return jsonDecode(response.body);
   }
 
@@ -582,20 +613,22 @@ class InnerTubeService {
     final cached = _signatureTimestamp;
     if (cached != null &&
         _signatureFetchedAt != null &&
-        DateTime.now().difference(_signatureFetchedAt!) < const Duration(hours: 6)) {
+        DateTime.now().difference(_signatureFetchedAt!) <
+            const Duration(hours: 6)) {
       return cached;
     }
     try {
       final iframe = await _httpClient
           .get(Uri.parse('https://www.youtube.com/iframe_api'))
           .timeout(const Duration(seconds: 8));
-      final hashMatch =
-          RegExp(r'/s/player/([a-zA-Z0-9_-]+)/').firstMatch(iframe.body)?.group(1);
+      final hashMatch = RegExp(r'/s/player/([a-zA-Z0-9_-]+)/')
+          .firstMatch(iframe.body)
+          ?.group(1);
       if (hashMatch == null) return null;
       final playerJs = await _httpClient.get(Uri.parse(
           'https://www.youtube.com/s/player/$hashMatch/player_ias.vflset/en_GB/base.js'));
-      final stsMatch = RegExp(r'signatureTimestamp\s*=\s*(\d+)')
-          .firstMatch(playerJs.body);
+      final stsMatch =
+          RegExp(r'signatureTimestamp\s*=\s*(\d+)').firstMatch(playerJs.body);
       if (stsMatch == null) return null;
       _signatureTimestamp = int.parse(stsMatch.group(1)!);
       _signatureFetchedAt = DateTime.now();
@@ -629,13 +662,15 @@ class InnerTubeService {
       final response = await _httpClient.post(
         Uri.parse('$_apiUrl/browse?prettyPrint=false'),
         headers: _buildHeaders(),
-        body: jsonEncode({'context': _buildContext(), 'browseId': 'FEmusic_home'}),
+        body: jsonEncode(
+            {'context': _buildContext(), 'browseId': 'FEmusic_home'}),
       );
       if (response.statusCode == 200) {
         _captureVisitorData(jsonDecode(response.body));
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('InnerTubeService: visitorData fetch failed: $e');
+      if (kDebugMode)
+        debugPrint('InnerTubeService: visitorData fetch failed: $e');
     }
   }
 
@@ -688,8 +723,7 @@ class InnerTubeService {
     ];
     for (final client in ladder) {
       try {
-        final playerResponse =
-            await _getPlayerWithClient(videoId, client);
+        final playerResponse = await _getPlayerWithClient(videoId, client);
         final status = playerResponse['playabilityStatus'];
         if (status?['status'] != 'OK') {
           debugPrint(
@@ -712,11 +746,11 @@ class InnerTubeService {
     return null;
   }
 
-
   // Legacy Piped method removed. Use PipedService class.
 
   /// Helper to extract best stream from InnerTube response
-  Future<String?> _extractBestStream(Map<String, dynamic> streamingData, int preferredBitrate) async {
+  Future<String?> _extractBestStream(
+      Map<String, dynamic> streamingData, int preferredBitrate) async {
     // Prefer adaptive formats for audio-only streams
     final adaptiveFormats = streamingData['adaptiveFormats'] as List?;
     if (adaptiveFormats != null && adaptiveFormats.isNotEmpty) {
@@ -725,7 +759,7 @@ class InnerTubeService {
         final mimeType = f['mimeType'] as String?;
         return mimeType != null && mimeType.startsWith('audio/');
       }).toList();
-      
+
       if (audioFormats.isNotEmpty) {
         // Sort by bitrate (descending)
         audioFormats.sort((a, b) {
@@ -733,7 +767,7 @@ class InnerTubeService {
           final bitrateB = b['bitrate'] as int? ?? 0;
           return bitrateB.compareTo(bitrateA);
         });
-        
+
         // Find closest to preferred bitrate
         Map<String, dynamic>? bestFormat;
         for (final format in audioFormats) {
@@ -743,16 +777,41 @@ class InnerTubeService {
             if (bitrate <= preferredBitrate) break;
           }
         }
-        
+
         // Only return if it contains a signature/url that looks usable
         // Note: We are not deciphering signatures here. If 'signatureCipher' is present instead of 'url',
         // it means we need decryption which we are skipping in favor of Piped fallback.
         if (bestFormat?['url'] != null) {
-           return bestFormat!['url'];
+          return bestFormat!['url'];
         }
       }
     }
     return null;
+  }
+
+  /// Raw browse endpoint for dedicated sources (e.g. the Home feed).
+  /// Additive passthrough — no parsing here; the caller owns semantics.
+  Future<Map<String, dynamic>> browseJson(String browseId,
+      {String? params}) async {
+    await _ensureVisitorData();
+    final response = await _httpClient.post(
+      Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+      headers: _buildHeaders(),
+      body: jsonEncode({
+        'context': _buildContext(),
+        'browseId': browseId,
+        if (params != null && params.isNotEmpty) 'params': params,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Browse $browseId failed: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      _captureVisitorData(decoded);
+      return decoded;
+    }
+    throw Exception('Browse $browseId returned unexpected payload');
   }
 
   /// Get home/browse content (trending, recommendations)
@@ -762,20 +821,19 @@ class InnerTubeService {
         'context': _buildContext(),
         'browseId': 'FEmusic_home',
       });
-      
+
       final response = await _httpClient.post(
         Uri.parse('$_apiUrl/browse?prettyPrint=false'),
         headers: _buildHeaders(),
         body: body,
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Browse failed: ${response.statusCode}');
       }
-      
+
       final data = jsonDecode(response.body);
       return _parseHomeResults(data, limit);
-
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Home error: $e');
@@ -868,27 +926,30 @@ class InnerTubeService {
           allowBrowseIds: true);
     });
   }
-  
+
   /// Parse home/browse results. When [allowBrowseIds] is true, playlist and
   /// album cards are kept (their ids route through the playlist flow).
   List<Track> _parseHomeResults(Map<String, dynamic> data, int limit,
       {bool allowBrowseIds = false}) {
     final tracks = <Track>[];
-    
+
     try {
-      final tabs = data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
+      final tabs =
+          data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
       if (tabs == null || tabs.isEmpty) return tracks;
-      
-      final contents = tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'];
+
+      final contents = tabs[0]?['tabRenderer']?['content']
+          ?['sectionListRenderer']?['contents'];
       if (contents == null) return tracks;
-      
+
       for (final section in contents) {
-        final carouselContents = section['musicCarouselShelfRenderer']?['contents'];
+        final carouselContents =
+            section['musicCarouselShelfRenderer']?['contents'];
         if (carouselContents == null) continue;
-        
+
         for (final item in carouselContents) {
           if (tracks.length >= limit) break;
-          
+
           // Try MusicResponsiveListItemRenderer first
           var renderer = item['musicResponsiveListItemRenderer'];
           if (renderer != null) {
@@ -898,7 +959,7 @@ class InnerTubeService {
               continue;
             }
           }
-          
+
           // Try MusicTwoRowItemRenderer
           renderer = item['musicTwoRowItemRenderer'];
           if (renderer != null) {
@@ -909,7 +970,7 @@ class InnerTubeService {
             }
           }
         }
-        
+
         if (tracks.length >= limit) break;
       }
     } catch (e) {
@@ -917,15 +978,16 @@ class InnerTubeService {
         debugPrint('InnerTubeService: Home parse error: $e');
       }
     }
-    
+
     return tracks;
   }
 
   /// Get Artist Details (Top Songs)
   Future<Map<String, dynamic>> getArtistDetails(String browseId) async {
     try {
-      if (kDebugMode) debugPrint('InnerTubeService: Getting artist details for $browseId');
-      
+      if (kDebugMode)
+        debugPrint('InnerTubeService: Getting artist details for $browseId');
+
       final body = jsonEncode({
         'context': _buildContext(),
         'browseId': browseId,
@@ -937,78 +999,86 @@ class InnerTubeService {
         body: body,
       );
 
-      if (response.statusCode != 200) throw Exception('Artist browse failed: ${response.statusCode}');
-      
+      if (response.statusCode != 200)
+        throw Exception('Artist browse failed: ${response.statusCode}');
+
       final data = jsonDecode(response.body);
       final tracks = <Track>[];
       final albums = <Album>[];
       final singles = <Album>[];
-      
+
       // Parse "Songs" section (Top Songs)
       // Usually under 'contents' -> 'singleColumnBrowseResultsRenderer' -> 'tabs' -> tab 0 -> 'sectionListRenderer'
       // Parse Header for proper Artist Name (if needed by UI, though UI passes name usually)
       // The UI uses the name passed from Search, which we fixed to be clean.
       // However, if the user navigates deep, we might want the name from details.
       // Let's stick to parsing content for now.
-      
+
       // Parse "Songs" section (Top Songs)
       // Usually under 'contents' -> 'singleColumnBrowseResultsRenderer' -> 'tabs' -> tab 0 -> 'sectionListRenderer'
-      final tabs = data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
-      if (tabs == null || tabs.isEmpty) return {'tracks': [], 'albums': [], 'singles': []};
-      
-      final sections = tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'] as List?;
-                       
+      final tabs =
+          data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
+      if (tabs == null || tabs.isEmpty)
+        return {'tracks': [], 'albums': [], 'singles': []};
+
+      final sections = tabs[0]?['tabRenderer']?['content']
+          ?['sectionListRenderer']?['contents'] as List?;
+
       if (sections != null) {
         for (final section in sections) {
           // 1. Check MusicShelfRenderer (List of Songs)
           final musicShelf = section['musicShelfRenderer'];
           if (musicShelf != null) {
-             // We don't rely on shelf title for Artist Name.
-             final contents = musicShelf['contents'] as List?;
-             if (contents != null) {
-               for (final item in contents) {
-                 final renderer = item['musicResponsiveListItemRenderer'];
-                 if (renderer != null) {
-                   final track = _parseTrackFromRenderer(renderer);
-                   if (track != null) tracks.add(track);
-                 }
-               }
-             }
+            // We don't rely on shelf title for Artist Name.
+            final contents = musicShelf['contents'] as List?;
+            if (contents != null) {
+              for (final item in contents) {
+                final renderer = item['musicResponsiveListItemRenderer'];
+                if (renderer != null) {
+                  final track = _parseTrackFromRenderer(renderer);
+                  if (track != null) tracks.add(track);
+                }
+              }
+            }
           }
-          
+
           // 2. Check MusicCarouselShelfRenderer (Albums/Singles)
           final carouselShelf = section['musicCarouselShelfRenderer'];
           if (carouselShelf != null) {
-             final title = (carouselShelf['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']?['runs']?[0]?['text'] ?? '').toString();
-             final contents = carouselShelf['contents'] as List?;
-             
-             if (contents != null) {
-               final isAlbums = title.contains('Albums');
-               final isSingles = title.contains('Singles') || title.contains('EPs');
-               
-               if (isAlbums || isSingles) {
-                  for (final item in contents) {
-                    final renderer = item['musicTwoRowItemRenderer'];
-                    if (renderer != null) {
-                       final album = _parseAlbumFromRenderer(renderer);
-                       if (album != null) {
-                         if (isAlbums) albums.add(album);
-                         if (isSingles) singles.add(album);
-                       }
+            final title = (carouselShelf['header']
+                            ?['musicCarouselShelfBasicHeaderRenderer']?['title']
+                        ?['runs']?[0]?['text'] ??
+                    '')
+                .toString();
+            final contents = carouselShelf['contents'] as List?;
+
+            if (contents != null) {
+              final isAlbums = title.contains('Albums');
+              final isSingles =
+                  title.contains('Singles') || title.contains('EPs');
+
+              if (isAlbums || isSingles) {
+                for (final item in contents) {
+                  final renderer = item['musicTwoRowItemRenderer'];
+                  if (renderer != null) {
+                    final album = _parseAlbumFromRenderer(renderer);
+                    if (album != null) {
+                      if (isAlbums) albums.add(album);
+                      if (isSingles) singles.add(album);
                     }
                   }
-               }
-             }
+                }
+              }
+            }
           }
         }
       }
-      
+
       return {
         'tracks': tracks,
         'albums': albums,
         'singles': singles,
       };
-      
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: Artist details error: $e');
       return {'tracks': <Track>[], 'albums': <Album>[], 'singles': <Album>[]};
@@ -1016,42 +1086,44 @@ class InnerTubeService {
   }
 
   Album? _parseAlbumFromRenderer(Map<String, dynamic> renderer) {
-      try {
-        final navEndpoint = renderer['navigationEndpoint'];
-        final browseId = navEndpoint?['browseEndpoint']?['browseId'];
-        if (browseId == null) return null;
-        
-        final title = renderer['title']?['runs']?[0]?['text'] ?? 'Unknown Album';
-        final subtitleRuns = renderer['subtitle']?['runs'] as List?;
-        String artist = '';
-        if (subtitleRuns != null && subtitleRuns.isNotEmpty) {
-           artist = subtitleRuns[0]['text'] ?? '';
-        }
-        
-        String? thumbnail;
-        final thumbnails = renderer['thumbnailRenderer']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
-        if (thumbnails != null && thumbnails.isNotEmpty) {
-           thumbnail = thumbnails.last['url'];
-        }
-        
-        return Album(
-          id: browseId,
-          name: title,
-          artistName: artist,
-          imageUrl: thumbnail ?? '',
-          tracks: [],
-        );
-      } catch (e) {
-        return null;
+    try {
+      final navEndpoint = renderer['navigationEndpoint'];
+      final browseId = navEndpoint?['browseEndpoint']?['browseId'];
+      if (browseId == null) return null;
+
+      final title = renderer['title']?['runs']?[0]?['text'] ?? 'Unknown Album';
+      final subtitleRuns = renderer['subtitle']?['runs'] as List?;
+      String artist = '';
+      if (subtitleRuns != null && subtitleRuns.isNotEmpty) {
+        artist = subtitleRuns[0]['text'] ?? '';
       }
+
+      String? thumbnail;
+      final thumbnails = renderer['thumbnailRenderer']
+          ?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
+      if (thumbnails != null && thumbnails.isNotEmpty) {
+        thumbnail = thumbnails.last['url'];
+      }
+
+      return Album(
+        id: browseId,
+        name: title,
+        artistName: artist,
+        imageUrl: thumbnail ?? '',
+        tracks: [],
+      );
+    } catch (e) {
+      return null;
+    }
   }
 
   /// Get Playlist Details
   Future<List<Track>> getPlaylistDetails(String browseId) async {
     try {
-      if (kDebugMode) debugPrint('InnerTubeService: Getting playlist details for $browseId');
+      if (kDebugMode)
+        debugPrint('InnerTubeService: Getting playlist details for $browseId');
       // Ensure browseId starts with VL if needed? Usually passing ID directly works.
-      
+
       final body = jsonEncode({
         'context': _buildContext(),
         'browseId': browseId.startsWith('PL') ? 'VL$browseId' : browseId,
@@ -1063,45 +1135,47 @@ class InnerTubeService {
         body: body,
       );
 
-      if (response.statusCode != 200) throw Exception('Playlist browse failed: ${response.statusCode}');
-      
+      if (response.statusCode != 200)
+        throw Exception('Playlist browse failed: ${response.statusCode}');
+
       final data = jsonDecode(response.body);
       final tracks = <Track>[];
-      
+
       // Playlist structure:
       // contents -> twoColumnBrowseResultsRenderer -> secondaryContents -> sectionListRenderer -> contents -> musicPlaylistShelfRenderer
       // OR singleColumn...
-      
-      final secondaryContents = data['contents']?['twoColumnBrowseResultsRenderer']?['secondaryContents']
-                                ?['sectionListRenderer']?['contents'];
-                                
+
+      final secondaryContents = data['contents']
+              ?['twoColumnBrowseResultsRenderer']?['secondaryContents']
+          ?['sectionListRenderer']?['contents'];
+
       if (secondaryContents != null) {
-         for (final section in secondaryContents) {
-           final shelf = section['musicPlaylistShelfRenderer'];
-           if (shelf != null) {
-             final contents = shelf['contents'] as List?;
-             if (contents != null) {
-               for (final item in contents) {
-                  final renderer = item['musicResponsiveListItemRenderer'];
-                  if (renderer != null) {
-                    final track = _parseTrackFromRenderer(renderer);
-                    if (track != null) tracks.add(track);
-                  }
-               }
-             }
-           }
-         }
+        for (final section in secondaryContents) {
+          final shelf = section['musicPlaylistShelfRenderer'];
+          if (shelf != null) {
+            final contents = shelf['contents'] as List?;
+            if (contents != null) {
+              for (final item in contents) {
+                final renderer = item['musicResponsiveListItemRenderer'];
+                if (renderer != null) {
+                  final track = _parseTrackFromRenderer(renderer);
+                  if (track != null) tracks.add(track);
+                }
+              }
+            }
+          }
+        }
       }
-      
+
       // Fallback for SingleColumn (sometimes user created playlists?)
       if (tracks.isEmpty) {
-         return _parseHomeResults(data, 100); // reuse mostly similar parser
+        return _parseHomeResults(data, 100); // reuse mostly similar parser
       }
-      
+
       return tracks;
-      
     } catch (e) {
-      if (kDebugMode) debugPrint('InnerTubeService: Playlist details error: $e');
+      if (kDebugMode)
+        debugPrint('InnerTubeService: Playlist details error: $e');
       return [];
     }
   }
@@ -1110,8 +1184,9 @@ class InnerTubeService {
   /// Album browseIds typically start with 'MPREb_' for music albums
   Future<List<Track>> getAlbumTracks(String browseId) async {
     try {
-      if (kDebugMode) debugPrint('InnerTubeService: Getting album tracks for $browseId');
-      
+      if (kDebugMode)
+        debugPrint('InnerTubeService: Getting album tracks for $browseId');
+
       final body = jsonEncode({
         'context': _buildContext(),
         'browseId': browseId,
@@ -1126,42 +1201,45 @@ class InnerTubeService {
       if (response.statusCode != 200) {
         throw Exception('Album browse failed: ${response.statusCode}');
       }
-      
+
       final data = jsonDecode(response.body);
       final tracks = <Track>[];
-      
-      // Album Structure: 
-      // contents -> twoColumnBrowseResultsRenderer -> secondaryContents -> 
+
+      // Album Structure:
+      // contents -> twoColumnBrowseResultsRenderer -> secondaryContents ->
       //   sectionListRenderer -> contents -> musicShelfRenderer -> contents
       // OR singleColumnBrowseResultsRenderer for some albums
-      
+
       // Try twoColumn first (standard album layout)
-      final secondaryContents = data['contents']?['twoColumnBrowseResultsRenderer']
-                                ?['secondaryContents']?['sectionListRenderer']?['contents'];
-                                
+      final secondaryContents = data['contents']
+              ?['twoColumnBrowseResultsRenderer']?['secondaryContents']
+          ?['sectionListRenderer']?['contents'];
+
       if (secondaryContents != null) {
-         for (final section in secondaryContents) {
-           final shelf = section['musicShelfRenderer'];
-           if (shelf != null) {
-             final contents = shelf['contents'] as List?;
-             if (contents != null) {
-               for (final item in contents) {
-                  final renderer = item['musicResponsiveListItemRenderer'];
-                  if (renderer != null) {
-                    final track = _parseTrackFromRenderer(renderer);
-                    if (track != null) tracks.add(track);
-                  }
-               }
-             }
-           }
-         }
+        for (final section in secondaryContents) {
+          final shelf = section['musicShelfRenderer'];
+          if (shelf != null) {
+            final contents = shelf['contents'] as List?;
+            if (contents != null) {
+              for (final item in contents) {
+                final renderer = item['musicResponsiveListItemRenderer'];
+                if (renderer != null) {
+                  final track = _parseTrackFromRenderer(renderer);
+                  if (track != null) tracks.add(track);
+                }
+              }
+            }
+          }
+        }
       }
-      
+
       // Fallback: Try singleColumn (for some album formats)
       if (tracks.isEmpty) {
-        final tabs = data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
+        final tabs =
+            data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
         if (tabs != null && (tabs as List).isNotEmpty) {
-          final sections = tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'] as List?;
+          final sections = tabs[0]?['tabRenderer']?['content']
+              ?['sectionListRenderer']?['contents'] as List?;
           if (sections != null) {
             for (final section in sections) {
               final shelf = section['musicShelfRenderer'];
@@ -1181,10 +1259,10 @@ class InnerTubeService {
           }
         }
       }
-      
-      if (kDebugMode) debugPrint('InnerTubeService: Found ${tracks.length} tracks in album');
+
+      if (kDebugMode)
+        debugPrint('InnerTubeService: Found ${tracks.length} tracks in album');
       return tracks;
-      
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: Album tracks error: $e');
       return [];
@@ -1192,52 +1270,59 @@ class InnerTubeService {
   }
 
   /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
-  Track? _parseTrackFromTwoRowRenderer(Map<String, dynamic> renderer, {bool allowBrowseIds = false}) {
+  Track? _parseTrackFromTwoRowRenderer(Map<String, dynamic> renderer,
+      {bool allowBrowseIds = false}) {
     try {
       // Get video ID or Browse ID
       final navEndpoint = renderer['navigationEndpoint'];
-      final videoId = navEndpoint?['watchEndpoint']?['videoId'] ?? 
-                     navEndpoint?['browseEndpoint']?['browseId'];
-      
+      final videoId = navEndpoint?['watchEndpoint']?['videoId'] ??
+          navEndpoint?['browseEndpoint']?['browseId'];
+
       if (videoId == null) return null;
-      
+
       // Title
       final title = renderer['title']?['runs']?[0]?['text'] ?? 'Unknown';
-      
+
       // Subtitle (artist/metadata)
       String artist = 'Unknown Artist';
       String album = '';
-      
+
       final subtitleRuns = renderer['subtitle']?['runs'] as List?;
       if (subtitleRuns != null && subtitleRuns.isNotEmpty) {
         // Check if this is an Artist or Playlist card based on subtitle text or ID
         final firstRun = subtitleRuns[0]['text'];
         final isArtist = firstRun == 'Artist' || (videoId.startsWith('UC'));
-        final isPlaylist = firstRun == 'Playlist' || (videoId.startsWith('VL') || videoId.startsWith('PL') || videoId.startsWith('OLAK'));
-        
+        final isPlaylist = firstRun == 'Playlist' ||
+            (videoId.startsWith('VL') ||
+                videoId.startsWith('PL') ||
+                videoId.startsWith('OLAK'));
+
         // Skip non-playable items ONLY when NOT in browse mode
         // Artists and Playlists need to be navigated to, not played directly
         if (!allowBrowseIds && (isArtist || isPlaylist)) {
-           if (kDebugMode) debugPrint('InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
-           return null;
+          if (kDebugMode)
+            debugPrint(
+                'InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
+          return null;
         }
-        
+
         // Normal Song or browse mode
         artist = subtitleRuns
-          .where((r) => r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
-          .map((r) => r['text'])
-          .take(2)
-          .join(', ');
+            .where((r) =>
+                r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
+            .map((r) => r['text'])
+            .take(2)
+            .join(', ');
       }
-      
+
       // Thumbnail
       String? thumbnail;
-      final thumbnails = renderer['thumbnailRenderer']?['musicThumbnailRenderer']
-          ?['thumbnail']?['thumbnails'] as List?;
+      final thumbnails = renderer['thumbnailRenderer']
+          ?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
       if (thumbnails != null && thumbnails.isNotEmpty) {
         thumbnail = thumbnails.last['url'];
       }
-      
+
       return Track(
         id: videoId,
         trackName: title,
@@ -1247,40 +1332,39 @@ class InnerTubeService {
         previewUrl: '',
         source: 'youtube',
       );
-      
     } catch (e) {
       return null;
     }
   }
-  
+
   /// Get YouTube Music transcript (for lyrics)
   Future<String?> getTranscript(String videoId) async {
     try {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Getting transcript for $videoId');
       }
-      
+
       // Encode the params properly
       final params = base64Encode(utf8.encode('\n\x0b$videoId'));
-      
+
       final body = jsonEncode({
         'context': _buildContext(),
         'params': params,
       });
-      
+
       final response = await _httpClient.post(
-        Uri.parse('$_apiUrl/get_transcript?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX3&prettyPrint=false'),
+        Uri.parse(
+            '$_apiUrl/get_transcript?key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX3&prettyPrint=false'),
         headers: _buildHeaders(),
         body: body,
       );
-      
+
       if (response.statusCode != 200) {
         return null;
       }
-      
+
       final data = jsonDecode(response.body);
       return _parseTranscript(data);
-      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Transcript error: $e');
@@ -1288,41 +1372,41 @@ class InnerTubeService {
       return null;
     }
   }
-  
+
   /// Parse transcript response into LRC format
   String? _parseTranscript(Map<String, dynamic> data) {
     try {
       final cueGroups = data['actions']?[0]?['updateEngagementPanelAction']
-          ?['content']?['transcriptRenderer']?['body']?['transcriptBodyRenderer']
-          ?['cueGroups'] as List?;
-      
+              ?['content']?['transcriptRenderer']?['body']
+          ?['transcriptBodyRenderer']?['cueGroups'] as List?;
+
       if (cueGroups == null || cueGroups.isEmpty) return null;
-      
+
       final buffer = StringBuffer();
-      
+
       for (final group in cueGroups) {
         final cue = group['transcriptCueGroupRenderer']?['cues']?[0]
             ?['transcriptCueRenderer'];
         if (cue == null) continue;
-        
+
         final startMs = cue['startOffsetMs'] as int? ?? 0;
         final text = (cue['cue']?['simpleText'] as String? ?? '')
             .replaceAll('♪', '')
             .trim();
-        
+
         if (text.isEmpty) continue;
-        
+
         // Convert to LRC format [mm:ss.xxx]
         final minutes = startMs ~/ 60000;
         final seconds = (startMs ~/ 1000) % 60;
         final millis = startMs % 1000;
-        
-        buffer.writeln('[${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}.${millis.toString().padLeft(3, '0')}]$text');
+
+        buffer.writeln(
+            '[${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}.${millis.toString().padLeft(3, '0')}]$text');
       }
-      
+
       final result = buffer.toString().trim();
       return result.isEmpty ? null : result;
-      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Transcript parse error: $e');
@@ -1330,7 +1414,7 @@ class InnerTubeService {
       return null;
     }
   }
-  
+
   /// Get suggestions/recommendations for a track
   Future<List<Track>> getSuggestions(String videoId, {int limit = 10}) async {
     try {
@@ -1338,20 +1422,19 @@ class InnerTubeService {
         'context': _buildContext(),
         'videoId': videoId,
       });
-      
+
       final response = await _httpClient.post(
         Uri.parse('$_apiUrl/next?prettyPrint=false'),
         headers: _buildHeaders(),
         body: body,
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Next failed: ${response.statusCode}');
       }
-      
+
       final data = jsonDecode(response.body);
       return _parseNextResults(data, limit);
-      
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Suggestions error: $e');
@@ -1359,45 +1442,47 @@ class InnerTubeService {
       return [];
     }
   }
-  
+
   /// Parse next/suggestions results
   List<Track> _parseNextResults(Map<String, dynamic> data, int limit) {
     final tracks = <Track>[];
-    
+
     try {
-      final contents = data['contents']?['singleColumnMusicWatchNextResultsRenderer']
-          ?['tabbedRenderer']?['watchNextTabbedResultsRenderer']?['tabs']?[0]
-          ?['tabRenderer']?['content']?['musicQueueRenderer']?['content']
-          ?['playlistPanelRenderer']?['contents'] as List?;
-      
+      final contents = data['contents']
+                      ?['singleColumnMusicWatchNextResultsRenderer']
+                  ?['tabbedRenderer']?['watchNextTabbedResultsRenderer']
+              ?['tabs']?[0]?['tabRenderer']?['content']?['musicQueueRenderer']
+          ?['content']?['playlistPanelRenderer']?['contents'] as List?;
+
       if (contents == null) return tracks;
-      
+
       for (final item in contents) {
         if (tracks.length >= limit) break;
-        
+
         final renderer = item['playlistPanelVideoRenderer'];
         if (renderer == null) continue;
-        
+
         final videoId = renderer['videoId'];
         if (videoId == null) continue;
-        
+
         final title = renderer['title']?['runs']?[0]?['text'] ?? 'Unknown';
-        
+
         String artist = 'Unknown Artist';
         final artistRuns = renderer['shortBylineText']?['runs'] as List?;
         if (artistRuns != null && artistRuns.isNotEmpty) {
           artist = artistRuns.map((r) => r['text']).join('');
         }
-        
+
         String? thumbnail;
         final thumbnails = renderer['thumbnail']?['thumbnails'] as List?;
         if (thumbnails != null && thumbnails.isNotEmpty) {
           thumbnail = thumbnails.last['url'];
         }
-        
+
         final durationText = renderer['lengthText']?['runs']?[0]?['text'];
-        final durationMs = durationText != null ? _parseDuration(durationText) : null;
-        
+        final durationMs =
+            durationText != null ? _parseDuration(durationText) : null;
+
         tracks.add(Track(
           id: videoId,
           trackName: title,
@@ -1414,10 +1499,10 @@ class InnerTubeService {
         debugPrint('InnerTubeService: Next parse error: $e');
       }
     }
-    
+
     return tracks;
   }
-  
+
   /// Search for trending/charts
   Future<List<Track>> getTrendingTracks({int limit = 20}) async {
     try {
@@ -1426,28 +1511,27 @@ class InnerTubeService {
         'browseId': 'FEmusic_charts',
         'params': 'ggMGCgQIgAQ%3D',
       });
-      
+
       final response = await _httpClient.post(
         Uri.parse('$_apiUrl/browse?prettyPrint=false'),
         headers: _buildHeaders(),
         body: body,
       );
-      
+
       if (response.statusCode != 200) {
         // Fallback to search for popular music
         return await searchSongs('top hits 2024', limit: limit);
       }
-      
+
       final data = jsonDecode(response.body);
       final tracks = _parseHomeResults(data, limit);
-      
+
       if (tracks.isEmpty) {
         // Fallback to search
         return await searchSongs('trending music 2024', limit: limit);
       }
-      
-        return tracks;
-      
+
+      return tracks;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Trending error: $e');
@@ -1456,7 +1540,7 @@ class InnerTubeService {
       return searchSongs('popular songs', limit: limit);
     }
   }
-  
+
   void dispose() {
     _httpClient.close();
   }
