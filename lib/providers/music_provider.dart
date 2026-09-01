@@ -1923,8 +1923,55 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver
   }
 
   /// Robust navigation using an existing Artist/Track object from search results
-  Future<void> navigateToArtistObject(Track artistTrack) async {
-    if (kDebugMode) debugPrint("PROVIDER ACTION: Navigate to Artist Object: ${artistTrack.trackName} (${artistTrack.id})");
+  /// Deep-link helper: resolve a videoId to a playable track and play it.
+  Future<void> playTrackById(String id) async {
+    try {
+      final results = await _innerTubeService.searchSongs(id, limit: 3);
+      final resolved = results.where((t) => t.id == id).toList();
+      final track = resolved.isNotEmpty
+          ? resolved.first
+          : Track(
+              id: id,
+              trackName: 'Shared track',
+              artistName: '',
+              albumName: '',
+              previewUrl: '',
+              source: 'youtube',
+            );
+      await playTrack(track);
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: playTrackById failed: $e');
+    }
+  }
+
+  /// Deep-link helper: load artist details by browse ID (no name needed).
+  Future<void> navigateToArtistById(String id) async {
+    _isLoadingArtist = true;
+    _currentArtistDetails = null;
+    notifyListeners();
+    try {
+      final detailsMap = await _innerTubeService.getArtistDetails(id);
+      final tracks = (detailsMap['tracks'] as List?)?.cast<Track>();
+      final albums = (detailsMap['albums'] as List?)?.cast<Album>();
+      final name = (detailsMap['name'] as String?) ??
+          (tracks?.isNotEmpty == true ? tracks!.first.artistName : '');
+      _currentArtistDetails = Artist(
+        id: id,
+        name: name,
+        imageUrl: '',
+        topTracks: tracks,
+        topAlbums: albums,
+      );
+    } catch (e) {
+      _errorMessage = 'Could not load artist details.';
+      _currentArtistDetails = null;
+    } finally {
+      _isLoadingArtist = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> navigateToArtistObject(Track artistTrack) async {    if (kDebugMode) debugPrint("PROVIDER ACTION: Navigate to Artist Object: ${artistTrack.trackName} (${artistTrack.id})");
     _isLoadingArtist = true;
     _currentArtistDetails = null;
     _errorMessage = null;

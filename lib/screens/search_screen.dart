@@ -165,6 +165,7 @@ class SearchScreen extends StatefulWidget {
     this.embedded = false,
     this.externalController,
     this.externalFocusNode,
+    this.initialQuery,
   });
 
   /// Embedded mode: lives inside MainScreen's search overlay; the input
@@ -173,6 +174,9 @@ class SearchScreen extends StatefulWidget {
   final bool embedded;
   final TextEditingController? externalController;
   final FocusNode? externalFocusNode;
+
+  /// Pre-filled query (deep links: minemusic://search?q=...).
+  final String? initialQuery;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -193,6 +197,13 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     _tabController = TabController(length: 3, vsync: this);
     _searchController.addListener(_onSearchChanged);
     _loadHistory();
+    final initial = widget.initialQuery;
+    if (initial != null && initial.isNotEmpty) {
+      _searchController.text = initial;
+      _searchQuery = initial;
+      _addToHistory(initial);
+      _performSearch(initial);
+    }
   }
 
   Future<void> _loadHistory() async {

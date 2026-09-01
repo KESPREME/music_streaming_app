@@ -3,11 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'dart:async';
 
 import 'core/navigation/root_navigator.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/accent_controller.dart';
+import 'services/deep_link_service.dart';
+import 'screens/search_screen.dart';
+import 'widgets/themed_artist_detail_screen.dart';
+import 'widgets/themed_playlist_detail_screen.dart';
 import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
@@ -81,6 +86,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final DeepLinkService _deepLinks = DeepLinkService();
+  StreamSubscription<DeepLink>? _deepLinkSub;
+
   @override
   void initState() {
     super.initState();
@@ -88,7 +96,85 @@ class _MyAppState extends State<MyApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ThemeProvider>(context, listen: false).initialize();
       Provider.of<AccentController>(context, listen: false).initialize();
+      _deepLinks.start();
+      _deepLinkSub = _deepLinks.links.listen(_handleDeepLink);
     });
+  }
+
+  void _handleDeepLink(DeepLink link) {
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null) return;
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    final navContext = rootNavigatorKey.currentContext;
+    if (navContext == null) return;
+
+    switch (link.route) {
+      case DeepLinkRoute.track:
+        provider.playTrackById(link.id!);
+        break;
+      case DeepLinkRoute.album:
+        Navigator.push(
+          navContext,
+          MaterialPageRoute(
+            builder: (_) => ThemedPlaylistDetailScreen(
+              playlistId: link.id!,
+              playlistName: 'Album',
+              searchAlbumByName: true,
+            ),
+          ),
+        );
+        break;
+      case DeepLinkRoute.playlist:
+        Navigator.push(
+          navContext,
+          MaterialPageRoute(
+            builder: (_) => ThemedPlaylistDetailScreen(
+              playlistId: link.id!,
+              playlistName: 'Playlist',
+            ),
+          ),
+        );
+        break;
+      case DeepLinkRoute.artist:
+        provider.navigateToArtistById(link.id!).then((_) {
+          if (!navContext.mounted) return;
+          final artist = provider.currentArtistDetails;
+          if (artist == null) return;
+          Navigator.push(
+          navContext,
+            MaterialPageRoute(
+              builder: (_) => ThemedArtistDetailScreen(
+                artistId: artist.id,
+                artistName: artist.name,
+                artistImage: artist.imageUrl,
+              ),
+            ),
+          );
+        });
+        break;
+      case DeepLinkRoute.search:
+        // Search lives as an overlay on MainScreen; push a dedicated search
+        // route instead of a named route that doesn't exist.
+        Navigator.push(
+          navContext,
+          MaterialPageRoute(
+            builder: (_) => SearchScreen(initialQuery: link.query),
+          ),
+        );
+        break;
+      case DeepLinkRoute.nowPlaying:
+        if (provider.currentTrack != null) {
+          provider.setPlayerExpanded(true);
+        }
+        break;
+    }
+  }
+
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    _deepLinks.dispose();
+    super.dispose();
   }
 
   @override
