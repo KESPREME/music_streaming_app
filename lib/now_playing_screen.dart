@@ -18,7 +18,7 @@ import '../widgets/glass_snackbar.dart';
 import '../widgets/artist_picker_sheet.dart';
 import '../widgets/glass_player_control.dart';
 import '../widgets/wavy_progress_bar.dart';
-import '../main.dart';
+import '../core/navigation/root_navigator.dart';
 import '../utils/color_utils.dart';
 import '../theme/glass_tokens.dart';
 

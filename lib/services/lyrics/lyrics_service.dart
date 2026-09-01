@@ -395,7 +395,6 @@ class LyricsService {
   }
   
   void dispose() {
-    _innerTubeService.dispose();
     _diskCache.close();
   }
 }

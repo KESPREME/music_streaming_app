@@ -19,7 +19,9 @@ enum YouTubeClientType {
 /// InnerTube API client for YouTube Music
 
 class InnerTubeService {
-  static final InnerTubeService instance = InnerTubeService();
+  InnerTubeService._internal();
+  factory InnerTubeService() => instance;
+  static final InnerTubeService instance = InnerTubeService._internal();
 
   static const String _apiUrl = 'https://music.youtube.com/youtubei/v1';
   static const String _origin = 'https://music.youtube.com';

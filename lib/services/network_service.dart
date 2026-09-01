@@ -6,9 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'dart:math';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-// import 'package:flutter/foundation.dart'; // Unused
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:http/http.dart' as http;
 import 'package:internet_connection_checker/internet_connection_checker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/network_config.dart';
@@ -42,7 +39,6 @@ class NetworkService {
 
   final Connectivity _connectivity = Connectivity();
   final InternetConnectionChecker _connectionChecker = InternetConnectionChecker.instance;
-  final DefaultCacheManager _cacheManager = DefaultCacheManager();
 
   StreamSubscription? _connectivitySubscription;
   NetworkQuality _networkQuality = NetworkQuality.moderate;
@@ -100,9 +96,9 @@ class NetworkService {
       final stopwatch = Stopwatch()..start();
 
       // Use a small test file (Google's favicon is reliable and small)
-      final response = await http.get(
-          Uri.parse('https://www.google.com/favicon.ico'),
-          headers: {'Cache-Control': 'no-cache'}
+      final response = await _dio.get<List<int>>(
+          'https://www.google.com/favicon.ico',
+          options: Options(responseType: ResponseType.bytes, headers: {'Cache-Control': 'no-cache'}),
       ).timeout(const Duration(seconds: 5), onTimeout: () {
         throw TimeoutException('Network test timed out');
       });
@@ -110,7 +106,7 @@ class NetworkService {
       stopwatch.stop();
 
       final downloadTime = stopwatch.elapsedMilliseconds;
-      final downloadSizeKb = response.bodyBytes.length / 1024;
+      final downloadSizeKb = (response.data?.length ?? 0) / 1024;
       final speedKbps = downloadSizeKb / (downloadTime / 1000);
 
       debugPrint('Network speed test: $speedKbps Kbps');
@@ -196,220 +192,6 @@ class NetworkService {
       _networkQuality = quality;
       _networkQualityController.add(_networkQuality);
     }
-  }
-
-  // HTTP GET with retry, timeout, and caching
-  Future<dynamic> get(
-      String url, {
-        Map<String, String>? headers,
-        bool useCache = true,
-        Duration cacheExpiry = NetworkConfig.defaultCacheValidity,
-        int maxRetries = NetworkConfig.maxRetries,
-        Duration? timeout,
-      }) async {
-    // Check connectivity first
-    if (!_isConnected) {
-      // Try to get from cache if offline
-      if (useCache) {
-        final cachedData = await _getCachedResponse(url);
-        if (cachedData != null) {
-          return cachedData;
-        }
-      }
-      throw Exception('No internet connection');
-    }
-
-    // Try to get from cache first if enabled
-    if (useCache) {
-      final cachedData = await _getCachedResponse(url);
-      if (cachedData != null) {
-        // Return cached data and refresh in background
-        _refreshCacheInBackground(url, headers, cacheExpiry, timeout);
-        return cachedData;
-      }
-    }
-
-    // Set up options
-    final options = Options(
-      headers: headers,
-      sendTimeout: timeout ?? NetworkConfig.sendTimeout,
-      receiveTimeout: timeout ?? NetworkConfig.receiveTimeout,
-    );
-
-    // Implement retry logic with exponential backoff
-    int attempts = 0;
-    while (attempts < maxRetries) {
-      try {
-        final response = await _dio.get(
-          url,
-          options: options,
-        );
-
-        // Cache the successful response
-        if (useCache) {
-          await _cacheResponse(url, response.data, cacheExpiry);
-        }
-
-        return response.data;
-      } on DioException {
-        attempts++;
-
-        // If it's the last attempt, rethrow
-        if (attempts >= maxRetries) {
-          // Try to return cached data if available, even if expired
-          if (useCache) {
-            final cachedData = await _getCachedResponse(url, ignoreExpiry: true);
-            if (cachedData != null) {
-              return cachedData;
-            }
-          }
-          rethrow;
-        }
-
-        // Calculate backoff time (exponential with jitter)
-        final backoffSeconds = pow(2, attempts) + (Random().nextInt(1000) / 1000.0);
-        debugPrint('Request failed, retrying in $backoffSeconds seconds...');
-        await Future.delayed(Duration(milliseconds: (backoffSeconds * 1000).round()));
-
-        // Check connectivity again before retrying
-        await _checkConnectivity();
-        if (!_isConnected) {
-          // Try to get from cache if we're offline now
-          if (useCache) {
-            final cachedData = await _getCachedResponse(url, ignoreExpiry: true);
-            if (cachedData != null) {
-              return cachedData;
-            }
-          }
-          throw Exception('Lost internet connection');
-        }
-      }
-    }
-
-    throw Exception('Failed after $maxRetries attempts');
-  }
-
-  // Cache response data
-  Future<void> _cacheResponse(String url, dynamic data, Duration expiry) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = 'cache_${url.hashCode}';
-      final expiryKey = 'expiry_${url.hashCode}';
-
-      // Store data and expiry time
-      final expiryTime = DateTime.now().add(expiry).millisecondsSinceEpoch;
-      await prefs.setString(cacheKey, jsonEncode(data));
-      await prefs.setInt(expiryKey, expiryTime);
-    } catch (_) {
-      debugPrint('Error caching response for key: $url');
-    }
-  }
-
-  // Get cached response data
-  Future<dynamic> _getCachedResponse(String url, {bool ignoreExpiry = false}) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = 'cache_${url.hashCode}';
-      final expiryKey = 'expiry_${url.hashCode}';
-
-      // Check if we have cached data
-      if (!prefs.containsKey(cacheKey)) {
-        return null;
-      }
-
-      // Check expiry if needed
-      if (!ignoreExpiry) {
-        final expiryTime = prefs.getInt(expiryKey) ?? 0;
-        if (DateTime.now().millisecondsSinceEpoch > expiryTime) {
-          return null; // Cache expired
-        }
-      }
-
-      // Return cached data
-      final cachedData = prefs.getString(cacheKey);
-      if (cachedData != null) {
-        return jsonDecode(cachedData);
-      }
-    } catch (_) {
-      debugPrint('Error getting cached response for key: $url');
-    }
-
-    return null;
-  }
-
-  // Refresh cache in background
-  Future<void> _refreshCacheInBackground(
-      String url,
-      Map<String, String>? headers,
-      Duration cacheExpiry,
-      Duration? timeout,
-      ) async {
-    try {
-      final options = Options(
-        headers: headers,
-        sendTimeout: timeout ?? NetworkConfig.sendTimeout,
-        receiveTimeout: timeout ?? NetworkConfig.receiveTimeout,
-      );
-
-      final response = await _dio.get(url, options: options);
-      await _cacheResponse(url, response.data, cacheExpiry);
-    } catch (_) {
-      // Ignore errors during background refresh
-      debugPrint('Background cache refresh failed for url: $url');
-    }
-  }
-
-  // HTTP POST with retry and timeout
-  Future<dynamic> post(
-      String url, {
-        dynamic data,
-        Map<String, String>? headers,
-        int maxRetries = NetworkConfig.maxRetries,
-        Duration? timeout,
-      }) async {
-    if (!_isConnected) {
-      throw Exception('No internet connection');
-    }
-
-    // Set up options
-    final options = Options(
-      headers: headers,
-      sendTimeout: timeout ?? NetworkConfig.sendTimeout,
-      receiveTimeout: timeout ?? NetworkConfig.receiveTimeout,
-    );
-
-    // Implement retry logic with exponential backoff
-    int attempts = 0;
-    while (attempts < maxRetries) {
-      try {
-        final response = await _dio.post(
-          url,
-          data: data,
-          options: options,
-        );
-
-        return response.data;
-      } on DioException {
-        attempts++;
-
-        // If it's the last attempt, rethrow
-        if (attempts >= maxRetries) {
-          rethrow;
-        }
-
-        // Calculate backoff time (exponential with jitter)
-        final backoffSeconds = pow(2, attempts) + (Random().nextInt(1000) / 1000.0);
-        await Future.delayed(Duration(milliseconds: (backoffSeconds * 1000).round()));
-
-        // Check connectivity again before retrying
-        await _checkConnectivity();
-        if (!_isConnected) {
-          throw Exception('Lost internet connection');
-        }
-      }
-    }
-
-    throw Exception('Failed after $maxRetries attempts');
   }
 
   // Download file with retry, resume capability, and progress tracking

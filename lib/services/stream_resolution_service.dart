@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 
 import 'innertube/innertube_service.dart';
 import 'saavn_service.dart';
-import 'youtube_clients.dart' show kAndroidVrStreamUserAgent;
 
 /// A resolved, playable stream URL plus metadata needed to play it.
 @immutable

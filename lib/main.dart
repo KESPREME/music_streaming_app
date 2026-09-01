@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
+import 'core/navigation/root_navigator.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/accent_controller.dart';
 import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
-import 'services/firestore_service.dart';
 import 'screens/discover_screen.dart';
 import 'screens/search_screen.dart';
 import 'widgets/themed_nav_bar.dart';
@@ -29,9 +28,6 @@ class AppColors {
   static const Color spotifyGreen = Color(0xFF1DB954);
 }
 
-// Define global key for root navigation
-final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -39,15 +35,13 @@ void main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   
   try {
-    await Firebase.initializeApp();
-    
     // Initialize JustAudioBackground
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.example.music_streaming_app.channel.audio',
       androidNotificationChannelName: 'Music Playback',
       androidNotificationOngoing: true,
     );
-    
+
     // Initialize Equalizer Service
     await EqualizerService().initialize();
   } catch (e) {
@@ -72,7 +66,6 @@ void main() async {
         ),
         ChangeNotifierProvider(create: (context) => AuthService()),
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
-        Provider<FirestoreService>(create: (context) => FirestoreService()),
       ],
       child: const MyApp(),
     ),

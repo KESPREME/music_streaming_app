@@ -614,7 +614,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Playback Control & Context ---
-  void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void toggleShuffle() { _shuffleEnabled = !_shuffleEnabled; if (_shuffleEnabled && _currentPlayingTracks != null) { _shufflePlaylist(); } else { _updateCurrentIndex(); } _saveSettings(); notifyListeners(); }
   
   /// Shuffle and play a list of tracks immediately
   Future<void> shuffleAndPlay(List<Track> tracks) async {
@@ -635,7 +635,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
   
-  void cycleRepeatMode() { _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length]; _saveSettings(); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void cycleRepeatMode() { _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length]; _saveSettings(); notifyListeners(); }
   void _shufflePlaylist() { if (_currentPlayingTracks == null || _currentPlayingTracks!.isEmpty) { _shuffledPlaylist = []; _currentIndex = -1; return; } _shuffledPlaylist = List.from(_currentPlayingTracks!)..shuffle(Random()); _updateCurrentIndex(); /* Preload handled by toggleShuffle or setPlaybackContext */ }
   List<Track> _getActivePlaylist() => _shuffleEnabled ? _shuffledPlaylist : (_currentPlayingTracks ?? []);
   void _updateCurrentIndex() { final list = _getActivePlaylist(); _currentIndex = (_currentTrack != null && list.isNotEmpty) ? list.indexWhere((t) => t.id == _currentTrack!.id) : -1; }
@@ -677,7 +677,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _shufflePlaylist();
   } else {
     _updateCurrentIndex();
-  } _handlePlaybackOrContextChangeForPreloading();} else { _updateCurrentIndex(); }  }
+  }} else { _updateCurrentIndex(); }  }
   /// Handles skip events arriving via the audio-service stream (dummy-item
   /// auto-advance and media-session skips). Guards the double-advance race
   /// with the completed handler and honors repeat-one.
@@ -688,7 +688,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       // Replay the actual track: after auto-advance the player is parked on
       // the next dummy item, so seeking/resuming there would play silence.
       await _replayCurrentTrack();
-      _handlePlaybackOrContextChangeForPreloading();
+     
       return;
     }
     await skipToNext();
@@ -726,7 +726,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
     if (_repeatMode == RepeatMode.one) {
        await _replayCurrentTrack();
-       _handlePlaybackOrContextChangeForPreloading();
+      
        return;
     }
 
@@ -930,9 +930,9 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       _handleEndOfPlaylist(); // Unified logic
     } 
   }
-  Future<void> skipToPrevious() async { debugPrint('SkipPrevious requested.'); _playbackGeneration++; if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
+  Future<void> skipToPrevious() async { debugPrint('SkipPrevious requested.'); _playbackGeneration++; if (_currentTrack == null) return; if (_position > const Duration(seconds: 3)) { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); return; } final list = _getActivePlaylist(); if (list.isEmpty) return; _updateCurrentIndex(); if (_currentIndex == -1 && list.isNotEmpty) { await _playTrackInternal(list.last); return; } int prev = _currentIndex - 1; if (prev >= 0) { await _playTrackInternal(list[prev]); } else { if (_repeatMode != RepeatMode.off) {
     await _playTrackInternal(list.last);
-  } else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); _handlePlaybackOrContextChangeForPreloading(); } } /* Preload handled by playTrackInternal if it plays */ }
+  } else { await seekTo(Duration.zero); if (!_isPlaying) await resumeTrack(); } } /* Preload handled by playTrackInternal if it plays */ }
 
   // --- Helper Methods for Navigation State ---
   bool _hasNext() {
@@ -1151,10 +1151,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
       // Prefetch Metadata (Artist & Album) for Instant Navigation
       prefetchMetadata(effectiveTrack);
-      
-      // Preload next track (Legacy call - can remove or keep for safety if it does something else)
-      _handlePlaybackOrContextChangeForPreloading();
-      
+
+      // Lyrics prefetch for upcoming tracks
+      _prefetchUpcomingLyrics();
+
       // Palette updated earlier in parallel
       
       if (kDebugMode) {
@@ -1308,7 +1308,7 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
       
       _updateRecentlyPlayed(track);
       notifyListeners();
-      _handlePlaybackOrContextChangeForPreloading();
+     
       
     } catch (e, s) {
       if (kDebugMode) {
@@ -1499,10 +1499,10 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Queue Management ---
-  void addToQueue(Track track) { _queue.add(track); debugPrint("Added to queue: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); debugPrint("Added ${tracks.length} to queue. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void playNext(Track track) { _queue.insert(0, track); debugPrint("Play next: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
-  void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void addToQueue(Track track) { _queue.add(track); debugPrint("Added to queue: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); }
+  void addListToQueue(List<Track> tracks) { _queue.addAll(tracks); debugPrint("Added ${tracks.length} to queue. Size: ${_queue.length}"); notifyListeners(); }
+  void playNext(Track track) { _queue.insert(0, track); debugPrint("Play next: ${track.trackName}. Size: ${_queue.length}"); notifyListeners(); }
+  void reorderQueueItem(int oldIndex, int newIndex) { if (oldIndex < 0 || oldIndex >= _queue.length || newIndex < 0) return; final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex; final tr = _queue.removeAt(oldIndex); _queue.insert(iIdx.clamp(0, _queue.length), tr); notifyListeners(); }
 
   // Updated to accept Track object or index
   void removeFromQueue(dynamic item) {
@@ -1530,79 +1530,14 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
 
     if (removed) {
       notifyListeners();
-      _handlePlaybackOrContextChangeForPreloading(); // Also call after removing from queue
+      // Also call after removing from queue
     }
   }
 
-  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); debugPrint("Queue cleared."); notifyListeners(); _handlePlaybackOrContextChangeForPreloading(); }
+  void clearQueue() { if (_queue.isEmpty) return; _queue.clear(); debugPrint("Queue cleared."); notifyListeners(); }
 
 
-  // --- Preloading Logic ---
-  Track? _getActualNextTrack() {
-    if (_queue.isNotEmpty) {
-      return _queue.first; // Next in queue always takes precedence
-    }
-    final activePlaylist = _getActivePlaylist();
-    if (activePlaylist.isEmpty || _currentIndex < 0) return null;
-
-    if (_repeatMode == RepeatMode.one) {
-      return _currentTrack; // If repeat one, next is current (it will restart)
-    }
-
-    int nextIndex = _currentIndex + 1;
-    if (nextIndex < activePlaylist.length) {
-      return activePlaylist[nextIndex];
-    } else if (_repeatMode == RepeatMode.all) {
-      return activePlaylist.first; // Loop back to start
-    }
-    return null; // End of playlist, no repeat all
-  }
-
-  Future<void> _preloadNextTrack() async {
-    final nextTrack = _getActualNextTrack();
-    if (nextTrack != null && nextTrack.id != _currentTrack?.id && nextTrack.source != 'local' && !(await isTrackDownloaded(nextTrack.id))) {
-      try {
-        if (kDebugMode) debugPrint("MusicProvider: Attempting to preload ${nextTrack.trackName}");
-        String playableId = nextTrack.id;
-        if (nextTrack.source == 'spotify') {
-          final ytEquivalent = await _spotifyService.findYouTubeTrack(nextTrack);
-          if (ytEquivalent != null) {
-            playableId = ytEquivalent.id;
-          } else {
-            if (kDebugMode) debugPrint("MusicProvider: Could not find YouTube equivalent for Spotify track ${nextTrack.trackName} for preloading.");
-            return;
-          }
-        }
-        final preloadResolved = await _streamResolution.resolve(ResolveRequest(
-          videoId: playableId,
-          title: nextTrack.trackName,
-          artist: nextTrack.artistName,
-          durationMs: nextTrack.durationMs,
-        ));
-        if (preloadResolved == null) return;
-        await _audioService.preloadTrack(preloadResolved.url, userAgent: preloadResolved.userAgent);
-      } catch (e) {
-        if (kDebugMode) debugPrint("MusicProvider: Error preloading next track ${nextTrack.trackName}: $e");
-      }
-    } else {
-      if (kDebugMode) debugPrint("MusicProvider: No suitable next track to preload or next is same as current/local/downloaded.");
-    }
-  }
-
-  // Call _preloadNextTrack after a track starts playing or context changes
-  void _handlePlaybackOrContextChangeForPreloading() {
-    // Clear any existing preloaded track if context changes significantly
-    // This is implicitly handled by AudioService if a different track is played.
-    // Explicitly: _audioService.cancelPreload(); (if such method existed)
-
-    // Then try to preload the new next track
-    _preloadNextTrack();
-    
-    // Also prefetch lyrics for upcoming tracks
-    _prefetchUpcomingLyrics();
-  }
-  
-  /// Prefetch lyrics for the next 3 tracks in the playlist/queue
+  // Lyrics prefetch for upcoming tracks
   void _prefetchUpcomingLyrics() {
     if (_currentIndex < 0) return;
     
@@ -2854,7 +2789,6 @@ class MusicProvider with ChangeNotifier, WidgetsBindingObserver {
     _notifyDebouncer?.cancel();
     
     _audioService.dispose();
-    _innerTubeService.dispose();
     _lyricsService.dispose();
     unawaited(_recommendationService.close());
     stopCastingDiscovery();
