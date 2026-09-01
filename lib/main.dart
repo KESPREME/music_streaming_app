@@ -20,6 +20,7 @@ import 'widgets/glass_circle_button.dart';
 import 'widgets/fade_indexed_stack.dart';
 import 'widgets/themed_library_screen.dart';
 import 'widgets/global_music_overlay.dart'; // Import Global Overlay
+import 'widgets/ambient_backdrop.dart';
 
 class AppColors {
   static const Color background = Colors.black; // Pure black AMOLED canvas
@@ -202,8 +203,12 @@ class _MainScreenState extends State<MainScreen> {
       },
       child: Scaffold(
         extendBody: true,
+        backgroundColor: Colors.transparent, // Ambient canvas shines through
         body: Stack(
           children: [
+            // z-0: ambient album-art canvas (visible where screens are
+            // transparent; opaque screens are migrated in P5).
+            const AmbientBackdrop(),
             FadeIndexedStack(
               index: _currentIndex,
               children: _screens,
