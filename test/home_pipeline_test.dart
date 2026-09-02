@@ -28,7 +28,9 @@ HomeFeed _feed(String source, List<HomeSection> sections) => HomeFeed(
 
 void main() {
   group('HomeComposer', () {
-    test('validates: rejects items missing identity/title/artwork', () {
+    test(
+        'validates: rejects missing identity/title; retains artwork-less as PARTIAL',
+        () {
       final composer = const HomeComposer();
       final feed = composer.compose(
         primary: _feed('ytm_home', [
@@ -42,6 +44,7 @@ void main() {
               artworkUrl: 'https://example.com/a2.jpg',
               contentType: HomeContentType.song,
             ), // rejected: no title
+            // artwork-less: PARTIAL, retained (spec #8 tolerance)
             _song('a3', 'No artwork', 'Artist A').copyWithNoArtwork(),
             _song('a4', 'Also valid', 'Artist B'),
           ]),
@@ -50,7 +53,33 @@ void main() {
       );
 
       final items = feed!.sections.first.items;
-      expect(items.map((i) => i.title), ['Valid', 'Also valid']);
+      expect(items.map((i) => i.title), ['Valid', 'No artwork', 'Also valid']);
+      expect(
+        items.singleWhere((i) => i.title == 'No artwork').supportLevel,
+        SupportLevel.partiallySupported,
+      );
+    });
+
+    test('section-local dedupe: same entity allowed across shelves', () {
+      final composer = const HomeComposer();
+      final feed = composer.compose(
+        primary: _feed('ytm_home', [
+          _shelf('Shelf A', [
+            _song('x1', 'Same Track', 'Artist A'),
+            _song('x2', 'Other Track', 'Artist B'),
+          ]),
+          _shelf('Shelf B', [
+            // Same videoId as Shelf A — LEGITIMATE editorial repeat.
+            // Global dedupe (old behavior) collapsed this shelf entirely.
+            _song('x1', 'Same Track', 'Artist A'),
+            _song('x3', 'Third Track', 'Artist C'),
+          ]),
+        ]),
+        fallback: null,
+      );
+
+      expect(feed!.sections.length, 2);
+      expect(feed.sections.last.items.map((i) => i.id), ['x1', 'x3']);
     });
 
     test('cross-section dedupe keeps first appearance only', () {
@@ -266,6 +295,79 @@ void main() {
       );
       final d = HomeDiagnostics.qualityDimensions(stale);
       expect(d['freshness'], lessThan(0.5));
+    });
+  });
+
+  group('feed degradation protection', () {
+    test('rich feed -> thin fresh feed is DEGRADED', () {
+      final rich = _feed('ytm_home', [
+        for (var s = 0; s < 8; s++)
+          _shelf(
+            'Shelf $s',
+            List.generate(6, (i) => _song('s$s-$i', 'Track $s-$i', 'A$i')),
+          ),
+      ]);
+      final thin = _feed('ytm_home', [
+        _shelf('Only', [
+          _song('t1', 'One', 'A'),
+          _song('t2', 'Two', 'B'),
+        ]),
+      ]);
+
+      expect(HomeDiagnostics.isDegraded(previous: rich, next: thin), isTrue);
+    });
+
+    test('healthy refresh of a rich feed is NOT degraded', () {
+      final rich = _feed('ytm_home', [
+        for (var s = 0; s < 8; s++)
+          _shelf(
+            'Shelf $s',
+            List.generate(6, (i) => _song('s$s-$i', 'Track $s-$i', 'A$i')),
+          ),
+      ]);
+      final alsoRich = _feed('ytm_home', [
+        for (var s = 0; s < 7; s++)
+          _shelf(
+            'Changed $s',
+            List.generate(5, (i) => _song('n$s-$i', 'New $s-$i', 'B$i')),
+          ),
+      ]);
+
+      expect(
+          HomeDiagnostics.isDegraded(previous: rich, next: alsoRich), isFalse);
+    });
+
+    test('thin previous feed never flags degradation (below comparison floor)',
+        () {
+      final thin = _feed('ytm_home', [
+        _shelf('Only', [
+          _song('t1', 'One', 'A'),
+          _song('t2', 'Two', 'B'),
+        ]),
+      ]);
+      final thinner = _feed('ytm_home', [
+        _shelf('One', [
+          _song('t3', 'Three', 'C'),
+        ]),
+      ]);
+      expect(
+          HomeDiagnostics.isDegraded(previous: thin, next: thinner), isFalse);
+    });
+
+    test('composer section budget drops overflow with explicit accounting', () {
+      final composer = const HomeComposer(maxSections: 4);
+      final feed = composer.compose(
+        primary: _feed('ytm_home', [
+          for (var s = 0; s < 10; s++)
+            _shelf(
+              'Shelf $s',
+              List.generate(3, (i) => _song('s$s-$i', 'T$s-$i', 'A$s$i')),
+            ),
+        ]),
+        fallback: null,
+      );
+
+      expect(feed!.sections.length, 4);
     });
   });
 

@@ -8,8 +8,11 @@ library;
 
 /// v4: structured metadata (artists[], publishedText), continuation
 /// capture, multi-dimension quality, parser/context version binding.
+/// parser v5: support levels, section-local dedupe, thumbnail variants,
+/// degradation detection, item-tolerance retention (no-artwork items
+/// retained as PARTIAL instead of rejected).
 const int kHomeFeedSchemaVersion = 4;
-const int kHomeParserVersion = 4;
+const int kHomeParserVersion = 5;
 const int kHomeRequestContextVersion = 2;
 
 enum HomeContentType { song, video, album, artist, playlist, unknown }
@@ -38,6 +41,7 @@ class ShelfReport {
     this.rejectedItemCount = 0,
     this.duplicateItemCount = 0,
     this.rejectionReasons = const [],
+    this.partialItemCount = 0,
     this.hasContinuation = false,
   });
 
@@ -51,6 +55,10 @@ class ShelfReport {
   final int duplicateItemCount;
   final List<String> rejectionReasons;
 
+  /// Items retained as PARTIAL (renderable but incomplete) — counted
+  /// separately from fully-parsed items (spec #3: retained = full + partial).
+  final int partialItemCount;
+
   /// Continuation token presence — recorded, never auto-consumed (spec #24).
   final bool hasContinuation;
 
@@ -63,12 +71,31 @@ class ShelfReport {
         'recognized': recognizedItemCount,
         'rejected': rejectedItemCount,
         'dupes': duplicateItemCount,
+        'partial': partialItemCount,
         if (rejectionReasons.isNotEmpty)
           'why': rejectionReasons.take(5).toList(),
       };
 }
 
 enum ShelfStatus { parsed, unsupportedRenderer, malformed, empty, filtered }
+
+/// Support levels (spec #3): binary SUPPORTED/UNSUPPORTED destroyed valid
+/// content. PARTIAL items (e.g. playlist identity + artwork but no direct
+/// playback) MUST render as navigation cards, never be discarded.
+enum SupportLevel { fullySupported, partiallySupported, unsupported }
+
+/// Semantic section type (spec #2): content type ≠ playability. A playlist
+/// shelf is valid content even though it is not a song.
+enum HomeSectionType {
+  songShelf,
+  albumShelf,
+  artistShelf,
+  playlistShelf,
+  videoShelf,
+  episodeShelf,
+  mixedShelf,
+  unknownContent,
+}
 
 /// Aggregate accounting for one parse pass.
 class ParseReport {
@@ -82,6 +109,7 @@ class ParseReport {
     required this.retainedItems,
     required this.rejectedItems,
     required this.duplicateItems,
+    this.partialItems = 0,
     required this.shelves,
     required this.heroCandidate,
   });
@@ -95,6 +123,10 @@ class ParseReport {
   final int retainedItems;
   final int rejectedItems;
   final int duplicateItems;
+
+  /// Subset of [retainedItems] that render with placeholders (spec #3:
+  /// retained = fullySupported + partiallySupported).
+  final int partialItems;
   final List<ShelfReport> shelves;
 
   /// Eligible hero: immersive header feature or first strong song shelf.
@@ -156,6 +188,8 @@ class HomeItem {
     this.artists = const [],
     this.publishedText,
     this.playability = Playability.unknown,
+    this.supportLevel = SupportLevel.fullySupported,
+    this.thumbnails = const [],
   });
 
   /// Stable identity: videoId when playable, else browseId. Never derived
@@ -178,6 +212,15 @@ class HomeItem {
   /// not directly playable; a song without videoId is not playable.
   final Playability playability;
 
+  /// Support level (spec #3): FULL items parse completely; PARTIAL items
+  /// render safely with placeholders (e.g. missing artwork); UNSUPPORTED
+  /// items are the only ones discarded.
+  final SupportLevel supportLevel;
+
+  /// All available thumbnail variants (spec #6): parsed with dimensions,
+  /// presentation picks the right one. Empty = none provided (placeholder).
+  final List<HomeThumb> thumbnails;
+
   bool get isPlayable =>
       playability == Playability.playable ||
       (playability == Playability.unknown &&
@@ -196,6 +239,9 @@ class HomeItem {
         if (artists.isNotEmpty) 'ar': artists,
         if (publishedText != null) 'pub': publishedText,
         'pl': playability.index,
+        'sup': supportLevel.index,
+        if (thumbnails.isNotEmpty)
+          'th': thumbnails.map((t) => t.toJson()).toList(),
       };
 
   static HomeItem fromJson(Map<String, dynamic> json) => HomeItem(
@@ -218,10 +264,38 @@ class HomeItem {
                 json['pl'] < Playability.values.length
             ? Playability.values[json['pl'] as int]
             : Playability.unknown,
+        supportLevel: json['sup'] is int &&
+                json['sup'] >= 0 &&
+                json['sup'] < SupportLevel.values.length
+            ? SupportLevel.values[json['sup'] as int]
+            : SupportLevel.fullySupported,
+        thumbnails: ((json['th'] as List?) ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(HomeThumb.fromJson)
+            .toList(),
       );
 }
 
 enum Playability { unknown, playable, notPlayable }
+
+/// One thumbnail variant with its dimensions (spec #6): the UI selects by
+/// presentation (square rail vs 16:9 video card vs hero) instead of every
+/// parser hardcoding its own resolution upgrade.
+class HomeThumb {
+  const HomeThumb({required this.url, this.width, this.height});
+
+  final String url;
+  final int? width;
+  final int? height;
+
+  Map<String, dynamic> toJson() => {'u': url, 'w': width, 'h': height};
+
+  static HomeThumb fromJson(Map<String, dynamic> json) => HomeThumb(
+        url: json['u'] as String? ?? '',
+        width: json['w'] as int?,
+        height: json['h'] as int?,
+      );
+}
 
 class HomeSection {
   const HomeSection({

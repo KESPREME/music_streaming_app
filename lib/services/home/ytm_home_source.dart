@@ -43,7 +43,7 @@ class YouTubeMusicHomeSource {
 
   static const _homeBrowseId = 'FEmusic_home';
 
-  Future<HomeFeed?> fetch({int perShelfLimit = 10}) async {
+  Future<HomeFeed?> fetch({int perShelfLimit = 12}) async {
     try {
       final data = await _innerTube
           .browseJson(_homeBrowseId)
@@ -56,9 +56,8 @@ class YouTubeMusicHomeSource {
   }
 
   /// Testable parse entry: raw browse JSON → HomeFeed (no network).
-  /// Also exposes the forensic accounting report.
   Future<HomeFeed?> parseResponse(Map<String, dynamic> data,
-          {int perShelfLimit = 10}) =>
+          {int perShelfLimit = 12}) =>
       _parse(data, perShelfLimit);
 
   ParseReport? lastReport;
@@ -89,8 +88,16 @@ class YouTubeMusicHomeSource {
       // with their JSON paths. Handles both flat carousel layouts and
       // musicSectionListRenderer-wrapped nested groups (chip-filtered
       // Home surfaces), which the previous walker silently dropped.
+      //
+      // Continuation: Metrolist parity — Home continuation lives on the
+      // sectionListRenderer itself (sectionList.continuations), not inside
+      // shelf contents.
       final candidates = <_ShelfCandidate>[];
-      String? continuationToken;
+      String? continuationToken = _continuationOf(root);
+      if (continuationToken != null && kDebugMode) {
+        debugPrint(
+            'YTMHomeSource: sectionList continuation available (${continuationToken.length} chars)');
+      }
       void walk(dynamic node, String path, int depth) {
         if (node is List) {
           var i = 0;
@@ -156,7 +163,11 @@ class YouTubeMusicHomeSource {
       // ── Stages B–E: parse each candidate with full accounting ───────────
       final reports = <ShelfReport>[];
       var parsed = 0, unsupported = 0, malformed = 0, empty = 0;
-      var rawTotal = 0, retainedTotal = 0, rejectedTotal = 0, dupTotal = 0;
+      var rawTotal = 0,
+          retainedTotal = 0,
+          rejectedTotal = 0,
+          dupTotal = 0,
+          partialTotal = 0;
       HomeItem? heroCandidate;
 
       for (final candidate in candidates) {
@@ -203,7 +214,7 @@ class YouTubeMusicHomeSource {
         final items = <HomeItem>[];
         final seenIds = <String>{};
         final reasons = <String>[];
-        var rejected = 0, dupes = 0;
+        var rejected = 0, dupes = 0, partial = 0;
 
         for (final wrapper in carousel) {
           if (items.length >= perShelfLimit) break;
@@ -230,6 +241,13 @@ class YouTubeMusicHomeSource {
             dupes++;
             continue;
           }
+          // Spec #8: shelf failure must not destroy the section — a shelf
+          // with 10 raw / 7 full / 2 partial / 1 unsupported yields 9
+          // renderable items, not 0.
+          if (item.supportLevel == SupportLevel.partiallySupported ||
+              item.artworkUrl.isEmpty) {
+            partial++;
+          }
           items.add(item);
         }
 
@@ -238,6 +256,7 @@ class YouTubeMusicHomeSource {
         retainedTotal += items.length;
         rejectedTotal += rejected;
         dupTotal += dupes;
+        partialTotal += partial;
 
         if (items.length >= 2) {
           parsed++;
@@ -268,6 +287,7 @@ class YouTubeMusicHomeSource {
             rejectedItemCount: rejected,
             duplicateItemCount: dupes,
             rejectionReasons: reasons,
+            partialItemCount: partial,
           ));
         } else {
           empty++;
@@ -281,6 +301,7 @@ class YouTubeMusicHomeSource {
             rejectedItemCount: rejected,
             duplicateItemCount: dupes,
             rejectionReasons: reasons,
+            partialItemCount: partial,
           ));
         }
       }
@@ -295,6 +316,7 @@ class YouTubeMusicHomeSource {
         retainedItems: retainedTotal,
         rejectedItems: rejectedTotal,
         duplicateItems: dupTotal,
+        partialItems: partialTotal,
         shelves: reports,
         heroCandidate: heroCandidate,
       );
@@ -315,6 +337,18 @@ class YouTubeMusicHomeSource {
       if (kDebugMode) debugPrint('YTMHomeSource: parse error: $e');
       return null;
     }
+  }
+
+  /// Metrolist parity: Home continuation token sits on the
+  /// sectionListRenderer (`continuations[0].nextContinuationData.
+  /// continuation`).
+  static String? _continuationOf(Map<String, dynamic> sectionList) {
+    final conts = sectionList['continuations'];
+    if (conts is! List || conts.isEmpty) return null;
+    final first = conts.first;
+    if (first is! Map<String, dynamic>) return null;
+    final token = first['nextContinuationData']?['continuation'] as String?;
+    return (token != null && token.isNotEmpty) ? token : null;
   }
 
   /// Walks toward the Home section list defensively. Handles both the
@@ -459,9 +493,26 @@ class YouTubeMusicHomeSource {
             ?['musicResponsiveListItemFlexColumnRenderer']?['text']);
       }
 
-      final thumb = _thumbFrom(r['thumbnail']?['musicThumbnailRenderer']
+      final thumbs = _thumbsFrom(r['thumbnail']?['musicThumbnailRenderer']
           ?['thumbnail']?['thumbnails']);
-      if (thumb == null) return null;
+      // Tolerance (spec #8): missing artwork retains the item as PARTIAL
+      // (placeholder render) — artwork alone never kills valid identity.
+      if (thumbs.isEmpty) {
+        final type = _typeFromSubtitle(subtitle, id);
+        final meta = _metadataFromSubtitle(subtitle);
+        return HomeItem(
+          id: id,
+          videoId: type == HomeContentType.song ? id : null,
+          browseId: type == HomeContentType.song ? null : id,
+          title: title,
+          subtitle: subtitle,
+          artworkUrl: '',
+          contentType: type,
+          artists: meta.artists,
+          publishedText: meta.publishedText,
+          supportLevel: SupportLevel.partiallySupported,
+        );
+      }
 
       final type = _typeFromSubtitle(subtitle, id);
       final meta = _metadataFromSubtitle(subtitle);
@@ -471,13 +522,15 @@ class YouTubeMusicHomeSource {
         browseId: type == HomeContentType.song ? null : id,
         title: title,
         subtitle: subtitle,
-        artworkUrl: thumb,
+        artworkUrl: thumbs.last.url,
         contentType: type,
         artists: meta.artists,
         publishedText: meta.publishedText,
         playability: type == HomeContentType.song
             ? Playability.playable
             : Playability.unknown,
+        supportLevel: SupportLevel.fullySupported,
+        thumbnails: thumbs,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('YTMHomeSource: responsive item failed: $e');
@@ -499,11 +552,40 @@ class YouTubeMusicHomeSource {
       if (title.isEmpty) return null;
       final subtitle = _runsText(r['subtitle']);
 
-      final thumb = _thumbFrom(r['thumbnailRenderer']?['musicThumbnailRenderer']
-              ?['thumbnail']?['thumbnails'] ??
+      final thumbs = _thumbsFrom(r['thumbnailRenderer']
+              ?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] ??
           r['menu']?['menuRenderer']?['items']?[0]
               ?['menuNavigationItemRenderer']?['icon']);
-      if (thumb == null) return null;
+      // Tolerance (spec #8): missing artwork → PARTIAL, not rejected.
+      if (thumbs.isEmpty) {
+        final isPlaylist = id.startsWith('PL') ||
+            id.startsWith('VL') ||
+            id.startsWith('OLAK') ||
+            id.startsWith('MPREb');
+        final isArtist = id.startsWith('UC');
+        final type = isArtist
+            ? HomeContentType.artist
+            : (isPlaylist
+                ? (subtitle.contains('Album') ||
+                        id.startsWith('OLAK') ||
+                        id.startsWith('MPREb')
+                    ? HomeContentType.album
+                    : HomeContentType.playlist)
+                : HomeContentType.song);
+        final meta = _metadataFromSubtitle(subtitle);
+        return HomeItem(
+          id: id,
+          videoId: type == HomeContentType.song ? id : null,
+          browseId: type == HomeContentType.song ? null : id,
+          title: title,
+          subtitle: subtitle,
+          artworkUrl: '',
+          contentType: type,
+          artists: meta.artists,
+          publishedText: meta.publishedText,
+          supportLevel: SupportLevel.partiallySupported,
+        );
+      }
 
       // Two-row: type from explicit navigation shape.
       final isPlaylist = id.startsWith('PL') ||
@@ -528,7 +610,7 @@ class YouTubeMusicHomeSource {
         browseId: type == HomeContentType.song ? null : id,
         title: title,
         subtitle: subtitle,
-        artworkUrl: thumb,
+        artworkUrl: thumbs.last.url,
         contentType: type,
         artists: meta.artists,
         publishedText: meta.publishedText,
@@ -537,11 +619,33 @@ class YouTubeMusicHomeSource {
             : (type == HomeContentType.song
                 ? Playability.notPlayable
                 : Playability.unknown),
+        supportLevel: SupportLevel.fullySupported,
+        thumbnails: thumbs,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('YTMHomeSource: two-row item failed: $e');
       return null;
     }
+  }
+
+  /// ALL thumbnail variants with dimensions (spec #6) — presentation picks
+  /// the right one; the parser never hardcodes a single resolution.
+  static List<HomeThumb> _thumbsFrom(dynamic thumbnails) {
+    if (thumbnails is! List) return const [];
+    final out = <HomeThumb>[];
+    for (final t in thumbnails) {
+      if (t is! Map<String, dynamic>) continue;
+      final url = t['url'];
+      if (url is! String || url.isEmpty) continue;
+      out.add(HomeThumb(
+        url: url.contains('googleusercontent.com')
+            ? url.replaceAll(RegExp(r'=w\d+-h\d+.*$'), '=w544-h544')
+            : url,
+        width: t['width'] is int ? t['width'] as int : null,
+        height: t['height'] is int ? t['height'] as int : null,
+      ));
+    }
+    return out;
   }
 
   /// Structured metadata from the subtitle's run segments (spec #27):
@@ -791,6 +895,15 @@ class HomeRepository {
           debugPrint(
               'HomeRepository: fresh feed FAILED quality gate — keeping cache');
         }
+        return _current;
+      }
+
+      // Degradation protection (spec #18/#19): a fresh feed with far fewer
+      // sections/items than the previous good feed is suspicious (upstream
+      // variance or parser regression). Keep the rich cache; retry later.
+      if (HomeDiagnostics.isDegraded(previous: _current, next: feed)) {
+        _failureCount++;
+        _scheduleBackoff();
         return _current;
       }
 

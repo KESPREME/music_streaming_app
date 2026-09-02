@@ -262,8 +262,9 @@ void main() {
       expect(feed!.sections.length, 2);
     });
 
-    test('items without identity or artwork are rejected', () async {
-      final source = YouTubeMusicHomeSource(InnerTubeService.instance);
+    test('no-identity rejected; no-artwork retained as PARTIAL (tolerance)',
+        () async {
+      final source = _source();
       final fixture = _homeResponseFixture(extraSections: [
         {
           'musicCarouselShelfRenderer': {
@@ -277,7 +278,7 @@ void main() {
               }
             },
             'contents': [
-              // No id at all.
+              // No id at all — rejected (identity is non-negotiable).
               {
                 'musicTwoRowItemRenderer': {
                   'title': {
@@ -299,7 +300,9 @@ void main() {
                   }
                 }
               },
-              // No artwork.
+              // No artwork — RETAINED as PARTIAL (spec #8: shelf failure
+              // must not destroy the section; artwork renders as
+              // placeholder).
               {
                 'musicTwoRowItemRenderer': {
                   'title': {
@@ -343,16 +346,18 @@ void main() {
       ]);
       final feed = (await source.parseResponse(fixture))!;
 
-      // Degenerate shelf collapsed entirely: only 1 of 3 items survived
-      // (no-identity + no-artwork rejected), below the 2-item section floor.
+      final degenerate =
+          feed.sections.singleWhere((s) => s.title == 'Degenerate shelf');
+      // 2 of 3 survive: no-identity rejected, no-artwork retained PARTIAL.
+      expect(degenerate.items.length, 2);
       expect(
-        feed.sections.where((s) => s.title == 'Degenerate shelf'),
-        isEmpty,
+        degenerate.items.map((i) => i.title).toSet(),
+        {'No artwork', 'Valid one'},
       );
-      expect(
-        feed.sections.any((s) => s.items.any((i) => i.title == 'Valid one')),
-        isFalse,
-      );
+      final partial =
+          degenerate.items.singleWhere((i) => i.title == 'No artwork');
+      expect(partial.supportLevel, SupportLevel.partiallySupported);
+      expect(partial.artworkUrl, isEmpty);
     });
 
     test('empty/missing response structure returns null (not crash)', () async {

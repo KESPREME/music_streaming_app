@@ -113,6 +113,34 @@ class HomeDiagnostics {
   static const double trustNativeHome = 1.0;
   static const double trustFallback = 0.75;
 
+  /// Feed-health regression detection (spec #19): compare fresh vs previous
+  /// good feed. A fresh feed with dramatically fewer sections/items is
+  /// DEGRADED — do not let it overwrite a rich cache and lock the UI into
+  /// a thin Home for 45 minutes.
+  static bool isDegraded({
+    required HomeFeed? previous,
+    required HomeFeed next,
+  }) {
+    if (previous == null) return false;
+    final prevSections = previous.sections.length;
+    final nextSections = next.sections.length;
+    final prevItems =
+        previous.sections.fold<int>(0, (n, s) => n + s.items.length);
+    final nextItems = next.sections.fold<int>(0, (n, s) => n + s.items.length);
+    const minSectionsForComparison = 4;
+    if (prevSections < minSectionsForComparison) return false;
+
+    // Degraded: loses over half of sections AND more than half of items.
+    final degraded =
+        nextSections < prevSections / 2 && nextItems < prevItems / 2;
+    if (degraded && kDebugMode) {
+      debugPrint(
+          'HomeDiagnostics: DEGRADED_FEED — sections $prevSections→$nextSections, '
+          'items $prevItems→$nextItems (keeping previous good feed)');
+    }
+    return degraded;
+  }
+
   /// Multi-dimensional quality report (spec #58/#80): NO single opaque
   /// number — each dimension is observable so a failure in one axis can't
   /// hide behind a healthy overall score.
