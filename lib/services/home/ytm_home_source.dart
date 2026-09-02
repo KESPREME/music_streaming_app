@@ -733,7 +733,7 @@ class FallbackHomeSource {
 
       final sections = <HomeSection>[];
       if (trending.isNotEmpty) {
-        sections.add(_sectionFromTracks(
+        sections.add(sectionFromTracks(
           id: 'trending',
           title: 'Trending',
           tracks: trending,
@@ -741,11 +741,12 @@ class FallbackHomeSource {
         ));
       }
       if (releases.isNotEmpty) {
-        sections.add(_sectionFromTracks(
+        sections.add(sectionFromTracks(
           id: 'new_releases',
           title: 'New releases',
           tracks: releases,
           presentation: HomePresentation.grid,
+          provenance: 'new_release',
         ));
       }
 
@@ -761,17 +762,19 @@ class FallbackHomeSource {
     }
   }
 
-  static HomeSection _sectionFromTracks({
+  static HomeSection sectionFromTracks({
     required String id,
     required String title,
     required List<Track> tracks,
     required HomePresentation presentation,
+    String provenance = 'chart',
   }) {
     final seen = <String>{};
     final items = <HomeItem>[];
     for (final t in tracks) {
       if (t.id.isEmpty || !seen.add(t.id)) continue;
-      if (t.trackName.isEmpty || t.albumArtUrl.isEmpty) continue;
+      if (t.trackName.isEmpty) continue;
+      // No-artwork tolerated → PARTIAL placeholder (spec #8 tolerance).
       items.add(HomeItem(
         id: t.id,
         videoId: t.id,
@@ -779,20 +782,32 @@ class FallbackHomeSource {
         subtitle: t.artistName,
         artworkUrl: t.albumArtUrl,
         contentType: HomeContentType.song,
+        supportLevel: t.albumArtUrl.isEmpty
+            ? SupportLevel.partiallySupported
+            : SupportLevel.fullySupported,
       ));
-      if (items.length >= 10) break;
+      if (items.length >= 12) break;
     }
     return HomeSection(
-        id: id, title: title, items: items, presentation: presentation);
+        id: id,
+        title: title,
+        items: items,
+        presentation: presentation,
+        provenance: provenance);
   }
 }
 
 /// Cache + orchestration: stale-while-revalidate, schema-validated,
-/// in-flight coalescing, exponential backoff on repeated failures.
-/// Publishes one coherent snapshot — never partial updates.
+/// in-flight coalescing, exponential backoff, BEST-KNOWN-GOOD convergence,
+/// bounded deterministic enrichment.
 ///
-/// Cache key binds to (schema, parserVersion, source, locale) — a feed
-/// generated under one context is never reused under another.
+/// Convergence (spec #9/#10/#22): upstream Home genuinely varies between
+/// requests. The repository tracks a HIGH-WATER MARK feed (largest past
+/// accepted feed), not merely the latest accepted one — otherwise each
+/// reload just above the degradation threshold re-accepts a thinner feed
+/// and the UI ratchets 10→6→4→3→2 shelves. Thin-but-valid fresh feeds are
+/// ENRICHED with deterministic chart/new-release sections (provenance
+/// stamped), never fabricated labels.
 class HomeRepository {
   HomeRepository({
     required YouTubeMusicHomeSource primary,
@@ -803,54 +818,55 @@ class HomeRepository {
   final YouTubeMusicHomeSource _primary;
   final FallbackHomeSource _fallback;
 
-  static const _cachePrefix = 'home_feed_snapshot_v3';
+  static const _cachePrefix = 'home_feed_snapshot_v4';
   static const _freshTtl = Duration(minutes: 45);
   static const _maxBackoff = Duration(hours: 2);
 
+  /// Enrichment floor (spec #11): a native feed below this section count
+  /// is "sparse" — bounded enrichment applies. Above it, native order is
+  /// authoritative and nothing is added.
+  static const _sparseFloorSections = 4;
+
   HomeFeed? _current;
+  HomeFeed? _bestKnown;
   bool _loadedFromCache = false;
   Future<HomeFeed?>? _inFlight;
   int _failureCount = 0;
   DateTime _nextAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// Current best feed (cache-first). Triggers background refresh when
-  /// stale. Null until first load completes.
   HomeFeed? get current => _current;
+  HomeFeed? get bestKnown => _bestKnown;
   bool get isRefreshDue {
     if (_current == null) return true;
     return DateTime.now().difference(_current!.fetchedAt) > _freshTtl;
   }
 
-  /// Cache key bound to the context the feed was generated under.
   static String _cacheKeyFor(String source, String locale) =>
-      '${_cachePrefix}_${source}_$locale';
+      '${_cachePrefix}_$source\_$locale';
 
   static String _localeTag() => PlatformDispatcher.instance.locale.toString();
 
-  /// Load: cache-first (immediate), then validate + refresh if due.
-  /// Concurrent callers coalesce onto one request.
   Future<HomeFeed?> load() async {
     if (!_loadedFromCache) {
       _loadedFromCache = true;
-      _current = await _readCache(source: _currentSourceTag());
-      if (kDebugMode && _current != null) {
-        debugPrint(
-            'HomeRepository: cache hit (${_current!.sections.length} sections, '
-            '${_current!.sections.fold<int>(0, (n, s) => n + s.items.length)} items, '
-            'age=${DateTime.now().difference(_current!.fetchedAt).inMinutes}min, '
-            'source=${_current!.source}, schema=$kHomeFeedSchemaVersion)');
-      } else if (kDebugMode) {
-        debugPrint('HomeRepository: cache miss — fetching fresh');
-      }
+      _current = await _readCache(source: 'primary');
+      _bestKnown = _current;
+      HomeLoadTrace.log(
+        cacheRead: _current != null ? 'HIT' : 'MISS',
+        cacheSections: _current?.sections.length ?? 0,
+        cacheItems:
+            _current?.sections.fold<int>(0, (n, s) => n + s.items.length) ?? 0,
+        cacheAgeMin: _current == null
+            ? null
+            : DateTime.now().difference(_current!.fetchedAt).inMinutes,
+      );
     }
     if (_current == null || isRefreshDue) {
-      // Don't await: UI renders cache immediately, refresh replaces when done.
       unawaited(refresh());
     }
     return _current;
   }
 
-  /// Explicit refresh (pull-to-refresh). Coalesced, backoff-aware.
   Future<HomeFeed?> refresh() async {
     if (_inFlight != null) return _inFlight;
     if (DateTime.now().isBefore(_nextAttemptAt)) return _current;
@@ -859,57 +875,117 @@ class HomeRepository {
     return _inFlight;
   }
 
-  String _currentSourceTag() => 'primary';
-
+  String get _currentSourceTag => 'primary';
   bool _primaryHasVisitor() => _primary.hasVisitorData;
 
   Future<HomeFeed?> _fetchFresh() async {
     try {
       final sw = Stopwatch()..start();
-      // Primary → fallback. Never merge degraded sources.
       var feed = await _primary.fetch();
       String sourceTag = 'primary';
       if (feed == null) {
         feed = await _fallback.fetch();
         sourceTag = 'fallback';
-        if (kDebugMode && feed != null) {
-          debugPrint('HomeRepository: FALLBACK active (primary failed)');
-        }
       }
       final requestMs = sw.elapsedMilliseconds;
 
       if (feed == null) {
         _failureCount++;
         _scheduleBackoff();
-        if (kDebugMode) debugPrint('HomeRepository: all sources failed');
-        return _current; // keep cached content
+        HomeLoadTrace.log(
+          decision: 'ALL_SOURCES_FAILED_KEEP_CACHE',
+          requestMs: requestMs,
+          freshSections: 0,
+          freshItems: 0,
+        );
+        return _current;
       }
 
-      // Quality gate: a fresh feed must be structurally sane before it
-      // replaces a known-good cache (spec: bad fresh data must not poison
-      // good cache).
+      // Stamp native provenance on primary shelves (spec #30) before any
+      // comparison/enrichment — provenance belongs to the parser boundary.
+      if (sourceTag == 'primary') {
+        feed = _withProvenance(feed, 'native');
+      }
+
       if (!feedPassesQualityGate(feed)) {
         _failureCount++;
         _scheduleBackoff();
-        if (kDebugMode) {
-          debugPrint(
-              'HomeRepository: fresh feed FAILED quality gate — keeping cache');
-        }
+        HomeLoadTrace.log(
+          decision: 'FAILED_QUALITY_GATE_KEEP_CACHE',
+          requestMs: requestMs,
+          freshSections: feed.sections.length,
+          freshItems: feed.sections.fold<int>(0, (n, s) => n + s.items.length),
+        );
         return _current;
       }
 
-      // Degradation protection (spec #18/#19): a fresh feed with far fewer
-      // sections/items than the previous good feed is suspicious (upstream
-      // variance or parser regression). Keep the rich cache; retry later.
-      if (HomeDiagnostics.isDegraded(previous: _current, next: feed)) {
+      // Best-known-good (spec #22): compare against the HIGH-WATER MARK,
+      // not the latest accepted feed — the degradation ratchet is what
+      // made reloads collapse a rich Home to 2 shelves.
+      if (HomeDiagnostics.isDegraded(previous: _bestKnown, next: feed)) {
         _failureCount++;
         _scheduleBackoff();
+        // Spec #31 Priority 2: keep the rich feed visible AND still try to
+        // serve fresh value by enriching the thin native response for the
+        // NEXT attempt only if enrichment would bring it above the floor.
+        final enriched = await _enrichSparse(feed);
+        if (enriched != null &&
+            enriched.sections.length >= _bestKnown!.sections.length / 2) {
+          _current = enriched;
+          HomeLoadTrace.log(
+            decision: 'DEGRADED_BUT_ENRICHED_TO_FLOOR',
+            requestMs: requestMs,
+            freshSections: feed.sections.length,
+            freshItems:
+                feed.sections.fold<int>(0, (n, s) => n + s.items.length),
+            outputSections: enriched.sections.length,
+            outputItems:
+                enriched.sections.fold<int>(0, (n, s) => n + s.items.length),
+          );
+          return enriched;
+        }
+        HomeLoadTrace.log(
+          decision: 'DEGRADED_KEEP_BEST_KNOWN',
+          requestMs: requestMs,
+          freshSections: feed.sections.length,
+          freshItems: feed.sections.fold<int>(0, (n, s) => n + s.items.length),
+          bestKnownSections: _bestKnown!.sections.length,
+          bestKnownItems:
+              _bestKnown!.sections.fold<int>(0, (n, s) => n + s.items.length),
+        );
         return _current;
       }
 
+      // Accepted. Track high-water mark.
       _failureCount = 0;
+      final acceptedItems =
+          feed.sections.fold<int>(0, (n, s) => n + s.items.length);
+      final bestItems = _bestKnown?.sections
+              .fold<int>(0, (n, s) => n + s.items.length ?? 0) ??
+          0;
+      if (_bestKnown == null || acceptedItems > bestItems) {
+        _bestKnown = feed;
+      }
+
+      // Sparse-but-valid native feed → bounded enrichment (spec #30/#31):
+      // deterministic chart/new-release sections appended, provenance
+      // stamped, native shelves always first and untouched.
+      if (feed.sections.length < _sparseFloorSections) {
+        final enriched = await _enrichSparse(feed);
+        if (enriched != null) feed = enriched;
+      }
+
       _current = feed;
       unawaited(_writeCache(feed, sourceTag));
+      HomeLoadTrace.log(
+        decision: feed == _bestKnown ? 'ACCEPTED_NEW_BEST' : 'ACCEPTED',
+        requestMs: requestMs,
+        freshSections: feed.sections.length,
+        freshItems: feed.sections.fold<int>(0, (n, s) => n + s.items.length),
+        bestKnownSections: _bestKnown?.sections.length,
+        bestKnownItems:
+            _bestKnown?.sections.fold<int>(0, (n, s) => n + s.items.length),
+      );
       HomeDiagnostics.logRequestContext(
         source: feed.source,
         clientName: 'WEB_REMIX',
@@ -925,12 +1001,6 @@ class HomeRepository {
         fallbackActive: sourceTag == 'fallback',
       );
       HomeDiagnostics.logProvenance(feed);
-      if (kDebugMode) {
-        final items = feed.sections.fold<int>(0, (n, s) => n + s.items.length);
-        debugPrint(
-            'HomeRepository: fresh feed source=${feed.source} sections=${feed.sections.length} '
-            'items=$items requestMs=$requestMs quality=${HomeDiagnostics.qualityDimensions(feed)}');
-      }
       return feed;
     } catch (e) {
       _failureCount++;
@@ -940,6 +1010,85 @@ class HomeRepository {
     }
   }
 
+  /// Bounded enrichment (spec #30/#31): native shelves first and untouched;
+  /// deterministic chart + new-release shelves appended only when the feed
+  /// is sparse; provenance stamped; never random searches; dedupe against
+  /// native items so enrichment never duplicates what's already shown.
+  Future<HomeFeed?> _enrichSparse(HomeFeed native) async {
+    if (native.sections.length >= _sparseFloorSections) return null;
+    final nativeIds =
+        native.sections.expand((s) => s.items.map((i) => i.id)).toSet();
+
+    final extra = <HomeSection>[];
+    final innerTube = InnerTubeService.instance;
+    try {
+      final trending = await innerTube.getTrendingTracks(limit: 15);
+      final fresh =
+          trending.where((t) => nativeIds.add(t.id)).toList(growable: false);
+      if (fresh.length >= 4) {
+        extra.add(FallbackHomeSource.sectionFromTracks(
+          id: 'trending_enriched',
+          title: 'Trending',
+          tracks: fresh,
+          presentation: HomePresentation.artworkRail,
+        ));
+      }
+    } catch (_) {}
+
+    try {
+      final releases = await innerTube.getNewReleases(limit: 12);
+      final fresh =
+          releases.where((t) => nativeIds.add(t.id)).toList(growable: false);
+      if (fresh.length >= 4) {
+        extra.add(FallbackHomeSource.sectionFromTracks(
+          id: 'new_releases_enriched',
+          title: 'New releases',
+          tracks: fresh,
+          presentation: HomePresentation.grid,
+          provenance: 'new_release',
+        ));
+      }
+    } catch (_) {}
+
+    if (extra.isEmpty) return null;
+    if (kDebugMode) {
+      debugPrint(
+          'HomeRepository: enriched sparse native feed (${native.sections.length} sections) '
+          'with ${extra.length} deterministic sections');
+    }
+    return HomeFeed(
+      sections: [...native.sections, ...extra],
+      fetchedAt: native.fetchedAt,
+      source: 'native+enriched',
+      heroCandidate: native.heroCandidate,
+      continuationToken: native.continuationToken,
+    );
+  }
+
+  // Enrichment uses the single shared InnerTube instance — no second
+  // Home pipeline (spec #28).
+
+  HomeFeed _withProvenance(HomeFeed feed, String provenance) {
+    return HomeFeed(
+      sections: feed.sections
+          .map((s) => HomeSection(
+                id: s.id,
+                title: s.title,
+                items: s.items,
+                presentation: s.presentation,
+                sourcePath: s.sourcePath,
+                renderer: s.renderer,
+                sourceSubtitle: s.sourceSubtitle,
+                provenance: s.provenance ?? provenance,
+              ))
+          .toList(),
+      fetchedAt: feed.fetchedAt,
+      source: feed.source,
+      heroCandidate: feed.heroCandidate,
+      continuationToken: feed.continuationToken,
+    );
+  }
+
   /// Structural sanity: ≥2 sections, ≥1 item per section already enforced
   /// by the parser; here we guard against catastrophic regressions.
   static bool feedPassesQualityGate(HomeFeed feed) {
@@ -947,7 +1096,6 @@ class HomeRepository {
     if (feed.sections.length < 2) return false;
     final items = feed.sections.fold<int>(0, (n, s) => n + s.items.length);
     if (items < 4) return false;
-    // Every section must have a non-empty title and ≥2 items.
     for (final s in feed.sections) {
       if (s.title.isEmpty || s.items.length < 2) return false;
     }
@@ -965,10 +1113,9 @@ class HomeRepository {
   Future<HomeFeed?> _readCache({required String source}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = _cacheKeyFor(source, _localeTag());
+      final key = _cacheKeyFor(_currentSourceTag, _localeTag());
       final raw = prefs.getString(key);
       if (raw == null) return null;
-      // Defensive: corrupt cache must not crash Home.
       final json = jsonDecode(raw);
       if (json is! Map<String, dynamic>) return null;
       return HomeFeed.fromJson(json);
@@ -981,8 +1128,8 @@ class HomeRepository {
   Future<void> _writeCache(HomeFeed feed, String source) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          _cacheKeyFor(source, _localeTag()), jsonEncode(feed.toJson()));
+      await prefs.setString(_cacheKeyFor(_currentSourceTag, _localeTag()),
+          jsonEncode(feed.toJson()));
     } catch (e) {
       if (kDebugMode) debugPrint('HomeRepository: cache write failed: $e');
     }
@@ -996,8 +1143,57 @@ class HomeRepository {
       if (key.startsWith(_cachePrefix)) await prefs.remove(key);
     }
     _current = null;
+    _bestKnown = null;
     _loadedFromCache = false;
     _failureCount = 0;
     _nextAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);
+  }
+}
+
+/// Compact end-of-load accounting (spec #37): one HOME_LOAD line per load,
+/// HOME_LOSS lines only when something was actually lost.
+class HomeLoadTrace {
+  HomeLoadTrace._();
+
+  static void log({
+    String? decision,
+    String? cacheRead,
+    int? cacheSections,
+    int? cacheItems,
+    int? cacheAgeMin,
+    int? requestMs,
+    int? freshSections,
+    int? freshItems,
+    int? outputSections,
+    int? outputItems,
+    int? bestKnownSections,
+    int? bestKnownItems,
+  }) {
+    if (!kDebugMode) return;
+    final parts = <String>['HOME_LOAD'];
+    if (decision != null) parts.add('decision=$decision');
+    if (cacheRead != null) parts.add('cache=$cacheRead');
+    if (cacheSections != null) parts.add('cacheSections=$cacheSections');
+    if (cacheItems != null) parts.add('cacheItems=$cacheItems');
+    if (cacheAgeMin != null) parts.add('cacheAgeMin=$cacheAgeMin');
+    if (requestMs != null) parts.add('requestMs=$requestMs');
+    if (freshSections != null) parts.add('freshSections=$freshSections');
+    if (freshItems != null) parts.add('freshItems=$freshItems');
+    if (outputSections != null) parts.add('outputSections=$outputSections');
+    if (outputItems != null) parts.add('outputItems=$outputItems');
+    if (bestKnownSections != null) {
+      parts.add('bestKnownSections=$bestKnownSections');
+    }
+    if (bestKnownItems != null) parts.add('bestKnownItems=$bestKnownItems');
+    debugPrint(parts.join(' '));
+  }
+
+  static void loss({
+    required String stage,
+    required String shelf,
+    required String reason,
+  }) {
+    if (!kDebugMode) return;
+    debugPrint('HOME_LOSS stage=$stage shelf="$shelf" reason="$reason"');
   }
 }

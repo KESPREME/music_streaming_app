@@ -8,11 +8,10 @@ library;
 
 /// v4: structured metadata (artists[], publishedText), continuation
 /// capture, multi-dimension quality, parser/context version binding.
-/// parser v5: support levels, section-local dedupe, thumbnail variants,
-/// degradation detection, item-tolerance retention (no-artwork items
-/// retained as PARTIAL instead of rejected).
+/// parser v6: section provenance (native|chart|new_release|local),
+/// best-known-good convergence, enrichment merge. Old snapshots invalidate.
 const int kHomeFeedSchemaVersion = 4;
-const int kHomeParserVersion = 5;
+const int kHomeParserVersion = 6;
 const int kHomeRequestContextVersion = 2;
 
 enum HomeContentType { song, video, album, artist, playlist, unknown }
@@ -306,6 +305,7 @@ class HomeSection {
     this.sourcePath,
     this.renderer,
     this.sourceSubtitle,
+    this.provenance,
   });
 
   /// Stable section identity: normalized source title + dominant type.
@@ -319,6 +319,11 @@ class HomeSection {
   final String? sourcePath;
   final String? renderer;
   final String? sourceSubtitle;
+
+  /// Where this shelf's content came from (spec #30): 'native' | 'chart' |
+  /// 'new_release' | 'local'. Never fabricated labels — the enrichment
+  /// layer stamps this and the composer preserves it.
+  final String? provenance;
 
   HomeContentType get dominantType {
     final counts = <HomeContentType, int>{};
@@ -343,6 +348,7 @@ class HomeSection {
         if (sourcePath != null) 'path': sourcePath,
         if (renderer != null) 'renderer': renderer,
         if (sourceSubtitle != null) 'sub': sourceSubtitle,
+        if (provenance != null) 'prov': provenance,
         'items': items.map((i) => i.toJson()).toList(),
       };
 
@@ -357,6 +363,7 @@ class HomeSection {
         sourcePath: json['path'] as String?,
         renderer: json['renderer'] as String?,
         sourceSubtitle: json['sub'] as String?,
+        provenance: json['prov'] as String?,
         items: ((json['items'] as List?) ?? [])
             .whereType<Map<String, dynamic>>()
             .map(HomeItem.fromJson)

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'home_models.dart';
+import 'ytm_home_source.dart' show HomeLoadTrace;
 
 /// Composes the final Home feed from a primary (curated) source plus local
 /// personalization overlays.
@@ -95,11 +96,17 @@ class HomeComposer {
           sourcePath: section.sourcePath,
           renderer: section.renderer,
           sourceSubtitle: section.sourceSubtitle,
+          provenance: section.provenance,
         ));
       } else if (section.items.length >= 2 && kDebugMode) {
         debugPrint('HomeComposer: REMOVED "${section.title}" — '
             'only ${items.length} of ${section.items.length} items survived '
             '(section-local dupes=$sectionLocalDupes rejected=$rejected cap)');
+        HomeLoadTrace.loss(
+          stage: 'composer',
+          shelf: section.title,
+          reason: 'only ${items.length}/2+ items survived validation',
+        );
       }
     }
 
@@ -113,6 +120,11 @@ class HomeComposer {
       for (final before in base.sections.skip(maxSections)) {
         debugPrint(
             'HomeComposer: DROPPED "${before.title}" — section budget ($maxSections)');
+        HomeLoadTrace.loss(
+          stage: 'composer',
+          shelf: before.title,
+          reason: 'section budget ($maxSections)',
+        );
       }
       for (final before in base.sections) {
         final after = sections.where((s) => s.id == before.id).toList();
