@@ -8,8 +8,11 @@ import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
+import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
+import '../services/home/ytm_home_source.dart' show HomeLoadTrace;
 import '../services/innertube/innertube_service.dart';
+import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/type.dart' as type_tokens;
 import '../theme/glass_tokens.dart';
@@ -304,9 +307,9 @@ void _openArtist(BuildContext context, Track artistTrack) {
   );
 }
 
-/// One curated-feed shelf, rendered by its dominant content type.
-/// Presentation is derived from the section model — the shelf's own title
-/// is displayed verbatim.
+/// One curated-feed shelf rendered through the presentation planner
+/// (spec #3/#41): semantic classification → layout kind → geometry.
+/// The section's own title displays verbatim; provenance never re-titles.
 class _FeedSection extends StatelessWidget {
   const _FeedSection({required this.section});
 
@@ -314,41 +317,48 @@ class _FeedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final plan = planPresentation(section);
     final tracks =
-        section.items.map(_homeItemToTrack).whereType<Track>().toList();
+        section.items.map(homeItemToTrack).whereType<Track>().toList();
 
-    switch (section.presentation) {
-      case HomePresentation.artistRail:
-        return _ArtistShelf(section: section);
-      case HomePresentation.playlistRail:
-        return _PlaylistShelf(section: section, tracks: tracks);
-      case HomePresentation.grid:
-        return tracks.isNotEmpty
-            ? _NewReleasesSection(
-                tracks: tracks,
-                onPlay: (track) => _playTracks(context, track, tracks),
-                onOptions: (track) =>
-                    ThemedOptionsSheet.show(context, track: track),
-              )
-            : const SizedBox.shrink();
-      case HomePresentation.compactTracks:
-      case HomePresentation.artworkRail:
-        return tracks.length >= 3
-            ? _WhatsHotSection(
-                tracks: tracks,
-                onPlay: (track) => _playTracks(context, track, tracks),
-                onOptions: (track) =>
-                    ThemedOptionsSheet.show(context, track: track),
-                onSeeAll: null,
-              )
-            : const SizedBox.shrink();
-      case HomePresentation.videoRail:
-        // Valid data with a real presentation path: wide 16:9 thumbnails,
-        // tap → playlist/album detail via browse identity (spec #15/#16).
-        return tracks.isNotEmpty || section.items.isNotEmpty
-            ? _VideoShelf(section: section)
-            : const SizedBox.shrink();
+    // Zero-invisible-space (spec #21): unrenderable counts collapse
+    // entirely — no reserved rail/grid geometry for absent content.
+    if (plan.layoutKind == HomeLayoutKind.compactList) {
+      return tracks.length >= 3
+          ? _CompactListSection(section: section, tracks: tracks)
+          : const SizedBox.shrink();
     }
+    if (plan.layoutKind == HomeLayoutKind.artistRail) {
+      return _ArtistShelf(section: section);
+    }
+    if (plan.layoutKind == HomeLayoutKind.landscapeRail16x9) {
+      return tracks.isNotEmpty || section.items.isNotEmpty
+          ? _VideoShelf(section: section)
+          : const SizedBox.shrink();
+    }
+    if (plan.layoutKind == HomeLayoutKind.playlistRail) {
+      return _PlaylistShelf(section: section, tracks: tracks);
+    }
+    if (plan.layoutKind == HomeLayoutKind.squareGrid) {
+      return tracks.isNotEmpty
+          ? _NewReleasesSection(
+              tracks: tracks,
+              onPlay: (track) => _playTracks(context, track, tracks),
+              onOptions: (track) =>
+                  ThemedOptionsSheet.show(context, track: track),
+            )
+          : const SizedBox.shrink();
+    }
+    // squareRail fallback.
+    return tracks.length >= 3
+        ? _WhatsHotSection(
+            tracks: tracks,
+            onPlay: (track) => _playTracks(context, track, tracks),
+            onOptions: (track) =>
+                ThemedOptionsSheet.show(context, track: track),
+            onSeeAll: null,
+          )
+        : const SizedBox.shrink();
   }
 
   static void _playTracks(
@@ -356,18 +366,46 @@ class _FeedSection extends StatelessWidget {
     HapticFeedback.lightImpact();
     context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
   }
+}
 
-  static Track? _homeItemToTrack(HomeItem item) {
-    final videoId = item.videoId;
-    if (videoId == null) return null;
-    return Track(
-      id: videoId,
-      trackName: item.title,
-      artistName: item.subtitle,
-      albumName: '',
-      previewUrl: '',
-      albumArt: item.artworkUrl,
-      source: 'youtube',
+/// Text-block height for rail cards (title + 2 + metadata), scaled by the
+/// system textScaler — fixed heights + scaled text = the 10px overflow
+/// (spec #22/#25: multilingual/text-scale safe).
+double _railTextBlockHeight(BuildContext context) {
+  final scale = MediaQuery.textScalerOf(context).scale(1.0);
+  const base = 17.0 + 2.0 + 14.0;
+  return base * scale;
+}
+
+/// Dense compact list rows (spec #12): thumbnail + title + artist — the
+/// Muzo-style editorial block for trending/chart content. Height derives
+/// from row count, never a fixed oversized container.
+class _CompactListSection extends StatelessWidget {
+  const _CompactListSection({required this.section, required this.tracks});
+
+  final HomeSection section;
+  final List<Track> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(title: section.title),
+        ...tracks.take(6).map((track) => ForYouRow(
+              artUrl: track.albumArtUrl,
+              title: track.trackName,
+              subtitle: track.artistName,
+              isPlaying: false,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                context
+                    .read<MusicProvider>()
+                    .playTrack(track, playlistTracks: tracks);
+              },
+              onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+            )),
+      ],
     );
   }
 }
@@ -385,7 +423,7 @@ class _ArtistShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 132,
+          height: 96 + _railTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -444,7 +482,7 @@ class _PlaylistShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 158,
+          height: 110 + _railTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -525,17 +563,15 @@ class _VideoShelf extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final playable = section.items
-        .map(_FeedSection._homeItemToTrack)
-        .whereType<Track>()
-        .toList();
+    final playable =
+        section.items.map(homeItemToTrack).whereType<Track>().toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 172,
+          height: 124 + _railTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -625,7 +661,7 @@ class _LowerSections extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
     final sections = <Widget>[];
-
+    final renderedKinds = <String>[];
     // Local overlay — continue listening, always first when meaningful.
     final recents = provider.recentlyPlayed
         .where((t) => t.id != provider.currentTrack?.id)
@@ -646,7 +682,18 @@ class _LowerSections extends StatelessWidget {
     if (feed != null) {
       // Curated shelves in source order — titles come from the source.
       for (final section in feed.sections) {
-        if (section.id == excludeHeroSectionId) continue;
+        if (section.id == excludeHeroSectionId) {
+          if (kDebugMode) {
+            HomeLoadTrace.loss(
+              stage: 'presentation',
+              shelf: section.title,
+              reason: 'promoted to hero carousel',
+            );
+          }
+          continue;
+        }
+        final plan = planPresentation(section);
+        if (kDebugMode) renderedKinds.add(plan.semanticType.name);
         sections.add(_FeedSection(section: section));
       }
     } else {
@@ -708,16 +755,26 @@ class _LowerSections extends StatelessWidget {
     sections.add(const _MoodsSection());
 
     // Collapsed sections return SizedBox.shrink() — they must NOT
-    // contribute their inter-section padding (the giant-gap bug).
-    final rendered = sections
-        .where((w) => w is! SizedBox || (w.width != null && w.height != 0))
-        .toList();
+    // contribute their inter-section spacing (the giant-gap bug).
+    final rendered = <Widget>[];
+    for (final widget in sections) {
+      if (widget is SizedBox) continue; // collapsed section — zero height
+      rendered.add(widget);
+    }
+    if (kDebugMode) {
+      // UI accounting (spec #25/#44): composer count vs rendered count —
+      // presentation-level loss is never silent.
+      final composerCount = provider.homeFeed?.sections.length ?? 0;
+      debugPrint('HOME_UI composerSections=$composerCount '
+          'rendered=${rendered.length} '
+          'kinds=${renderedKinds.isEmpty ? "" : renderedKinds.join(",")}');
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var i = 0; i < rendered.length; i++) ...[
-          if (i > 0) const SizedBox(height: 34),
+          if (i > 0) const SizedBox(height: 30),
           rendered[i],
         ],
         SizedBox(height: bottomInset - 88 + 28),
@@ -766,7 +823,7 @@ class _JumpBackInSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Jump back in'),
         SizedBox(
-          height: 148,
+          height: 116 + _railTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -860,7 +917,7 @@ class _WhatsHotSectionState extends State<_WhatsHotSection> {
       children: [
         HomeSectionHeader(title: "What's hot", onViewAll: widget.onSeeAll),
         SizedBox(
-          height: 224,
+          height: 130 + _railTextBlockHeight(context) + 16,
           child: ParallaxMediaCarousel(
             controller: _controller,
             count: widget.tracks.length,
@@ -1007,7 +1064,7 @@ class _PlaylistsSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Your playlists'),
         SizedBox(
-          height: 158,
+          height: 110 + _railTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1091,7 +1148,7 @@ class _ArtistsSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Artists'),
         SizedBox(
-          height: 132,
+          height: 96 + _railTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
