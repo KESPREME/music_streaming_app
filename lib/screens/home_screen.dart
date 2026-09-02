@@ -388,6 +388,7 @@ class _SquareRailSection extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = section.items[index];
               return Padding(
+                key: ValueKey('rail_{item.id}'),
                 padding: const EdgeInsets.only(right: 14),
                 child: PressableScale(
                   onTap: () => HomePlaybackController.activate(
@@ -428,10 +429,8 @@ class _SquareRailSection extends StatelessWidget {
                                 // PARTIAL support (spec #8): placeholder,
                                 // item retained — never a dead card.
                                 : Container(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.06),
-                                    child: const Icon(
-                                        Icons.music_note_rounded,
+                                    color: Colors.white.withValues(alpha: 0.06),
+                                    child: const Icon(Icons.music_note_rounded,
                                         color: Colors.white24),
                                   ),
                           ),
@@ -488,6 +487,7 @@ class _CompactListSection extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         ...tracks.take(6).map((track) => ForYouRow(
+              key: ValueKey('compact_${track.id}'),
               artUrl: track.albumArtUrl,
               title: track.trackName,
               subtitle: track.artistName,
@@ -527,6 +527,7 @@ class _ArtistShelf extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = section.items[index];
               return Padding(
+                key: ValueKey('rail_{item.id}'),
                 padding: const EdgeInsets.only(right: 28),
                 child: ArtistPortrait(
                   name: item.title,
@@ -586,6 +587,7 @@ class _PlaylistShelf extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = section.items[index];
               return Padding(
+                key: ValueKey('rail_{item.id}'),
                 padding: const EdgeInsets.only(right: 14),
                 child: PressableScale(
                   onTap: () => Navigator.push(
@@ -658,9 +660,6 @@ class _VideoShelf extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final playable =
-        section.items.map(homeItemToTrack).whereType<Track>().toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -674,18 +673,35 @@ class _VideoShelf extends StatelessWidget {
             itemCount: section.items.length,
             itemBuilder: (context, index) {
               final item = section.items[index];
-              final track = index < playable.length ? playable[index] : null;
               return Padding(
+                key: ValueKey('rail_{item.id}'),
                 padding: const EdgeInsets.only(right: 14),
                 child: PressableScale(
-                  onTap: track != null
-                      ? () {
-                          HapticFeedback.lightImpact();
-                          context
-                              .read<MusicProvider>()
-                              .playTrack(track, playlistTracks: playable);
-                        }
-                      : null,
+                  // Unified dispatcher: playable items play (videoId via
+                  // song pipeline), collections navigate. No fake affordance.
+                  onTap: () {
+                    final action = HomePlaybackController.activate(
+                      context,
+                      item,
+                      sectionTitle: section.title,
+                      contextPlaylist: section.items
+                          .map(homeItemToTrack)
+                          .whereType<Track>()
+                          .toList(),
+                    );
+                    if (action == HomePlayAction.navigateCollection) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ThemedPlaylistDetailScreen(
+                            playlistId: item.browseId ?? item.id,
+                            playlistName: item.title,
+                            playlistImage: item.artworkUrl,
+                          ),
+                        ),
+                      );
+                    }
+                  },
                   child: SizedBox(
                     width: 216,
                     child: Column(

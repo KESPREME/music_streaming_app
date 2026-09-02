@@ -938,6 +938,29 @@ class HomeRepository {
       if (kDebugMode) {
         debugPrint(
             'HOME_LOAD convergedSections=${feed.sections.length} memory=${_sectionMemory.length}');
+        // Section-level diff (spec #43): added/removed/retained/updated —
+        // distinguishes content refresh from destructive structural change.
+        final prevById = <String, HomeSection>{
+          for (final s in (_current?.sections ?? const <HomeSection>[]))
+            SectionIdentity.forSection(s): s,
+        };
+        final freshById = <String, HomeSection>{
+          for (final s in feed.sections) SectionIdentity.forSection(s): s,
+        };
+        final added = freshById.keys.where((k) => !prevById.containsKey(k));
+        final removed = prevById.keys.where((k) => !freshById.containsKey(k));
+        final updated = freshById.keys.where((k) {
+          final prev = prevById[k];
+          if (prev == null) return false;
+          return prev.items.map((i) => i.id).join(',') !=
+              freshById[k]!.items.map((i) => i.id).join(',');
+        });
+        debugPrint('HOME_DIFF added=${added.length} '
+            'removed=${removed.length} retained=${freshById.length - updated.length} '
+            'updated=${updated.length}');
+        if (removed.isNotEmpty) {
+          debugPrint('HOME_DIFF removedShelves=${removed.take(4).toList()}');
+        }
       }
 
       if (!feedPassesQualityGate(feed)) {
