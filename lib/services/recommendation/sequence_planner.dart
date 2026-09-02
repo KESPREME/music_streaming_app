@@ -73,14 +73,37 @@ class SequencePlanner {
 
     // High energy indicators
     final highEnergyPatterns = [
-      'remix', 'club', 'dance', 'party', 'hype', 'live', 'rock',
-      'metal', 'punk', 'edm', 'bass', 'drop', 'fire', 'lit'
+      'remix',
+      'club',
+      'dance',
+      'party',
+      'hype',
+      'live',
+      'rock',
+      'metal',
+      'punk',
+      'edm',
+      'bass',
+      'drop',
+      'fire',
+      'lit'
     ];
 
     // Low energy indicators
     final lowEnergyPatterns = [
-      'acoustic', 'piano', 'ballad', 'slow', 'sleep', 'relax',
-      'calm', 'chill', 'ambient', 'lofi', 'lo-fi', 'soft', 'night'
+      'acoustic',
+      'piano',
+      'ballad',
+      'slow',
+      'sleep',
+      'relax',
+      'calm',
+      'chill',
+      'ambient',
+      'lofi',
+      'lo-fi',
+      'soft',
+      'night'
     ];
 
     double energy = 0.5; // Default neutral

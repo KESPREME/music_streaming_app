@@ -777,6 +777,18 @@ class _LowerSections extends StatelessWidget {
       ));
     }
 
+    // Quick Picks (spec #2A/#61): deterministic personalized picks, high
+    // on the page. Always shown when candidates exist (cold start uses
+    // chart/trending as popularity prior).
+    final quickPicks = provider.quickPicks;
+    if (quickPicks.isNotEmpty) {
+      sections.add(_QuickPicksSection(
+        tracks: quickPicks,
+        onPlay: (track) => _play(context, track, quickPicks),
+        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+      ));
+    }
+
     final feed = provider.homeFeed;
     if (feed != null) {
       // Curated shelves in source order — titles come from the source.
@@ -999,6 +1011,46 @@ class _MadeForYouSection extends StatelessWidget {
   }
 }
 
+/// Quick Picks: dense compact list (spec #2A/#75). Each row: 52dp
+/// thumbnail + title + artist + play chip. Deterministic picks from
+/// the local recommendation engine. No giant cards.
+class _QuickPicksSection extends StatelessWidget {
+  const _QuickPicksSection({
+    required this.tracks,
+    required this.onPlay,
+    required this.onOptions,
+  });
+
+  final List<Track> tracks;
+  final void Function(Track) onPlay;
+  final void Function(Track) onOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const HomeSectionHeader(title: 'Quick picks'),
+        ...tracks.take(6).map((track) => ForYouRow(
+              key: ValueKey('qp_${track.id}'),
+              artUrl: track.albumArtUrl,
+              title: track.trackName,
+              subtitle: track.artistName,
+              isPlaying: false,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                context
+                    .read<MusicProvider>()
+                    .playTrack(track, playlistTracks: tracks);
+              },
+              onLongPress: () => onOptions(track),
+            )),
+      ],
+    );
+  }
+}
+
+/// Trending section (spec #2B).
 class _WhatsHotSection extends StatefulWidget {
   const _WhatsHotSection({
     required this.tracks,

@@ -206,7 +206,25 @@ class RecommendationService {
       if (kDebugMode) debugPrint('RecommendationAgent: Init error: $e');
     }
   }
-  
+
+  /// Signal access for the Quick Picks engine (read-only facade).
+  RecommendationSignalView? signalFor(String trackId) {
+    final s = _signalCache[trackId];
+    if (s == null) return null;
+    return RecommendationSignalView(
+      trackId: s.trackId,
+      artistName: s.artistName,
+      playCount: s.playCount,
+      skipCount: s.skipCount,
+      replayCount: s.replayCount,
+      completionRate: s.completionRate,
+    );
+  }
+
+  /// Top artist names by aggregate play weight (spec #22).
+  List<String> topArtistsForPicks({int limit = 10}) =>
+      _longTermModel.getTopArtists(limit: limit);
+
   Future<void> _createDb(Database db, int version) async {
     await db.execute('''
       CREATE TABLE $_signalsTable (
@@ -620,6 +638,26 @@ class _ScoredTrack {
   final double score;
   
   _ScoredTrack(this.track, this.score);
+}
+
+/// Read-only signal view for the Quick Picks engine (decoupled facade —
+/// the engine must not reach into the service's private cache).
+class RecommendationSignalView {
+  const RecommendationSignalView({
+    required this.trackId,
+    required this.artistName,
+    required this.playCount,
+    required this.skipCount,
+    required this.replayCount,
+    required this.completionRate,
+  });
+
+  final String trackId;
+  final String artistName;
+  final int playCount;
+  final int skipCount;
+  final int replayCount;
+  final double completionRate;
 }
 
 

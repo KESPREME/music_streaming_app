@@ -52,6 +52,10 @@ import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
 import '../services/lyrics/lyrics_service.dart'; // Multi-provider lyrics service
 import '../services/recommendation_service.dart'; // AI recommendation engine
+import '../services/recommendation/search_followup_graph.dart';
+import '../services/recommendation/search_followup_store.dart';
+import '../services/recommendation/quick_picks_engine.dart';
+import '../services/recommendation/section_engines.dart';
 import '../models/lyrics_entry.dart'; // Lyrics data model
 // import '../services/firestore_service.dart'; // Uncomment if used
 
@@ -138,12 +142,33 @@ class MusicProvider
     fallback: _homeFallbackSource,
   );
 
+  // ── Recommendation engines (spec: Quick Picks / Trending / New Releases) ─
+  late final SearchFollowupGraph _searchGraph = SearchFollowupGraph(
+    store: SearchFollowupStore(),
+  );
+  late final QuickPicksEngine _quickPicksEngine = QuickPicksEngine(
+    signalProvider: _QuickPicksSignalAdapter(_recommendationService),
+  );
+
+  /// Search query pending follow-up attribution (set by searchTracks,
+  /// consumed by the next playTrack). Records: "searched X, then played Y"
+  /// (spec #7).
+  String? _pendingSearchQuery;
+  static const _searchFollowupWindow = Duration(minutes: 10);
+  DateTime? _searchQueryAt;
+
   HomeFeed? _homeFeed;
   HomeFeed? get homeFeed => _homeFeed;
+
+  /// Quick Picks section (spec #2A) — generated from local signals +
+  /// chart + native feed; deterministic, no randomization.
+  List<Track> get quickPicks => _quickPicks;
+  List<Track> _quickPicks = [];
 
   /// Cache-first: instant snapshot when available, background refresh when
   /// stale. Concurrent callers coalesce in the repository.
   Future<void> loadHomeFeed() async {
+    await _searchGraph.loadFromStore();
     final feed = await _homeRepository.load();
     _publishHomeFeed(feed);
   }
@@ -172,8 +197,43 @@ class MusicProvider
     );
     if (feed == null || identical(feed, _homeFeed)) return;
     _homeFeed = feed;
+    _generateQuickPicks(feed);
     _bumpHomeContent();
     notifyListeners();
+  }
+
+  /// Generate Quick Picks from the composed feed + local signals +
+  /// chart data (spec #2A/#17). Deterministic; no randomization.
+  void _generateQuickPicks(HomeFeed feed) {
+    final nativeTracks = feed.sections
+        .expand((s) => s.items)
+        .where((i) => i.videoId != null)
+        .map((i) => Track(
+              id: i.videoId!,
+              trackName: i.title,
+              artistName:
+                  i.artists.isNotEmpty ? i.artists.join(', ') : i.subtitle,
+              albumName: '',
+              previewUrl: '',
+              albumArt: i.artworkUrl,
+              source: 'youtube',
+            ))
+        .toList();
+
+    final picks = _quickPicksEngine.generate(
+      nativeTracks: nativeTracks,
+      chartTracks: _trendingTracks,
+      favorites: _likedSongs,
+      recentlyPlayed: _recentlyPlayed,
+      newReleases: _newReleases,
+      limit: 8,
+    );
+    if (picks.isEmpty) return;
+    _quickPicks = picks.map((c) => c.track).toList();
+    if (kDebugMode) {
+      debugPrint('QUICK_PICKS: ${_quickPicks.length} picks generated, '
+          'first="${_quickPicks.first.trackName}"');
+    }
   }
 
   Future<void> fetchNewReleases({bool forceRefresh = false}) async {
@@ -1627,6 +1687,7 @@ class MusicProvider
       // conversion. The playable YT variant only lives in the audio source.
       _currentTrack = track;
       _updateRecentlyPlayed(track);
+      _recordSearchFollowup(track);
       _updateCurrentIndex();
       notifyListeners();
 
@@ -2665,7 +2726,23 @@ class MusicProvider
   }
 
   // --- Recently Played ---
-  Future<void> _updateRecentlyPlayed(Track track) async {
+  void _recordSearchFollowup(Track track) {
+    // Spec #7: attribute plays to search queries within the window.
+    final query = _pendingSearchQuery;
+    final at = _searchQueryAt;
+    if (query == null || query.isEmpty || at == null) return;
+    if (DateTime.now().difference(at) > _searchFollowupWindow) {
+      _pendingSearchQuery = null;
+      return;
+    }
+    _searchGraph.recordTransition(query, track.id, track.artistName);
+    if (kDebugMode) {
+      debugPrint(
+          'SEARCH_FOLLOWUP: query="$query" → track="${track.trackName}" (${track.id})');
+    }
+  }
+
+  void _updateRecentlyPlayed(Track track) async {
     _recentlyPlayed.removeWhere((t) => t.id == track.id);
     _recentlyPlayed.insert(0, track);
     if (_recentlyPlayed.length > 20)
@@ -3316,6 +3393,9 @@ class MusicProvider
   // Method for generic track search, used by SearchTabContent
   Future<List<Track>> searchTracks(String query,
       {bool forceRefresh = false}) async {
+    // Spec #7: remember the query for play-followup attribution.
+    _pendingSearchQuery = query.trim();
+    _searchQueryAt = DateTime.now();
     // Search using the appropriate service based on current music source
     if (_isOfflineMode && !_networkService.isConnected) {
       _errorMessage = "Offline: Cannot perform search.";
@@ -3797,4 +3877,31 @@ class _RetryOperation {
   final Future<dynamic> Function() execute;
   int attempts = 1;
   _RetryOperation(this.description, this.execute);
+}
+
+/// Bridges RecommendationService's read-only signal view to the
+/// QuickPicksEngine's expected TrackSignal shape (spec #15: engine must not
+/// reach into the service's private cache).
+class _QuickPicksSignalAdapter implements QuickPicksSignalProvider {
+  _QuickPicksSignalAdapter(this._service);
+
+  final RecommendationService _service;
+
+  @override
+  QuickPicksTrackSignal? signalFor(String trackId) {
+    final view = _service.signalFor(trackId);
+    if (view == null) return null;
+    return QuickPicksTrackSignal(
+      trackId: view.trackId,
+      artistName: view.artistName,
+      playCount: view.playCount,
+      skipCount: view.skipCount,
+      replayCount: view.replayCount,
+      completionRate: view.completionRate,
+    );
+  }
+
+  @override
+  List<String> topArtists({int limit = 10}) =>
+      _service.topArtistsForPicks(limit: limit);
 }
