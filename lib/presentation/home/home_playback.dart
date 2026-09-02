@@ -80,12 +80,24 @@ class HomePlaybackController {
     }
   }
 
+  /// Strict playability predicate for hero/promoted surfaces (live-run
+  /// fix): only true 11-char videoIds with song semantics qualify. Album
+  /// (MPREb/OLAK) or playlist (VL/PL) ids must never reach playTrack —
+  /// the runtime log showed exactly that failure ("Skipping non-playable
+  /// track: Good Times (ID: MPREb_…)") after the fallback source
+  /// mislabeled album items as songs.
+  static bool isPlayableSongItem(HomeItem item) =>
+      item.contentType == HomeContentType.song &&
+      item.videoId != null &&
+      item.videoId!.length == 11 &&
+      !item.videoId!.startsWith(RegExp(r'(MPREb|OLAK|VL|PL|UC)'));
+
   /// Explicit routing table (spec #19/#20/#21/#22/#23/#24): content type →
   /// action. A song WITHOUT videoId is not playable (never guessed).
   static HomePlayAction actionFor(HomeItem item) {
     switch (item.contentType) {
       case HomeContentType.song:
-        return item.videoId != null
+        return isPlayableSongItem(item)
             ? HomePlayAction.playSong
             : HomePlayAction.none;
       case HomeContentType.video:

@@ -327,5 +327,60 @@ void main() {
       );
       expect(HomePlaybackController.actionFor(item), HomePlayAction.none);
     });
+
+    test('LIVE-RUN REGRESSION: MPREb album mislabeled as song → navigate', () {
+      // The runtime log showed playTrack receiving MPREb ids from the
+      // enriched New-releases shelf ("Skipping non-playable track: Good
+      // Times (ID: MPREb_5tEt5EeS7tZ)"). The fallback builder now
+      // classifies by id prefix; this test pins the contract.
+      final albumAsSong = HomeItem(
+        id: 'MPREb_5tEt5EeS7tZ',
+        videoId: null,
+        browseId: 'MPREb_5tEt5EeS7tZ',
+        title: 'Good Times',
+        subtitle: 'Album • Artist',
+        artworkUrl: 'https://example.com/g.jpg',
+        contentType: HomeContentType.album,
+      );
+      expect(HomePlaybackController.actionFor(albumAsSong),
+          HomePlayAction.navigateCollection);
+      expect(HomePlaybackController.isPlayableSongItem(albumAsSong), isFalse);
+    });
+
+    test('isPlayableSongItem rejects non-11-char and prefix ids', () {
+      expect(
+        HomePlaybackController.isPlayableSongItem(HomeItem(
+          id: 'MPREb_abc',
+          videoId: 'MPREb_abc',
+          title: 'X',
+          subtitle: '',
+          artworkUrl: 'https://example.com/x.jpg',
+          contentType: HomeContentType.song,
+        )),
+        isFalse,
+      );
+      expect(
+        HomePlaybackController.isPlayableSongItem(HomeItem(
+          id: 'short',
+          videoId: 'short',
+          title: 'X',
+          subtitle: '',
+          artworkUrl: 'https://example.com/x.jpg',
+          contentType: HomeContentType.song,
+        )),
+        isFalse,
+      );
+      expect(
+        HomePlaybackController.isPlayableSongItem(HomeItem(
+          id: 'abc12345678',
+          videoId: 'abc12345678',
+          title: 'X',
+          subtitle: '',
+          artworkUrl: 'https://example.com/x.jpg',
+          contentType: HomeContentType.song,
+        )),
+        isTrue,
+      );
+    });
   });
 }

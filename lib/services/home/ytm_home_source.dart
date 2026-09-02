@@ -775,17 +775,35 @@ class FallbackHomeSource {
     for (final t in tracks) {
       if (t.id.isEmpty || !seen.add(t.id)) continue;
       if (t.trackName.isEmpty) continue;
-      // No-artwork tolerated → PARTIAL placeholder (spec #8 tolerance).
+
+      // LIVE-RUN FIX: getNewReleases returns Track objects whose ids are
+      // frequently MPREb album browse ids (or VL playlists). Classifying
+      // them as songs with videoId=MPREb… produced the "Skipping
+      // non-playable track" failures on every hero/grid tap. Identity
+      // prefix decides the type here — exactly the parser discipline.
+      final isAlbum = t.id.startsWith('MPREb') || t.id.startsWith('OLAK');
+      final isPlaylist = t.id.startsWith('VL') || t.id.startsWith('PL');
+      final isArtist = t.id.startsWith('UC');
+      final isSong = !isAlbum && !isPlaylist && !isArtist && t.id.length == 11;
+
       items.add(HomeItem(
         id: t.id,
-        videoId: t.id,
+        videoId: isSong ? t.id : null,
+        browseId: isSong ? null : t.id,
         title: t.trackName,
         subtitle: t.artistName,
         artworkUrl: t.albumArtUrl,
-        contentType: HomeContentType.song,
+        contentType: isAlbum
+            ? HomeContentType.album
+            : isPlaylist
+                ? HomeContentType.playlist
+                : isArtist
+                    ? HomeContentType.artist
+                    : HomeContentType.song,
         supportLevel: t.albumArtUrl.isEmpty
             ? SupportLevel.partiallySupported
             : SupportLevel.fullySupported,
+        playability: isSong ? Playability.playable : Playability.unknown,
       ));
       if (items.length >= 12) break;
     }

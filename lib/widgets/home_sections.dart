@@ -79,6 +79,18 @@ class _PressableScaleState extends State<PressableScale> {
   }
 }
 
+/// Text-block height for rail-card metadata (title + gap + subtitle).
+/// Live-run calibrated: actual rendered line heights (label 13 w600 with
+/// default height factor, metadata 12.5) measure ~20 + ~18 logical px, so
+/// the old 17+2+14=33 estimate overflowed by exactly the 9px seen at
+/// runtime. 20+2+20=42 leaves real headroom (spec: zero RenderFlex
+/// overflow at any text scale).
+double homeRailTextBlockHeight(BuildContext context) {
+  final scale = MediaQuery.textScalerOf(context).scale(1.0);
+  const base = 20.0 + 2.0 + 20.0;
+  return base * scale;
+}
+
 /// Compact artwork-first rail card (Jump Back In / What's Hot).
 class RailCard extends StatelessWidget {
   const RailCard({

@@ -12,7 +12,8 @@ import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
 import '../services/home/ytm_home_source.dart' show HomeLoadTrace;
 import '../services/innertube/innertube_service.dart';
-import '../presentation/home/home_playback.dart';
+import '../presentation/home/home_playback.dart'
+    show HomePlaybackController, HomePlayAction, isPlayableSongItem;
 import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/type.dart' as type_tokens;
@@ -159,16 +160,24 @@ class _HomeScreenState extends State<HomeScreen>
   // ── Hero ─────────────────────────────────────────────────────────────────
 
   /// Hero eligibility (spec #28): source-nominated candidate from a strong
-  /// song shelf, ≥3 playable tracks. Never sections.first blindly.
-  /// Returns (section, tracks) or null → hero collapses entirely (spec #30:
-  /// a blank hero container must be impossible).
+  /// SONG shelf — every item must carry a real videoId (11-char), because
+  /// the hero play button routes through playTrack. Live-run fix: the
+  /// enriched "New releases" shelf contains album items (MPREb ids) that
+  /// previously passed this filter via _trackFromHomeItem nulls being
+  /// dropped unevenly, then failed at play time. The filter is now strict
+  /// AND the semantic type is checked — an album grid must never become
+  /// the "Picked for you" hero.
   (HomeSection, List<Track>)? _heroCandidate(MusicProvider provider) {
     final feed = provider.homeFeed;
     if (feed == null) return null;
     for (final section in feed.sections) {
       if (section.dominantType != HomeContentType.song) continue;
+      if (section.items
+          .any((i) => !HomePlaybackController.isPlayableSongItem(i))) {
+        continue;
+      }
       final picks = section.items
-          .map(_trackFromHomeItem)
+          .map(homeItemToTrack)
           .whereType<Track>()
           .take(8)
           .toList();
@@ -339,13 +348,8 @@ class _FeedSection extends StatelessWidget {
       return _PlaylistShelf(section: section, tracks: tracks);
     }
     if (plan.layoutKind == HomeLayoutKind.squareGrid) {
-      return tracks.isNotEmpty
-          ? _NewReleasesSection(
-              tracks: tracks,
-              onPlay: (track) => _playTracks(context, track, tracks),
-              onOptions: (track) =>
-                  ThemedOptionsSheet.show(context, track: track),
-            )
+      return section.items.isNotEmpty
+          ? _AlbumGridSection(section: section)
           : const SizedBox.shrink();
     }
     // squareRail fallback — per-item dispatch (mixed shelves may contain
@@ -379,7 +383,7 @@ class _SquareRailSection extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 116 + _railTextBlockHeight(context),
+          height: 116 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -518,7 +522,7 @@ class _ArtistShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 96 + _railTextBlockHeight(context),
+          height: 96 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -578,7 +582,7 @@ class _PlaylistShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 110 + _railTextBlockHeight(context),
+          height: 110 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -665,7 +669,7 @@ class _VideoShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 124 + _railTextBlockHeight(context),
+          height: 124 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -839,10 +843,27 @@ class _LowerSections extends StatelessWidget {
 
       final newReleases = provider.newReleases;
       if (newReleases.isNotEmpty) {
-        sections.add(_NewReleasesSection(
-          tracks: newReleases.take(6).toList(),
-          onPlay: (track) => _play(context, track, newReleases),
-          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        sections.add(_AlbumGridSection(
+          section: HomeSection(
+            id: 'new_releases_fallback',
+            title: 'New releases',
+            items: newReleases
+                .take(6)
+                .map((t) => HomeItem(
+                      id: t.id,
+                      videoId: t.id.length == 11 ? t.id : null,
+                      browseId: t.id.length == 11 ? null : t.id,
+                      title: t.trackName,
+                      subtitle: t.artistName,
+                      artworkUrl: t.albumArtUrl,
+                      contentType: t.id.length == 11
+                          ? HomeContentType.song
+                          : HomeContentType.album,
+                    ))
+                .toList(),
+            presentation: HomePresentation.grid,
+            provenance: 'new_release',
+          ),
         ));
       }
 
@@ -934,7 +955,7 @@ class _JumpBackInSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Jump back in'),
         SizedBox(
-          height: 116 + _railTextBlockHeight(context),
+          height: 116 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1028,7 +1049,7 @@ class _WhatsHotSectionState extends State<_WhatsHotSection> {
       children: [
         HomeSectionHeader(title: "What's hot", onViewAll: widget.onSeeAll),
         SizedBox(
-          height: 130 + _railTextBlockHeight(context) + 16,
+          height: 130 + homeRailTextBlockHeight(context) + 16,
           child: ParallaxMediaCarousel(
             controller: _controller,
             count: widget.tracks.length,
@@ -1080,23 +1101,21 @@ class _WhatsHotSectionState extends State<_WhatsHotSection> {
 }
 
 /// Two-up editorial grid — visually distinct from rails and rows.
-class _NewReleasesSection extends StatelessWidget {
-  const _NewReleasesSection({
-    required this.tracks,
-    required this.onPlay,
-    required this.onOptions,
-  });
+/// Album grid with per-item dispatch (live-run fix): "New releases" items
+/// carry MPREb album identities — taps navigate to the collection detail
+/// through the dispatcher instead of hitting playTrack and failing
+/// silently ("Skipping non-playable track").
+class _AlbumGridSection extends StatelessWidget {
+  const _AlbumGridSection({required this.section});
 
-  final List<Track> tracks;
-  final void Function(Track) onPlay;
-  final void Function(Track) onOptions;
+  final HomeSection section;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const HomeSectionHeader(title: 'New releases'),
+        HomeSectionHeader(title: section.title),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: LayoutBuilder(
@@ -1106,12 +1125,35 @@ class _NewReleasesSection extends StatelessWidget {
                 spacing: 16,
                 runSpacing: 18,
                 children: [
-                  for (final track in tracks)
+                  for (final item in section.items)
                     SizedBox(
                       width: tileW,
                       child: PressableScale(
-                        onTap: () => onPlay(track),
-                        onLongPress: () => onOptions(track),
+                        onTap: () {
+                          final action = HomePlaybackController.activate(
+                            context,
+                            item,
+                            sectionTitle: section.title,
+                          );
+                          if (action == HomePlayAction.navigateCollection) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ThemedPlaylistDetailScreen(
+                                  playlistId: item.browseId ?? item.id,
+                                  playlistName: item.title,
+                                  playlistImage: item.artworkUrl,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        onLongPress: () {
+                          final track = homeItemToTrack(item);
+                          if (track != null) {
+                            ThemedOptionsSheet.show(context, track: track);
+                          }
+                        },
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1119,9 +1161,9 @@ class _NewReleasesSection extends StatelessWidget {
                               borderRadius: BorderRadius.circular(16),
                               child: AspectRatio(
                                 aspectRatio: 1,
-                                child: track.albumArtUrl.isNotEmpty
+                                child: item.artworkUrl.isNotEmpty
                                     ? CachedNetworkImage(
-                                        imageUrl: track.albumArtUrl,
+                                        imageUrl: item.artworkUrl,
                                         fit: BoxFit.cover,
                                         memCacheWidth: 340,
                                         fadeInDuration:
@@ -1137,14 +1179,14 @@ class _NewReleasesSection extends StatelessWidget {
                             ),
                             const SizedBox(height: 9),
                             Text(
-                              track.trackName,
+                              item.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: type_tokens.Type.label(context),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              track.artistName,
+                              item.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: type_tokens.Type.metadata(context),
@@ -1175,7 +1217,7 @@ class _PlaylistsSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Your playlists'),
         SizedBox(
-          height: 110 + _railTextBlockHeight(context),
+          height: 110 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1259,7 +1301,7 @@ class _ArtistsSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Artists'),
         SizedBox(
-          height: 96 + _railTextBlockHeight(context),
+          height: 96 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
