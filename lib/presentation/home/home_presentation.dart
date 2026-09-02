@@ -183,11 +183,13 @@ HomePresentationModel planPresentation(HomeSection section) {
 
     case HomeSemanticType.newReleases:
     case HomeSemanticType.albums:
+      // Slider like other rails (user feedback: "make new releases slider
+      // like others") — square cards with peek, not a static 2-col grid.
       return const HomePresentationModel(
         semanticType: HomeSemanticType.newReleases,
-        layoutKind: HomeLayoutKind.squareGrid,
+        layoutKind: HomeLayoutKind.squareRail,
         aspectRatio: 1.0,
-        cardWidthFactor: 0.42,
+        cardWidthFactor: 0.44,
       );
 
     case HomeSemanticType.musicVideos:

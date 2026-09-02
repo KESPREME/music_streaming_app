@@ -368,7 +368,7 @@ class _SquareRailSection extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 116 + homeRailTextBlockHeight(context),
+          height: 150 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -397,12 +397,16 @@ class _SquareRailSection extends StatelessWidget {
                     }
                   },
                   child: SizedBox(
-                    width: 116,
+                    // Responsive square card ~46% content width
+                    width: t.HomeTokens.contentWidth(
+                            MediaQuery.sizeOf(context).width) *
+                        t.HomeTokens.squareCardFraction,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius:
+                              BorderRadius.circular(t.HomeTokens.cardRadius),
                           child: AspectRatio(
                             aspectRatio: 1,
                             child: item.artworkUrl.isNotEmpty
@@ -560,7 +564,7 @@ class _PlaylistShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 110 + homeRailTextBlockHeight(context),
+          height: 84 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -584,14 +588,14 @@ class _PlaylistShelf extends StatelessWidget {
                     ),
                   ),
                   child: SizedBox(
-                    width: 132,
+                    width: 150,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: SizedBox(
-                            width: 132,
+                            width: 150,
                             height: 74,
                             child: item.artworkUrl.isNotEmpty
                                 ? CachedNetworkImage(
@@ -935,7 +939,7 @@ class _JumpBackInSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Jump back in'),
         SizedBox(
-          height: 116 + homeRailTextBlockHeight(context),
+          height: 150 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -950,7 +954,7 @@ class _JumpBackInSection extends StatelessWidget {
                   artUrl: track.albumArtUrl,
                   title: track.trackName,
                   subtitle: track.artistName,
-                  size: 116,
+                  size: 150,
                   onTap: () => onPlay(track),
                   onLongPress: () => onOptions(track),
                 ),
@@ -1199,7 +1203,7 @@ class _PlaylistsSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Your playlists'),
         SizedBox(
-          height: 110 + homeRailTextBlockHeight(context),
+          height: 84 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -1223,14 +1227,14 @@ class _PlaylistsSection extends StatelessWidget {
                     ),
                   ),
                   child: SizedBox(
-                    width: 132,
+                    width: 150,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: SizedBox(
-                            width: 132,
+                            width: 150,
                             height: 74,
                             child: playlist.imageUrl.isNotEmpty
                                 ? CachedNetworkImage(

@@ -41,8 +41,8 @@ abstract final class HomeTokens {
   /// Hero carousel card: ~88% content width, next card peeks.
   static const double heroCardFraction = 0.88;
 
-  /// Square rail card (recent / songs).
-  static const double squareCardFraction = 0.42;
+  /// Square rail card (recent / songs / new releases).
+  static const double squareCardFraction = 0.46;
 
   /// Playlist / mood editorial card.
   static const double playlistCardFraction = 0.38;

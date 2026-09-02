@@ -59,7 +59,7 @@ void main() {
       );
       final plan = planPresentation(section);
       expect(plan.semanticType, HomeSemanticType.newReleases);
-      expect(plan.layoutKind, HomeLayoutKind.squareGrid);
+      expect(plan.layoutKind, HomeLayoutKind.squareRail);
     });
 
     test('music videos → 16:9 landscape rail', () {
@@ -122,7 +122,7 @@ void main() {
       );
       final plan = planPresentation(section);
       expect(plan.semanticType, HomeSemanticType.newReleases);
-      expect(plan.layoutKind, HomeLayoutKind.squareGrid);
+      expect(plan.layoutKind, HomeLayoutKind.squareRail);
     });
 
     test('unknown title → UNKNOWN with safe square rail (never crash)', () {
