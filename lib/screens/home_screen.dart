@@ -15,7 +15,7 @@ import '../presentation/home/home_playback.dart'
     show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
-import '../design/tokens/type.dart' as type_tokens;
+import '../presentation/home/home_tokens.dart' as t;
 import '../theme/glass_tokens.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/glass_surface.dart';
@@ -48,10 +48,10 @@ class _HomeScreenState extends State<HomeScreen>
     value: 0,
   );
   late final PageController _topPicksController = PageController(
-    viewportFraction: 0.86,
+    viewportFraction: 0.88,
   );
   late final PageController _whatsHotController = PageController(
-    viewportFraction: 0.52,
+    viewportFraction: 0.78,
   );
 
   @override
@@ -135,10 +135,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
+      padding:
+          const EdgeInsets.fromLTRB(t.HomeTokens.contentPadding, 12, 16, 0),
       child: Row(
         children: [
-          Expanded(child: Text('Home', style: type_tokens.Type.title(context))),
+          Expanded(child: Text('Home', style: t.HomeTokens.homeTitle(context))),
           GlassCircleButton(
             icon: Icons.settings_outlined,
             iconSize: 20,
@@ -214,13 +215,18 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildHeroCarousel(
       BuildContext context, List<Track> picks, String title, String sectionId) {
+    // Hero height derives from card width × 4:5 aspect ratio (spec #9),
+    // not from viewport height — the card must be ~88% content width.
+    final contentW =
+        t.HomeTokens.contentWidth(MediaQuery.sizeOf(context).width);
+    final heroH = (contentW * t.HomeTokens.heroCardFraction * (5 / 4))
+        .clamp(280.0, 380.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HomeSectionHeader(title: title),
         SizedBox(
-          height:
-              (MediaQuery.sizeOf(context).height * 0.40).clamp(280.0, 360.0),
+          height: heroH,
           child: ParallaxMediaCarousel(
             key: ValueKey('hero_$sectionId'),
             controller: _topPicksController,
@@ -365,7 +371,8 @@ class _SquareRailSection extends StatelessWidget {
           height: 116 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: section.items.length,
             itemBuilder: (context, index) {
@@ -423,14 +430,14 @@ class _SquareRailSection extends StatelessWidget {
                           item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.label(context),
+                          style: t.HomeTokens.cardTitle(context),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           item.subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.metadata(context),
+                          style: t.HomeTokens.cardMetadata(context),
                         ),
                       ],
                     ),
@@ -495,7 +502,8 @@ class _ArtistShelf extends StatelessWidget {
           height: 96 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: section.items.length,
             itemBuilder: (context, index) {
@@ -555,7 +563,8 @@ class _PlaylistShelf extends StatelessWidget {
           height: 110 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: section.items.length,
             itemBuilder: (context, index) {
@@ -603,13 +612,13 @@ class _PlaylistShelf extends StatelessWidget {
                           item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.label(context),
+                          style: t.HomeTokens.cardTitle(context),
                         ),
                         Text(
                           item.subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.metadata(context),
+                          style: t.HomeTokens.cardMetadata(context),
                         ),
                       ],
                     ),
@@ -642,7 +651,8 @@ class _VideoShelf extends StatelessWidget {
           height: 124 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: section.items.length,
             itemBuilder: (context, index) {
@@ -704,13 +714,13 @@ class _VideoShelf extends StatelessWidget {
                           item.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.label(context),
+                          style: t.HomeTokens.cardTitle(context),
                         ),
                         Text(
                           item.subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.metadata(context),
+                          style: t.HomeTokens.cardMetadata(context),
                         ),
                       ],
                     ),
@@ -928,7 +938,8 @@ class _JumpBackInSection extends StatelessWidget {
           height: 116 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: recents.length,
             itemBuilder: (context, index) {
@@ -1003,7 +1014,7 @@ class _WhatsHotSection extends StatefulWidget {
 
 class _WhatsHotSectionState extends State<_WhatsHotSection> {
   late final PageController _controller = PageController(
-    viewportFraction: 0.52,
+    viewportFraction: 0.78,
   );
 
   @override
@@ -1049,14 +1060,14 @@ class _WhatsHotSectionState extends State<_WhatsHotSection> {
                         track.trackName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: type_tokens.Type.label(context),
+                        style: t.HomeTokens.cardTitle(context),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         track.artistName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: type_tokens.Type.metadata(context),
+                        style: t.HomeTokens.cardMetadata(context),
                       ),
                     ],
                   ),
@@ -1087,7 +1098,8 @@ class _AlbumGridSection extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(
+              horizontal: t.HomeTokens.contentPadding),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final tileW = (constraints.maxWidth - 16) / 2;
@@ -1152,14 +1164,14 @@ class _AlbumGridSection extends StatelessWidget {
                               item.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: type_tokens.Type.label(context),
+                              style: t.HomeTokens.cardTitle(context),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               item.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: type_tokens.Type.metadata(context),
+                              style: t.HomeTokens.cardMetadata(context),
                             ),
                           ],
                         ),
@@ -1190,7 +1202,8 @@ class _PlaylistsSection extends StatelessWidget {
           height: 110 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: playlists.length,
             itemBuilder: (context, index) {
@@ -1239,11 +1252,11 @@ class _PlaylistsSection extends StatelessWidget {
                           playlist.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: type_tokens.Type.label(context),
+                          style: t.HomeTokens.cardTitle(context),
                         ),
                         Text(
                           '${playlist.tracks.length} tracks',
-                          style: type_tokens.Type.metadata(context),
+                          style: t.HomeTokens.cardMetadata(context),
                         ),
                       ],
                     ),
@@ -1274,7 +1287,8 @@ class _ArtistsSection extends StatelessWidget {
           height: 96 + homeRailTextBlockHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(
+                horizontal: t.HomeTokens.contentPadding),
             physics: const BouncingScrollPhysics(),
             itemCount: artists.length,
             itemBuilder: (context, index) {
@@ -1349,7 +1363,8 @@ class _MoodsSectionState extends State<_MoodsSection> {
             height: 44,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: t.HomeTokens.contentPadding),
               itemCount: 5,
               itemBuilder: (context, i) => Padding(
                 padding: const EdgeInsets.only(right: 10),
@@ -1368,7 +1383,8 @@ class _MoodsSectionState extends State<_MoodsSection> {
             height: 44,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: t.HomeTokens.contentPadding),
               physics: const BouncingScrollPhysics(),
               itemCount: moods.length,
               itemBuilder: (context, index) {
@@ -1418,7 +1434,7 @@ class _MoodTracksScreen extends StatelessWidget {
       backgroundColor: const Color(0xFF0A0A0C),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(title, style: type_tokens.Type.title(context)),
+        title: Text(title, style: t.HomeTokens.homeTitle(context)),
       ),
       body: ListView.builder(
         padding: const EdgeInsets.only(top: 8, bottom: 130),
@@ -1484,7 +1500,7 @@ class _TopPickCardState extends State<_TopPickCard> {
         duration: Motion.fast,
         curve: Curves.easeOut,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(t.HomeTokens.heroRadius),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1524,23 +1540,21 @@ class _TopPickCardState extends State<_TopPickCard> {
                         children: [
                           Text(
                             'Picked for you',
-                            style: type_tokens.Type.caption(context)
-                                .copyWith(letterSpacing: 1.1),
+                            style: t.HomeTokens.heroLabel(context),
                           ),
                           const SizedBox(height: 5),
                           Text(
                             widget.track.trackName,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: type_tokens.Type.title(context)
-                                .copyWith(fontSize: 23),
+                            style: t.HomeTokens.heroTitle(context),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             widget.track.artistName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: type_tokens.Type.metadata(context),
+                            style: t.HomeTokens.cardMetadata(context),
                           ),
                         ],
                       ),
@@ -1551,10 +1565,11 @@ class _TopPickCardState extends State<_TopPickCard> {
                       borderRadius: 30,
                       padding: EdgeInsets.zero,
                       child: SizedBox(
-                        width: 50,
-                        height: 50,
+                        width: t.HomeTokens.heroPlaySize,
+                        height: t.HomeTokens.heroPlaySize,
                         child: Icon(Icons.play_arrow_rounded,
-                            size: 28, color: accent.withValues(alpha: 0.95)),
+                            size: t.HomeTokens.heroPlayIconSize,
+                            color: accent.withValues(alpha: 0.95)),
                       ),
                     ),
                   ],
@@ -1593,8 +1608,11 @@ class _HeroSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final heroHeight = (size.height * 0.40).clamp(280.0, 360.0);
-    return _SkeletonBox(height: heroHeight, radius: 22);
+    // Skeleton matches real hero geometry (spec #59): width × 4:5.
+    final contentW =
+        t.HomeTokens.contentWidth(MediaQuery.sizeOf(context).width);
+    final heroHeight = (contentW * t.HomeTokens.heroCardFraction * (5 / 4))
+        .clamp(280.0, 380.0);
+    return _SkeletonBox(height: heroHeight, radius: 20);
   }
 }

@@ -2,49 +2,87 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../design/tokens/motion.dart';
-import '../design/tokens/type.dart' as type_tokens;
+import '../presentation/home/home_tokens.dart' as t;
 import 'glass_surface.dart';
 
-/// Shared Home section pieces. Everything here is grounded and quiet:
-/// open artwork, flat rows, glass reserved for interactive controls.
+/// Shared Home section pieces (spec #67). Geometry comes from
+/// [t.HomeTokens]; typography from the token scale; no magic numbers.
 
-/// Section title + optional quiet view-all affordance.
+/// Section title + optional description + optional See all.
+/// Spec #44: description only when source provides it; chevron only when
+/// a navigation action exists.
 class HomeSectionHeader extends StatelessWidget {
-  const HomeSectionHeader({super.key, required this.title, this.onViewAll});
+  const HomeSectionHeader({
+    super.key,
+    required this.title,
+    this.description,
+    this.onViewAll,
+  });
 
   final String title;
+  final String? description;
   final VoidCallback? onViewAll;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
+      padding: const EdgeInsets.fromLTRB(t.HomeTokens.contentPadding, 0,
+          t.HomeTokens.contentPadding, t.HomeTokens.headerToContent),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: type_tokens.Type.section(context)),
-          if (onViewAll != null)
-            GestureDetector(
-              onTap: onViewAll,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Text(
-                  'See all',
-                  style: type_tokens.Type.caption(context).copyWith(
-                    color: Theme.of(context).colorScheme.primary,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(title, style: t.HomeTokens.sectionTitle(context)),
+              ),
+              if (onViewAll != null)
+                GestureDetector(
+                  onTap: onViewAll,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'See all',
+                          style: t.HomeTokens.cardMetadata(context).copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+            ],
+          ),
+          if (description != null && description!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              description!,
+              style: t.HomeTokens.sectionDescription(context),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// Pressable wrapper: 0.98 compression while the finger is down.
+/// Pressable wrapper: 0.98 compression while the finger is down (spec #47:
+/// tactile, barely perceptible, spring-back).
 class PressableScale extends StatefulWidget {
   const PressableScale(
       {super.key, required this.child, this.onTap, this.onLongPress});
@@ -79,19 +117,8 @@ class _PressableScaleState extends State<PressableScale> {
   }
 }
 
-/// Text-block height for rail-card metadata (title + gap + subtitle).
-/// Live-run calibrated: actual rendered line heights (label 13 w600 with
-/// default height factor, metadata 12.5) measure ~20 + ~18 logical px, so
-/// the old 17+2+14=33 estimate overflowed by exactly the 9px seen at
-/// runtime. 20+2+20=42 leaves real headroom (spec: zero RenderFlex
-/// overflow at any text scale).
-double homeRailTextBlockHeight(BuildContext context) {
-  final scale = MediaQuery.textScalerOf(context).scale(1.0);
-  const base = 20.0 + 2.0 + 20.0;
-  return base * scale;
-}
-
 /// Compact artwork-first rail card (Jump Back In / What's Hot).
+/// Square artwork + 1-line title + 1-line metadata (spec #9/#18/#37).
 class RailCard extends StatelessWidget {
   const RailCard({
     super.key,
@@ -121,9 +148,9 @@ class RailCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(t.HomeTokens.cardRadius),
               child: AspectRatio(
-                aspectRatio: 1,
+                aspectRatio: t.HomeTokens.squareAspect,
                 child: artUrl.isNotEmpty
                     ? CachedNetworkImage(
                         imageUrl: artUrl,
@@ -131,9 +158,9 @@ class RailCard extends StatelessWidget {
                         memCacheWidth: 240,
                         fadeInDuration: const Duration(milliseconds: 200),
                         errorWidget: (_, __, ___) => Container(
-                            color: Colors.white.withValues(alpha: 0.06)),
+                            color: t.HomeTokens.placeholderColor(context)),
                       )
-                    : Container(color: Colors.white.withValues(alpha: 0.06)),
+                    : Container(color: t.HomeTokens.placeholderColor(context)),
               ),
             ),
             const SizedBox(height: 8),
@@ -141,14 +168,14 @@ class RailCard extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: type_tokens.Type.label(context),
+              style: t.HomeTokens.cardTitle(context),
             ),
             const SizedBox(height: 2),
             Text(
               subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: type_tokens.Type.metadata(context),
+              style: t.HomeTokens.cardMetadata(context),
             ),
           ],
         ),
@@ -157,9 +184,8 @@ class RailCard extends StatelessWidget {
   }
 }
 
-/// Compact open track row for Made-for-you: artwork, two lines, glass play
-/// chip. Deliberately NOT a card — tonal separation only, so repeated rows
-/// read as a list, not a wall of rounded rectangles.
+/// Compact open track row: artwork + two lines + play chip.
+/// NOT a card — tonal separation only (spec #10, Muzo density).
 class ForYouRow extends StatelessWidget {
   const ForYouRow({
     super.key,
@@ -185,11 +211,12 @@ class ForYouRow extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        padding: const EdgeInsets.symmetric(
+            horizontal: t.HomeTokens.contentPadding, vertical: 6),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               child: SizedBox(
                 width: 50,
                 height: 50,
@@ -200,10 +227,10 @@ class ForYouRow extends StatelessWidget {
                         memCacheWidth: 120,
                         fadeInDuration: const Duration(milliseconds: 180),
                         errorWidget: (_, __, ___) => Container(
-                            color: Colors.white.withValues(alpha: 0.06)),
+                            color: t.HomeTokens.placeholderColor(context)),
                       )
                     : Container(
-                        color: Colors.white.withValues(alpha: 0.06),
+                        color: t.HomeTokens.placeholderColor(context),
                         child: const Icon(Icons.music_note_rounded,
                             color: Colors.white24),
                       ),
@@ -218,7 +245,7 @@ class ForYouRow extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: type_tokens.Type.body(context).copyWith(
+                    style: t.HomeTokens.compactTitle(context).copyWith(
                       color: isPlaying ? accent : null,
                       fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
                     ),
@@ -228,7 +255,7 @@ class ForYouRow extends StatelessWidget {
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: type_tokens.Type.metadata(context),
+                    style: t.HomeTokens.compactMetadata(context),
                   ),
                 ],
               ),
@@ -258,7 +285,8 @@ class ForYouRow extends StatelessWidget {
   }
 }
 
-/// Circular artist portrait with name beneath — spacious, artwork-led.
+/// Circular artist portrait with name beneath (spec #33: circles, not
+/// album-card geometry).
 class ArtistPortrait extends StatelessWidget {
   const ArtistPortrait({
     super.key,
@@ -276,28 +304,28 @@ class ArtistPortrait extends StatelessWidget {
     return PressableScale(
       onTap: onTap,
       child: SizedBox(
-        width: 104,
+        width: 88,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
-              radius: 42,
-              backgroundColor: Colors.white.withValues(alpha: 0.06),
+              radius: 36,
+              backgroundColor: t.HomeTokens.placeholderColor(context),
               backgroundImage: imageUrl.isNotEmpty
                   ? CachedNetworkImageProvider(imageUrl)
                   : null,
               child: imageUrl.isEmpty
                   ? const Icon(Icons.person_rounded,
-                      size: 36, color: Colors.white24)
+                      size: 30, color: Colors.white24)
                   : null,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: type_tokens.Type.caption(context),
+              style: t.HomeTokens.compactMetadata(context),
             ),
           ],
         ),
@@ -446,7 +474,7 @@ class EditorialMoodTile extends StatelessWidget {
           color: Colors.white.withValues(alpha: 0.055),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Text(label, style: type_tokens.Type.label(context)),
+        child: Text(label, style: t.HomeTokens.cardTitle(context)),
       ),
     );
   }
@@ -464,7 +492,7 @@ class SectionHint extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Text(
         message,
-        style: type_tokens.Type.metadata(context)
+        style: t.HomeTokens.cardMetadata(context)
             .copyWith(color: Colors.white.withValues(alpha: 0.35)),
       ),
     );
@@ -502,4 +530,15 @@ class StaggerIn extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// Text-block height for rail-card metadata (title + gap + subtitle).
+/// Live-run calibrated: actual rendered line heights (label 15.5 w600,
+/// metadata 13.5) measure ~20 + ~20 logical px, so the old 17+2+14=33
+/// estimate overflowed by exactly the 9px seen at runtime. 20+2+20=42
+/// leaves real headroom (spec: zero RenderFlex overflow at any scale).
+double homeRailTextBlockHeight(BuildContext context) {
+  final scale = MediaQuery.textScalerOf(context).scale(1.0);
+  const base = 20.0 + 2.0 + 20.0;
+  return base * scale;
 }
