@@ -666,7 +666,11 @@ class HomeRepository {
       if (kDebugMode && _current != null) {
         debugPrint(
             'HomeRepository: cache hit (${_current!.sections.length} sections, '
-            'age=${DateTime.now().difference(_current!.fetchedAt).inMinutes}min)');
+            '${_current!.sections.fold<int>(0, (n, s) => n + s.items.length)} items, '
+            'age=${DateTime.now().difference(_current!.fetchedAt).inMinutes}min, '
+            'source=${_current!.source}, schema=$kHomeFeedSchemaVersion)');
+      } else if (kDebugMode) {
+        debugPrint('HomeRepository: cache miss — fetching fresh');
       }
     }
     if (_current == null || isRefreshDue) {

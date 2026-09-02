@@ -151,7 +151,8 @@ class MusicProvider
   Future<void> refreshHomeFeed() async {
     final previous = _homeFeed;
     final feed = await _homeRepository.refresh();
-    if (kDebugMode) HomeDiagnostics.logRefreshDiff(previous: previous, next: feed);
+    if (kDebugMode)
+      HomeDiagnostics.logRefreshDiff(previous: previous, next: feed);
     _publishHomeFeed(feed);
   }
 
@@ -185,6 +186,17 @@ class MusicProvider
       notifyListeners();
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: New releases failed: $e');
+    }
+  }
+
+  /// Moods & Genres category tracks (real InnerTube params, cached).
+  Future<List<Track>> fetchMoodTracks(String params) async {
+    if (_isOfflineMode || !_networkService.isConnected) return [];
+    try {
+      return await _innerTubeService.getMoodTracks(params, limit: 30);
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: mood tracks failed: $e');
+      return [];
     }
   }
 

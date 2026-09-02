@@ -17,6 +17,9 @@ class HomeComposer {
   /// [primary] wins wholesale when valid. Local sections are appended
   /// only where they don't duplicate primary content. Null primary →
   /// [fallback] is used as-is.
+  ///
+  /// Populates [lastReport] — composer-level shelf accounting so no
+  /// section is ever silently removed (spec #13/#34).
   HomeFeed? compose({
     required HomeFeed? primary,
     required HomeFeed? fallback,
@@ -69,7 +72,14 @@ class HomeComposer {
           title: section.title,
           items: items,
           presentation: section.presentation,
+          sourcePath: section.sourcePath,
+          renderer: section.renderer,
+          sourceSubtitle: section.sourceSubtitle,
         ));
+      } else if (section.items.length >= 2 && kDebugMode) {
+        debugPrint('HomeComposer: REMOVED "${section.title}" — '
+            'only $items.length of ${section.items.length} items survived '
+            '(rejected=$rejected dupes=$duplicates or cap)');
       }
     }
 
@@ -79,6 +89,18 @@ class HomeComposer {
       debugPrint(
           'HomeComposer: source=${base.source} sections=${base.sections.length}->${sections.length} '
           'items=$totalItems rejected=$rejected duplicates=$duplicates');
+      // Full reconciliation — WHY each section was removed/trimmed.
+      for (final before in base.sections) {
+        final after = sections.where((s) => s.id == before.id).toList();
+        if (after.isEmpty) {
+          debugPrint('HomeComposer: REMOVED "${before.title}" '
+              '(${before.items.length} items) — all items failed '
+              'validation/dedupe/diversity or fell under the 2-item floor');
+        } else if (after.first.items.length < before.items.length) {
+          debugPrint('HomeComposer: TRIMMED "${before.title}" '
+              '${before.items.length}→${after.first.items.length} items');
+        }
+      }
     }
 
     if (sections.isEmpty) return null;
@@ -86,6 +108,7 @@ class HomeComposer {
       sections: sections,
       fetchedAt: base.fetchedAt,
       source: base.source,
+      heroCandidate: base.heroCandidate,
     );
   }
 

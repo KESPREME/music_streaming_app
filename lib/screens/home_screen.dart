@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/home/home_models.dart';
+import '../services/innertube/innertube_service.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/type.dart' as type_tokens;
 import '../theme/glass_tokens.dart';
@@ -16,7 +17,6 @@ import '../widgets/glass_circle_button.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/themed_all_genres_screen.dart';
-import '../widgets/themed_genre_songs_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
@@ -343,12 +343,11 @@ class _FeedSection extends StatelessWidget {
               )
             : const SizedBox.shrink();
       case HomePresentation.videoRail:
-        // Wide-thumbnail treatment not yet built — log instead of silently
-        // dropping VALID data (spec: VALID DATA / UNSUPPORTED PRESENTATION).
-        debugPrint('Home: VALID DATA / UNSUPPORTED PRESENTATION — '
-            'videoRail section "${section.title}" '
-            '(${section.items.length} items) not rendered');
-        return const SizedBox.shrink();
+        // Valid data with a real presentation path: wide 16:9 thumbnails,
+        // tap → playlist/album detail via browse identity (spec #15/#16).
+        return tracks.isNotEmpty || section.items.isNotEmpty
+            ? _VideoShelf(section: section)
+            : const SizedBox.shrink();
     }
   }
 
@@ -516,6 +515,95 @@ class _PlaylistShelf extends StatelessWidget {
   }
 }
 
+/// Video shelf: 16:9 wide thumbnails with creator metadata — a distinct
+/// grammar from square artwork rails. Valid video-type items get a real
+/// presentation path instead of UNSUPPORTED_PRESENTATION.
+class _VideoShelf extends StatelessWidget {
+  const _VideoShelf({required this.section});
+
+  final HomeSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    final playable = section.items
+        .map(_FeedSection._homeItemToTrack)
+        .whereType<Track>()
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(title: section.title),
+        SizedBox(
+          height: 172,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: section.items.length,
+            itemBuilder: (context, index) {
+              final item = section.items[index];
+              final track = index < playable.length ? playable[index] : null;
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: PressableScale(
+                  onTap: track != null
+                      ? () {
+                          HapticFeedback.lightImpact();
+                          context
+                              .read<MusicProvider>()
+                              .playTrack(track, playlistTracks: playable);
+                        }
+                      : null,
+                  child: SizedBox(
+                    width: 216,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: item.artworkUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: item.artworkUrl,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 440,
+                                    errorWidget: (_, __, ___) => Container(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.05)),
+                                  )
+                                : Container(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.05)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.label(context),
+                        ),
+                        Text(
+                          item.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.metadata(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Data-driven lower-Home renderer. Observes only [homeContentVersion], so
 /// playback ticks and palette updates never rebuild these sections. Order
 /// adapts to available data; empty sections collapse entirely (spacing
@@ -615,17 +703,23 @@ class _LowerSections extends StatelessWidget {
       sections.add(_PlaylistsSection(playlists: playlists));
     }
 
-    // EXPLORATION — moods (editorial tiles), intentional quiet ending.
+    // EXPLORATION — moods: real Moods & Genres discovery from InnerTube,
+    // not hardcoded filter pills.
     sections.add(const _MoodsSection());
+
+    // Collapsed sections return SizedBox.shrink() — they must NOT
+    // contribute their inter-section padding (the giant-gap bug).
+    final rendered = sections
+        .where((w) => w is! SizedBox || (w.width != null && w.height != 0))
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final section in sections)
-          Padding(
-            padding: const EdgeInsets.only(top: 34),
-            child: section,
-          ),
+        for (var i = 0; i < rendered.length; i++) ...[
+          if (i > 0) const SizedBox(height: 34),
+          rendered[i],
+        ],
         SizedBox(height: bottomInset - 88 + 28),
       ],
     );
@@ -1021,13 +1115,43 @@ class _ArtistsSection extends StatelessWidget {
   }
 }
 
-class _MoodsSection extends StatelessWidget {
+class _MoodsSection extends StatefulWidget {
   const _MoodsSection();
 
   @override
+  State<_MoodsSection> createState() => _MoodsSectionState();
+}
+
+class _MoodsSectionState extends State<_MoodsSection> {
+  List? _moods;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final moods = await InnerTubeService.instance.getMoodsAndGenres();
+      if (!mounted) return;
+      setState(() {
+        _moods = moods;
+        _failed = moods.isEmpty;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final provider = context.read<MusicProvider>();
-    const moods = ['Pop', 'Hip-Hop', 'Rock', 'Chill'];
+    final moods = _moods;
+    // Honest empty: nothing hardcoded when the source yields nothing.
+    if (_failed || (moods != null && moods.isEmpty)) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1039,30 +1163,103 @@ class _MoodsSection extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final mood in moods)
-                EditorialMoodTile(
-                  label: mood,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    provider.fetchGenreTracks(mood);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ThemedGenreSongsScreen(genre: mood),
-                      ),
-                    );
-                  },
+        if (moods == null)
+          // Geometry-matched skeleton while loading.
+          SizedBox(
+            height: 44,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: 5,
+              itemBuilder: (context, i) => Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Container(
+                  width: 90.0 + (i % 3) * 26,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
-            ],
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 44,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              physics: const BouncingScrollPhysics(),
+              itemCount: moods.length,
+              itemBuilder: (context, index) {
+                final mood = moods[index] as dynamic;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: EditorialMoodTile(
+                    label: mood.title as String,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      context
+                          .read<MusicProvider>()
+                          .fetchMoodTracks(mood.params as String)
+                          .then((tracks) {
+                        if (!context.mounted || tracks.isEmpty) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => _MoodTracksScreen(
+                              title: mood.title as String,
+                              tracks: tracks,
+                            ),
+                          ),
+                        );
+                      });
+                    },
+                  ),
+                );
+              },
+            ),
           ),
-        ),
       ],
+    );
+  }
+}
+
+/// Mood detail: real mood params → tracks, honest source title.
+class _MoodTracksScreen extends StatelessWidget {
+  const _MoodTracksScreen({required this.title, required this.tracks});
+
+  final String title;
+  final List<Track> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0C),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        title: Text(title, style: type_tokens.Type.title(context)),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.only(top: 8, bottom: 130),
+        itemCount: tracks.length,
+        itemBuilder: (context, index) {
+          final track = tracks[index];
+          return ForYouRow(
+            artUrl: track.albumArtUrl,
+            title: track.trackName,
+            subtitle: track.artistName,
+            isPlaying: false,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              context
+                  .read<MusicProvider>()
+                  .playTrack(track, playlistTracks: tracks);
+            },
+            onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+          );
+        },
+      ),
     );
   }
 }
