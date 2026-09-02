@@ -6,10 +6,11 @@
 /// caches safely.
 library;
 
-/// v3: forensic parser (deep discovery, musicShelfRenderer support,
-/// accounting report, unknown type honesty, HeroCandidate). v1/v2
-/// snapshots invalidate automatically.
-const int kHomeFeedSchemaVersion = 3;
+/// v4: structured metadata (artists[], publishedText), continuation
+/// capture, multi-dimension quality, parser/context version binding.
+const int kHomeFeedSchemaVersion = 4;
+const int kHomeParserVersion = 4;
+const int kHomeRequestContextVersion = 2;
 
 enum HomeContentType { song, video, album, artist, playlist, unknown }
 
@@ -37,6 +38,7 @@ class ShelfReport {
     this.rejectedItemCount = 0,
     this.duplicateItemCount = 0,
     this.rejectionReasons = const [],
+    this.hasContinuation = false,
   });
 
   final String path;
@@ -48,6 +50,9 @@ class ShelfReport {
   final int rejectedItemCount;
   final int duplicateItemCount;
   final List<String> rejectionReasons;
+
+  /// Continuation token presence — recorded, never auto-consumed (spec #24).
+  final bool hasContinuation;
 
   Map<String, dynamic> toJson() => {
         'path': path,
@@ -148,6 +153,9 @@ class HomeItem {
     required this.subtitle,
     required this.artworkUrl,
     required this.contentType,
+    this.artists = const [],
+    this.publishedText,
+    this.playability = Playability.unknown,
   });
 
   /// Stable identity: videoId when playable, else browseId. Never derived
@@ -160,10 +168,22 @@ class HomeItem {
   final String artworkUrl;
   final HomeContentType contentType;
 
+  /// Structured metadata (spec #26/#27) — nullable where source data is
+  /// absent; never populated with guesses. Artists parsed from subtitle
+  /// run segments; publishedText = year / relative-age text when present.
+  final List<String> artists;
+  final String? publishedText;
+
+  /// Playability is separate from identity (spec #23): a valid album is
+  /// not directly playable; a song without videoId is not playable.
+  final Playability playability;
+
   bool get isPlayable =>
-      videoId != null ||
-      contentType == HomeContentType.playlist ||
-      contentType == HomeContentType.album;
+      playability == Playability.playable ||
+      (playability == Playability.unknown &&
+          (videoId != null ||
+              contentType == HomeContentType.playlist ||
+              contentType == HomeContentType.album));
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -173,6 +193,9 @@ class HomeItem {
         's': subtitle,
         'a': artworkUrl,
         'c': contentType.index,
+        if (artists.isNotEmpty) 'ar': artists,
+        if (publishedText != null) 'pub': publishedText,
+        'pl': playability.index,
       };
 
   static HomeItem fromJson(Map<String, dynamic> json) => HomeItem(
@@ -187,8 +210,18 @@ class HomeItem {
                 json['c'] < HomeContentType.values.length
             ? HomeContentType.values[json['c'] as int]
             : HomeContentType.unknown,
+        artists:
+            (json['ar'] as List?)?.whereType<String>().toList() ?? const [],
+        publishedText: json['pub'] as String?,
+        playability: json['pl'] is int &&
+                json['pl'] >= 0 &&
+                json['pl'] < Playability.values.length
+            ? Playability.values[json['pl'] as int]
+            : Playability.unknown,
       );
 }
+
+enum Playability { unknown, playable, notPlayable }
 
 class HomeSection {
   const HomeSection({
@@ -263,6 +296,7 @@ class HomeFeed {
     required this.fetchedAt,
     required this.source,
     this.heroCandidate,
+    this.continuationToken,
   });
 
   final List<HomeSection> sections;
@@ -275,16 +309,27 @@ class HomeFeed {
   /// Eligibility enforced by the UI — never sections.first blindly.
   final HomeItem? heroCandidate;
 
+  /// Home continuation token when the source offers more shelves. Recorded
+  /// for future explicit "load more" — never auto-consumed (spec #24).
+  final String? continuationToken;
+
   Map<String, dynamic> toJson() => {
         'schema': kHomeFeedSchemaVersion,
+        'parser': kHomeParserVersion,
+        'ctx': kHomeRequestContextVersion,
         'fetchedAt': fetchedAt.millisecondsSinceEpoch,
         'source': source,
+        if (continuationToken != null) 'cont': continuationToken,
         'sections': sections.map((s) => s.toJson()).toList(),
       };
 
   static HomeFeed? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
+    // Schema + parser + context version binding (spec #11): any mismatch
+    // invalidates the snapshot — never partially deserialize.
     if (json['schema'] != kHomeFeedSchemaVersion) return null;
+    if (json['parser'] != kHomeParserVersion) return null;
+    if (json['ctx'] != kHomeRequestContextVersion) return null;
     final fetched = json['fetchedAt'];
     if (fetched is! int) return null;
     final sections = ((json['sections'] as List?) ?? [])
@@ -297,6 +342,7 @@ class HomeFeed {
       sections: sections,
       fetchedAt: DateTime.fromMillisecondsSinceEpoch(fetched),
       source: json['source'] as String? ?? 'unknown',
+      continuationToken: json['cont'] as String?,
     );
   }
 }

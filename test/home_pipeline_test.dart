@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/services/home/home_composer.dart';
+import 'package:music_streaming_app/services/home/home_diagnostics.dart';
 import 'package:music_streaming_app/services/home/home_models.dart';
 import 'package:music_streaming_app/services/home/ytm_home_source.dart';
 
@@ -169,6 +170,102 @@ void main() {
         _shelf('B', [_song('s3', 'E', 'F'), _song('s4', 'G', 'H')]),
       ]);
       expect(HomeRepository.feedPassesQualityGate(bad), isFalse);
+    });
+  });
+
+  group('structured metadata', () {
+    test('HomeItem JSON roundtrip preserves artists/publishedText/playability',
+        () {
+      final item = HomeItem(
+        id: 'BddP6PYotfs',
+        videoId: 'BddP6PYotfs',
+        title: 'Kesariya',
+        subtitle: 'Arijit Singh • Brahmastra • 2024',
+        artworkUrl: 'https://example.com/k.jpg',
+        contentType: HomeContentType.song,
+        artists: const ['Arijit Singh'],
+        publishedText: '2024',
+        playability: Playability.playable,
+      );
+
+      final restored = HomeItem.fromJson(item.toJson());
+      expect(restored.artists, ['Arijit Singh']);
+      expect(restored.publishedText, '2024');
+      expect(restored.playability, Playability.playable);
+      expect(restored.isPlayable, isTrue);
+    });
+
+    test('album item is not song-playable', () {
+      final album = HomeItem(
+        id: 'MPREb_album1',
+        browseId: 'MPREb_album1',
+        title: 'Album',
+        subtitle: 'Album • Artist',
+        artworkUrl: 'https://example.com/a.jpg',
+        contentType: HomeContentType.album,
+      );
+      // Albums route to detail screens, not direct song playback.
+      expect(album.videoId, isNull);
+      expect(album.contentType, HomeContentType.album);
+    });
+  });
+
+  group('quality dimensions', () {
+    test('healthy native feed scores well on all axes', () {
+      final feed = _feed('ytm_home', [
+        _shelf('A', [
+          _song('s1', 'One', 'Artist One'),
+          _song('s2', 'Two', 'Artist Two'),
+          _song('s3', 'Three', 'Artist Three'),
+        ]),
+        _shelf('B', [
+          _song('s4', 'Four', 'Artist Four'),
+          _song('s5', 'Five', 'Artist Five'),
+        ]),
+      ]);
+
+      final d = HomeDiagnostics.qualityDimensions(feed);
+      expect(d['structural'], greaterThan(0.9));
+      expect(d['sourceTrust'], 1.0);
+      expect(d['freshness'], 1.0);
+      expect(d['diversity'], 1.0); // all distinct artists
+    });
+
+    test('fallback feed has lower source trust than native', () {
+      final native = _feed('ytm_home', [
+        _shelf('A', [
+          _song('s1', 'One', 'A'),
+          _song('s2', 'Two', 'B'),
+        ]),
+        _shelf('B', [
+          _song('s3', 'Three', 'C'),
+          _song('s4', 'Four', 'D'),
+        ]),
+      ]);
+      final fallback = _feed('fallback', native.sections);
+
+      final dNative = HomeDiagnostics.qualityDimensions(native);
+      final dFallback = HomeDiagnostics.qualityDimensions(fallback);
+      expect(dNative['sourceTrust'], greaterThan(dFallback['sourceTrust']!));
+    });
+
+    test('stale feed decays freshness', () {
+      final stale = HomeFeed(
+        sections: [
+          _shelf('A', [
+            _song('s1', 'One', 'A'),
+            _song('s2', 'Two', 'B'),
+          ]),
+          _shelf('B', [
+            _song('s3', 'Three', 'C'),
+            _song('s4', 'Four', 'D'),
+          ]),
+        ],
+        fetchedAt: DateTime.now().subtract(const Duration(hours: 30)),
+        source: 'ytm_home',
+      );
+      final d = HomeDiagnostics.qualityDimensions(stale);
+      expect(d['freshness'], lessThan(0.5));
     });
   });
 

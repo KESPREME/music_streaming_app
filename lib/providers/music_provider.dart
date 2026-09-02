@@ -3126,10 +3126,32 @@ class MusicProvider
       }
     }
 
-    // Always include some home tracks for discovery of new artists
+    // Discovery seed: reuse the structured Home feed's parsed items when
+    // available — one Home pipeline (spec #50) instead of a second
+    // flattened getHomeTracks call. Falls back to the legacy flattened
+    // call only when no feed exists yet.
     try {
-      final homeTracks = await _innerTubeService.getHomeTracks(limit: 20);
-      for (final track in homeTracks) {
+      final feed = _homeFeed;
+      final List<Track> discoveryTracks;
+      if (feed != null) {
+        discoveryTracks = feed.sections
+            .expand((s) => s.items)
+            .where((i) => i.videoId != null)
+            .map((i) => Track(
+                  id: i.videoId!,
+                  trackName: i.title,
+                  artistName:
+                      i.artists.isNotEmpty ? i.artists.join(', ') : i.subtitle,
+                  albumName: '',
+                  previewUrl: '',
+                  albumArt: i.artworkUrl,
+                  source: 'youtube',
+                ))
+            .toList();
+      } else {
+        discoveryTracks = await _innerTubeService.getHomeTracks(limit: 20);
+      }
+      for (final track in discoveryTracks) {
         if (!seenIds.contains(track.id)) {
           seenIds.add(track.id);
           allTracks.add(track);

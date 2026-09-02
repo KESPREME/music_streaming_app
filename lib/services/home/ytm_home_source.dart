@@ -90,6 +90,7 @@ class YouTubeMusicHomeSource {
       // musicSectionListRenderer-wrapped nested groups (chip-filtered
       // Home surfaces), which the previous walker silently dropped.
       final candidates = <_ShelfCandidate>[];
+      String? continuationToken;
       void walk(dynamic node, String path, int depth) {
         if (node is List) {
           var i = 0;
@@ -111,6 +112,23 @@ class YouTubeMusicHomeSource {
               ));
             }
             return; // do not descend into a shelf we claimed
+          }
+          // Continuation tokens: recorded, never auto-consumed (spec #24).
+          if (key == 'continuationItemRenderer') {
+            String? token;
+            if (value is Map<String, dynamic>) {
+              token = value['continuationEndpoint']?['continuationCommand']
+                      ?['token'] as String? ??
+                  value['nextContinuationData']?['continuation'] as String?;
+            }
+            if (token != null && token.isNotEmpty) {
+              continuationToken = token;
+              if (kDebugMode) {
+                debugPrint(
+                    'YTMHomeSource: continuation available (${token.length} chars)');
+              }
+            }
+            return;
           }
           // Known non-shelf containers to traverse.
           if (key == 'musicSectionListRenderer' ||
@@ -291,6 +309,7 @@ class YouTubeMusicHomeSource {
         fetchedAt: DateTime.now(),
         source: 'ytm_home',
         heroCandidate: heroCandidate,
+        continuationToken: continuationToken,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('YTMHomeSource: parse error: $e');
@@ -445,6 +464,7 @@ class YouTubeMusicHomeSource {
       if (thumb == null) return null;
 
       final type = _typeFromSubtitle(subtitle, id);
+      final meta = _metadataFromSubtitle(subtitle);
       return HomeItem(
         id: id,
         videoId: type == HomeContentType.song ? id : null,
@@ -453,6 +473,11 @@ class YouTubeMusicHomeSource {
         subtitle: subtitle,
         artworkUrl: thumb,
         contentType: type,
+        artists: meta.artists,
+        publishedText: meta.publishedText,
+        playability: type == HomeContentType.song
+            ? Playability.playable
+            : Playability.unknown,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('YTMHomeSource: responsive item failed: $e');
@@ -496,6 +521,7 @@ class YouTubeMusicHomeSource {
                   : HomeContentType.playlist)
               : HomeContentType.song);
 
+      final meta = _metadataFromSubtitle(subtitle);
       return HomeItem(
         id: id,
         videoId: type == HomeContentType.song ? id : null,
@@ -504,11 +530,51 @@ class YouTubeMusicHomeSource {
         subtitle: subtitle,
         artworkUrl: thumb,
         contentType: type,
+        artists: meta.artists,
+        publishedText: meta.publishedText,
+        playability: type == HomeContentType.song && watch != null
+            ? Playability.playable
+            : (type == HomeContentType.song
+                ? Playability.notPlayable
+                : Playability.unknown),
       );
     } catch (e) {
       if (kDebugMode) debugPrint('YTMHomeSource: two-row item failed: $e');
       return null;
     }
+  }
+
+  /// Structured metadata from the subtitle's run segments (spec #27):
+  /// "Arijit Singh • Brahmastra • 2024" → artists=[Arijit Singh],
+  /// publishedText=2024. Run boundaries are semantic — never split a
+  /// single concatenated string heuristically beyond these separators.
+  static ({List<String> artists, String? publishedText}) _metadataFromSubtitle(
+      String subtitle) {
+    if (subtitle.isEmpty) return (artists: const [], publishedText: null);
+    final segments = subtitle
+        .split(RegExp(r'\s*[•·|]\s*'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final artists = <String>[];
+    String? published;
+    for (final seg in segments) {
+      final yearMatch = RegExp(r'^(19|20)\d{2}$').firstMatch(seg);
+      if (yearMatch != null) {
+        published = seg;
+      } else if (seg.toLowerCase().startsWith('album') ||
+          seg.toLowerCase().startsWith('single') ||
+          seg.toLowerCase().startsWith('ep') ||
+          seg.toLowerCase().startsWith('video') ||
+          seg.toLowerCase().startsWith('song') ||
+          seg.toLowerCase().startsWith('playlist') ||
+          seg.toLowerCase().startsWith('artist')) {
+        continue; // type labels, not artists
+      } else if (artists.length < 4) {
+        artists.add(seg);
+      }
+    }
+    return (artists: artists, publishedText: published);
   }
 
   /// Type derivation from actual identity — ID prefix first, subtitle hint
@@ -750,7 +816,7 @@ class HomeRepository {
         final items = feed.sections.fold<int>(0, (n, s) => n + s.items.length);
         debugPrint(
             'HomeRepository: fresh feed source=${feed.source} sections=${feed.sections.length} '
-            'items=$items requestMs=$requestMs qualityScore=${HomeDiagnostics.computeQualityScore(feed)}');
+            'items=$items requestMs=$requestMs quality=${HomeDiagnostics.qualityDimensions(feed)}');
       }
       return feed;
     } catch (e) {

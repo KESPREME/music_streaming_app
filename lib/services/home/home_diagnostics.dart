@@ -84,8 +84,16 @@ class HomeDiagnostics {
     final removed = prevIds.difference(nextIds).length;
     final prevTitles = previous.sections.map((s) => s.title).toList();
     final nextTitles = next.sections.map((s) => s.title).toList();
+
+    // Section-level diff (spec #87): added/removed shelves, not just items.
+    final addedSections =
+        nextTitles.where((t) => !prevTitles.contains(t)).toList();
+    final removedSections =
+        prevTitles.where((t) => !nextTitles.contains(t)).toList();
     debugPrint('HomeDiagnostics.diff: +$added items / -$removed items | '
-        'sections changed: ${!listEquals(prevTitles, nextTitles)}');
+        'sections +${addedSections.length}/-${removedSections.length}'
+        '${addedSections.isNotEmpty ? ' (+${addedSections.take(3).join(", ")})' : ''}'
+        '${removedSections.isNotEmpty ? ' (-${removedSections.take(3).join(", ")})' : ''}');
   }
 
   /// Source-tier provenance per final section (spec #14/#15).
@@ -95,33 +103,73 @@ class HomeDiagnostics {
       debugPrint('HomeDiagnostics.provenance "${section.title}" '
           'source=${feed.source} sectionId=${section.id} '
           'order=${feed.sections.indexOf(section)} '
+          'renderer=${section.renderer ?? '?'} '
           'presentation=${section.presentation.name}');
     }
   }
 
-  /// Quality score — development-only (spec #91). Not user-facing.
-  static double computeQualityScore(HomeFeed feed) {
-    if (feed.sections.isEmpty) return 0;
-    final items = feed.sections.expand((s) => s.items).toList();
-    if (items.isEmpty) return 0;
+  /// Source trust tiers (spec #35/#55) — prevent low-trust fallback from
+  /// silently dominating Home. Values documented, not magic.
+  static const double trustNativeHome = 1.0;
+  static const double trustFallback = 0.75;
 
-    final withIdentity =
-        items.where((i) => i.id.isNotEmpty).length / items.length;
-    final withArtwork =
-        items.where((i) => i.artworkUrl.isNotEmpty).length / items.length;
-    final withSubtitle =
-        items.where((i) => i.subtitle.isNotEmpty).length / items.length;
+  /// Multi-dimensional quality report (spec #58/#80): NO single opaque
+  /// number — each dimension is observable so a failure in one axis can't
+  /// hide behind a healthy overall score.
+  static Map<String, double> qualityDimensions(HomeFeed feed) {
+    final items = feed.sections.expand((s) => s.items).toList();
+    if (items.isEmpty) {
+      return {
+        'structural': 0,
+        'semantic': 0,
+        'playability': 0,
+        'diversity': 0,
+        'sourceTrust': 0,
+        'freshness': 0,
+      };
+    }
+
+    // Structural: identity + artwork + non-empty title coverage.
+    final structural = (items
+                    .where((i) => i.id.isNotEmpty && i.artworkUrl.isNotEmpty)
+                    .length /
+                items.length) *
+            0.5 +
+        (items.where((i) => i.title.isNotEmpty).length / items.length) * 0.5;
+
+    // Semantic: types resolved + structured metadata present.
     final knownTypes =
         items.where((i) => i.contentType != HomeContentType.unknown).length /
             items.length;
-    final sourceTrust = feed.source == 'ytm_home' ? 1.0 : 0.75;
+    final withMeta = items.where((i) => i.artists.isNotEmpty).length;
+    final semantic = knownTypes * 0.6 + (withMeta / items.length) * 0.4;
 
-    // Weighted: identity and type accuracy matter most.
-    final score = sourceTrust * 0.25 +
-        withIdentity * 0.25 +
-        knownTypes * 0.2 +
-        withArtwork * 0.15 +
-        withSubtitle * 0.15;
-    return double.parse(score.toStringAsFixed(3));
+    // Playability: playable or valid navigation (album/playlist).
+    final playable = items.where((i) => i.isPlayable).length / items.length;
+
+    // Diversity: unique-artist ratio across the feed (1.0 = no repetition).
+    final artistKeys = items
+        .map((i) => i.artists.isNotEmpty ? i.artists.first.toLowerCase() : null)
+        .whereType<String>()
+        .toList();
+    final diversity = artistKeys.isEmpty
+        ? 1.0
+        : artistKeys.toSet().length / artistKeys.length;
+
+    final sourceTrust =
+        feed.source == 'ytm_home' ? trustNativeHome : trustFallback;
+
+    // Freshness: 1.0 under 2h, decaying to 0 at 48h.
+    final ageHours = DateTime.now().difference(feed.fetchedAt).inHours;
+    final freshness = (1.0 - ageHours / 48).clamp(0.0, 1.0);
+
+    return {
+      'structural': double.parse(structural.toStringAsFixed(3)),
+      'semantic': double.parse(semantic.toStringAsFixed(3)),
+      'playability': double.parse(playable.toStringAsFixed(3)),
+      'diversity': double.parse(diversity.toStringAsFixed(3)),
+      'sourceTrust': sourceTrust,
+      'freshness': double.parse(freshness.toStringAsFixed(3)),
+    };
   }
 }
