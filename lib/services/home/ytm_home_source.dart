@@ -857,7 +857,6 @@ class HomeRepository {
   /// from every ACCEPTED feed; consulted by HomeConvergence when a fresh
   /// response omits previously valid categories.
   final Map<String, SectionMemoryEntry> _sectionMemory = {};
-
   void _rememberSections(HomeFeed feed) {
     for (final s in feed.sections) {
       _sectionMemory[SectionIdentity.forSection(s)] = SectionMemoryEntry(
@@ -869,6 +868,65 @@ class HomeRepository {
     _sectionMemory.removeWhere((_, e) =>
         DateTime.now().difference(e.cachedAt) >
         SectionMemoryPolicy.ttlFor(e.section));
+    unawaited(_persistMemory());
+  }
+
+  /// Persist section memory (spec #55): survives process death, so a cold
+  /// start after force-stop retains category continuity. Schema-versioned.
+  static const _memoryKey = 'home_section_memory_v1';
+
+  Future<void> _persistMemory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = <String, dynamic>{
+        'schema': 1,
+        'entries': _sectionMemory.entries
+            .map((e) => {
+                  'id': e.key,
+                  'at': e.value.cachedAt.millisecondsSinceEpoch,
+                  'section': e.value.section.toJson(),
+                })
+            .toList(),
+      };
+      await prefs.setString(_memoryKey, jsonEncode(json));
+    } catch (e) {
+      if (kDebugMode) debugPrint('HomeRepository: memory persist failed: $e');
+    }
+  }
+
+  Future<void> _loadMemory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_memoryKey);
+      if (raw == null) return;
+      final json = jsonDecode(raw);
+      if (json is! Map<String, dynamic> || json['schema'] != 1) return;
+      final entries = json['entries'] as List? ?? [];
+      for (final e in entries) {
+        if (e is! Map<String, dynamic>) continue;
+        final id = e['id'] as String?;
+        final at = e['at'] as int?;
+        final sectionJson = e['section'];
+        if (id == null || at == null || sectionJson == null) continue;
+        final section = HomeSection.fromJson(sectionJson);
+        if (!SectionMemoryPolicy.isRenderable(section)) continue;
+        // TTL check on load: expired entries don't survive restart.
+        final age =
+            DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(at));
+        if (age > SectionMemoryPolicy.ttlFor(section)) continue;
+        _sectionMemory[id] = SectionMemoryEntry(
+          section: section,
+          identity: id,
+          cachedAt: DateTime.fromMillisecondsSinceEpoch(at),
+        );
+      }
+      if (kDebugMode && _sectionMemory.isNotEmpty) {
+        debugPrint(
+            'HomeRepository: section memory restored (${_sectionMemory.length} entries)');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('HomeRepository: memory load failed: $e');
+    }
   }
 
   HomeFeed? get current => _current;
@@ -887,6 +945,7 @@ class HomeRepository {
     if (!_loadedFromCache) {
       _loadedFromCache = true;
       _current = await _readCache(source: 'primary');
+      await _loadMemory();
       _bestKnown = _current;
       HomeLoadTrace.log(
         cacheRead: _current != null ? 'HIT' : 'MISS',
@@ -1030,9 +1089,8 @@ class HomeRepository {
         return _current;
       }
 
-      // Accepted. Track high-water mark + section memory.
+      // Accepted. Track high-water mark.
       _failureCount = 0;
-      _rememberSections(feed);
       final acceptedItems =
           feed.sections.fold<int>(0, (n, s) => n + s.items.length);
       final bestItems = _bestKnown?.sections
@@ -1049,6 +1107,12 @@ class HomeRepository {
         final enriched = await _enrichSparse(feed);
         if (enriched != null) feed = enriched;
       }
+
+      // Section memory runs AFTER enrichment (live-run fix): enriched
+      // shelves must be remembered too, otherwise the enriched section
+      // gets dropped and re-added every refresh
+      // (removedShelves=[new_release:...] in the runtime log).
+      _rememberSections(feed);
 
       _current = feed;
       unawaited(_writeCache(feed, sourceTag));
@@ -1219,6 +1283,7 @@ class HomeRepository {
     }
     _current = null;
     _bestKnown = null;
+    _sectionMemory.clear();
     _loadedFromCache = false;
     _failureCount = 0;
     _nextAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);

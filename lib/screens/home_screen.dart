@@ -8,12 +8,11 @@ import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
 import '../services/home/ytm_home_source.dart' show HomeLoadTrace;
 import '../services/innertube/innertube_service.dart';
 import '../presentation/home/home_playback.dart'
-    show HomePlaybackController, HomePlayAction, isPlayableSongItem;
+    show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/type.dart' as type_tokens;
@@ -281,20 +280,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Track? _trackFromHomeItem(HomeItem item) {
-    final videoId = item.videoId;
-    if (videoId == null) return null;
-    return Track(
-      id: videoId,
-      trackName: item.title,
-      artistName: item.subtitle,
-      albumName: '',
-      previewUrl: '',
-      albumArt: item.artworkUrl,
-      source: 'youtube',
-    );
-  }
-
   void _play(BuildContext context, Track track, List<Track> contextList) {
     HapticFeedback.lightImpact();
     context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
@@ -357,12 +342,6 @@ class _FeedSection extends StatelessWidget {
     return section.items.length >= 3
         ? _SquareRailSection(section: section)
         : const SizedBox.shrink();
-  }
-
-  static void _playTracks(
-      BuildContext context, Track track, List<Track> contextList) {
-    HapticFeedback.lightImpact();
-    context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
   }
 }
 
@@ -464,15 +443,6 @@ class _SquareRailSection extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Text-block height for rail cards (title + 2 + metadata), scaled by the
-/// system textScaler — fixed heights + scaled text = the 10px overflow
-/// (spec #22/#25: multilingual/text-scale safe).
-double _railTextBlockHeight(BuildContext context) {
-  final scale = MediaQuery.textScalerOf(context).scale(1.0);
-  const base = 17.0 + 2.0 + 14.0;
-  return base * scale;
 }
 
 /// Dense compact list rows (spec #12): thumbnail + title + artist — the
