@@ -78,6 +78,115 @@ class ShelfReport {
 
 enum ShelfStatus { parsed, unsupportedRenderer, malformed, empty, filtered }
 
+/// Deterministic SectionIdentity (spec #4): semantic + title-based, NOT
+/// index-based — request A index 2 = "New releases" while request B
+/// index 2 = "Trending" must never overwrite each other.
+///
+/// Format: `native:<semantic>:<title-slug>` e.g. `native:moods:rain_therapy`.
+/// Provenance-qualified so an enrichment "Trending" never collides with a
+/// native "Trending".
+class SectionIdentity {
+  SectionIdentity._();
+
+  static String semanticSlug(HomeSection s) {
+    final dominant = s.dominantType;
+    // Coarse semantic bucket from dominant content type + title keywords
+    // (no import of the presentation layer — models stay dependency-free).
+    final t = s.title.toLowerCase();
+    if (t.contains('episode') || t.contains('podcast')) return 'episodes';
+    if (t.contains('video') || t.contains('visualizer')) return 'videos';
+    if (t.contains('trending') || t.contains('chart')) return 'trending';
+    if (t.contains('new release')) return 'new_releases';
+    if (t.contains('mood') ||
+        t.contains('vibe') ||
+        t.contains('therapy') ||
+        t.contains('morning') ||
+        t.contains('focus') ||
+        t.contains('workout') ||
+        t.contains('romantic') ||
+        t.contains('chill')) {
+      return 'moods';
+    }
+    if (t.contains('playlist')) return 'playlists';
+    if (t.contains('album')) return 'albums';
+    if (t.contains('artist')) return 'artists';
+    if (t.contains('recent') ||
+        t.contains('jump back') ||
+        t.contains('listen again')) {
+      return 'recent';
+    }
+    if (t.contains('top pick') || t.contains('picked for you')) {
+      return 'top_picks';
+    }
+    return dominant.name;
+  }
+
+  static String titleSlug(String title) => title
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F]+'),
+          '_') // latin + devanagari + tamil + telugu
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+
+  static String forSection(HomeSection s) =>
+      '${s.provenance ?? 'native'}:${semanticSlug(s)}:${titleSlug(s.title)}';
+}
+
+/// Section memory entry (spec #3): one last-known-good shelf with its own
+/// freshness clock. Temporary upstream omission does NOT erase it; expiry
+/// does (spec #6/#7).
+class SectionMemoryEntry {
+  const SectionMemoryEntry({
+    required this.section,
+    required this.identity,
+    required this.cachedAt,
+  });
+
+  final HomeSection section;
+  final String identity;
+  final DateTime cachedAt;
+
+  SectionMemoryEntry withSection(HomeSection s) => SectionMemoryEntry(
+        section: s,
+        identity: identity,
+        cachedAt: DateTime.now(),
+      );
+}
+
+/// Retention TTL policy (spec #6) — documented, not arbitrary:
+/// - trending/chart content rotates fastest → 3h
+/// - generic recommendation shelves → 6h
+/// - new releases are freshness-sensitive but stable within a day → 12h
+/// - curated editorial/mood shelves are stable for days → 24h
+class SectionMemoryPolicy {
+  SectionMemoryPolicy._();
+
+  static Duration ttlFor(HomeSection section) {
+    final t = section.title.toLowerCase();
+    if (t.contains('trending') || t.contains('chart')) {
+      return const Duration(hours: 3);
+    }
+    if (t.contains('new release')) return const Duration(hours: 12);
+    if (t.contains('mood') ||
+        t.contains('vibe') ||
+        t.contains('therapy') ||
+        t.contains('morning') ||
+        t.contains('focus') ||
+        t.contains('workout') ||
+        t.contains('romantic') ||
+        t.contains('chill')) {
+      return const Duration(hours: 24);
+    }
+    return const Duration(hours: 6);
+  }
+
+  /// A remembered section is only retained while it is still renderable
+  /// (spec #7): non-empty title, ≥2 items with identity.
+  static bool isRenderable(HomeSection s) =>
+      s.title.isNotEmpty &&
+      s.items.length >= 2 &&
+      s.items.every((i) => i.id.isNotEmpty && i.title.isNotEmpty);
+}
+
 /// Support levels (spec #3): binary SUPPORTED/UNSUPPORTED destroyed valid
 /// content. PARTIAL items (e.g. playlist identity + artwork but no direct
 /// playback) MUST render as navigation cards, never be discarded.

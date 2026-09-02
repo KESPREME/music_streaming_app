@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/track.dart';
 import '../innertube/innertube_service.dart';
+import 'home_convergence.dart';
 import 'home_diagnostics.dart';
 import 'home_models.dart';
 
@@ -834,6 +835,24 @@ class HomeRepository {
   int _failureCount = 0;
   DateTime _nextAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Section memory (spec #3): identity → last-known-good shelf. Populated
+  /// from every ACCEPTED feed; consulted by HomeConvergence when a fresh
+  /// response omits previously valid categories.
+  final Map<String, SectionMemoryEntry> _sectionMemory = {};
+
+  void _rememberSections(HomeFeed feed) {
+    for (final s in feed.sections) {
+      _sectionMemory[SectionIdentity.forSection(s)] = SectionMemoryEntry(
+          section: s,
+          identity: SectionIdentity.forSection(s),
+          cachedAt: DateTime.now());
+    }
+    // Drop expired entries so the map cannot grow unbounded.
+    _sectionMemory.removeWhere((_, e) =>
+        DateTime.now().difference(e.cachedAt) >
+        SectionMemoryPolicy.ttlFor(e.section));
+  }
+
   HomeFeed? get current => _current;
   HomeFeed? get bestKnown => _bestKnown;
   bool get isRefreshDue {
@@ -907,6 +926,20 @@ class HomeRepository {
         feed = _withProvenance(feed, 'native');
       }
 
+      // Convergence (spec #12): merge with section memory BEFORE gate/
+      // degradation checks so a temporarily-omitted category doesn't make
+      // the fresh candidate look artificially thin. Fresh sections always
+      // win for their identity; remembered sections fill omissions.
+      final previousOrder =
+          _current?.sections.map(SectionIdentity.forSection).toList() ??
+              const <String>[];
+      feed = const HomeConvergence().convergeWithOrder(
+          fresh: feed, memory: _sectionMemory, previousOrder: previousOrder);
+      if (kDebugMode) {
+        debugPrint(
+            'HOME_LOAD convergedSections=${feed.sections.length} memory=${_sectionMemory.length}');
+      }
+
       if (!feedPassesQualityGate(feed)) {
         _failureCount++;
         _scheduleBackoff();
@@ -956,8 +989,9 @@ class HomeRepository {
         return _current;
       }
 
-      // Accepted. Track high-water mark.
+      // Accepted. Track high-water mark + section memory.
       _failureCount = 0;
+      _rememberSections(feed);
       final acceptedItems =
           feed.sections.fold<int>(0, (n, s) => n + s.items.length);
       final bestItems = _bestKnown?.sections

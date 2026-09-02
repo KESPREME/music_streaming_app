@@ -12,6 +12,7 @@ import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
 import '../services/home/ytm_home_source.dart' show HomeLoadTrace;
 import '../services/innertube/innertube_service.dart';
+import '../presentation/home/home_playback.dart';
 import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/type.dart' as type_tokens;
@@ -332,9 +333,7 @@ class _FeedSection extends StatelessWidget {
       return _ArtistShelf(section: section);
     }
     if (plan.layoutKind == HomeLayoutKind.landscapeRail16x9) {
-      return tracks.isNotEmpty || section.items.isNotEmpty
-          ? _VideoShelf(section: section)
-          : const SizedBox.shrink();
+      return _VideoShelf(section: section);
     }
     if (plan.layoutKind == HomeLayoutKind.playlistRail) {
       return _PlaylistShelf(section: section, tracks: tracks);
@@ -349,15 +348,10 @@ class _FeedSection extends StatelessWidget {
             )
           : const SizedBox.shrink();
     }
-    // squareRail fallback.
-    return tracks.length >= 3
-        ? _WhatsHotSection(
-            tracks: tracks,
-            onPlay: (track) => _playTracks(context, track, tracks),
-            onOptions: (track) =>
-                ThemedOptionsSheet.show(context, track: track),
-            onSeeAll: null,
-          )
+    // squareRail fallback — per-item dispatch (mixed shelves may contain
+    // songs, videos AND playlist/album cards).
+    return section.items.length >= 3
+        ? _SquareRailSection(section: section)
         : const SizedBox.shrink();
   }
 
@@ -365,6 +359,107 @@ class _FeedSection extends StatelessWidget {
       BuildContext context, Track track, List<Track> contextList) {
     HapticFeedback.lightImpact();
     context.read<MusicProvider>().playTrack(track, playlistTracks: contextList);
+  }
+}
+
+/// Square rail with PER-ITEM playback dispatch (spec #29): mixed shelves
+/// (songs + videos + playlist/album cards) route each tap through
+/// HomePlaybackController — songs/videos play, collections navigate.
+/// This is the fix for "other cards don't play": every card gets a valid
+/// action contract, never a broken play affordance.
+class _SquareRailSection extends StatelessWidget {
+  const _SquareRailSection({required this.section});
+
+  final HomeSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(title: section.title),
+        SizedBox(
+          height: 116 + _railTextBlockHeight(context),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            physics: const BouncingScrollPhysics(),
+            itemCount: section.items.length,
+            itemBuilder: (context, index) {
+              final item = section.items[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: PressableScale(
+                  onTap: () => HomePlaybackController.activate(
+                    context,
+                    item,
+                    sectionTitle: section.title,
+                    contextPlaylist: section.items
+                        .map(homeItemToTrack)
+                        .whereType<Track>()
+                        .toList(),
+                  ),
+                  onLongPress: () {
+                    final track = homeItemToTrack(item);
+                    if (track != null) {
+                      ThemedOptionsSheet.show(context, track: track);
+                    }
+                  },
+                  child: SizedBox(
+                    width: 116,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: item.artworkUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: item.artworkUrl,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 240,
+                                    fadeInDuration:
+                                        const Duration(milliseconds: 200),
+                                    errorWidget: (_, __, ___) => Container(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.06)),
+                                  )
+                                // PARTIAL support (spec #8): placeholder,
+                                // item retained — never a dead card.
+                                : Container(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.06),
+                                    child: const Icon(
+                                        Icons.music_note_rounded,
+                                        color: Colors.white24),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.label(context),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: type_tokens.Type.metadata(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
