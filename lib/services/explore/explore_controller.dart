@@ -175,6 +175,7 @@ class ExploreController extends ChangeNotifier {
     _playQueue = _playQueue.then((_) async {
       if (gen != _playbackGeneration) return; // superseded — bail silently
       try {
+        debugPrint('EXPLORE_PLAY title=${item.track.trackName} gen=$gen');
         await _play(item.track, upcoming);
         debugPrint('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
             'artist=${item.track.artistName} reason=${item.reason.name} '
@@ -252,7 +253,8 @@ class ExploreController extends ChangeNotifier {
     _recordSwipeOutcome(
         item.track.artistName.split(',').first.trim(),
         wasAccepted: false);
-    debugPrint('EXPLORE_ITEM dislike title=${item.track.trackName}');
+    debugPrint('EXPLORE_SKIP title=${item.track.trackName} '
+        'artist=${item.track.artistName.split(',').first.trim()}');
     final next = (_session!.currentIndex + 1);
     if (next < _session!.items.length) {
       await settle(next);
