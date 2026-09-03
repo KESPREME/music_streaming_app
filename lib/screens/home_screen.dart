@@ -248,6 +248,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: _TopPickCard(
                   track: track,
                   pageOffset: pageOffset,
+                  sectionTitle: title,
                   parallaxFactor: 0.16,
                   onPlay: () => _play(context, track, picks),
                   onOverflow: () =>
@@ -283,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: _TopPickCard(
                     track: track,
                     pageOffset: pageOffset,
+                    sectionTitle: 'Top picks for you',
                     parallaxFactor: 0.16,
                     onPlay: () => _play(context, track, picks),
                     onOverflow: () =>
@@ -1059,22 +1061,15 @@ class _QuickPicksSection extends StatelessWidget {
         const HomeSectionHeader(title: 'Quick picks'),
         ...candidates.take(6).map((candidate) {
           final track = candidate.track;
-          // Reason text policy (spec #80): only confident reasons are
-          // shown; a weak "From your Home feed" origin explains nothing,
-          // so the row falls back to the artist name.
+          // Subtitle = artist name (user preference: reason labels are
+          // noise in the list; engine reasoning lives in the
+          // RECOMMENDATION_ITEM debug traces, not the row).
           final firstArtist = track.artistName.split(',').first.trim();
-          final reason = quickPickReasonLabel(candidate.reason);
-          final subtitle = switch (candidate.reason) {
-            CandidateReason.frequentArtist when firstArtist.isNotEmpty =>
-              'Because you listen to $firstArtist',
-            CandidateReason.nativeRecommendation => firstArtist,
-            _ => reason.isEmpty ? firstArtist : reason,
-          };
           return ForYouRow(
             key: ValueKey('qp_${track.id}'),
             artUrl: track.albumArtUrl,
             title: track.trackName,
-            subtitle: subtitle,
+            subtitle: firstArtist.isEmpty ? track.artistName : firstArtist,
             isPlaying: false,
             onTap: () {
               HapticFeedback.lightImpact();
@@ -1563,6 +1558,7 @@ class _TopPickCard extends StatefulWidget {
     required this.pageOffset,
     required this.onPlay,
     required this.onOverflow,
+    required this.sectionTitle,
     this.parallaxFactor = 0.16,
   });
 
@@ -1570,6 +1566,9 @@ class _TopPickCard extends StatefulWidget {
   final double pageOffset;
   final VoidCallback onPlay;
   final VoidCallback onOverflow;
+
+  /// The source shelf's real title — never a fabricated label (spec #5).
+  final String sectionTitle;
   final double parallaxFactor;
 
   @override
@@ -1634,7 +1633,9 @@ class _TopPickCardState extends State<_TopPickCard> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'Picked for you',
+                            widget.sectionTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: t.HomeTokens.heroLabel(context),
                           ),
                           const SizedBox(height: 5),

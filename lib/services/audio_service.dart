@@ -42,6 +42,10 @@ class AudioService {
   Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
       .map((state) => state == ProcessingState.completed);
 
+  /// True when a source is loaded in the player (not idle). Used by the
+  /// provider to distinguish paused-with-source from stopped.
+  bool get hasLoadedSource => _audioPlayer.processingState != ProcessingState.idle;
+
   /// True when parked on a silent padding item (prev/next dummy) rather than
   /// real content. With the always-windowed playlist, ProcessingState.
   /// completed fires only when a dummy finishes — i.e. it is always a

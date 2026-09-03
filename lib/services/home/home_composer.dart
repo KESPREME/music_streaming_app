@@ -43,11 +43,40 @@ class HomeComposer {
     if (base == null) return null;
 
     final sections = <HomeSection>[];
+    final seenSectionTitles = <String>{};
     var rejected = 0;
     var sectionLocalDupes = 0;
     var partialRetained = 0;
+    var typeFiltered = 0;
 
     for (final section in base.sections) {
+      // Same-title collapse (live bug: native "New releases" + enriched
+      // "New releases" rendered twice with different ids). First wins —
+      // native order preserved, later duplicates are accounted drops.
+      if (!seenSectionTitles.add(section.title.toLowerCase().trim())) {
+        if (kDebugMode) {
+          debugPrint(
+              'HomeComposer: COLLAPSED duplicate-title section "${section.title}"');
+          HomeLoadTrace.loss(
+            stage: 'composer',
+            shelf: section.title,
+            reason: 'duplicate title (first shelf wins)',
+          );
+        }
+        continue;
+      }
+
+      // Song-majority shelves must contain songs only (live bug: "Listen
+      // again" carried artist cards whose ids are unplayable UC* — they
+      // null out of homeItemToTrack and collapse the context playlist to
+      // 1 track, killing autoplay). Collection-majority shelves
+      // (albums/playlists) keep their type; only stray artist cards are
+      // dropped there.
+      final songCount =
+          section.items.where((i) => i.contentType == HomeContentType.song).length;
+      final isSongMajority =
+          songCount >= section.items.length / 2 && section.items.isNotEmpty;
+
       final items = <HomeItem>[];
       final sectionSeen = <String>{};
       final artistCount = <String, int>{};
@@ -58,6 +87,24 @@ class HomeComposer {
         // placeholder — they are PARTIAL, not invalid.
         if (item.id.isEmpty || item.title.isEmpty) {
           rejected++;
+          continue;
+        }
+
+        // Type coherence (spec #5): songs-only shelves must not carry
+        // artists/albums/playlists.
+        if (isSongMajority &&
+            item.contentType != HomeContentType.song &&
+            item.contentType != HomeContentType.video) {
+          typeFiltered++;
+          if (kDebugMode) {
+            debugPrint('HomeComposer: TYPE-DROPPED "${item.title}" '
+                '(${item.contentType.name}) from song shelf "${section.title}"');
+          }
+          continue;
+        }
+        // Collection shelves: stray artist cards navigate nowhere useful.
+        if (!isSongMajority && item.contentType == HomeContentType.artist) {
+          typeFiltered++;
           continue;
         }
 
@@ -115,7 +162,7 @@ class HomeComposer {
       debugPrint(
           'HomeComposer: source=${base.source} sections=${base.sections.length}->${sections.length} '
           'items=$totalItems rejected=$rejected sectionLocalDupes=$sectionLocalDupes '
-          'partialRetained=$partialRetained');
+          'partialRetained=$partialRetained typeFiltered=$typeFiltered');
       for (final before in base.sections) {
         final after = sections.where((s) => s.id == before.id).toList();
         if (after.isEmpty) {

@@ -389,6 +389,98 @@ void main() {
       expect(feed!.sections.length, 1);
       expect(feed.sections.first.items.length, 4);
     });
+
+    test('artist cards drop from song-majority shelves (Listen again fix)',
+        () {
+      const composer = HomeComposer();
+      final feed = composer.compose(
+        primary: _feed('ytm_home', [
+          _shelf('Listen again', [
+            _song('s1', 'Song 1', 'A'),
+            _song('s2', 'Song 2', 'B'),
+            _song('s3', 'Song 3', 'C'),
+            HomeItem(
+              id: 'UCartist001',
+              videoId: null,
+              browseId: 'UCartist001',
+              title: 'K\u2019NAAN',
+              subtitle: 'Artist',
+              artworkUrl: 'https://example.com/a.jpg',
+              contentType: HomeContentType.artist,
+            ),
+          ]),
+        ]),
+        fallback: null,
+      );
+
+      final section = feed!.sections.single;
+      expect(section.items.map((i) => i.id), ['s1', 's2', 's3']);
+    });
+
+    test('album-majority shelves keep album items (New releases intact)',
+        () {
+      const composer = HomeComposer();
+      final album = HomeItem(
+        id: 'MPREb_x1',
+        videoId: null,
+        browseId: 'MPREb_x1',
+        title: 'Album',
+        subtitle: 'Artist • Album',
+        artworkUrl: 'https://example.com/x.jpg',
+        contentType: HomeContentType.album,
+      );
+      final feed = composer.compose(
+        primary: _feed('ytm_home', [
+          _shelf('New releases', [
+            album,
+            HomeItem(
+              id: 'MPREb_x2',
+              videoId: null,
+              browseId: 'MPREb_x2',
+              title: 'Album 2',
+              subtitle: 'Artist • Album',
+              artworkUrl: 'https://example.com/y.jpg',
+              contentType: HomeContentType.album,
+            ),
+            HomeItem(
+              id: 'UCartist002',
+              videoId: null,
+              browseId: 'UCartist002',
+              title: 'Some Artist',
+              subtitle: 'Artist',
+              artworkUrl: 'https://example.com/z.jpg',
+              contentType: HomeContentType.artist,
+            ),
+          ]),
+        ]),
+        fallback: null,
+      );
+
+      final section = feed!.sections.single;
+      expect(section.items.map((i) => i.id), ['MPREb_x1', 'MPREb_x2']);
+    });
+
+    test('enrichment section with duplicate native title collapses (no '
+        '"New releases" x2)', () {
+      const composer = HomeComposer();
+      final feed = composer.compose(
+        primary: _feed('ytm_home', [
+          _shelf('New releases', [
+            _song('n1', 'A', 'X'),
+            _song('n2', 'B', 'Y'),
+          ]),
+          _shelf('New releases', [
+            _song('e1', 'C', 'Z'),
+            _song('e2', 'D', 'W'),
+          ]),
+        ]),
+        fallback: null,
+      );
+
+      expect(feed!.sections, hasLength(1));
+      // First (native) shelf wins.
+      expect(feed.sections.single.items.map((i) => i.id), ['n1', 'n2']);
+    });
   });
 
   group('convergence: ratchet + enrichment', () {

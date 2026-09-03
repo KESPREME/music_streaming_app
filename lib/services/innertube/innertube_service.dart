@@ -458,18 +458,20 @@ class InnerTubeService {
         title = titleRuns[0]['text'] ?? 'Unknown';
       }
 
-      // Artist from second column
+      // Artist from second column — metadata runs (durations, view
+      // counts) excluded, live bug: "Tame Impala, Deadbeat, 3:44".
       String artist = 'Unknown Artist';
       if (flexColumns.length > 1) {
         final artistRuns = flexColumns[1]
                 ?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
             as List?;
         if (artistRuns != null && artistRuns.isNotEmpty) {
-          // Join all artist names
           artist = artistRuns
               .where((r) =>
-                  r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
-              .map((r) => r['text'])
+                  r['text'] != null &&
+                  r['text'] != ' • ' &&
+                  r['text'] != ' & ' &&
+                  !_isMetadataRun(r['text'] as String))
               .take(3)
               .join(', ');
         }
@@ -1400,7 +1402,10 @@ class InnerTubeService {
         // Normal Song or browse mode
         artist = subtitleRuns
             .where((r) =>
-                r['text'] != null && r['text'] != ' • ' && r['text'] != ' & ')
+                r['text'] != null &&
+                r['text'] != ' • ' &&
+                r['text'] != ' & ' &&
+                !_isMetadataRun(r['text'] as String))
             .map((r) => r['text'])
             .take(2)
             .join(', ');
@@ -1641,6 +1646,17 @@ class InnerTubeService {
   void dispose() {
     _httpClient.close();
   }
+
+  /// Metadata-run detector shared by artist-run joins: durations ("3:44",
+  /// "1:02:33") and engagement counts ("106M plays", "1.8B views") are
+  /// never artists.
+  static final RegExp _metadataDuration = RegExp(r'^\d{1,3}:\d{2}(:\d{2})?$');
+  static final RegExp _metadataCount = RegExp(
+      r'^[\d,.]+\s*[KMB]?\s*(plays?|views?|streams?|listeners?|monthly listeners?)$',
+      caseSensitive: false);
+  static bool _isMetadataRun(String text) =>
+      _metadataDuration.hasMatch(text.trim()) ||
+      _metadataCount.hasMatch(text.trim());
 
   /// Deep walk of a browse payload collecting ONLY real songs (11-char
   /// videoId, no browse-prefix ids) from every shelf, in source order.

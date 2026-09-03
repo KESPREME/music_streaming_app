@@ -1402,6 +1402,22 @@ class MusicProvider
     }
   }
 
+  /// Streamable-song gate for autoplay candidates (streamable id, not the
+  /// track currently playing).
+  bool _isPlayableAutoplayCandidate(Track t) {
+    final id = t.id;
+    if (id.length != 11) return false;
+    if (id.startsWith('PL') ||
+        id.startsWith('VL') ||
+        id.startsWith('UC') ||
+        id.startsWith('OLAK') ||
+        id.startsWith('MPREb')) {
+      return false;
+    }
+    if (id == _currentTrack?.id) return false;
+    return true;
+  }
+
   /// Start autoplay with AI-recommended tracks based on current track
   Future<void> _startAutoplayFromRecommendations() async {
     if (_currentTrack == null) {
@@ -1419,13 +1435,13 @@ class MusicProvider
 
     try {
       // Get recommendations based on current track
-      final List<Track> recommendations;
+      List<Track> recommendations;
 
       if (_currentTrack!.source == 'youtube' &&
           _currentTrack!.id.length == 11) {
         // Use current track as seed for related content
-        recommendations = await _innerTubeService
-            .getSuggestions(_currentTrack!.id, limit: 20);
+        recommendations =
+            await _innerTubeService.getSuggestions(_currentTrack!.id, limit: 20);
       } else {
         // Fallback: use recently played seeds
         recommendations = await _fetchPersonalizedForYou();
@@ -1437,22 +1453,26 @@ class MusicProvider
         return;
       }
 
-      if (recommendations.isEmpty) {
-        if (kDebugMode)
-          debugPrint('MusicProvider: No recommendations found, stopping.');
-        stopTrack();
-        return;
-      }
+      // Filter to streamable songs
+      var filtered = recommendations.where(_isPlayableAutoplayCandidate).toList();
 
-      // Filter and rank recommendations
-      final filtered = recommendations.where((t) {
-        final id = t.id;
-        if (id.length != 11) return false;
-        if (id.startsWith('PL') || id.startsWith('VL') || id.startsWith('UC'))
-          return false;
-        if (t.id == _currentTrack!.id) return false; // Exclude current
-        return true;
-      }).toList();
+      // Ladder 2: local pools (Quick Picks + recents + trending). The
+      // /next endpoint sometimes returns only artist/album rows — before
+      // this fallback that meant autoplay silently stopped. Local pools
+      // guarantee continuation.
+      if (filtered.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('MusicProvider: /next unusable '
+              '(${recommendations.length} raw), falling back to local pools');
+        }
+        final seen = <String>{_currentTrack!.id};
+        filtered = [
+          ..._quickPicks,
+          ..._recommendedTracks,
+          ..._trendingTracks,
+          ..._recentlyPlayed,
+        ].where((t) => _isPlayableAutoplayCandidate(t) && seen.add(t.id)).toList();
+      }
 
       if (filtered.isEmpty) {
         if (kDebugMode)
@@ -2027,6 +2047,17 @@ class MusicProvider
       notifyListeners();
       return;
     }
+    // Stopped-but-loaded (error-stop or natural stop with autoplay off):
+    // resume means replay from the top through the full pipeline — the
+    // audio service has no loaded source anymore.
+    if (_currentTrack != null && !_audioService.hasLoadedSource) {
+      final t = _currentTrack!;
+      _currentTrack = null; // force playTrack full path
+      await playTrack(t,
+          playlistTracks: _currentPlayingTracks,
+          playlistId: _currentPlaylistId);
+      return;
+    }
     await _audioService.resume();
     _isPlaying = true;
     notifyListeners();
@@ -2093,7 +2124,10 @@ class MusicProvider
       debugPrint('Error stopping service: $e');
     } finally {
       _isPlaying = false;
-      _currentTrack = null;
+      // Keep _currentTrack: the pill mini player keys off it, so nulling
+      // here made the pill vanish after error-stop cascades ("mini player
+      // goes off when I change songs"). A stopped-but-loaded track is the
+      // honest state — user taps play on the pill to restart.
       _isOfflineTrack = false;
       _position = Duration.zero;
       _duration = Duration.zero;
@@ -2109,6 +2143,14 @@ class MusicProvider
       _isStopping = false;
       notifyListeners();
     }
+  }
+
+  /// Full reset — only for logout/account switches and user-initiated
+  /// "close player" flows. Clears the pill too.
+  Future<void> stopAndClearTrack() async {
+    await stopTrack();
+    _currentTrack = null;
+    notifyListeners();
   }
 
   // --- Casting Methods ---
