@@ -11,6 +11,9 @@ import '../providers/music_provider.dart';
 import '../services/home/home_models.dart';
 import '../services/home/ytm_home_source.dart' show HomeLoadTrace;
 import '../services/innertube/innertube_service.dart';
+import '../services/recommendation/quick_picks_engine.dart'
+    show QuickPickCandidate, kCandidateVersion, kRankerVersion;
+import '../services/recommendation/candidate.dart' show CandidateReason;
 import '../presentation/home/home_playback.dart'
     show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
@@ -145,9 +148,9 @@ class _HomeScreenState extends State<HomeScreen>
             iconSize: 20,
             onTap: () {
               HapticFeedback.lightImpact();
-              Navigator.push(
+              _pushGuarded(
                 context,
-                MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()),
+                (_) => const ThemedSettingsScreen(),
               );
             },
             semanticLabel: 'Settings',
@@ -170,6 +173,7 @@ class _HomeScreenState extends State<HomeScreen>
   (HomeSection, List<Track>)? _heroCandidate(MusicProvider provider) {
     final feed = provider.homeFeed;
     if (feed == null) return null;
+    final shelves = <(HomeSection, List<Track>)>[];
     for (final section in feed.sections) {
       if (section.dominantType != HomeContentType.song) continue;
       if (section.items
@@ -181,9 +185,15 @@ class _HomeScreenState extends State<HomeScreen>
           .whereType<Track>()
           .take(8)
           .toList();
-      if (picks.length >= 3) return (section, picks);
+      if (picks.length >= 3) shelves.add((section, picks));
     }
-    return null;
+    if (shelves.isEmpty) return null;
+    // Refresh rotates deterministically between valid song shelves
+    // (spec #36: variation from structure, not randomization). First
+    // load keeps the first shelf.
+    final gen = provider.quickPicksGeneration;
+    final offset = (gen > 0 && shelves.length > 1) ? gen % shelves.length : 0;
+    return shelves[offset];
   }
 
   List<Track> _topPicksList(MusicProvider provider) {
@@ -296,16 +306,32 @@ void _openArtist(BuildContext context, Track artistTrack) {
   HapticFeedback.selectionClick();
   final provider = context.read<MusicProvider>();
   provider.navigateToArtistObject(artistTrack);
-  Navigator.push(
+  _pushGuarded(
     context,
-    MaterialPageRoute(
-      builder: (_) => ThemedArtistDetailScreen(
-        artistId: artistTrack.id,
-        artistName: artistTrack.artistName,
-        artistImage: artistTrack.albumArtUrl,
-      ),
+    (_) => ThemedArtistDetailScreen(
+      artistId: artistTrack.id,
+      artistName: artistTrack.artistName,
+      artistImage: artistTrack.albumArtUrl,
     ),
   );
+}
+
+/// Rapid double-taps during a route transition hit the navigator's debug
+/// lock (`!navigator._debugLocked` assertion, seen live) and can corrupt
+/// the stack ("album not opening", black screen). One guarded choke point
+/// for every Home push: 600ms debounce + assertion suppression.
+DateTime _lastHomePushAt = DateTime.fromMillisecondsSinceEpoch(0);
+void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
+  final now = DateTime.now();
+  if (now.difference(_lastHomePushAt) < const Duration(milliseconds: 600)) {
+    return; // transition still in flight — swallow the double-tap
+  }
+  _lastHomePushAt = now;
+  try {
+    Navigator.of(context).push(MaterialPageRoute(builder: builder));
+  } on FlutterError catch (e) {
+    if (kDebugMode) debugPrint('HOME_NAV suppressed: ${e.message}');
+  }
 }
 
 /// One curated-feed shelf rendered through the presentation planner
@@ -378,7 +404,7 @@ class _SquareRailSection extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = section.items[index];
               return Padding(
-                key: ValueKey('rail_{item.id}'),
+                key: ValueKey('rail_${item.id}'),
                 padding: const EdgeInsets.only(right: 14),
                 child: PressableScale(
                   onTap: () => HomePlaybackController.activate(
@@ -513,7 +539,7 @@ class _ArtistShelf extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = section.items[index];
               return Padding(
-                key: ValueKey('rail_{item.id}'),
+                key: ValueKey('rail_${item.id}'),
                 padding: const EdgeInsets.only(right: 28),
                 child: ArtistPortrait(
                   name: item.title,
@@ -528,14 +554,12 @@ class _ArtistShelf extends StatelessWidget {
                     provider.navigateToArtistById(browseId).then((_) {
                       final artist = provider.currentArtistDetails;
                       if (artist == null || !context.mounted) return;
-                      Navigator.push(
+                      _pushGuarded(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => ThemedArtistDetailScreen(
-                            artistId: artist.id,
-                            artistName: artist.name,
-                            artistImage: artist.imageUrl,
-                          ),
+                        (_) => ThemedArtistDetailScreen(
+                          artistId: artist.id,
+                          artistName: artist.name,
+                          artistImage: artist.imageUrl,
                         ),
                       );
                     });
@@ -577,14 +601,12 @@ class _PlaylistShelf extends StatelessWidget {
                 key: ValueKey('pl_${item.id}'),
                 padding: const EdgeInsets.only(right: 12),
                 child: PressableScale(
-                  onTap: () => Navigator.push(
+                  onTap: () => _pushGuarded(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => ThemedPlaylistDetailScreen(
-                        playlistId: item.browseId ?? item.id,
-                        playlistName: item.title,
-                        playlistImage: item.artworkUrl,
-                      ),
+                    (_) => ThemedPlaylistDetailScreen(
+                      playlistId: item.browseId ?? item.id,
+                      playlistName: item.title,
+                      playlistImage: item.artworkUrl,
                     ),
                   ),
                   child: SizedBox(
@@ -662,7 +684,7 @@ class _VideoShelf extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = section.items[index];
               return Padding(
-                key: ValueKey('rail_{item.id}'),
+                key: ValueKey('rail_${item.id}'),
                 padding: const EdgeInsets.only(right: 14),
                 child: PressableScale(
                   // Unified dispatcher: playable items play (videoId via
@@ -678,14 +700,12 @@ class _VideoShelf extends StatelessWidget {
                           .toList(),
                     );
                     if (action == HomePlayAction.navigateCollection) {
-                      Navigator.push(
+                      _pushGuarded(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => ThemedPlaylistDetailScreen(
-                            playlistId: item.browseId ?? item.id,
-                            playlistName: item.title,
-                            playlistImage: item.artworkUrl,
-                          ),
+                        (_) => ThemedPlaylistDetailScreen(
+                          playlistId: item.browseId ?? item.id,
+                          playlistName: item.title,
+                          playlistImage: item.artworkUrl,
                         ),
                       );
                     }
@@ -783,7 +803,7 @@ class _LowerSections extends StatelessWidget {
     final quickPicks = provider.quickPicks;
     if (quickPicks.isNotEmpty) {
       sections.add(_QuickPicksSection(
-        tracks: quickPicks,
+        candidates: provider.quickPickCandidates,
         onPlay: (track) => _play(context, track, quickPicks),
         onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
       ));
@@ -830,9 +850,9 @@ class _LowerSections extends StatelessWidget {
           tracks: trending,
           onPlay: (track) => _play(context, track, trending),
           onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-          onSeeAll: () => Navigator.push(
+          onSeeAll: () => _pushGuarded(
             context,
-            MaterialPageRoute(builder: (_) => const ThemedTrendingNowScreen()),
+            (_) => const ThemedTrendingNowScreen(),
           ),
         ));
       }
@@ -896,6 +916,12 @@ class _LowerSections extends StatelessWidget {
       debugPrint('HOME_UI composerSections=$composerCount '
           'rendered=${rendered.length} '
           'kinds=${renderedKinds.isEmpty ? "" : renderedKinds.join(",")}');
+      // Section visibility diagnostics (spec #78).
+      debugPrint(
+          'RECOMMENDATION_UI quickPicks=${provider.quickPicks.isEmpty ? "SKIPPED reason=NO_CANDIDATES" : "VISIBLE"} '
+          'newReleases=${provider.newReleases.isEmpty ? "SKIPPED reason=NO_VALID_CANDIDATES" : "VISIBLE"} '
+          'trending=${provider.trendingTracks.isEmpty ? "SKIPPED reason=NO_VALID_CANDIDATES" : "VISIBLE"} '
+          'profileVersion=${provider.tasteProfileVersion} rankerVersion=$kRankerVersion candidateVersion=$kCandidateVersion');
     }
 
     return Column(
@@ -1016,12 +1042,12 @@ class _MadeForYouSection extends StatelessWidget {
 /// the local recommendation engine. No giant cards.
 class _QuickPicksSection extends StatelessWidget {
   const _QuickPicksSection({
-    required this.tracks,
+    required this.candidates,
     required this.onPlay,
     required this.onOptions,
   });
 
-  final List<Track> tracks;
+  final List<QuickPickCandidate> candidates;
   final void Function(Track) onPlay;
   final void Function(Track) onOptions;
 
@@ -1031,20 +1057,33 @@ class _QuickPicksSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const HomeSectionHeader(title: 'Quick picks'),
-        ...tracks.take(6).map((track) => ForYouRow(
-              key: ValueKey('qp_${track.id}'),
-              artUrl: track.albumArtUrl,
-              title: track.trackName,
-              subtitle: track.artistName,
-              isPlaying: false,
-              onTap: () {
-                HapticFeedback.lightImpact();
-                context
-                    .read<MusicProvider>()
-                    .playTrack(track, playlistTracks: tracks);
-              },
-              onLongPress: () => onOptions(track),
-            )),
+        ...candidates.take(6).map((candidate) {
+          final track = candidate.track;
+          // Reason text policy (spec #80): only confident reasons are
+          // shown; a weak "From your Home feed" origin explains nothing,
+          // so the row falls back to the artist name.
+          final firstArtist = track.artistName.split(',').first.trim();
+          final reason = quickPickReasonLabel(candidate.reason);
+          final subtitle = switch (candidate.reason) {
+            CandidateReason.frequentArtist when firstArtist.isNotEmpty =>
+              'Because you listen to $firstArtist',
+            CandidateReason.nativeRecommendation => firstArtist,
+            _ => reason.isEmpty ? firstArtist : reason,
+          };
+          return ForYouRow(
+            key: ValueKey('qp_${track.id}'),
+            artUrl: track.albumArtUrl,
+            title: track.trackName,
+            subtitle: subtitle,
+            isPlaying: false,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              context.read<MusicProvider>().playTrack(track,
+                  playlistTracks: candidates.map((c) => c.track).toList());
+            },
+            onLongPress: () => onOptions(track),
+          );
+        }),
       ],
     );
   }
@@ -1158,9 +1197,14 @@ class _AlbumGridSection extends StatelessWidget {
               horizontal: t.HomeTokens.contentPadding),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final tileW = (constraints.maxWidth - 16) / 2;
+              // Tablet/landscape: 3 columns above 600dp content width
+              // (spec: landscape/tablet adaptation). Phone keeps 2.
+              final columns = constraints.maxWidth > 600 ? 3 : 2;
+              final gap = 16.0;
+              final tileW =
+                  (constraints.maxWidth - gap * (columns - 1)) / columns;
               return Wrap(
-                spacing: 16,
+                spacing: gap,
                 runSpacing: 18,
                 children: [
                   for (final item in section.items)
@@ -1174,14 +1218,12 @@ class _AlbumGridSection extends StatelessWidget {
                             sectionTitle: section.title,
                           );
                           if (action == HomePlayAction.navigateCollection) {
-                            Navigator.push(
+                            _pushGuarded(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => ThemedPlaylistDetailScreen(
-                                  playlistId: item.browseId ?? item.id,
-                                  playlistName: item.title,
-                                  playlistImage: item.artworkUrl,
-                                ),
+                              (_) => ThemedPlaylistDetailScreen(
+                                playlistId: item.browseId ?? item.id,
+                                playlistName: item.title,
+                                playlistImage: item.artworkUrl,
                               ),
                             );
                           }
@@ -1267,15 +1309,13 @@ class _PlaylistsSection extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: PressableScale(
-                  onTap: () => Navigator.push(
+                  onTap: () => _pushGuarded(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => ThemedPlaylistDetailScreen(
-                        playlistId: playlist.id,
-                        playlistName: playlist.name,
-                        playlistImage: playlist.imageUrl,
-                        cachedTracks: playlist.tracks,
-                      ),
+                    (_) => ThemedPlaylistDetailScreen(
+                      playlistId: playlist.id,
+                      playlistName: playlist.name,
+                      playlistImage: playlist.imageUrl,
+                      cachedTracks: playlist.tracks,
                     ),
                   ),
                   child: SizedBox(
@@ -1408,9 +1448,9 @@ class _MoodsSectionState extends State<_MoodsSection> {
       children: [
         HomeSectionHeader(
           title: 'Moods',
-          onViewAll: () => Navigator.push(
+          onViewAll: () => _pushGuarded(
             context,
-            MaterialPageRoute(builder: (_) => const ThemedAllGenresScreen()),
+            (_) => const ThemedAllGenresScreen(),
           ),
         ),
         if (moods == null)
@@ -1453,16 +1493,15 @@ class _MoodsSectionState extends State<_MoodsSection> {
                       HapticFeedback.selectionClick();
                       context
                           .read<MusicProvider>()
-                          .fetchMoodTracks(mood.params as String)
+                          .fetchMoodTracks(mood.params as String,
+                              genre: mood.title as String)
                           .then((tracks) {
                         if (!context.mounted || tracks.isEmpty) return;
-                        Navigator.push(
+                        _pushGuarded(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => _MoodTracksScreen(
-                              title: mood.title as String,
-                              tracks: tracks,
-                            ),
+                          (_) => _MoodTracksScreen(
+                            title: mood.title as String,
+                            tracks: tracks,
                           ),
                         );
                       });

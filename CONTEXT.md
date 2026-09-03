@@ -8,7 +8,7 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 139/139 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 187/187 tests green.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
 - State management: `provider` (NOT Riverpod — immutable PlaybackState projection used instead)
@@ -29,8 +29,9 @@ InnerTube browseJson(FEmusic_home)  [dynamic clientVersion 1.YYYYMMDD.01.00,
   at sectionList level (Metrolist parity)]
   ↓ HomeFeed {sections, heroCandidate, continuationToken}
   ↓ HomeComposer  [validation gate: identity+title only; SECTION-LOCAL dedupe;
-  artist cap 2/shelf; maxItems 12; maxSections 12; PARTIAL support for
-  missing artwork]
+  artist cap 2/shelf; maxItems 12; NO section budget (load-all since
+  2026-09-03: logged-in feeds run long, budget amputated categories);
+  PARTIAL support for missing artwork]
   ↓ HomeConvergence  [SectionIdentity = provenance:semantic:title-slug;
   omitted-but-valid remembered sections retained at PREVIOUS POSITION;
   TTLs: trending 3h, generic 6h, new_release 12h, editorial 24h]
@@ -168,8 +169,17 @@ lib/services/recommendation/
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
 - `musicImmersiveHeaderRenderer` / `musicDescriptionShelfRenderer`:
   unsupported, no fixture evidence.
-- Continuation token captured (398 chars) but NOT consumed; loadMoreHome()
-  is future work.
+- Continuation token captured for diagnostics only; load-more chain
+  (Show-more UI → provider.loadMoreHome → repository.loadMore →
+  mergeContinuationSections → fetchContinuation/parseContinuationResponse →
+  browseContinuationJson) REMOVED 2026-09-03 per user (dead tap: composer
+  budget re-trimmed appended shelves). Re-add only with a plan.
+- Auth flips reset the InnerTube session (AuthSessionReset owned by
+  MusicProvider): visitorData=null + stream cache clear + feed refresh.
+  Without this, /player got login cookies + stale anon visitorData and
+  rejected playback while browse worked (2026-09-03 login playback fix).
+- Unbounded POSTs now timed: _ensureVisitorData 12s, playerJs 8s, /player
+  15s. An un-timed stall held the test isolate open (exit hang).
 - dataSyncId not captured (needs live logged-in response).
 - Anonymous personalization ceiling: no login → YTM gives non-personalized feed.
 - `ListTile ink splash` warnings from PlaylistDetailScreen — pre-existing,
@@ -259,11 +269,12 @@ c737dbb nav: GlassTabBar.searchable
 
 ## NEXT STEPS (if resuming)
 
-1. **Wire genre/language affinity**: TrackSignal has `genre` field (nullable,
-   never populated). Once populated, add genreAffinity weight to QuickPicksEngine.
-2. **Consuming continuation**: loadMoreHome() using captured token; explicit
-   user action only (spec #18: no auto-infinite-scroll).
-3. **musicTastebuilderShelfRenderer**: capture fixture, decide parse vs skip.
+1. **Logged-in renderer coverage (fixture-gated)**: run logged-in, pull
+   ParseReport unsupported list + DROPPED/REMOVED/TRIMMED + HOME_UI +
+   HOME_LOSS; save redacted JSON as fixture; one parser test per renderer;
+   bump parser+schema+ctx versions + cache key per invariant 9.
+   Mix-tile identity (`watchEndpoint.playlistId` → playlist type) if shown.
+2. **musicTastebuilderShelfRenderer**: capture fixture, decide parse vs skip.
 4. **Recommendation cache**: RECOMMENDATION_LOAD trace exists; add TTL cache
    keyed on taste-profile version if refresh cost matters.
 5. **Explanation UI**: CandidateReason already carried; optional UI badge.

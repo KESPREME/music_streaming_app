@@ -536,9 +536,11 @@ class StaggerIn extends StatelessWidget {
 /// Live-run calibrated: actual rendered line heights (label 15.5 w600,
 /// metadata 13.5) measure ~20 + ~20 logical px, so the old 17+2+14=33
 /// estimate overflowed by exactly the 9px seen at runtime. 20+2+20=42
-/// leaves real headroom (spec: zero RenderFlex overflow at any scale).
+/// plus 4dp slack absorbs device font-metric variance (Adreno runtime
+/// measured 2-4px overflows at scale 1.0) — zero RenderFlex overflow
+/// at any scale (spec: zero overflow).
 double homeRailTextBlockHeight(BuildContext context) {
   final scale = MediaQuery.textScalerOf(context).scale(1.0);
-  const base = 20.0 + 2.0 + 20.0;
+  const base = 20.0 + 2.0 + 20.0 + 4.0;
   return base * scale;
 }
