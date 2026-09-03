@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/presentation/home/home_presentation.dart';
 import 'package:music_streaming_app/services/home/home_models.dart';
+import 'package:music_streaming_app/services/recommendation/candidate.dart';
 
 HomeItem _item(String id, HomeContentType type) => HomeItem(
       id: id,
@@ -153,6 +154,26 @@ void main() {
       final plan = planPresentation(single);
       // 1 item → squareRail (compact, no empty second column) per spec #8.
       expect(plan.layoutKind, HomeLayoutKind.squareRail);
+    });
+
+    group('quickPickReasonLabel (explanation UI)', () {
+      test('every CandidateReason has a non-empty label', () {
+        for (final reason in CandidateReason.values) {
+          final label = quickPickReasonLabel(reason);
+          expect(label, isNotEmpty, reason: 'missing label for ' + reason.name);
+        }
+      });
+
+      test('known reasons get their documented label', () {
+        expect(quickPickReasonLabel(CandidateReason.favoriteArtist),
+            'From your favorites');
+        expect(quickPickReasonLabel(CandidateReason.recentlyPlayed),
+            'Recently played');
+        expect(quickPickReasonLabel(CandidateReason.searchFollowup),
+            'From your searches');
+        expect(quickPickReasonLabel(CandidateReason.genreAffinity),
+            'Matches your taste');
+      });
     });
   });
 }

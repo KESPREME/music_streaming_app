@@ -4,7 +4,7 @@ import 'package:music_streaming_app/services/recommendation/candidate.dart';
 import 'package:music_streaming_app/services/recommendation/quick_picks_engine.dart';
 import 'package:music_streaming_app/services/recommendation/search_followup_graph.dart';
 
-Track _t(String id, String title, String artist) => Track(
+Track _t(String id, String title, String artist, {String? genre}) => Track(
       id: id,
       trackName: title,
       artistName: artist,
@@ -12,19 +12,28 @@ Track _t(String id, String title, String artist) => Track(
       previewUrl: '',
       albumArt: 'https://example.com/$id.jpg',
       source: 'youtube',
+      genre: genre,
     );
 
 class _FakeSignalProvider implements QuickPicksSignalProvider {
   final Map<String, QuickPicksTrackSignal> signals;
   final List<String> artists;
+  final List<String> topGenreList;
 
-  _FakeSignalProvider({this.signals = const {}, this.artists = const []});
+  _FakeSignalProvider({
+    this.signals = const {},
+    this.artists = const [],
+    this.topGenreList = const [],
+  });
 
   @override
   QuickPicksTrackSignal? signalFor(String trackId) => signals[trackId];
 
   @override
   List<String> topArtists({int limit = 10}) => artists.take(limit).toList();
+
+  @override
+  List<String> topGenres({int limit = 5}) => topGenreList.take(limit).toList();
 }
 
 void main() {
@@ -181,6 +190,30 @@ void main() {
       // The skipped track is present but its score is penalized.
       final skipped = picks.firstWhere((c) => c.track.id == 'skipped0001');
       expect(skipped.score, lessThan(0.10));
+    });
+
+    test('genre affinity boosts native tracks in preferred genres', () {
+      final engine = QuickPicksEngine(
+        signalProvider: _FakeSignalProvider(topGenreList: ['lofi', 'indie']),
+      );
+      final picks = engine.generate(
+        nativeTracks: [
+          _t('genre000001', 'Genre Match', 'X', genre: 'Lofi'),
+          _t('nongenre001', 'No Match', 'Y'),
+        ],
+        chartTracks: [],
+        favorites: [],
+        recentlyPlayed: [],
+        newReleases: [],
+        limit: 4,
+      );
+      final match = picks.firstWhere((c) => c.track.id == 'genre000001');
+      final noMatch = picks.firstWhere((c) => c.track.id == 'nongenre001');
+      expect(match.score, greaterThan(noMatch.score));
+      expect(
+        match.secondaryReasons,
+        contains(CandidateReason.genreAffinity),
+      );
     });
 
     test('deterministic: same input → same output', () {

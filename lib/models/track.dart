@@ -11,6 +11,7 @@ class Track {
   final String source; // 'youtube', 'spotify', 'local'
   final Duration? duration; // Added duration
   final int? _durationMs; // Duration in milliseconds (from InnerTube)
+  final String? genre; // Mood/genre tag when the source gave evidence
 
   Track({
     required this.id,
@@ -23,18 +24,20 @@ class Track {
     this.source = 'youtube',
     this.duration,
     int? durationMs,
-  }) : albumArtUrl = albumArtUrl ?? albumArt ?? '',
-       _durationMs = durationMs;
-  
+    this.genre,
+  })  : albumArtUrl = albumArtUrl ?? albumArt ?? '',
+        _durationMs = durationMs;
+
   /// Duration in milliseconds (for InnerTube/lyrics compatibility)
   int? get durationMs => _durationMs ?? duration?.inMilliseconds;
-  
+
   /// Alias for albumArtUrl (InnerTube compatibility)
   String get albumArt => albumArtUrl;
 
   factory Track.fromJson(Map<String, dynamic> json) {
     return Track(
-      id: json['id'] ?? 'unknown_${DateTime.now().millisecondsSinceEpoch}', // Provide fallback ID
+      id: json['id'] ??
+          'unknown_${DateTime.now().millisecondsSinceEpoch}', // Provide fallback ID
       trackName: json['trackName'] ?? 'Unknown Track',
       artistName: json['artistName'] ?? 'Unknown Artist',
       albumName: json['albumName'] ?? 'Unknown Album',
@@ -71,6 +74,7 @@ class Track {
     String? source,
     Duration? duration,
     int? durationMs,
+    String? genre,
   }) {
     return Track(
       id: id ?? this.id,
@@ -82,24 +86,26 @@ class Track {
       source: source ?? this.source,
       duration: duration ?? this.duration,
       durationMs: durationMs ?? _durationMs,
+      genre: genre ?? this.genre,
     );
   }
-
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is Track &&
-              runtimeType == other.runtimeType &&
-              id == other.id && // Primarily rely on ID for equality if sources can differ
-              // Only include other fields if strict equality across all properties is needed
-              trackName == other.trackName &&
-              artistName == other.artistName &&
-              albumName == other.albumName &&
-              previewUrl == other.previewUrl &&
-              albumArtUrl == other.albumArtUrl &&
-              source == other.source &&
-              duration == other.duration; // Added duration
+      other is Track &&
+          runtimeType == other.runtimeType &&
+          id ==
+              other
+                  .id && // Primarily rely on ID for equality if sources can differ
+          // Only include other fields if strict equality across all properties is needed
+          trackName == other.trackName &&
+          artistName == other.artistName &&
+          albumName == other.albumName &&
+          previewUrl == other.previewUrl &&
+          albumArtUrl == other.albumArtUrl &&
+          source == other.source &&
+          duration == other.duration; // Added duration
 
   @override
   int get hashCode =>

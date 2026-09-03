@@ -13,6 +13,7 @@ enum CandidateReason {
   globalTrending,
   newReleaseArtist,
   nativeRecommendation,
+  genreAffinity,
   exploration,
 }
 

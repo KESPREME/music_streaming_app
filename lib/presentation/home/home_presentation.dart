@@ -1,5 +1,6 @@
 import '../../models/track.dart';
 import '../../services/home/home_models.dart';
+import '../../services/recommendation/candidate.dart';
 
 /// Presentation layer for the composed HomeFeed (spec #3/#4): content
 /// semantics → presentation semantics → geometry. The data model stays
@@ -67,6 +68,36 @@ class HomePresentationModel {
   bool get adaptsToItemCount =>
       layoutKind == HomeLayoutKind.squareGrid ||
       layoutKind == HomeLayoutKind.compactList;
+}
+
+/// Human-readable explanation for a Quick Picks candidate reason
+/// (spec: explainable recommendations). Exhaustive — compile error when a
+/// new CandidateReason lacks a label.
+String quickPickReasonLabel(CandidateReason reason) {
+  switch (reason) {
+    case CandidateReason.favoriteArtist:
+      return 'From your favorites';
+    case CandidateReason.recentlyPlayed:
+      return 'Recently played';
+    case CandidateReason.frequentArtist:
+      return 'Artist you play often';
+    case CandidateReason.searchFollowup:
+      return 'From your searches';
+    case CandidateReason.relatedToListening:
+      return 'Related to your listening';
+    case CandidateReason.regionalTrending:
+      return 'Trending in your region';
+    case CandidateReason.globalTrending:
+      return 'Trending worldwide';
+    case CandidateReason.newReleaseArtist:
+      return 'New from artists you follow';
+    case CandidateReason.nativeRecommendation:
+      return 'From your Home feed';
+    case CandidateReason.genreAffinity:
+      return 'Matches your taste';
+    case CandidateReason.exploration:
+      return 'For you to explore';
+  }
 }
 
 /// Deterministic classifier (spec #5): native title → semantic type.
