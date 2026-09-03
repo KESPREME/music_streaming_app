@@ -110,29 +110,33 @@ class _PillBody extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 14.0),
                     child: Row(
                       children: [
-                        // Album Art
-                        Hero(
-                          tag: 'albumArt_${currentTrack.id}',
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: currentTrack.albumArtUrl.isNotEmpty
-                                ? CachedNetworkImage(
-                                    imageUrl: currentTrack.albumArtUrl,
-                                    width: 42,
-                                    height: 42,
-                                    fit: BoxFit.cover,
-                                    fadeInDuration:
-                                        const Duration(milliseconds: 200),
-                                    errorWidget: (_, __, ___) => Container(
-                                        width: 42,
-                                        height: 42,
-                                        color: Colors.grey[900]),
-                                  )
-                                : Container(
-                                    width: 42,
-                                    height: 42,
-                                    color: Colors.grey[900]),
-                          ),
+                        // Album Art. NO Hero here: this pill lives in
+                        // GlobalMusicOverlay's Stack ABOVE the root
+                        // Navigator — a Hero outside any navigator throws
+                        // heroes.dart 'navigator != null' during route
+                        // transitions (poisons _debugLocked, album/any
+                        // pushes silently fail afterwards). The now-
+                        // playing open is a custom panel slide, not a
+                        // route, so a Hero never had a flight partner.
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: currentTrack.albumArtUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: currentTrack.albumArtUrl,
+                                  width: 42,
+                                  height: 42,
+                                  fit: BoxFit.cover,
+                                  fadeInDuration:
+                                      const Duration(milliseconds: 200),
+                                  errorWidget: (_, __, ___) => Container(
+                                      width: 42,
+                                      height: 42,
+                                      color: Colors.grey[900]),
+                                )
+                              : Container(
+                                  width: 42,
+                                  height: 42,
+                                  color: Colors.grey[900]),
                         ),
                         const SizedBox(width: 12),
                         // Info

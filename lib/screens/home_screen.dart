@@ -345,6 +345,10 @@ void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
     }
   } on FlutterError catch (e) {
     debugPrint('HOME_NAV SUPPRESSED: ${e.message}');
+  } catch (e) {
+    // Non-FlutterError throws (asserts, poisoned state) must not crash
+    // the tap handler.
+    debugPrint('HOME_NAV SUPPRESSED: $e');
   }
 }
 
@@ -1257,11 +1261,16 @@ class _AlbumGridSection extends StatelessWidget {
                                             const Duration(milliseconds: 200),
                                         errorWidget: (_, __, ___) => Container(
                                             color: Colors.white
-                                                .withValues(alpha: 0.05)),
+                                                .withValues(alpha: 0.05),
+                                            child: const Icon(
+                                                Icons.album_rounded,
+                                                color: Colors.white24)),
                                       )
                                     : Container(
                                         color: Colors.white
-                                            .withValues(alpha: 0.05)),
+                                            .withValues(alpha: 0.05),
+                                        child: const Icon(Icons.album_rounded,
+                                            color: Colors.white24)),
                               ),
                             ),
                             const SizedBox(height: 9),
