@@ -17,7 +17,6 @@ import '../../widgets/artist_picker_sheet.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/glass_circle_button.dart';
 import '../../widgets/glass_snackbar.dart' show showGlassSnackBar;
-import '../../widgets/liquid_play_button.dart';
 import '../../widgets/themed_options_sheet.dart';
 import 'explore_layout.dart';
 import 'explore_tokens.dart';
@@ -244,11 +243,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
             SafeArea(
               child: Column(
                 children: [
-                  _ExploreHeader(
-                    controller: controller,
-                    accent: _palette.accent,
-                    total: items.length,
-                  ),
+                  _ExploreHeader(controller: controller),
                   Expanded(
                     child: controller.isLoading || controller.session == null
                         ? const _ExploreSkeleton()
@@ -288,11 +283,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
           return const _LoadingStub();
         }
         final item = items[index];
-        return _DeckPage(
+        ExploreItem? at(int i) =>
+            (i >= 0 && i < items.length) ? items[i] : null;
+        return _StreamPage(
           key: ValueKey('explore_page_${item.id}'),
           item: item,
-          prev: index > 0 ? items[index - 1] : null,
-          next: index + 1 < items.length ? items[index + 1] : null,
+          farPrev: at(index - 2),
+          nearPrev: at(index - 1),
+          nearNext: at(index + 1),
+          farNext: at(index + 2),
+          index: index,
+          isActivePage: index == controller.session?.currentIndex,
           accent: _palette.accent,
           controller: controller,
           onJump: _jumpTo,
@@ -321,163 +322,145 @@ class _ExploreScreenState extends State<ExploreScreen> {
 }
 
 class _ExploreHeader extends StatelessWidget {
-  const _ExploreHeader(
-      {required this.controller, required this.accent, required this.total});
+  const _ExploreHeader({required this.controller});
 
   final ExploreController controller;
-  final Color accent;
-  final int total;
 
   @override
   Widget build(BuildContext context) {
-    final session = controller.session;
-    final progress = total <= 0
-        ? 0.0
-        : ((session?.currentIndex ?? 0) + 1).clamp(1, total) / total;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: ExploreTokens.headerHeight,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Row(
-              children: [
-                GlassCircleButton(
-                  icon: Icons.arrow_back_rounded,
-                  size: 38,
-                  iconSize: 19,
-                  semanticLabel: 'Back',
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(width: 12),
-                const Text('Explore',
-                    style:
-                        TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                const Spacer(),
-                GlassCircleButton(
-                  icon: controller.autoplayEnabled
-                      ? Icons.play_circle_rounded
-                      : Icons.play_disabled_rounded,
-                  size: 38,
-                  iconSize: 19,
-                  semanticLabel: 'Toggle autoplay',
-                  onTap: controller.toggleAutoplay,
-                ),
-              ],
+    return SizedBox(
+      height: ExploreTokens.headerHeight,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Row(
+          children: [
+            GlassCircleButton(
+              icon: Icons.arrow_back_rounded,
+              size: 38,
+              iconSize: 19,
+              semanticLabel: 'Back',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
+            const SizedBox(width: 12),
+            const Text('Explore',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            GlassCircleButton(
+              icon: controller.autoplayEnabled
+                  ? Icons.play_circle_rounded
+                  : Icons.play_disabled_rounded,
+              size: 38,
+              iconSize: 19,
+              semanticLabel: 'Toggle autoplay',
+              onTap: controller.toggleAutoplay,
+            ),
+          ],
         ),
-        // Understated position indicator (replaces the technical counter).
-        SizedBox(
-          height: ExploreTokens.progressHeight,
-          child: total <= 1
-              ? null
-              : LinearProgressIndicator(
-                  value: progress,
-                  backgroundColor: Colors.white.withValues(alpha: 0.12),
-                  valueColor: AlwaysStoppedAnimation<Color>(accent),
-                ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-/// One deck page: prev peek · artwork · floating metadata · slim rail ·
-/// next peek. Sized by [ExploreLayout.plan] so nothing overflows and no
-/// scroll view fights the vertical PageView.
-class _DeckPage extends StatelessWidget {
-  const _DeckPage({
+/// Single playback path for the active item (art tap + play capsule).
+void _toggleExplorePlay(BuildContext context, MusicProvider provider,
+    ExploreController controller, ExploreItem item, bool isCurrent) {
+  final track = item.track;
+  if (isCurrent) {
+    provider.isPlaying ? provider.pauseTrack() : provider.resumeTrack();
+  } else {
+    provider.playTrack(track,
+        playlistTracks: [track, ...controller.upcomingTracks()],
+        setContext: true,
+        clearQueue: true);
+  }
+}
+
+/// One stream page: far/near neighbors flow along the diagonal into the
+/// centered active pill. Sized by [ExploreLayout.plan] so nothing
+/// overflows and no scroll view fights the vertical PageView.
+class _StreamPage extends StatelessWidget {
+  const _StreamPage({
     super.key,
     required this.item,
-    required this.prev,
-    required this.next,
+    required this.farPrev,
+    required this.nearPrev,
+    required this.nearNext,
+    required this.farNext,
+    required this.index,
+    required this.isActivePage,
     required this.accent,
     required this.controller,
     required this.onJump,
   });
 
   final ExploreItem item;
-  final ExploreItem? prev;
-  final ExploreItem? next;
+  final ExploreItem? farPrev;
+  final ExploreItem? nearPrev;
+  final ExploreItem? nearNext;
+  final ExploreItem? farNext;
+  final int index;
+  final bool isActivePage;
   final Color accent;
   final ExploreController controller;
   final void Function(int index) onJump;
-
-  void _togglePlay(BuildContext context, MusicProvider provider, bool isCurrent) {
-    final track = item.track;
-    if (isCurrent) {
-      provider.isPlaying ? provider.pauseTrack() : provider.resumeTrack();
-    } else {
-      provider.playTrack(track,
-          playlistTracks: [track, ...controller.upcomingTracks()],
-          setContext: true,
-          clearQueue: true);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
     final track = item.track;
     final isCurrent = provider.currentTrack?.id == track.id;
-    final session = controller.session;
-    final index = session?.items.indexOf(item) ?? 0;
 
     return RepaintBoundary(
       child: LayoutBuilder(builder: (context, constraints) {
         final spec = ExploreLayout.plan(
             Size(constraints.maxWidth, constraints.maxHeight));
+        Widget gap() => const SizedBox(height: 12);
         return Center(
           child: ConstrainedBox(
             constraints:
                 BoxConstraints(maxWidth: spec.contentMaxWidth),
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                  horizontal: ExploreTokens.pagePadding, vertical: 6),
+                  horizontal: ExploreTokens.pagePadding, vertical: 12),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.max,
                 children: [
-                  if (spec.showPrevPeek && prev != null) ...[
-                    _PrevPeek(
-                        item: prev!,
-                        onTap: () => onJump(index - 1)),
-                    const SizedBox(height: 10),
+                  if (spec.showFar && farPrev != null) ...[
+                    _NeighborRow(
+                        key: ValueKey('jump_${farPrev!.id}'),
+                        item: farPrev!,
+                        far: true,
+                        dx: spec.slotDx[0],
+                        onTap: () => onJump(index - 2)),
+                    gap(),
                   ],
-                  Semantics(
-                    label: 'Toggle playback for ${track.trackName}',
-                    button: true,
-                    child: GestureDetector(
-                      onTap: () => _togglePlay(context, provider, isCurrent),
-                      child: _ArtworkPanel(
-                          track: track,
-                          size: spec.artworkSize,
-                          accent: accent),
+                  if (nearPrev != null) ...[
+                    _NeighborRow(
+                        key: ValueKey('jump_${nearPrev!.id}'),
+                        item: nearPrev!,
+                        far: false,
+                        dx: spec.slotDx[1],
+                        onTap: () => onJump(index - 1)),
+                    gap(),
+                  ],
+                  _PillEntry(
+                    itemId: item.id,
+                    active: isActivePage,
+                    child: _ActivePill(
+                      key: ValueKey('explore_pill_${item.id}'),
+                      item: item,
+                      accent: accent,
+                      provider: provider,
+                      controller: controller,
+                      isCurrent: isCurrent,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    width: spec.artworkSize,
-                    child: _TrackProgress(
-                        provider: provider,
-                        isCurrent: isCurrent,
-                        accent: accent),
-                  ),
-                  SizedBox(height: spec.gapAfterArtwork),
-                  _FloatingMetadata(
-                      item: item, accent: accent, provider: provider),
-                  const SizedBox(height: 12),
-                  _SlimRail(
+                  gap(),
+                  _QuietRail(
                     track: track,
                     provider: provider,
-                    controller: controller,
-                    isCurrent: isCurrent,
-                    onPlay: () => _togglePlay(context, provider, isCurrent),
-                    onSheetClosed: () {},
                   ),
-                  const SizedBox(height: 4),
                   TextButton(
                     onPressed: controller.dislikeCurrent,
                     style: TextButton.styleFrom(
@@ -492,11 +475,23 @@ class _DeckPage extends StatelessWidget {
                             color:
                                 Colors.white.withValues(alpha: 0.38))),
                   ),
-                  if (next != null) ...[
-                    const SizedBox(height: 6),
-                    _NextPeek(
-                        item: next!,
-                        onJump: () => onJump(index + 1)),
+                  if (nearNext != null) ...[
+                    gap(),
+                    _NeighborRow(
+                        key: ValueKey('jump_${nearNext!.id}'),
+                        item: nearNext!,
+                        far: false,
+                        dx: spec.slotDx[3],
+                        onTap: () => onJump(index + 1)),
+                  ],
+                  if (spec.showFar && farNext != null) ...[
+                    gap(),
+                    _NeighborRow(
+                        key: ValueKey('jump_${farNext!.id}'),
+                        item: farNext!,
+                        far: true,
+                        dx: spec.slotDx[4],
+                        onTap: () => onJump(index + 2)),
                   ],
                 ],
               ),
@@ -508,104 +503,108 @@ class _DeckPage extends StatelessWidget {
   }
 }
 
-/// Faded previous discovery row (compact, left-aligned).
-class _PrevPeek extends StatelessWidget {
-  const _PrevPeek({required this.item, required this.onTap});
+/// Replays a subtle settle-in (scale + fade) when its page becomes active.
+/// Fires once per activation, never loops.
+class _PillEntry extends StatefulWidget {
+  const _PillEntry(
+      {required this.itemId, required this.active, required this.child});
 
-  final ExploreItem item;
-  final VoidCallback onTap;
+  final String itemId;
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_PillEntry> createState() => _PillEntryState();
+}
+
+class _PillEntryState extends State<_PillEntry>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entry = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 300));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _entry.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(_PillEntry oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active &&
+        (!oldWidget.active || oldWidget.itemId != widget.itemId)) {
+      _entry.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _entry.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final track = item.track;
-    return Opacity(
-      opacity: ExploreTokens.prevPeekOpacity,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          height: ExploreTokens.prevPeekHeight,
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: track.albumArtUrl.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: track.albumArtUrl,
-                        width: 34,
-                        height: 34,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 68,
-                        errorWidget: (_, __, ___) =>
-                            const _ArtworkFallback(),
-                      )
-                    : const SizedBox(width: 34, height: 34),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(track.trackName,
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    Text(track.artistName,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white.withValues(alpha: 0.5)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    return FadeTransition(
+      opacity: _entry.drive(CurveTween(curve: Curves.easeOut)),
+      child: ScaleTransition(
+        scale: _entry.drive(
+            Tween(begin: 0.96, end: 1.0).chain(CurveTween(curve: Curves.easeOut))),
+        child: widget.child,
       ),
     );
   }
 }
 
-/// Next discovery chip: offset glass row with a jump-and-play affordance.
-class _NextPeek extends StatelessWidget {
-  const _NextPeek({required this.item, required this.onJump});
+/// Neighbor discovery row along the diagonal flow. Tappable → jumps.
+/// No glass here — selective glass belongs to the active pill only.
+class _NeighborRow extends StatelessWidget {
+  const _NeighborRow({
+    super.key,
+    required this.item,
+    required this.far,
+    required this.dx,
+    required this.onTap,
+  });
 
   final ExploreItem item;
-  final VoidCallback onJump;
+  final bool far;
+  final double dx;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final track = item.track;
-    return Padding(
-      // Deterministic diagonal offset (Reference B stagger).
-      padding: const EdgeInsets.only(left: 56),
-      child: Opacity(
-        opacity: ExploreTokens.nextPeekOpacity,
-        child: GlassSurface(
-          tier: GlassTier.card,
-          borderRadius: 18,
+    final art = far ? ExploreTokens.farArtSize : ExploreTokens.neighborArtSize;
+    final rowH =
+        far ? ExploreTokens.farRowHeight : ExploreTokens.neighborRowHeight;
+    return Opacity(
+      opacity: far ? ExploreTokens.farOpacity : ExploreTokens.nearOpacity,
+      child: Semantics(
+        label: 'Jump to ${track.trackName}',
+        button: true,
+        container: true,
+        child: GestureDetector(
+          onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.only(
+                left: dx > 0 ? dx : 0, right: dx < 0 ? -dx : 0),
             child: SizedBox(
-              height:
-                  ExploreTokens.nextPeekHeight - 20,
+              height: rowH,
               child: Row(
                 children: [
                   ClipOval(
                     child: track.albumArtUrl.isNotEmpty
                         ? CachedNetworkImage(
                             imageUrl: track.albumArtUrl,
-                            width: 44,
-                            height: 44,
+                            width: art,
+                            height: art,
                             fit: BoxFit.cover,
-                            memCacheWidth: 88,
+                            memCacheWidth: (art * 2).round(),
                             errorWidget: (_, __, ___) =>
                                 const _ArtworkFallback(),
                           )
-                        : const SizedBox(width: 44, height: 44),
+                        : SizedBox(width: art, height: art),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -614,26 +613,24 @@ class _NextPeek extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(track.trackName,
-                            style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                                fontSize: far
+                                    ? ExploreTokens.farTitleSize
+                                    : ExploreTokens.neighborTitleSize,
+                                fontWeight: FontWeight.w600),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),
                         Text(track.artistName,
                             style: TextStyle(
-                                fontSize: 11,
+                                fontSize: far
+                                    ? ExploreTokens.farArtistSize
+                                    : ExploreTokens.neighborArtistSize,
                                 color:
-                                    Colors.white.withValues(alpha: 0.55)),
+                                    Colors.white.withValues(alpha: 0.5)),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),
                       ],
                     ),
-                  ),
-                  GlassCircleButton(
-                    icon: Icons.play_arrow_rounded,
-                    size: 34,
-                    iconSize: 18,
-                    semanticLabel: 'Play next',
-                    onTap: onJump,
                   ),
                 ],
               ),
@@ -645,108 +642,197 @@ class _NextPeek extends StatelessWidget {
   }
 }
 
-/// Floating metadata: text over atmosphere, no competing panel.
-class _FloatingMetadata extends StatelessWidget {
-  const _FloatingMetadata(
-      {required this.item, required this.accent, required this.provider});
+/// The active discovery object: liquid-glass pill with circular artwork,
+/// title/artist and the Play capsule.
+class _ActivePill extends StatelessWidget {
+  const _ActivePill({
+    super.key,
+    required this.item,
+    required this.accent,
+    required this.provider,
+    required this.controller,
+    required this.isCurrent,
+  });
 
   final ExploreItem item;
   final Color accent;
   final MusicProvider provider;
+  final ExploreController controller;
+  final bool isCurrent;
 
   @override
   Widget build(BuildContext context) {
     final track = item.track;
-    final showReason = ExploreLayout.shouldShowReason(item.confidence);
-    final contextLine = [
-      if (track.albumName.isNotEmpty) track.albumName,
-      if (showReason) ExplorePolicy.reasonLabel(item.reason),
-    ].join(' • ');
+    final playing = isCurrent && provider.isPlaying;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
-      child: Column(
-        key: ValueKey('meta_${item.id}'),
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Semantics(
-            label: '${track.trackName} by ${track.artistName}',
-            child: Text(
-              track.trackName,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: ExploreTokens.titleSize,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
-                  shadows: [
-                    Shadow(
-                        color: Colors.black54,
-                        blurRadius: 12,
-                        offset: Offset(0, 2)),
-                  ]),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+      child: GlassSurface(
+        key: ValueKey('pillbody_${item.id}'),
+        tier: GlassTier.floating,
+        borderRadius: 40,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            height: ExploreTokens.activeRowHeight - 24,
+            child: Row(
+              children: [
+                Semantics(
+                  label: 'Toggle playback for ${track.trackName}',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: () => _toggleExplorePlay(
+                        context, provider, controller, item, isCurrent),
+                    child: Container(
+                      width: ExploreTokens.activeArtSize,
+                      height: ExploreTokens.activeArtSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: accent.withValues(alpha: 0.5), width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(
+                                alpha: ExploreTokens.artworkGlow),
+                            blurRadius: 28,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: track.albumArtUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: track.albumArtUrl,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 152,
+                                fadeInDuration:
+                                    const Duration(milliseconds: 250),
+                                errorWidget: (_, __, ___) =>
+                                    const _ArtworkFallback(),
+                              )
+                            : const _ArtworkFallback(),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        track.trackName,
+                        style: const TextStyle(
+                            fontSize: ExploreTokens.titleSize,
+                            fontWeight: FontWeight.w700,
+                            height: 1.15,
+                            shadows: [
+                              Shadow(
+                                  color: Colors.black54,
+                                  blurRadius: 10,
+                                  offset: Offset(0, 2)),
+                            ]),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () => ArtistPickerSheet.showIfNeeded(
+                            context, provider, track.artistName),
+                        child: Text(
+                          track.artistName,
+                          style: TextStyle(
+                              fontSize: ExploreTokens.artistSize,
+                              fontWeight: FontWeight.w500,
+                              color: accent.withValues(alpha: 0.95)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _PlayCapsule(
+                  playing: playing,
+                  onTap: () => _toggleExplorePlay(
+                      context, provider, controller, item, isCurrent),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          GestureDetector(
-            onTap: () => ArtistPickerSheet.showIfNeeded(
-                context, provider, track.artistName),
-            child: Text(
-              track.artistName,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: ExploreTokens.artistSize,
-                  fontWeight: FontWeight.w500,
-                  color: accent.withValues(alpha: 0.95)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (contextLine.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              contextLine,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: ExploreTokens.reasonSize,
-                  color: Colors.white.withValues(alpha: 0.55)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
-/// Slim glass action rail: primary play dominates, rest stay quiet.
-class _SlimRail extends StatelessWidget {
-  const _SlimRail({
+/// The explicit play affordance: glass capsule with icon + label.
+class _PlayCapsule extends StatelessWidget {
+  const _PlayCapsule({required this.playing, required this.onTap});
+
+  final bool playing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: playing ? 'Pause' : 'Play',
+      button: true,
+      container: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: GlassSurface(
+          tier: GlassTier.card,
+          borderRadius: 24,
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: SizedBox(
+              height: ExploreTokens.playCapsuleHeight - 20,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                      playing
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: 18),
+                  const SizedBox(width: 6),
+                  Text(playing ? 'Pause' : 'Play',
+                      style: const TextStyle(
+                          fontSize:
+                              ExploreTokens.playCapsuleLabelSize,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Quiet glass rail under the pill: secondary actions only.
+class _QuietRail extends StatelessWidget {
+  const _QuietRail({
     required this.track,
     required this.provider,
-    required this.controller,
-    required this.isCurrent,
-    required this.onPlay,
-    required this.onSheetClosed,
   });
 
   final Track track;
   final MusicProvider provider;
-  final ExploreController controller;
-  final bool isCurrent;
-  final VoidCallback onPlay;
-  final VoidCallback onSheetClosed;
 
   @override
   Widget build(BuildContext context) {
     final screenState =
         context.findAncestorStateOfType<_ExploreScreenState>();
     return GlassSurface(
-      tier: GlassTier.floating,
-      borderRadius: 28,
+      tier: GlassTier.card,
+      borderRadius: 24,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: SizedBox(
           height: ExploreTokens.railHeight,
           child: Row(
@@ -758,20 +844,16 @@ class _SlimRail extends StatelessWidget {
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
                 size: ExploreTokens.controlSizeSmall,
-                iconSize: 20,
+                iconSize: 18,
                 semanticLabel: provider.isSongLiked(track.id)
                     ? 'Unlike'
                     : 'Like',
                 onTap: () => provider.toggleLike(track),
               ),
-              LiquidPlayButton(
-                isPlaying: isCurrent && provider.isPlaying,
-                onPressed: onPlay,
-              ),
               GlassCircleButton(
                 icon: Icons.playlist_add_rounded,
                 size: ExploreTokens.controlSizeSmall,
-                iconSize: 20,
+                iconSize: 18,
                 semanticLabel: 'Add to queue',
                 onTap: () {
                   provider.addListToQueue([track]);
@@ -781,7 +863,7 @@ class _SlimRail extends StatelessWidget {
               GlassCircleButton(
                 icon: Icons.ios_share_rounded,
                 size: ExploreTokens.controlSizeSmall,
-                iconSize: 20,
+                iconSize: 18,
                 semanticLabel: 'Share',
                 onTap: () => SharePlus.instance.share(ShareParams(
                     text: '${track.trackName} — ${track.artistName}')),
@@ -789,7 +871,7 @@ class _SlimRail extends StatelessWidget {
               GlassCircleButton(
                 icon: Icons.more_horiz_rounded,
                 size: ExploreTokens.controlSizeSmall,
-                iconSize: 20,
+                iconSize: 18,
                 semanticLabel: 'More options',
                 onTap: () => ThemedOptionsSheet.show(context, track: track)
                     .then((_) => screenState?._hidePill()),
@@ -797,97 +879,6 @@ class _SlimRail extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Subtle playback progress under the artwork (active item only).
-class _TrackProgress extends StatelessWidget {
-  const _TrackProgress(
-      {required this.provider, required this.isCurrent, required this.accent});
-
-  final MusicProvider provider;
-  final bool isCurrent;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!isCurrent) {
-      return SizedBox(
-        height: ExploreTokens.progressHeight,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(1),
-          child: ColoredBox(
-              color: Colors.white.withValues(alpha: 0.10)),
-        ),
-      );
-    }
-    return SizedBox(
-      height: ExploreTokens.progressHeight,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(1),
-        child: StreamBuilder<Duration>(
-          stream: provider.positionStream,
-          builder: (context, snapshot) {
-            final position = snapshot.data ?? Duration.zero;
-            final duration = provider.duration;
-            double progress = 0.0;
-            if (duration.inSeconds > 0) {
-              progress = (position.inSeconds / duration.inSeconds)
-                  .clamp(0.0, 1.0);
-            }
-            return LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.white.withValues(alpha: 0.10),
-              valueColor: AlwaysStoppedAnimation<Color>(accent),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _ArtworkPanel extends StatelessWidget {
-  const _ArtworkPanel(
-      {required this.track, required this.size, required this.accent});
-
-  final Track track;
-  final double size;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(ExploreTokens.artworkRadius),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: ExploreTokens.artworkGlow),
-            blurRadius: 40,
-            spreadRadius: 2,
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(ExploreTokens.artworkRadius),
-        child: track.albumArtUrl.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: track.albumArtUrl,
-                fit: BoxFit.cover,
-                memCacheWidth: ExploreTokens.artworkMemCacheWidth,
-                fadeInDuration: const Duration(milliseconds: 250),
-                errorWidget: (_, __, ___) => const _ArtworkFallback(),
-              )
-            : const _ArtworkFallback(),
       ),
     );
   }
@@ -906,59 +897,55 @@ class _ArtworkFallback extends StatelessWidget {
   }
 }
 
+/// Loading skeleton mirrors stream geometry: ghost pills, not a spinner.
 class _ExploreSkeleton extends StatelessWidget {
   const _ExploreSkeleton();
 
+  Widget _ghost(double height, {bool icon = false}) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(40),
+        color: Colors.white.withValues(alpha: 0.06),
+      ),
+      child: icon
+          ? const Icon(Icons.music_note_rounded,
+              size: 40, color: Colors.white24)
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final spec = ExploreLayout.plan(
-          Size(constraints.maxWidth, constraints.maxHeight));
-      return Center(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.5, end: 1.0),
-          duration: const Duration(milliseconds: 1200),
-          builder: (context, value, child) => Opacity(
-            opacity: 0.5 + 0.5 * (1 - (value - 0.75).abs() * 4).clamp(0.0, 1.0),
-            child: child,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: spec.artworkSize,
-                height: spec.artworkSize,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(
-                      ExploreTokens.artworkRadius),
-                  color: Colors.white.withValues(alpha: 0.06),
-                ),
-                child: const Icon(Icons.music_note_rounded,
-                    size: 64, color: Colors.white24),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                width: 180,
-                height: 22,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 120,
-                height: 14,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
-                  color: Colors.white.withValues(alpha: 0.06),
-                ),
-              ),
-            ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+            maxWidth: ExploreTokens.contentMaxWidth),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: ExploreTokens.pagePadding),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.5, end: 1.0),
+            duration: const Duration(milliseconds: 1200),
+            builder: (context, value, child) => Opacity(
+              opacity:
+                  0.5 + 0.5 * (1 - (value - 0.75).abs() * 4).clamp(0.0, 1.0),
+              child: child,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _ghost(ExploreTokens.activeRowHeight, icon: true),
+                const SizedBox(height: 12),
+                _ghost(ExploreTokens.neighborRowHeight),
+                const SizedBox(height: 12),
+                _ghost(ExploreTokens.neighborRowHeight),
+              ],
+            ),
           ),
         ),
-      );
-    });
+      ),
+    );
   }
 }
 
