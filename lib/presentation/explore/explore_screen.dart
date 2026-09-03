@@ -41,7 +41,12 @@ class ExploreScreen extends StatefulWidget {
     );
   }
 
-  const ExploreScreen._() : super(key: const ValueKey('explore_screen'));
+  const ExploreScreen._()
+      : super(key: const ValueKey('explore_screen'));
+
+  /// Test-visible constructor (private primary ctor is for the route).
+  @visibleForTesting
+  const ExploreScreen.forTest() : this._();
 
   @override
   State<ExploreScreen> createState() => _ExploreScreenState();
@@ -220,7 +225,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     accent: _palette.accent,
                   ),
                   Expanded(
-                    child: controller.isLoading
+                    child: controller.isLoading || controller.session == null
                         ? const Center(child: CircularProgressIndicator())
                         : items.isEmpty
                             ? _EmptyState(controller: controller)
