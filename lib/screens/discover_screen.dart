@@ -4,8 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
+import '../presentation/explore/explore_screen.dart';
 import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/themed_card.dart';
 import '../widgets/themed_options_sheet.dart';
 
@@ -24,6 +26,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   final _innerTube = InnerTubeService.instance;
   List<Track>? _newReleases;
   String? _error;
+  DateTime _lastExplorePushAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _openExplore() {
+    final now = DateTime.now();
+    if (now.difference(_lastExplorePushAt) < const Duration(milliseconds: 600)) {
+      return;
+    }
+    _lastExplorePushAt = now;
+    ExploreScreen.open(context,
+        seed: context.read<MusicProvider>().currentTrack);
+  }
 
   @override
   void initState() {
@@ -64,6 +77,50 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               physics: const BouncingScrollPhysics(),
               slivers: [
                 const SliverToBoxAdapter(child: SizedBox(height: 8)),
+
+                // Explore Stream entry (immersive vertical discovery).
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: GlassSurface(
+                      tier: GlassTier.floating,
+                      borderRadius: 20,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: _openExplore,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 20),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Explore',
+                                        style: GoogleFonts.outfit(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 4),
+                                    Text('Swipe through new music',
+                                        style: GoogleFonts.outfit(
+                                            fontSize: 13,
+                                            color: Colors.white
+                                                .withValues(alpha: 0.6))),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.keyboard_arrow_up_rounded,
+                                  size: 26,
+                                  color: Colors.white.withValues(alpha: 0.7)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
 
                 // Trending Now section
                 if (musicProvider.trendingTracks.isNotEmpty) ...[

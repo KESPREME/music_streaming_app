@@ -30,8 +30,8 @@ class ExploreController extends ChangeNotifier {
     required TasteProfile Function() profileProvider,
     required ExploreSwipeFeedback recordSwipeOutcome,
     required bool Function(String trackId) isCurrentTrack,
-    required bool autoplayEnabled,
     required void Function(bool enabled) onAutoplayChanged,
+    this.autoplayEnabled = true,
     ExploreSession? existingSession,
   })  : _engine = engine,
         _fetchSources = fetchSources,
@@ -40,7 +40,6 @@ class ExploreController extends ChangeNotifier {
         _recordSwipeOutcome = recordSwipeOutcome,
         _isCurrentTrack = isCurrentTrack,
         _onAutoplayChanged = onAutoplayChanged,
-        autoplayEnabled = autoplayEnabled,
         _session = existingSession {
     _settledAt = _session?.active == null ? null : DateTime.now();
   }
@@ -95,13 +94,11 @@ class ExploreController extends ChangeNotifier {
     notifyListeners();
     try {
       final sources = await _fetchSources(seed);
-      if (_session == null) {
-        _session = ExploreSession(
-          sessionId: DateTime.now().millisecondsSinceEpoch,
-          startedAt: DateTime.now(),
-          seed: seed,
-        );
-      }
+      _session ??= ExploreSession(
+        sessionId: DateTime.now().millisecondsSinceEpoch,
+        startedAt: DateTime.now(),
+        seed: seed,
+      );
       final items = await _engine.generate(
         profile: _profileProvider(),
         sources: sources,

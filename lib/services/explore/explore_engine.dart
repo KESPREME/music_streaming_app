@@ -1,6 +1,4 @@
-import 'package:flutter/material.dart';
 import 'package:music_streaming_app/models/track.dart';
-import 'package:music_streaming_app/services/explore/explore_engine.dart';
 import 'package:music_streaming_app/services/explore/explore_policy.dart';
 import 'package:music_streaming_app/services/recommendation/candidate.dart';
 import 'package:music_streaming_app/services/recommendation/candidate_metadata.dart';
@@ -163,6 +161,9 @@ class ExploreEngine {
     ];
   }
 
+  /// Async variant kept for API parity with the controller; affinity
+  /// lookup is synchronous (in-memory graph) so both paths are identical
+  /// in behavior.
   Future<List<ExploreItem>> generate({
     required TasteProfile profile,
     required ExploreSources sources,
@@ -199,7 +200,7 @@ class ExploreEngine {
         continue;
       }
       try {
-        final a = await searchGraph!.affinityFor(track.id);
+        final a = searchGraph!.affinityFor(track.id);
         if (a >= 0.15) graphAffinity[track.id] = a;
       } catch (_) {}
     }
