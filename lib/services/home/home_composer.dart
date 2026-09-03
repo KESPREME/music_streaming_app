@@ -24,16 +24,11 @@ import 'ytm_home_source.dart' show HomeLoadTrace;
 class HomeComposer {
   const HomeComposer({
     this.maxItemsPerSection = 12,
-    this.maxPerArtist = 3,
   });
 
   /// Per-shelf item budget (memory/render cost, spec #12 — not a content
   /// filter).
   final int maxItemsPerSection;
-
-  /// Artist over-exposure cap within one shelf (spec #42). Native shelves
-  /// rarely exceed this anyway.
-  final int maxPerArtist;
 
   HomeFeed? compose({
     required HomeFeed? primary,
@@ -72,14 +67,14 @@ class HomeComposer {
       // 1 track, killing autoplay). Collection-majority shelves
       // (albums/playlists) keep their type; only stray artist cards are
       // dropped there.
-      final songCount =
-          section.items.where((i) => i.contentType == HomeContentType.song).length;
+      final songCount = section.items
+          .where((i) => i.contentType == HomeContentType.song)
+          .length;
       final isSongMajority =
           songCount >= section.items.length / 2 && section.items.isNotEmpty;
 
       final items = <HomeItem>[];
       final sectionSeen = <String>{};
-      final artistCount = <String, int>{};
 
       for (final item in section.items) {
         // Validation gate (spec #8): ONLY identity + title make an item
@@ -121,16 +116,17 @@ class HomeComposer {
           partialRetained++;
         }
 
-        // Artist diversity per shelf (spec #42).
-        final artistKey = _artistKey(item.subtitle);
-        if (artistKey != null) {
-          final count = artistCount[artistKey] ?? 0;
-          if (count >= maxPerArtist) continue;
-          artistCount[artistKey] = count + 1;
+        // Item budget first (spec #12, memory/render cost only — not a
+        // content filter). The artist cap previously ran BEFORE this and
+        // re-curated native shelves 10→3 ("Albums for you" = one artist's
+        // discography is legitimate editorial). Native order is truth:
+        // no artist cap on curated shelves (spec: truth > count).
+        if (items.length >= maxItemsPerSection) {
+          rejected++;
+          continue;
         }
 
         items.add(_normalizeSupport(item));
-        if (items.length >= maxItemsPerSection) break;
       }
 
       if (items.length >= 2) {
@@ -164,11 +160,17 @@ class HomeComposer {
           'items=$totalItems rejected=$rejected sectionLocalDupes=$sectionLocalDupes '
           'partialRetained=$partialRetained typeFiltered=$typeFiltered');
       for (final before in base.sections) {
+        // Collapsed duplicate titles were already accounted (COLLAPSED
+        // loss line above) — the seen-set only contains KEPT titles, so
+        // skip any section whose title isn't in it (i.e. collapsed ones).
+        if (!seenSectionTitles.contains(before.title.toLowerCase().trim())) {
+          continue;
+        }
         final after = sections.where((s) => s.id == before.id).toList();
         if (after.isEmpty) {
           debugPrint('HomeComposer: REMOVED "${before.title}" '
               '(${before.items.length} items) — all items failed '
-              'validation/local-dedupe or fell under the 2-item floor');
+              'validation/type filter or fell under the 2-item floor');
         } else if (after.isNotEmpty &&
             after.first.items.length < before.items.length) {
           debugPrint('HomeComposer: TRIMMED "${before.title}" '
@@ -209,16 +211,5 @@ class HomeComposer {
       );
     }
     return item;
-  }
-
-  /// Artist identity from the subtitle's leading name(s). Runs like
-  /// "Arijit Singh • Single" or "Artist A, Artist B • Album" yield a
-  /// stable key without pretending to be a real artist ID.
-  static String? _artistKey(String subtitle) {
-    if (subtitle.isEmpty) return null;
-    final cut = subtitle.indexOf('•');
-    final namePart = (cut > 0 ? subtitle.substring(0, cut) : subtitle).trim();
-    if (namePart.isEmpty) return null;
-    return namePart.toLowerCase();
   }
 }

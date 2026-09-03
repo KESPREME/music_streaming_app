@@ -325,14 +325,26 @@ void _openArtist(BuildContext context, Track artistTrack) {
 DateTime _lastHomePushAt = DateTime.fromMillisecondsSinceEpoch(0);
 void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
   final now = DateTime.now();
-  if (now.difference(_lastHomePushAt) < const Duration(milliseconds: 600)) {
-    return; // transition still in flight — swallow the double-tap
+  final sinceLast = now.difference(_lastHomePushAt);
+  if (sinceLast < const Duration(milliseconds: 600)) {
+    if (kDebugMode) {
+      debugPrint('HOME_NAV debounced (${sinceLast.inMilliseconds}ms since '
+          'last push) — double-tap swallowed');
+    }
+    return;
   }
   _lastHomePushAt = now;
   try {
-    Navigator.of(context).push(MaterialPageRoute(builder: builder));
+    final navigator = Navigator.of(context);
+    final pushed = navigator.push(MaterialPageRoute(builder: builder));
+    if (kDebugMode) {
+      debugPrint('HOME_NAV pushed route');
+      pushed.whenComplete(() {
+        if (kDebugMode) debugPrint('HOME_NAV route completed');
+      });
+    }
   } on FlutterError catch (e) {
-    if (kDebugMode) debugPrint('HOME_NAV suppressed: ${e.message}');
+    debugPrint('HOME_NAV SUPPRESSED: ${e.message}');
   }
 }
 

@@ -104,22 +104,26 @@ void main() {
       expect(feed.sections.single.items.map((i) => i.id), ['x1', 'x2']);
     });
 
-    test('artist diversity cap within a section', () {
-      final composer = const HomeComposer(maxPerArtist: 2);
+    test('native shelf order preserved even with same-artist repetition '
+        '(no re-curation)', () {
+      const composer = HomeComposer();
       final feed = composer.compose(
         primary: _feed('ytm_home', [
-          _shelf('Repetition', [
+          _shelf('Listen again', [
             _song('s1', 'One', 'Same Artist'),
             _song('s2', 'Two', 'Same Artist'),
-            _song('s3', 'Three', 'Same Artist'), // capped
+            _song('s3', 'Three', 'Same Artist'),
             _song('s4', 'Four', 'Other Artist'),
           ]),
         ]),
         fallback: null,
       );
 
-      expect(feed!.sections.first.items.map((i) => i.title),
-          ['One', 'Two', 'Four']);
+      // The user's history is the user's history — the composer must not
+      // re-curate native editorial shelves (live bug: artist cap trimmed
+      // "Listen again" 12→3 and "Albums for you" 10→3).
+      expect(feed!.sections.first.items.map((i) => i.title).toList(),
+          ['One', 'Two', 'Three', 'Four']);
     });
 
     test('source order preserved, never shuffled', () {

@@ -119,16 +119,27 @@ class RichCandidate {
   }
 }
 
+/// One metadata-junk run (durations, view counts) that must never be an
+/// artist. Shared by every intake path.
+final RegExp _junkDuration = RegExp(r'^\d{1,3}(:\d{2}){1,2}$');
+final RegExp _junkCount = RegExp(
+    r'^[\d,.]+\s*[KMB]?\s*(plays?|views?|streams?|listeners?|monthly listeners?)$',
+    caseSensitive: false);
+bool _isJunkRun(String s) =>
+    _junkDuration.hasMatch(s) || _junkCount.hasMatch(s);
+
 /// Split a display artist string into distinct artists (spec #6).
 /// Conservative: comma-only, trim, cap 4, keep "&"/"x" joined —
 /// "Simon & Garfunkel" and "A x B" must not become fake solo acts.
+/// Metadata junk ("3:44", "222M plays") is dropped — live log showed
+/// "Lynyrd Skynyrd, 222M plays" surfacing as a display artist.
 List<String> parseArtists(String artistName) {
   final raw = artistName.trim();
   if (raw.isEmpty) return const [];
   return raw
       .split(',')
       .map((a) => a.trim())
-      .where((a) => a.isNotEmpty)
+      .where((a) => a.isNotEmpty && !_isJunkRun(a))
       .take(4)
       .toList(growable: false);
 }
