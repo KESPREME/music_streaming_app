@@ -8,7 +8,7 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 187/187 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 235/235 tests green.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
 - State management: `provider` (NOT Riverpod — immutable PlaybackState projection used instead)
@@ -211,6 +211,13 @@ lib/services/recommendation/
 | lib/widgets/home_sections.dart | RailCard, ForYouRow, ArtistPortrait, ParallaxArtwork, ParallaxMediaCarousel, EditorialMoodTile, StaggerIn, homeRailTextBlockHeight |
 | lib/providers/music_provider.dart | God-object facade (~3850 lines) — home feed, quick picks, search attribution, playback |
 | lib/services/recommendation_service.dart | TrackSignal DB + rankTracks + signalFor/topArtistsForPicks |
+| lib/services/explore/explore_policy.dart | ExplorePolicy: batch/refill constants + discovery-tilt ranking config |
+| lib/services/explore/explore_engine.dart | ExploreEngine: pool mapping onto SHARED DeterministicRanker |
+| lib/services/explore/explore_session.dart | ExploreSession: stream, shown-set dedupe, artist-run cap, identity dedupe |
+| lib/services/explore/explore_controller.dart | ExploreController: autoplay-on-settle, generation races, refill, feedback |
+| lib/services/explore/explore_palette.dart | ExplorePaletteCache: 100px decode, cap 30, tone-mapped ambient colors |
+| lib/presentation/explore/explore_screen.dart | ExploreScreen: vertical PageView, glass pages, ambient background |
+| lib/presentation/explore/explore_tokens.dart | ExploreTokens: artwork/typography/ambient constants |
 
 ### Tests
 | File | Covers |
@@ -221,6 +228,11 @@ lib/services/recommendation/
 | test/home_presentation_test.dart | Classifier + planner matrix |
 | test/recommendation_engine_test.dart | QuickPicks + SearchFollowupGraph |
 | test/player_flow_widget_test.dart | Player widget flows (FakeMusicProvider pattern) |
+| test/explore_engine_test.dart | Pool validation, seed floor, cold/warm ranking, determinism, policy |
+| test/explore_session_test.dart | Dedupe, artist-run cap + starvation yield, thresholds |
+| test/explore_controller_test.dart | Autoplay settle, rapid-swipe race, refill, exhaust, restore, feedback |
+| test/explore_palette_test.dart | Cache, neutral fallback, no-decode paths |
+| test/explore_screen_widget_test.dart | Screen states (loading/pages/chips/empty), FakeExploreProvider |
 
 ---
 
@@ -269,18 +281,26 @@ c737dbb nav: GlassTabBar.searchable
 
 ## NEXT STEPS (if resuming)
 
-1. **Logged-in renderer coverage (fixture-gated)**: run logged-in, pull
+1. **Explore live verification (device)**: build+install, open Discover →
+   Explore card, swipe; capture `EXPLORE_SESSION` / `EXPLORE_ITEM` /
+   `EXPLORE_PREFETCH` traces; verify autoplay-on-settle, no double-start,
+   refill before exhaustion, ambient color shifts.
+2. **Explore polish from live run**: skip-vs-dwell threshold tuning
+   (currently 8s), palette tone-map tuning (isBright cutoff 0.18),
+   artwork width on small screens.
+3. **Logged-in renderer coverage (fixture-gated)**: run logged-in, pull
    ParseReport unsupported list + DROPPED/REMOVED/TRIMMED + HOME_UI +
    HOME_LOSS; save redacted JSON as fixture; one parser test per renderer;
    bump parser+schema+ctx versions + cache key per invariant 9.
    Mix-tile identity (`watchEndpoint.playlistId` → playlist type) if shown.
-2. **musicTastebuilderShelfRenderer**: capture fixture, decide parse vs skip.
-4. **Recommendation cache**: RECOMMENDATION_LOAD trace exists; add TTL cache
+4. **musicTastebuilderShelfRenderer**: capture fixture, decide parse vs skip.
+5. **Explore seed entry points**: open Explore from artist/album/mood with
+   explicit seed (screen already accepts `ExploreScreen.open(seed:)`).
+6. **Recommendation cache**: RECOMMENDATION_LOAD trace exists; add TTL cache
    keyed on taste-profile version if refresh cost matters.
-5. **Explanation UI**: CandidateReason already carried; optional UI badge.
-6. **Genre inference**: derive genre/language from artist name patterns or
+7. **Genre inference**: derive genre/language from artist name patterns or
    YTM category metadata when available.
-7. **Landscape/tablet**: contentWidth fraction system already responsive;
+8. **Landscape/tablet**: contentWidth fraction system already responsive;
    consider 3-col grid at >600dp.
 
 ---
