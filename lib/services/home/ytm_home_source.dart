@@ -65,7 +65,6 @@ class YouTubeMusicHomeSource {
 
   Future<HomeFeed?> _parse(Map<String, dynamic> data, int perShelfLimit) async {
     try {
-      final sections = <HomeSection>[];
       final root = _findSectionListRoot(data);
       if (root == null) {
         lastReport = ParseReport(
@@ -83,6 +82,17 @@ class YouTubeMusicHomeSource {
         );
         return null;
       }
+      return await _parseSectionList(root, perShelfLimit);
+    } catch (e) {
+      if (kDebugMode) debugPrint('YTMHomeSource: parse error: $e');
+      return null;
+    }
+  }
+
+  Future<HomeFeed?> _parseSectionList(
+      Map<String, dynamic> root, int perShelfLimit) async {
+    try {
+      final sections = <HomeSection>[];
 
       // ── Stage A: discovery ───────────────────────────────────────────────
       // Walk every node under the section list; collect candidate shelves
@@ -218,7 +228,14 @@ class YouTubeMusicHomeSource {
         var rejected = 0, dupes = 0, partial = 0;
 
         for (final wrapper in carousel) {
-          if (items.length >= perShelfLimit) break;
+          if (items.length >= perShelfLimit) {
+            // Per-shelf render budget (spec #12): the remainder is an
+            // accounted trim, NOT silent loss — the invariant
+            // raw = retained + rejected + dupes must hold.
+            rejected++;
+            reasons.add('per-shelf budget trim (>$perShelfLimit items)');
+            continue;
+          }
           if (wrapper is! Map<String, dynamic>) continue;
 
           HomeItem? item;
@@ -667,6 +684,15 @@ class YouTubeMusicHomeSource {
       final yearMatch = RegExp(r'^(19|20)\d{2}$').firstMatch(seg);
       if (yearMatch != null) {
         published = seg;
+      } else if (
+          // Live bug: durations ("3:44") and view counts ("106M plays")
+          // leaked into artist lists ("Tame Impala, Deadbeat, 3:44").
+          RegExp(r'^\d{1,3}:\d{2}(:\d{2})?$').hasMatch(seg) ||
+              RegExp(
+                r'^[\d,.]+\s*[KMB]?\s*(plays?|views?|streams?|listeners?|monthly listeners?)$',
+                caseSensitive: false,
+              ).hasMatch(seg)) {
+        continue; // metadata, not artists
       } else if (seg.toLowerCase().startsWith('album') ||
           seg.toLowerCase().startsWith('single') ||
           seg.toLowerCase().startsWith('ep') ||

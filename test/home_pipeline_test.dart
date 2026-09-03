@@ -353,11 +353,12 @@ void main() {
           HomeDiagnostics.isDegraded(previous: thin, next: thinner), isFalse);
     });
 
-    test('composer section budget drops overflow with explicit accounting', () {
-      final composer = const HomeComposer(maxSections: 4);
+    test('load-all: every valid shelf survives compose (no section budget)',
+        () {
+      const composer = HomeComposer();
       final feed = composer.compose(
         primary: _feed('ytm_home', [
-          for (var s = 0; s < 10; s++)
+          for (var s = 0; s < 15; s++)
             _shelf(
               'Shelf $s',
               List.generate(3, (i) => _song('s$s-$i', 'T$s-$i', 'A$s$i')),
@@ -366,7 +367,27 @@ void main() {
         fallback: null,
       );
 
-      expect(feed!.sections.length, 4);
+      expect(feed!.sections.length, 15);
+      expect(
+        feed.sections.map((s) => s.title),
+        [for (var s = 0; s < 15; s++) 'Shelf $s'],
+      );
+    });
+
+    test('per-shelf item budget still caps render cost', () {
+      const composer = HomeComposer(maxItemsPerSection: 4);
+      final feed = composer.compose(
+        primary: _feed('ytm_home', [
+          _shelf(
+            'Long shelf',
+            List.generate(10, (i) => _song('l$i', 'T$i', 'A$i')),
+          ),
+        ]),
+        fallback: null,
+      );
+
+      expect(feed!.sections.length, 1);
+      expect(feed.sections.first.items.length, 4);
     });
   });
 

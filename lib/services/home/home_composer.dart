@@ -6,8 +6,12 @@ import 'ytm_home_source.dart' show HomeLoadTrace;
 /// Composes the final Home feed from a primary (curated) source plus local
 /// personalization overlays.
 ///
-/// Rules (v5, spec #10/#11/#42):
+/// Rules (v6, spec #10/#11/#42):
 /// - preserve native source order and semantics
+/// - LOAD ALL valid sections: no section budget. Logged-in feeds run
+///   longer than anonymous ones (personalized mixes, library shelves);
+///   amputating them at an arbitrary cap is what deleted categories.
+///   Per-shelf item budgets + the 2-item floor bound render cost instead.
 /// - SECTION-LOCAL dedupe only: the same entity may legitimately appear in
 ///   multiple native shelves ("Top Picks" and "Trending" may both carry a
 ///   hit song). Global cross-section dedupe collapsed every later shelf
@@ -21,7 +25,6 @@ class HomeComposer {
   const HomeComposer({
     this.maxItemsPerSection = 12,
     this.maxPerArtist = 3,
-    this.maxSections = 12,
   });
 
   /// Per-shelf item budget (memory/render cost, spec #12 — not a content
@@ -31,10 +34,6 @@ class HomeComposer {
   /// Artist over-exposure cap within one shelf (spec #42). Native shelves
   /// rarely exceed this anyway.
   final int maxPerArtist;
-
-  /// Intentional Home-section budget (spec #17): first-page composition,
-  /// not a parser filter. 12 shelves ≈ 10-12 screens of listening.
-  final int maxSections;
 
   HomeFeed? compose({
     required HomeFeed? primary,
@@ -48,7 +47,7 @@ class HomeComposer {
     var sectionLocalDupes = 0;
     var partialRetained = 0;
 
-    for (final section in base.sections.take(maxSections)) {
+    for (final section in base.sections) {
       final items = <HomeItem>[];
       final sectionSeen = <String>{};
       final artistCount = <String, int>{};
@@ -117,18 +116,9 @@ class HomeComposer {
           'HomeComposer: source=${base.source} sections=${base.sections.length}->${sections.length} '
           'items=$totalItems rejected=$rejected sectionLocalDupes=$sectionLocalDupes '
           'partialRetained=$partialRetained');
-      for (final before in base.sections.skip(maxSections)) {
-        debugPrint(
-            'HomeComposer: DROPPED "${before.title}" — section budget ($maxSections)');
-        HomeLoadTrace.loss(
-          stage: 'composer',
-          shelf: before.title,
-          reason: 'section budget ($maxSections)',
-        );
-      }
       for (final before in base.sections) {
         final after = sections.where((s) => s.id == before.id).toList();
-        if (after.isEmpty && base.sections.indexOf(before) < maxSections) {
+        if (after.isEmpty) {
           debugPrint('HomeComposer: REMOVED "${before.title}" '
               '(${before.items.length} items) — all items failed '
               'validation/local-dedupe or fell under the 2-item floor');

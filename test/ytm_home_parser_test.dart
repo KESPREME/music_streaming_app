@@ -515,5 +515,65 @@ void main() {
       expect(feed.heroCandidate, isNotNull);
       expect(feed.heroCandidate!.id, 'BddP6PYotfs');
     });
+
+    test('subtitle segments for duration/views are not artists (live bug)',
+        () async {
+      Map<String, dynamic> twoRow(
+              String title, String videoId, List<String> subRuns) =>
+          {
+            'musicTwoRowItemRenderer': {
+              'title': {
+                'runs': [
+                  {'text': title}
+                ]
+              },
+              'subtitle': {
+                'runs': [
+                  for (final r in subRuns) {'text': r}
+                ]
+              },
+              'navigationEndpoint': {
+                'watchEndpoint': {'videoId': videoId}
+              },
+              'thumbnailRenderer': {
+                'musicThumbnailRenderer': {
+                  'thumbnail': {
+                    'thumbnails': [
+                      {'url': 'https://lh3.googleusercontent.com/q=w544-h544'}
+                    ]
+                  }
+                }
+              }
+            }
+          };
+      final source = _source();
+      final feed = (await source.parseResponse(_homeResponseFixture(
+        extraSections: [
+          {
+            'musicCarouselShelfRenderer': {
+              'header': {
+                'musicCarouselShelfBasicHeaderRenderer': {
+                  'title': {
+                    'runs': [
+                      {'text': 'Noisy subtitles'}
+                    ]
+                  }
+                }
+              },
+              'contents': [
+                twoRow('Loser', 'GQgLDk9sq00',
+                    ['Tame Impala', ' • ', 'Deadbeat', ' • ', '3:44']),
+                twoRow('Veridis Quo', 'qe8Q7mjxji1',
+                    ['Daft Punk', ' • ', '106M plays']),
+              ],
+            }
+          },
+        ],
+      )))!;
+      final shelf =
+          feed.sections.singleWhere((s) => s.title == 'Noisy subtitles');
+      expect(shelf.items[0].artists, ['Tame Impala', 'Deadbeat']);
+      expect(shelf.items[1].artists, ['Daft Punk']);
+    });
   });
 }
