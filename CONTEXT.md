@@ -216,8 +216,9 @@ lib/services/recommendation/
 | lib/services/explore/explore_session.dart | ExploreSession: stream, shown-set dedupe, artist-run cap, identity dedupe |
 | lib/services/explore/explore_controller.dart | ExploreController: autoplay-on-settle, generation races, refill, feedback |
 | lib/services/explore/explore_palette.dart | ExplorePaletteCache: 100px decode, cap 30, tone-mapped ambient colors |
-| lib/presentation/explore/explore_screen.dart | ExploreScreen: vertical PageView, glass pages, ambient background |
-| lib/presentation/explore/explore_tokens.dart | ExploreTokens: artwork/typography/ambient constants |
+| lib/presentation/explore/explore_screen.dart | ExploreScreen: deck pages (peeks/metadata/rail), ambient background |
+| lib/presentation/explore/explore_tokens.dart | ExploreTokens: artwork/typography/ambient + deck chrome constants |
+| lib/presentation/explore/explore_layout.dart | ExploreLayout: pure viewport→spec planner, reason confidence gate |
 
 ### Tests
 | File | Covers |
@@ -233,7 +234,7 @@ lib/services/recommendation/
 | test/explore_controller_test.dart | Autoplay settle, rapid-swipe race, refill, exhaust, restore, feedback |
 | test/explore_palette_test.dart | Cache, neutral fallback, no-decode paths |
 | test/explore_screen_widget_test.dart | Screen states (loading/pages/chips/empty), FakeExploreProvider |
-
+| test/explore_layout_test.dart | Planner fit on 360/390/412/tablet, determinism, reason gate |
 ---
 
 ## COMMIT LOG (this branch, newest last)
@@ -282,12 +283,13 @@ c737dbb nav: GlassTabBar.searchable
 ## NEXT STEPS (if resuming)
 
 1. **Explore live verification (device)**: build+install, open Discover →
-   Explore card, swipe; capture `EXPLORE_SESSION` / `EXPLORE_ITEM` /
-   `EXPLORE_PREFETCH` traces; verify autoplay-on-settle, no double-start,
-   refill before exhaustion, ambient color shifts.
-2. **Explore polish from live run**: skip-vs-dwell threshold tuning
-   (currently 8s), palette tone-map tuning (isBright cutoff 0.18),
-   artwork width on small screens.
+   Explore card, swipe; capture `EXPLORE_LOAD` / `EXPLORE_PLAY` /
+   `EXPLORE_SKIP` / `EXPLORE_PREFETCH` traces; verify deck peeks render,
+   pill hidden on-route and restored on exit, artist tap opens detail,
+   autoplay-on-settle, refill before exhaustion, ambient color shifts.
+2. **Explore polish from live run**: deck spacing on small screens
+   (planner drops prev-peek <~500dp pages), reason floor 0.35 tuning,
+   palette tone-map (isBright cutoff 0.18), artwork 0.76 fraction feel.
 3. **Logged-in renderer coverage (fixture-gated)**: run logged-in, pull
    ParseReport unsupported list + DROPPED/REMOVED/TRIMMED + HOME_UI +
    HOME_LOSS; save redacted JSON as fixture; one parser test per renderer;
