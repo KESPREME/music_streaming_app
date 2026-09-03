@@ -3,39 +3,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/presentation/explore/explore_layout.dart';
 
 void main() {
-  group('ExploreLayout.plan', () {
-    test('390x844 phone: artwork in 0.72-0.82 band, fits', () {
+  group('ExploreLayout.plan stream', () {
+    test('390 phone: far peeks visible, diagonal offsets', () {
       final spec = ExploreLayout.plan(const Size(390, 700));
-      final contentW = 390 - 40;
-      expect(spec.artworkSize / contentW, inExclusiveRange(0.71, 0.83));
-      final total = spec.artworkSize + 132 + 56 + 64 + 46 +
-          (spec.showPrevPeek ? 56 : 0);
+      expect(spec.showFar, isTrue);
+      expect(spec.slotDx, [56, 28, 0, -28, -56]);
+      expect(spec.activeArt, 76);
+      final total = spec.activeRowH + 2 * spec.nearRowH + 2 * spec.farRowH +
+          48.0 + 28.0 + 7 * 12.0 + 24.0;
       expect(total, lessThanOrEqualTo(700));
-      expect(spec.showPrevPeek, isTrue);
     });
-    test('360x640 small phone: fits, drops prev peek first', () {
+    test('360x640 small: far peeks drop, fits', () {
       final spec = ExploreLayout.plan(const Size(360, 457));
-      final total = spec.artworkSize + 132 + 56 + 64 + 46 +
-          (spec.showPrevPeek ? 56 : 0);
+      expect(spec.showFar, isFalse);
+      final total = spec.activeRowH + 2 * spec.nearRowH +
+          48.0 + 28.0 + 5 * 12.0 + 24.0;
       expect(total, lessThanOrEqualTo(457));
-      expect(spec.showPrevPeek, isFalse);
-      expect(spec.artworkSize, greaterThanOrEqualTo(150));
     });
-    test('412x915 large phone: bigger artwork, fits', () {
-      final spec = ExploreLayout.plan(const Size(412, 760));
-      expect(spec.artworkSize, greaterThan(260));
-      expect(spec.showPrevPeek, isTrue);
-    });
-    test('tablet 820x1180: artwork capped, centered column bounded', () {
+    test('tablet: column bounded', () {
       final spec = ExploreLayout.plan(const Size(820, 1000));
-      expect(spec.artworkSize, lessThanOrEqualTo(430));
       expect(spec.contentMaxWidth, 560);
+      expect(spec.showFar, isTrue);
     });
-    test('deterministic: same viewport twice → identical spec', () {
+    test('deterministic', () {
       final a = ExploreLayout.plan(const Size(390, 700));
       final b = ExploreLayout.plan(const Size(390, 700));
-      expect(a.artworkSize, b.artworkSize);
-      expect(a.showPrevPeek, b.showPrevPeek);
+      expect(a.slotDx, b.slotDx);
+      expect(a.showFar, b.showFar);
     });
   });
   group('shouldShowReason', () {
