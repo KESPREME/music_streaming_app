@@ -36,6 +36,7 @@ import '../services/spotify_service.dart';
 import '../services/local_music_service.dart';
 import '../services/network_service.dart';
 import '../services/innertube/innertube_service.dart';
+import '../services/auth_service.dart';
 import '../services/stream_resolution_service.dart';
 import '../services/downloads/download_manager.dart';
 import '../services/home/home_diagnostics.dart';
@@ -52,10 +53,13 @@ import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
 import '../services/lyrics/lyrics_service.dart'; // Multi-provider lyrics service
 import '../services/recommendation_service.dart'; // AI recommendation engine
+import '../services/recommendation/ranker.dart';
+import '../services/recommendation/taste_profile.dart';
+import '../services/recommendation/candidate_metadata.dart';
 import '../services/recommendation/search_followup_graph.dart';
 import '../services/recommendation/search_followup_store.dart';
 import '../services/recommendation/quick_picks_engine.dart';
-import '../services/recommendation/section_engines.dart';
+import '../services/recommendation/section_engines_v2.dart';
 import '../models/lyrics_entry.dart'; // Lyrics data model
 // import '../services/firestore_service.dart'; // Uncomment if used
 
@@ -157,6 +161,20 @@ class MusicProvider
   static const _searchFollowupWindow = Duration(minutes: 10);
   DateTime? _searchQueryAt;
 
+  /// Recent search queries for ranking features (spec #61), capped.
+  final List<String> _recentSearchQueries = <String>[];
+  static const _maxSearchQueries = 20;
+
+  void _rememberSearchQuery(String raw) {
+    final query = raw.trim().toLowerCase();
+    if (query.isEmpty) return;
+    _recentSearchQueries.remove(query);
+    _recentSearchQueries.add(query); // newest last
+    while (_recentSearchQueries.length > _maxSearchQueries) {
+      _recentSearchQueries.removeAt(0);
+    }
+  }
+
   HomeFeed? _homeFeed;
   HomeFeed? get homeFeed => _homeFeed;
 
@@ -164,6 +182,12 @@ class MusicProvider
   /// chart + native feed; deterministic, no randomization.
   List<Track> get quickPicks => _quickPicks;
   List<Track> _quickPicks = [];
+
+  /// Ranked candidates with their explainable reasons (spec: explanation
+  /// UI). Index-aligned with nothing — match via [QuickPickCandidate.track].
+  List<QuickPickCandidate> get quickPickCandidates =>
+      List.unmodifiable(_quickPickCandidates);
+  List<QuickPickCandidate> _quickPickCandidates = [];
 
   /// Cache-first: instant snapshot when available, background refresh when
   /// stale. Concurrent callers coalesce in the repository.
@@ -175,6 +199,9 @@ class MusicProvider
 
   Future<void> refreshHomeFeed() async {
     final previous = _homeFeed;
+    // Controlled rotation (spec #37/#38): explicit refresh advances the
+    // generation so exposure penalties open slots for unseen candidates.
+    _quickPicksGeneration++;
     final feed = await _homeRepository.refresh();
     if (kDebugMode)
       HomeDiagnostics.logRefreshDiff(previous: previous, next: feed);
@@ -188,6 +215,18 @@ class MusicProvider
     debugPrint('HomeDiagnostics: cache cleared, requesting fresh feed');
     await refreshHomeFeed();
   }
+
+  /// Exposure memory + refresh generation for controlled Quick Picks
+  /// rotation (spec #35-38).
+  final ExposureLedger _quickPicksExposure = ExposureLedger();
+  int _quickPicksGeneration = 0;
+
+  /// Debug/diagnostics version (spec #67): grows with profile evidence.
+  int get tasteProfileVersion => _buildTasteProfile().profileVersion;
+
+  /// Current refresh generation (spec #37) — UI can derive honest
+  /// deterministic variation (e.g. hero shelf rotation) from it.
+  int get quickPicksGeneration => _quickPicksGeneration;
 
   void _publishHomeFeed(HomeFeed? raw) {
     // Composer: validation gate + cross-section dedupe + artist diversity.
@@ -203,7 +242,7 @@ class MusicProvider
   }
 
   /// Generate Quick Picks from the composed feed + local signals +
-  /// chart data (spec #2A/#17). Deterministic; no randomization.
+  /// chart data (Recommendation Engine 2.0). Deterministic; no randomization.
   void _generateQuickPicks(HomeFeed feed) {
     final nativeTracks = feed.sections
         .expand((s) => s.items)
@@ -220,29 +259,81 @@ class MusicProvider
             ))
         .toList();
 
+    // Chart tracks carry their chart position — the only legitimate
+    // numeric popularity signal we receive (popularity prior, spec #19).
+    final chartWithRank = _chartRankedTracks();
     final picks = _quickPicksEngine.generate(
       nativeTracks: nativeTracks,
-      chartTracks: _trendingTracks,
+      chartTracks: chartWithRank,
       favorites: _likedSongs,
       recentlyPlayed: _recentlyPlayed,
       newReleases: _newReleases,
+      profile: _buildTasteProfile(),
+      searchQueries: List.unmodifiable(_recentSearchQueries),
+      generation: _quickPicksGeneration,
+      exposure: _quickPicksExposure,
       limit: 8,
     );
     if (picks.isEmpty) return;
+    _quickPickCandidates = picks;
     _quickPicks = picks.map((c) => c.track).toList();
+    // Record what was actually shown so the next generation rotates
+    // (spec #35/#38). Without this the ledger stays empty and picks
+    // repeat forever.
+    _quickPicksExposure.recordGeneration(
+        _quickPicksGeneration, picks.map((c) => c.trackId));
     if (kDebugMode) {
       debugPrint('QUICK_PICKS: ${_quickPicks.length} picks generated, '
           'first="${_quickPicks.first.trackName}"');
     }
   }
 
+  /// Chart list with position metadata for popularity normalization.
+  /// Falls back to the trending cache; never fabricates ranks.
+  List<Track> _chartRankedTracks() => _fullTrendingTracks;
+
+  /// Explicit rich taste profile (spec #9) built from local signals,
+  /// favorites and search intent. Deterministic.
+  TasteProfile _buildTasteProfile() {
+    final favoriteArtists = <String>{
+      for (final track in _likedSongs)
+        if (track.artistName.trim().isNotEmpty) track.artistName.trim(),
+    }.toList();
+    return TasteProfile.build(
+      events: _recommendationService.eventViews(),
+      favoriteArtists: favoriteArtists,
+      searchQueries: _recentSearchQueries,
+    );
+  }
+
   Future<void> fetchNewReleases({bool forceRefresh = false}) async {
     if (!forceRefresh && _newReleases.isNotEmpty) return;
     if (_isOfflineMode || !_networkService.isConnected) return;
     try {
-      final releases = await _innerTubeService.getNewReleases(limit: 12);
-      _newReleases = releases;
+      final releases = await _innerTubeService.getNewReleases(limit: 24);
+      // Rank by affinity + freshness (spec #42): a new release from a
+      // favorite artist is highly visible; validation drops staleness.
+      final ranked = NewReleasesEngineV2().generate(
+        releases: [
+          for (final track in releases)
+            RichCandidate.fromTrack(
+              trackId: track.id,
+              title: track.trackName,
+              artistName: track.artistName,
+              source: 'new_release', // trusted new-releases shelf
+              genre: track.genre,
+              albumName: track.albumName,
+              durationMs: track.durationMs,
+            ),
+        ],
+        profile: _buildTasteProfile(),
+        limit: 12,
+      );
+      _newReleases = ranked.map((c) => c.track).toList();
       _bumpHomeContent();
+      // New arrival → recompute picks with fresh candidate pool (spec
+      // #36: variation from changing pools, not randomization).
+      if (_homeFeed != null) _generateQuickPicks(_homeFeed!);
       notifyListeners();
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: New releases failed: $e');
@@ -250,10 +341,16 @@ class MusicProvider
   }
 
   /// Moods & Genres category tracks (real InnerTube params, cached).
-  Future<List<Track>> fetchMoodTracks(String params) async {
+  /// Tracks carry the mood title as a genre tag — the only genre evidence
+  /// YTM gives us without login; feeds genre affinity (spec: genre wiring).
+  Future<List<Track>> fetchMoodTracks(String params, {String? genre}) async {
     if (_isOfflineMode || !_networkService.isConnected) return [];
     try {
-      return await _innerTubeService.getMoodTracks(params, limit: 30);
+      final tracks = await _innerTubeService.getMoodTracks(params, limit: 30);
+      if (genre == null || genre.isEmpty) return tracks;
+      return tracks
+          .map((t) => t.genre == null ? t.copyWith(genre: genre) : t)
+          .toList();
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: mood tracks failed: $e');
       return [];
@@ -696,7 +793,22 @@ class MusicProvider
     _paletteService.isCurrentTrackImpl = (id) => _currentTrack?.id == id;
     _paletteService.addListener(notifyListeners);
     _downloads.addListener(notifyListeners);
+    // Attach auth-flip session reset (owned handle; detached in dispose).
+    _authSessionReset;
     _initialize();
+  }
+
+  /// Session reset handle for YouTube login/logout flips (owned).
+  late final AuthSessionReset _authSessionReset = AuthSessionReset(
+    onIdentityFlipped: _refreshFeedForNewIdentity,
+  );
+
+  /// Pull the feed for the new identity when online and a feed already
+  /// exists; otherwise the next load picks it up.
+  Future<void> _refreshFeedForNewIdentity() async {
+    if (_homeFeed != null && _networkService.isConnected && !_isOfflineMode) {
+      await refreshHomeFeed();
+    }
   }
 
   Future<void> _initialize() async {
@@ -3371,14 +3483,24 @@ class MusicProvider
       return _fullTrendingTracks;
     }
     try {
-      // Use InnerTube for trending tracks
-      _fullTrendingTracks =
-          await _innerTubeService.getTrendingTracks(limit: 20);
+      // Use InnerTube for trending tracks (trusted chart source). The
+      // v2 engine validates + dedupes; NO taste profile involved (spec
+      // #48: personal favorites never become Trending).
+      final chart = await _innerTubeService.getTrendingTracks(limit: 20);
+      final picked = TrendingEngineV2().generate(
+        regionalChart: chart,
+        globalChart: const [],
+        limit: 20,
+      );
+      _fullTrendingTracks = picked.map((c) => c.track).toList();
       _cachedTracks[k] = _fullTrendingTracks;
       _capCache(_cachedTracks, 60);
       _discoveryCacheTimes[k] = now;
       _trendingTracks = _fullTrendingTracks.take(5).toList();
       _bumpHomeContent();
+      // Chart arrival → recompute picks so the popularity prior is real
+      // (spec #36/#19) instead of leaving native-only filler.
+      if (_homeFeed != null) _generateQuickPicks(_homeFeed!);
       notifyListeners();
       return _fullTrendingTracks;
     } catch (e) {
@@ -3396,6 +3518,8 @@ class MusicProvider
     // Spec #7: remember the query for play-followup attribution.
     _pendingSearchQuery = query.trim();
     _searchQueryAt = DateTime.now();
+    // Spec #61: search intent feeds Quick Picks ranking.
+    _rememberSearchQuery(query);
     // Search using the appropriate service based on current music source
     if (_isOfflineMode && !_networkService.isConnected) {
       _errorMessage = "Offline: Cannot perform search.";
@@ -3741,10 +3865,14 @@ class MusicProvider
   }
 
   // --- Dispose ---
+  bool _disposed = false;
+
   @override
   void dispose() {
     debugPrint('MusicProvider: Disposing...');
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this); // Stop lifecycle updates
+    _authSessionReset.dispose();
 
     // FIX: Cancel all audio subscriptions to prevent memory leaks
     for (final sub in _audioSubscriptions) {
@@ -3775,6 +3903,9 @@ class MusicProvider
   // here.
   @override
   void notifyListeners() {
+    // Unawaited async paths (init, local-music scan) can outlive dispose;
+    // notifying a dead controller crashes. Drop late notifications.
+    if (_disposed) return;
     _playback.projectFromProvider(this);
     super.notifyListeners();
   }
@@ -3879,6 +4010,36 @@ class _RetryOperation {
   _RetryOperation(this.description, this.execute);
 }
 
+/// Owns the YouTube-identity flip side effect: login/logout changes the
+/// session, and the player pipeline binds visitorData + signed stream URLs
+/// to one session. Without a reset, /player receives login cookies with a
+/// stale anonymous visitorData (or vice versa) and rejects playback while
+/// browse — which needs only cookies — keeps working.
+///
+/// Extracted from MusicProvider (not nested in it) so the behavior is
+/// unit-testable without constructing the provider and its init storm.
+/// The provider owns one instance and detaches it in dispose().
+class AuthSessionReset {
+  AuthSessionReset({required this.onIdentityFlipped})
+      : _wasLoggedIn = AuthService().isLoggedIn {
+    AuthService().addListener(_onAuthChanged);
+  }
+
+  final Future<void> Function() onIdentityFlipped;
+  bool _wasLoggedIn;
+
+  void _onAuthChanged() {
+    final loggedIn = AuthService().isLoggedIn;
+    if (loggedIn == _wasLoggedIn) return;
+    _wasLoggedIn = loggedIn;
+    InnerTubeService.instance.resetSession();
+    StreamResolutionService.instance.clearCache();
+    unawaited(onIdentityFlipped());
+  }
+
+  void dispose() => AuthService().removeListener(_onAuthChanged);
+}
+
 /// Bridges RecommendationService's read-only signal view to the
 /// QuickPicksEngine's expected TrackSignal shape (spec #15: engine must not
 /// reach into the service's private cache).
@@ -3904,4 +4065,7 @@ class _QuickPicksSignalAdapter implements QuickPicksSignalProvider {
   @override
   List<String> topArtists({int limit = 10}) =>
       _service.topArtistsForPicks(limit: limit);
+
+  @override
+  List<String> topGenres({int limit = 5}) => _service.topGenres(limit: limit);
 }

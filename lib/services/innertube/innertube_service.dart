@@ -228,9 +228,16 @@ class InnerTubeService {
 
     // Muzo parity: anonymous requests carry a consent cookie; without it
     // google can serve an EU-consent-gated degraded surface.
-    final authHeaders = AuthService().getHeaders();
-    if (authHeaders.isNotEmpty) {
-      headers.addAll(authHeaders);
+    // Login-bound headers (Cookie + SAPISIDHASH) attach ONLY to the
+    // session-bound webRemix client. The fallback ladder (visionos /
+    // androidVr / tvEmbedded) is documented token-free/login-free — sending
+    // login cookies there gets player 400s while browse keeps working.
+    final sessionHeaders = InnerTubeService.sessionHeadersFor(
+      clientType,
+      AuthService().getHeaders(),
+    );
+    if (sessionHeaders.isNotEmpty) {
+      headers.addAll(sessionHeaders);
     } else if (cookie != null && clientType == YouTubeClientType.webRemix) {
       // Legacy/Manual cookie fallback (if AuthService specific logic not used)
       headers['Cookie'] = cookie!;
@@ -239,6 +246,18 @@ class InnerTubeService {
     }
 
     return headers;
+  }
+
+  /// Pure auth-attach policy (unit-testable seam): session-bound clients
+  /// get the login headers; login-free ladder clients never do, so a
+  /// logged-in request degrades to exactly the anonymous ladder behavior.
+  @visibleForTesting
+  static Map<String, String> sessionHeadersFor(
+    YouTubeClientType clientType,
+    Map<String, String> authHeaders,
+  ) {
+    if (clientType == YouTubeClientType.webRemix) return authHeaders;
+    return const {};
   }
 
   /// Search for artists
@@ -593,11 +612,16 @@ class InnerTubeService {
       if (poToken != null) 'serviceIntegrityDimensions': {'poToken': poToken},
     });
 
-    final response = await _httpClient.post(
-      Uri.parse('$_apiUrl/player?prettyPrint=false'),
-      headers: _buildHeaders(clientType: clientType),
-      body: body,
-    );
+    // Bounded: a stalled player POST must degrade to the fallback ladder
+    // (or an audible error), never an eternal spinner. Callers already
+    // catch and continue on failure.
+    final response = await _httpClient
+        .post(
+          Uri.parse('$_apiUrl/player?prettyPrint=false'),
+          headers: _buildHeaders(clientType: clientType),
+          body: body,
+        )
+        .timeout(const Duration(seconds: 15));
 
     if (response.statusCode != 200) {
       throw Exception('Player request failed: ${response.statusCode}');
@@ -627,8 +651,10 @@ class InnerTubeService {
           .firstMatch(iframe.body)
           ?.group(1);
       if (hashMatch == null) return null;
-      final playerJs = await _httpClient.get(Uri.parse(
-          'https://www.youtube.com/s/player/$hashMatch/player_ias.vflset/en_GB/base.js'));
+      final playerJs = await _httpClient
+          .get(Uri.parse(
+              'https://www.youtube.com/s/player/$hashMatch/player_ias.vflset/en_GB/base.js'))
+          .timeout(const Duration(seconds: 8));
       final stsMatch =
           RegExp(r'signatureTimestamp\s*=\s*(\d+)').firstMatch(playerJs.body);
       if (stsMatch == null) return null;
@@ -641,6 +667,18 @@ class InnerTubeService {
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: sigTimestamp failed: $e');
       return null;
+    }
+  }
+
+  /// Drop session-bound state after a login/logout flip. visitorData is
+  /// captured once per session; a stale anonymous visitorData sent with
+  /// login cookies (or vice versa) makes /player reject playback while
+  /// browse keeps working. The next request re-captures from the live
+  /// session. Frozen player logic untouched — this only clears the cache.
+  void resetSession() {
+    visitorData = null;
+    if (kDebugMode) {
+      debugPrint('InnerTubeService: session reset (auth flip)');
     }
   }
 
@@ -661,12 +699,16 @@ class InnerTubeService {
   Future<void> _ensureVisitorData() async {
     if (visitorData != null) return;
     try {
-      final response = await _httpClient.post(
-        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
-        headers: _buildHeaders(),
-        body: jsonEncode(
-            {'context': _buildContext(), 'browseId': 'FEmusic_home'}),
-      );
+      final response = await _httpClient
+          .post(
+            Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+            headers: _buildHeaders(),
+            body: jsonEncode(
+                {'context': _buildContext(), 'browseId': 'FEmusic_home'}),
+          )
+          // Unbounded POSTs stall app start forever on hostile networks;
+          // a miss just means the next call retries (callers tolerate null).
+          .timeout(const Duration(seconds: 12));
       if (response.statusCode == 200) {
         _captureVisitorData(jsonDecode(response.body));
       }
@@ -705,15 +747,20 @@ class InnerTubeService {
             debugPrint('InnerTubeService: stream via webRemix+poToken');
             return '$url${sep}pot=${Uri.encodeComponent(pots.streaming)}';
           }
+          // Visible fallthrough: OK status but cipher-only formats (no
+          // plain url) — the ladder is next, not a silent mystery.
+          debugPrint('InnerTubeService: webRemix+poToken OK but no plain '
+              'stream url (cipher-only?) for $videoId');
+        } else {
+          debugPrint('InnerTubeService: webRemix+poToken OK but no '
+              'streamingData for $videoId');
         }
       } else {
         debugPrint(
             'InnerTubeService: webRemix+poToken not OK: ${status?['status']} ${status?['reason']}');
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('InnerTubeService: webRemix+poToken failed: $e');
-      }
+      debugPrint('InnerTubeService: webRemix+poToken failed: $e');
     }
 
     // FALLBACK ladder (token-less; usually bot-gated, kept for rotation waves
@@ -1577,7 +1624,12 @@ class InnerTubeService {
       }
 
       final tracks = _parseHomeResults(jsonDecode(response.body), limit);
-      return tracks;
+      if (tracks.isNotEmpty) return tracks;
+      // Charts sometimes serve music-video/playlist shelves first (all
+      // VL/UC ids → skipped by _parseHomeResults). Walk every shelf and
+      // keep real songs (11-char videoId) from anywhere in the payload
+      // before giving up — "Trending" must not silently be empty.
+      return _songsFromAllShelves(jsonDecode(response.body), limit);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Trending error: $e');
@@ -1588,6 +1640,43 @@ class InnerTubeService {
 
   void dispose() {
     _httpClient.close();
+  }
+
+  /// Deep walk of a browse payload collecting ONLY real songs (11-char
+  /// videoId, no browse-prefix ids) from every shelf, in source order.
+  /// Used when the standard first-shelf parse yields nothing (charts that
+  /// lead with music-video/playlist shelves).
+  List<Track> _songsFromAllShelves(Map<String, dynamic> data, int limit) {
+    final tracks = <Track>[];
+    final seen = <String>{};
+    void walk(dynamic node) {
+      if (tracks.length >= limit) return;
+      if (node is List) {
+        for (final child in node) {
+          walk(child);
+        }
+        return;
+      }
+      if (node is! Map<String, dynamic>) return;
+      final responsive = node['musicResponsiveListItemRenderer'];
+      if (responsive is Map<String, dynamic>) {
+        final track = _parseTrackFromRenderer(responsive);
+        if (track != null &&
+            track.id.length == 11 &&
+            seen.add(track.id)) {
+          tracks.add(track);
+        }
+        return;
+      }
+      node.values.forEach(walk);
+    }
+
+    walk(data);
+    if (kDebugMode && tracks.isNotEmpty) {
+      debugPrint(
+          'InnerTubeService: charts deep-walk recovered ${tracks.length} songs');
+    }
+    return tracks;
   }
 }
 
