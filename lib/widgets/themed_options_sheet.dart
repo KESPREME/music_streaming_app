@@ -28,6 +28,7 @@ class ThemedOptionsSheet extends StatelessWidget {
     String? playlistId,
     bool isInQueueContext = false,
     bool isRecentlyPlayedContext = false,
+    VoidCallback? onDislike, // glass sheet only; MY variant frozen
   }) async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
 
@@ -38,6 +39,7 @@ class ThemedOptionsSheet extends StatelessWidget {
         playlistId: playlistId,
         isInQueueContext: isInQueueContext,
         isRecentlyPlayedContext: isRecentlyPlayedContext,
+        onDislike: onDislike,
       );
     } else {
       await MaterialYouOptionsSheet.show(

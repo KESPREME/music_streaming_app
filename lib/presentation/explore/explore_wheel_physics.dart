@@ -15,7 +15,7 @@ class SnapScrollPhysics extends ScrollPhysics {
   static double snapTarget(double pixels, double extent) =>
       (pixels / extent).round() * extent;
 
-  @visibleForTesting
+  /// Nearest row index for a scroll offset (production snap path).
   static int indexFor(double pixels, double extent) =>
       (pixels / extent).round();
 
@@ -23,6 +23,7 @@ class SnapScrollPhysics extends ScrollPhysics {
   Simulation? createBallisticSimulation(
       ScrollMetrics position, double velocity) {
     final target = snapTarget(position.pixels, itemExtent);
+    final tolerance = toleranceFor(position);
     if ((velocity.abs() < tolerance.velocity) &&
         ((target - position.pixels).abs() < tolerance.distance)) {
       return null;

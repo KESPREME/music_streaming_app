@@ -17,6 +17,7 @@ class GlassOptionsSheet extends StatelessWidget {
   final String? playlistId;
   final bool isInQueueContext;
   final bool isRecentlyPlayedContext; // New context
+  final VoidCallback? onDislike; // Explore-only: null hides the row
 
   const GlassOptionsSheet({
     super.key,
@@ -24,6 +25,7 @@ class GlassOptionsSheet extends StatelessWidget {
     this.playlistId,
     this.isInQueueContext = false,
     this.isRecentlyPlayedContext = false,
+    this.onDislike,
   });
 
   /// Helper to show the options sheet while hiding the mini player
@@ -33,6 +35,7 @@ class GlassOptionsSheet extends StatelessWidget {
     String? playlistId,
     bool isInQueueContext = false,
     bool isRecentlyPlayedContext = false,
+    VoidCallback? onDislike,
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
@@ -49,6 +52,7 @@ class GlassOptionsSheet extends StatelessWidget {
           playlistId: playlistId,
           isInQueueContext: isInQueueContext,
           isRecentlyPlayedContext: isRecentlyPlayedContext,
+          onDislike: onDislike,
         ),
       );
     } finally {
@@ -312,6 +316,17 @@ class GlassOptionsSheet extends StatelessWidget {
                             );
                           },
                         ),
+
+                        if (onDislike != null)
+                          _buildOption(
+                            context,
+                            icon: Icons.heart_broken_rounded,
+                            label: 'Not interested',
+                            onTap: () {
+                              Navigator.pop(context);
+                              onDislike!.call();
+                            },
+                          ),
 
                         if (playlistId != null)
                           _buildOption(

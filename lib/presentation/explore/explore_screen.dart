@@ -14,9 +14,10 @@ import '../../services/explore/explore_palette.dart';
 import '../../services/explore/explore_policy.dart';
 import '../../services/recommendation/taste_profile.dart';
 import '../../services/innertube/innertube_service.dart';
+import '../../widgets/artist_picker_sheet.dart';
 import '../../widgets/glass_circle_button.dart';
-import '../../widgets/glass_snackbar.dart' show showGlassSnackBar;
 import '../../widgets/glass_surface.dart';
+import '../../widgets/themed_options_sheet.dart';
 import 'explore_mesh.dart';
 import 'explore_tokens.dart';
 import 'explore_wheel.dart';
@@ -267,7 +268,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           SafeArea(
             child: Column(
               children: [
-                _ExploreHeader(controller: controller),
+                const _ExploreHeader(),
                 Expanded(
                   child: controller.isLoading || controller.session == null
                       ? const _ExploreSkeleton()
@@ -275,7 +276,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                           ? _EmptyState(controller: controller)
                           : _buildWheel(provider, controller, items),
                 ),
-                _buildCluster(controller, provider),
+                _ExploreTabBar(onTab: _tabTo),
               ],
             ),
           ),
@@ -317,42 +318,38 @@ class _ExploreScreenState extends State<ExploreScreen> {
           onTogglePlay: (item, isCurrent) => _toggleWheelPlay(
               context, provider, controller, item, isCurrent),
           onOpenPlayer: () => provider.setPlayerExpanded(true),
-          onOpenArtist: (track) =>
-              WheelActionWiring.openArtist(context, provider, track),
+          onOpenArtist: (track) => ArtistPickerSheet.showIfNeeded(
+              context, provider, track.artistName),
+          isLiked: provider.isSongLiked,
+          onLike: (track) => provider.toggleLike(track),
+          onMore: (track) => _openMore(context, provider, controller, track),
         ),
       );
     });
   }
 
-  Widget _buildCluster(
-      ExploreController controller, MusicProvider provider) {
-    final track = controller.session?.active?.track;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
-      child: WheelActions(
-        track: track,
-        liked: track != null && provider.isSongLiked(track.id),
-        onLike: track == null ? () {} : () => provider.toggleLike(track),
-        onQueue: track == null
-            ? () {}
-            : () {
-                provider.addListToQueue([track]);
-                showGlassSnackBar(context, 'Added to queue');
-              },
-        onExpand: () => provider.setPlayerExpanded(true),
-        onShare: track == null
-            ? () {}
-            : () => WheelActionWiring.share(track),
-        onMore: track == null
-            ? () {}
-            : () => WheelActionWiring.openMore(context, track,
-                onClosed: _hidePill),
-        onDislike: () {
-          _invalidateSnap();
-          controller.dislikeCurrent();
-        },
-      ),
-    );
+  Future<void> _buzz() async {
+    try {
+      await HapticFeedback.mediumImpact();
+    } catch (_) {}
+  }
+
+  /// Pill long-press → full track options incl. Not-interested.
+  Future<void> _openMore(BuildContext context, MusicProvider provider,
+      ExploreController controller, Track track) async {
+    await _buzz();
+    if (!context.mounted) return;
+    await ThemedOptionsSheet.show(context, track: track, onDislike: () {
+      _invalidateSnap();
+      context.read<ExploreController>().dislikeCurrent();
+    });
+    _hidePill();
+  }
+
+  void _tabTo(int index) {
+    if (!mounted) return;
+    context.read<MusicProvider>().requestTab(index);
+    Navigator.of(context).pop();
   }
 
   void _toggleWheelPlay(BuildContext context, MusicProvider provider,
@@ -382,9 +379,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 }
 
 class _ExploreHeader extends StatelessWidget {
-  const _ExploreHeader({required this.controller});
-
-  final ExploreController controller;
+  const _ExploreHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -403,18 +398,92 @@ class _ExploreHeader extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             const Text('Explore',
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-            const Spacer(),
-            GlassCircleButton(
-              icon: controller.autoplayEnabled
-                  ? Icons.play_circle_rounded
-                  : Icons.play_disabled_rounded,
-              size: 38,
-              iconSize: 19,
-              semanticLabel: 'Toggle autoplay',
-              onTap: controller.toggleAutoplay,
-            ),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Slim floating glass tab bar: Home / Explore-Orbit (active) / Library.
+/// Tabs pop back to the shell and request the destination tab via the
+/// provider (consumed post-frame by MainScreen) — no shell redesign.
+class _ExploreTabBar extends StatelessWidget {
+  const _ExploreTabBar({required this.onTab});
+
+  final void Function(int index) onTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    Widget tab({
+      required IconData icon,
+      required String label,
+      required bool active,
+      required VoidCallback onTap,
+    }) {
+      return Semantics(
+        label: label,
+        button: true,
+        container: true,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox(
+            width: 64,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon,
+                    size: 22,
+                    color: active
+                        ? accent
+                        : Colors.white.withValues(alpha: 0.55)),
+                const SizedBox(height: 3),
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: active ? accent : Colors.transparent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: GlassSurface(
+        tier: GlassTier.floating,
+        borderRadius: 28,
+        child: SizedBox(
+          width: ExploreTokens.tabBarWidth,
+          height: ExploreTokens.tabBarHeight,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              tab(
+                  icon: Icons.home_rounded,
+                  label: 'Home tab',
+                  active: false,
+                  onTap: () => onTab(0)),
+              tab(
+                  icon: Icons.explore_rounded,
+                  label: 'Explore tab',
+                  active: true,
+                  onTap: () {}),
+              tab(
+                  icon: Icons.library_music_rounded,
+                  label: 'Library tab',
+                  active: false,
+                  onTap: () => onTab(2)),
+            ],
+          ),
         ),
       ),
     );

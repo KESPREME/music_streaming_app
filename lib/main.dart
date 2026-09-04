@@ -264,6 +264,19 @@ class _MainScreenState extends State<MainScreen> {
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
+    // Tab switch requested from a pushed route (Explore tab bar).
+    // Consumed post-frame so setState never runs during build.
+    final requestedTab =
+        context.select<MusicProvider, int?>((p) => p.requestedTab);
+    if (requestedTab != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Provider.of<MusicProvider>(context, listen: false)
+            .clearRequestedTab();
+        _onItemTapped(requestedTab);
+      });
+    }
+
     return PopScope(
       canPop: (_currentIndex == 0 && !_searchMode && !isPanelOpen),
       onPopInvokedWithResult: (didPop, result) {

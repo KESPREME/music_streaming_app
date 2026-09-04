@@ -463,6 +463,23 @@ class MusicProvider
     }
   }
 
+  // Tab switch requested from a pushed route (Explore tab bar).
+  // Consumed post-frame by MainScreen; null when idle.
+  int? _requestedTab;
+  int? get requestedTab => _requestedTab;
+
+  void requestTab(int index) {
+    if (_requestedTab == index) return;
+    _requestedTab = index;
+    notifyListeners();
+  }
+
+  void clearRequestedTab() {
+    if (_requestedTab == null) return;
+    _requestedTab = null;
+    notifyListeners();
+  }
+
   bool _userManuallySetOffline = false;
   bool _isLowDataMode = false;
   bool _isAutoBitrate = true; // Default to Auto
