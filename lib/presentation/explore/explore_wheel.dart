@@ -71,7 +71,7 @@ class ExploreWheel extends StatelessWidget {
             final t = ExploreWheelMath.tForIndex(
                 index, offset, extent, viewportH, padTop);
             final c = ExploreWheelMath.centrality(t);
-            final dx = ExploreWheelMath.arcDx(t, spec.arcK, spec.maxTheta);
+            final dx = ExploreWheelMath.arcDx(t, spec.arcA);
             final item = items[index];
             return Transform.translate(
               offset: Offset(dx, 0),

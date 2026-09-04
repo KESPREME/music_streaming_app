@@ -87,24 +87,22 @@ class _VinylDiscState extends State<VinylDisc>
                     errorWidget: (_, __, ___) => const _DiscFallback(),
                   )
                 : const _DiscFallback(),
-            // Center-hole cutout.
+            // Realistic micro-grooves: subtle concentric rings.
+            const CustomPaint(painter: _GroovePainter()),
+            // White spindle label cutout with metallic ring.
             Center(
               child: Container(
-                width: ExploreTokens.vinylHoleSize,
-                height: ExploreTokens.vinylHoleSize,
-                decoration: const BoxDecoration(
+                width: ExploreTokens.spindleSize,
+                height: ExploreTokens.spindleSize,
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Color(0xFF0A0A10),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 5,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ),
+                  color: Colors.white,
+                  border: Border.all(
+                      color: const Color(0xFF9AA0AE), width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Colors.black45, blurRadius: 3),
+                  ],
                 ),
               ),
             ),
@@ -118,8 +116,29 @@ class _VinylDiscState extends State<VinylDisc>
   }
 }
 
-class _DiscFallback extends StatelessWidget {
-  const _DiscFallback();
+/// Static micro-groove rings (never repaints; spins with the disc).
+class _GroovePainter extends CustomPainter {
+  const _GroovePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = Colors.white.withValues(alpha: 0.05);
+    final center = size.center(Offset.zero);
+    final maxR = size.shortestSide / 2;
+    for (var i = 1; i <= ExploreTokens.grooveCount; i++) {
+      canvas.drawCircle(
+          center, maxR * i / (ExploreTokens.grooveCount + 1), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GroovePainter oldDelegate) => false;
+}
+
+class _DiscFallback extends StatelessWidget {  const _DiscFallback();
 
   @override
   Widget build(BuildContext context) {

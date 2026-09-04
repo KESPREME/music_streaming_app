@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../../services/explore/explore_palette.dart';
@@ -94,7 +96,6 @@ class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
         animation: _mesh,
         builder: (context, _) {
           final v = Curves.easeOut.transform(_mesh.value);
-          final bg = Color.lerp(_from.background, _to.background, v)!;
           final vib = Color.lerp(_from.vibrant, _to.vibrant, v)!;
           final deep = Color.lerp(_from.deep, _to.deep, v)!;
           final acc = Color.lerp(_from.accent, _to.accent, v)!;
@@ -103,18 +104,34 @@ class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
               0.55 + 0.3 * vib.computeLuminance().clamp(0.0, 1.0);
           return Stack(
             children: [
+              // Stop 2: canvas base — deep tone / charcoal.
               Positioned.fill(child: ColoredBox(color: deep)),
-              Positioned.fill(
-                child: Opacity(
-                  opacity: 0.9,
-                  child: ColoredBox(color: bg.withValues(alpha: 0.55)),
+              // Stop 1: vibrant glow, center-left behind the active card,
+              // blurred wide, 35% peak alpha.
+              Align(
+                alignment: const Alignment(-0.55, 0.05),
+                child: SizedBox(
+                  width: 380,
+                  height: 520,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(
+                        sigmaX: ExploreTokens.glowBlurSigma,
+                        sigmaY: ExploreTokens.glowBlurSigma),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          colors: [
+                            vib.withValues(alpha: 0.35),
+                            vib.withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              _blob(_lerpAlign(0, v), vib, 1.1),
-              _blob(_lerpAlign(1, v), bg, 1.2),
+              // Faint accent aura top-right for depth (drift-tweened).
               _blob(_lerpAlign(2, v), acc, 1.0),
-              // Ambient aura behind the centered item.
-              _blob(Alignment.center, acc, 0.9),
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
