@@ -41,6 +41,8 @@ class AudioService {
   Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream; 
   Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
       .map((state) => state == ProcessingState.completed);
+  Stream<double> get onVolumeChanged => _audioPlayer.volumeStream;
+  double get volume => _audioPlayer.volume;
 
   /// True when a source is loaded in the player (not idle). Used by the
   /// provider to distinguish paused-with-source from stopped.

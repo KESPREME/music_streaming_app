@@ -1172,6 +1172,13 @@ class MusicProvider
     notifyListeners();
   }
 
+  void setRepeatMode(RepeatMode mode) {
+    if (_repeatMode == mode) return;
+    _repeatMode = mode;
+    _saveSettings();
+    notifyListeners();
+  }
+
   void _shufflePlaylist() {
     if (_currentPlayingTracks == null || _currentPlayingTracks!.isEmpty) {
       _shuffledPlaylist = [];
@@ -2110,6 +2117,21 @@ class MusicProvider
     if (clamped == _playbackSpeed) return;
     _playbackSpeed = clamped;
     await _audioService.setSpeed(_playbackSpeed);
+    notifyListeners();
+  }
+
+  // --- Autoplay & Canvas ---
+  bool _autoplayEnabled = true;
+  bool get autoplayEnabled => _autoplayEnabled;
+  void toggleAutoplay() {
+    _autoplayEnabled = !_autoplayEnabled;
+    notifyListeners();
+  }
+
+  bool _isCanvasActive = false;
+  bool get isCanvasActive => _isCanvasActive;
+  void toggleCanvas() {
+    _isCanvasActive = !_isCanvasActive;
     notifyListeners();
   }
 

@@ -499,8 +499,10 @@ class _MenuItem extends StatelessWidget {
 }
 
 /// Visual Song Code Dialog matching "Muzo Code" in video.
-class _SongCodeDialog extends StatelessWidget {
-  const _SongCodeDialog({required this.track, required this.accent});
+typedef _SongCodeDialog = SongCodeDialog;
+
+class SongCodeDialog extends StatelessWidget {
+  const SongCodeDialog({super.key, required this.track, required this.accent});
 
   final Track track;
   final Color accent;

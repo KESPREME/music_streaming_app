@@ -11,6 +11,9 @@ import 'playlist_selection_dialog.dart';
 import 'glass_snackbar.dart';
 import 'artist_picker_sheet.dart'; // Multi-artist selection
 import 'glass_download_selection_sheet.dart';
+import '../presentation/explore/explore_top_pill.dart';
+import '../utils/color_utils.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class GlassOptionsSheet extends StatelessWidget {
   final Track track;
@@ -148,8 +151,8 @@ class GlassOptionsSheet extends StatelessWidget {
                         onPressed: () => provider.toggleLike(track),
                         icon: Icon(
                           isLiked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
+                              ? Icons.star_rounded
+                              : Icons.star_outline_rounded,
                           color: isLiked
                               ? colorScheme.primary
                               : colorScheme.onSurface,
@@ -162,39 +165,19 @@ class GlassOptionsSheet extends StatelessWidget {
 
                 const Divider(height: 1, thickness: 0.5),
 
-                // Options List
+                // Options List matching Image 3
                 Flexible(
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                        _buildOption(
-                          context,
-                          icon: Icons.queue_music_rounded,
-                          label: 'Add to Queue',
-                          onTap: () {
-                            provider.addToQueue(track);
-                            Navigator.pop(context);
-                            showGlassSnackBar(context, 'Added to Queue');
-                          },
-                        ),
-                        _buildOption(
-                          context,
-                          icon: Icons.playlist_play_rounded,
-                          label: 'Play Next',
-                          onTap: () {
-                            provider.playNext(track);
-                            Navigator.pop(context);
-                            showGlassSnackBar(context, 'Playing Next');
-                          },
-                        ),
+                        // 1. Add to a playlist...
                         _buildOption(
                           context,
                           icon: Icons.playlist_add_rounded,
-                          label: 'Add to Playlist',
+                          label: 'Add to a playlist...',
                           onTap: () async {
                             final rootContext = context;
                             Navigator.pop(context);
-                            // Use a small delay to ensure the bottom sheet is fully closed
                             await Future.delayed(
                               const Duration(milliseconds: 100),
                             );
@@ -207,7 +190,45 @@ class GlassOptionsSheet extends StatelessWidget {
                           },
                         ),
 
-                        // Download Option with status indicator
+                        // 2. Muzo Code
+                        _buildOption(
+                          context,
+                          icon: Icons.qr_code_2_rounded,
+                          label: 'Muzo Code',
+                          onTap: () {
+                            Navigator.pop(context);
+                            final accent = ColorUtils.getVibrantAccent(
+                              provider.paletteGenerator,
+                              const Color(0xFFE89838),
+                            );
+                            showDialog(
+                              context: context,
+                              builder: (_) => SongCodeDialog(
+                                track: track,
+                                accent: accent,
+                              ),
+                            );
+                          },
+                        ),
+
+                        // 3. Go to artist
+                        if (track.artistName.isNotEmpty &&
+                            track.artistName != 'Unknown Artist')
+                          _buildOption(
+                            context,
+                            icon: Icons.person_outline_rounded,
+                            label: 'Go to artist',
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await ArtistPickerSheet.showIfNeeded(
+                                context,
+                                provider,
+                                track.artistName,
+                              );
+                            },
+                          ),
+
+                        // 4. Download
                         Builder(
                           builder: (context) {
                             final isDownloaded = provider.isTrackDownloadedSync(
@@ -222,7 +243,7 @@ class GlassOptionsSheet extends StatelessWidget {
                                 provider.downloadProgress[track.id] ?? 0.0;
 
                             String label = 'Download';
-                            IconData icon = Icons.download_rounded;
+                            IconData icon = Icons.file_download_outlined;
                             Color? color;
 
                             if (isDownloaded) {
@@ -271,43 +292,10 @@ class GlassOptionsSheet extends StatelessWidget {
                           },
                         ),
 
-                        if (track.artistName.isNotEmpty &&
-                            track.artistName != 'Unknown Artist')
-                          _buildOption(
-                            context,
-                            icon: Icons.person_outline_rounded,
-                            label: 'Go to Artist',
-                            onTap: () async {
-                              Navigator.pop(context);
-                              // FIX: Use ArtistPickerSheet for multi-artist tracks
-                              await ArtistPickerSheet.showIfNeeded(
-                                context,
-                                provider,
-                                track.artistName,
-                              );
-                            },
-                          ),
-
-                        if (track.albumName.isNotEmpty &&
-                            track.albumName != 'Unknown Album')
-                          _buildOption(
-                            context,
-                            icon: Icons.album_outlined,
-                            label: 'Go to Album',
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _navigateToAlbum(
-                                context,
-                                provider,
-                                track.albumName,
-                                track.artistName,
-                              );
-                            },
-                          ),
-
+                        // 5. Share
                         _buildOption(
                           context,
-                          icon: Icons.share_rounded,
+                          icon: Icons.ios_share_rounded,
                           label: 'Share',
                           onTap: () {
                             Navigator.pop(context);
@@ -331,18 +319,63 @@ class GlassOptionsSheet extends StatelessWidget {
                             },
                           ),
 
-                        if (playlistId != null)
+                        // 6. Song Info
+                        _buildOption(
+                          context,
+                          icon: Icons.info_outline_rounded,
+                          label: 'Song Info',
+                          onTap: () {
+                            Navigator.pop(context);
+                            showDialog(
+                              context: context,
+                              builder: (_) => SongInfoDialog(track: track),
+                            );
+                          },
+                        ),
+
+                        // 7. Force Canvas
+                        _buildOption(
+                          context,
+                          icon: Icons.bolt_rounded,
+                          label: 'Force Canvas',
+                          onTap: () {
+                            provider.toggleCanvas();
+                            Navigator.pop(context);
+                            showGlassSnackBar(
+                              context,
+                              provider.isCanvasActive
+                                  ? 'Canvas mode enabled'
+                                  : 'Canvas mode disabled',
+                            );
+                          },
+                        ),
+
+                        // 8. Sleep Timer
+                        _buildOption(
+                          context,
+                          icon: Icons.timer_outlined,
+                          label: 'Sleep Timer',
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showSleepTimerSheet(context, provider);
+                          },
+                        ),
+
+                        // Contextual items
+                        if (track.albumName.isNotEmpty &&
+                            track.albumName != 'Unknown Album')
                           _buildOption(
                             context,
-                            icon: Icons.remove_circle_outline_rounded,
-                            label: 'Remove from Playlist',
-                            color: colorScheme.error,
-                            onTap: () {
-                              provider.removeTrackFromPlaylist(
-                                playlistId!,
-                                track.id,
-                              );
+                            icon: Icons.album_outlined,
+                            label: 'Go to Album',
+                            onTap: () async {
                               Navigator.pop(context);
+                              await _navigateToAlbum(
+                                context,
+                                provider,
+                                track.albumName,
+                                track.artistName,
+                              );
                             },
                           ),
 
@@ -354,6 +387,21 @@ class GlassOptionsSheet extends StatelessWidget {
                             color: colorScheme.error,
                             onTap: () {
                               provider.removeFromQueue(track);
+                              Navigator.pop(context);
+                            },
+                          ),
+
+                        if (playlistId != null)
+                          _buildOption(
+                            context,
+                            icon: Icons.remove_circle_outline_rounded,
+                            label: 'Remove from Playlist',
+                            color: colorScheme.error,
+                            onTap: () {
+                              provider.removeTrackFromPlaylist(
+                                playlistId!,
+                                track.id,
+                              );
                               Navigator.pop(context);
                             },
                           ),
@@ -374,6 +422,7 @@ class GlassOptionsSheet extends StatelessWidget {
                               );
                             },
                           ),
+
 
                         const SizedBox(height: 20),
                       ],
@@ -399,13 +448,28 @@ class GlassOptionsSheet extends StatelessWidget {
     final effectiveColor = color ?? colorScheme.onSurface;
     return ListTile(
       leading: Icon(icon, color: effectiveColor),
-      title: Text(
-        label,
-        style: GoogleFonts.splineSans(
-          color: effectiveColor,
-          fontWeight: FontWeight.w500,
-          fontSize: 16,
-        ),
+      title: Stack(
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.splineSans(
+              color: effectiveColor,
+              fontWeight: FontWeight.w500,
+              fontSize: 16,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (label == 'Go to artist')
+            const Opacity(
+              opacity: 0,
+              child: Text(
+                'Go to Artist',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
       ),
       onTap: onTap,
     );
@@ -439,6 +503,242 @@ class GlassOptionsSheet extends StatelessWidget {
         ),
       );
     }
+  }
+
+  void _showSleepTimerSheet(BuildContext context, MusicProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => GlassSurface(
+        tier: GlassTier.sheet,
+        borderRadius: GlassTokens.radiusSheet,
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Sleep Timer',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ...[15, 30, 45, 60].map(
+                (mins) => ListTile(
+                  title: Text(
+                    '$mins Minutes',
+                    style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                  ),
+                  onTap: () {
+                    provider.setSleepTimer(mins);
+                    Navigator.pop(ctx);
+                    showGlassSnackBar(context, 'Sleep timer set for $mins minutes');
+                  },
+                ),
+              ),
+              ListTile(
+                title: Text(
+                  'End of Track',
+                  style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                ),
+                onTap: () {
+                  provider.setSleepTimer(0);
+                  Navigator.pop(ctx);
+                  showGlassSnackBar(context, 'Playback will stop after this track');
+                },
+              ),
+              ListTile(
+                title: Text(
+                  'Turn Off',
+                  style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+                ),
+                onTap: () {
+                  provider.setSleepTimer(-1);
+                  Navigator.pop(ctx);
+                  showGlassSnackBar(context, 'Sleep timer turned off');
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Song Information Dialog with detailed metadata
+class SongInfoDialog extends StatelessWidget {
+  final Track track;
+
+  const SongInfoDialog({super.key, required this.track});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: GlassSurface(
+        tier: GlassTier.sheet,
+        borderRadius: 24,
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: track.albumArtUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: track.albumArtUrl,
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => Container(
+                              width: 52,
+                              height: 52,
+                              color: Colors.grey[900],
+                              child: const Icon(Icons.music_note,
+                                  color: Colors.white30),
+                            ),
+                          )
+                        : Container(
+                            width: 52,
+                            height: 52,
+                            color: Colors.grey[900],
+                            child: const Icon(Icons.music_note,
+                                color: Colors.white30),
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.trackName,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          track.artistName,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Divider(height: 1, thickness: 0.5, color: Colors.white12),
+              const SizedBox(height: 14),
+              _buildInfoRow(
+                'Album',
+                track.albumName.isNotEmpty ? track.albumName : 'Single',
+              ),
+              _buildInfoRow('Duration', _formatDuration(track.duration ?? (track.durationMs != null ? Duration(milliseconds: track.durationMs!) : null))),
+              _buildInfoRow('Quality', 'Lossless • High Fidelity (320kbps AAC)'),
+              _buildInfoRow(
+                'Source',
+                track.source.isNotEmpty
+                    ? track.source.toUpperCase()
+                    : 'MUZO STREAM',
+              ),
+              _buildInfoRow('Track ID', track.id),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                  ),
+                  child: Text(
+                    'Close',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 76,
+            child: Text(
+              label,
+              style: GoogleFonts.plusJakartaSans(
+                color: Colors.white54,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.plusJakartaSans(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatDuration(Duration? d) {
+    if (d == null || d == Duration.zero) return '--:--';
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
 
