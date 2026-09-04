@@ -216,9 +216,13 @@ lib/services/recommendation/
 | lib/services/explore/explore_session.dart | ExploreSession: stream, shown-set dedupe, artist-run cap, identity dedupe |
 | lib/services/explore/explore_controller.dart | ExploreController: autoplay-on-settle, generation races, refill, feedback |
 | lib/services/explore/explore_palette.dart | ExplorePaletteCache: 100px decode, cap 30, tone-mapped ambient colors |
-| lib/presentation/explore/explore_screen.dart | ExploreScreen: stream pages (neighbors/pill/rail), ambient background |
-| lib/presentation/explore/explore_tokens.dart | ExploreTokens: stream rows/typography/ambient + chrome constants |
-| lib/presentation/explore/explore_layout.dart | ExploreLayout: 5-slot diagonal planner (dx offsets, far-peek gate) |
+| lib/presentation/explore/explore_screen.dart | ExploreScreen: wheel snap/debounce/haptics, mesh, action cluster |
+| lib/presentation/explore/explore_tokens.dart | ExploreTokens: rotary geometry + motion constants |
+| lib/presentation/explore/explore_layout.dart | ExploreWheelMath: arc/centrality curves, snap index math |
+| lib/presentation/explore/explore_wheel_physics.dart | SnapScrollPhysics: magnetic snap-to-row |
+| lib/presentation/explore/explore_wheel.dart | ExploreWheel + rows + fixed action cluster |
+| lib/presentation/explore/explore_vinyl.dart | VinylDisc (9s linear spin) + MicroEqualizer |
+| lib/presentation/explore/explore_mesh.dart | LiquidMeshBackground: 3-blob tween + aura + luminance scrim |
 
 ### Tests
 | File | Covers |
@@ -233,8 +237,9 @@ lib/services/recommendation/
 | test/explore_session_test.dart | Dedupe, artist-run cap + starvation yield, thresholds |
 | test/explore_controller_test.dart | Autoplay settle, rapid-swipe race, refill, exhaust, restore, feedback |
 | test/explore_palette_test.dart | Cache, neutral fallback, no-decode paths |
-| test/explore_screen_widget_test.dart | Stream states (pill/jump/capsule/rail), FakeExploreProvider |
-| test/explore_layout_test.dart | Planner fit on 360/390/tablet, determinism, reason gate |
+| test/explore_screen_widget_test.dart | Wheel states (rows/snap/eq/spin/expand), FakeExploreProvider |
+| test/explore_layout_test.dart | Wheel math (extent/arc/curves/tForIndex), reason gate |
+| test/explore_wheel_physics_test.dart | Snap target/index rounding |
 ---
 
 ## COMMIT LOG (this branch, newest last)
@@ -287,10 +292,12 @@ c737dbb nav: GlassTabBar.searchable
    `EXPLORE_SKIP` / `EXPLORE_PREFETCH` traces; verify deck peeks render,
    pill hidden on-route and restored on exit, artist tap opens detail,
    autoplay-on-settle, refill before exhaustion, ambient color shifts.
-2. **Explore polish from live run**: stream spacing on small screens
-   (planner drops far peeks <552dp pages), diagonal dx feel (±56/±28),
-   pill entry animation (300ms) feel, ambient tone-map, autoplay toggle
-   persistence (currently session-only).
+2. **Explore polish from live run**: wheel arc feel (k=72, θmax=1.2),
+   snap spring tension, debounce 180ms feel, mesh drift layouts,
+   vinyl spin speed (9s), eq bar motion, autoplay toggle persistence
+   (currently session-only).
+3. **Explore seed entry points**: open Explore from artist/album/mood with
+   explicit seed (screen already accepts `ExploreScreen.open(seed:)`).
 3. **Logged-in renderer coverage (fixture-gated)**: run logged-in, pull
    ParseReport unsupported list + DROPPED/REMOVED/TRIMMED + HOME_UI +
    HOME_LOSS; save redacted JSON as fixture; one parser test per renderer;
