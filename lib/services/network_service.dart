@@ -1,13 +1,11 @@
 // lib/services/network_service.dart
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'dart:math';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:internet_connection_checker/internet_connection_checker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/network_config.dart';
 
 enum NetworkQuality {
@@ -282,8 +280,15 @@ class NetworkService {
           }
         }
 
-        return savePath;
-      } on DioException {
+      } on DioException catch (e) {
+        // Status 416 (Range Not Satisfiable): file on disk is already complete
+        if (e.response?.statusCode == 416 && startBytes > 0) {
+          if (await file.exists() && (await file.length()) > 0) {
+            return savePath;
+          }
+          startBytes = 0; // Reset and retry from start if file was empty
+        }
+
         // Don't retry if canceled
         if (cancelToken?.isCancelled ?? false) {
           throw Exception('Download canceled');

@@ -72,8 +72,8 @@ ExploreController bootstrapExploreController(BuildContext context,
   final controller = ExploreController(
     engine: ExploreEngine(),
     fetchSources: (anchor) async {
-      // Source ladder (spec #26): related → quick picks → favorites →
-      // recents → charts → new releases. No random search fallback.
+      // Source ladder: related → quick picks → favorites →
+      // recents → charts → home shelves → top trending hits.
       List<Track> related = const [];
       final relatedSeed = anchor ?? seed;
       if (relatedSeed != null &&
@@ -81,22 +81,40 @@ ExploreController bootstrapExploreController(BuildContext context,
           !relatedSeed.id.startsWith('MPREb')) {
         try {
           related = await InnerTubeService.instance
-              .getSuggestions(relatedSeed.id, limit: ExplorePolicy.relatedLimit);
+              .getSuggestions(relatedSeed.id, limit: 30);
         } catch (_) {}
       }
+
       List<Track> charts = provider.fullTrendingTracks;
-      if (charts.isEmpty || related.length < 5) {
+      if (charts.isEmpty || related.length < 8) {
         try {
-          final trending = await InnerTubeService.instance.getTrendingTracks(limit: 25);
+          final trending = await InnerTubeService.instance.getTrendingTracks(limit: 30);
           if (trending.isNotEmpty) {
             charts = [...charts, ...trending];
           }
         } catch (_) {}
       }
+
+      // Dynamic Home shelves (mixed hits, trending now)
+      List<Track> homeShelves = const [];
+      if (related.length + charts.length < 16) {
+        try {
+          homeShelves = await InnerTubeService.instance.getHomeTracks(limit: 30);
+        } catch (_) {}
+      }
+
+      // High-quality top hits fallback: guarantees popular chart-toppers (not randos)
+      List<Track> topHits = const [];
+      if (related.length + charts.length + homeShelves.length < 16) {
+        try {
+          topHits = await InnerTubeService.instance.searchSongs('Top Trending Hits', limit: 30);
+        } catch (_) {}
+      }
+
       List<Track> releases = provider.newReleases;
       if (releases.isEmpty) {
         try {
-          releases = await InnerTubeService.instance.getNewReleases(limit: 10);
+          releases = await InnerTubeService.instance.getNewReleases(limit: 15);
         } catch (_) {}
       }
       List<Track> quickPicks = provider.quickPicks;
@@ -109,13 +127,14 @@ ExploreController bootstrapExploreController(BuildContext context,
           'related=${related.length} quickPicks=${quickPicks.length} '
           'favorites=${provider.likedSongs.length} '
           'recents=${provider.recentlyPlayed.length} '
-          'charts=${charts.length} releases=${releases.length}');
+          'charts=${charts.length} home=${homeShelves.length} '
+          'topHits=${topHits.length} releases=${releases.length}');
       return ExploreSources(
         seedRelated: related,
         quickPicks: quickPicks,
         favorites: provider.likedSongs,
         recentlyPlayed: provider.recentlyPlayed,
-        regionalChart: charts,
+        regionalChart: [...charts, ...homeShelves, ...topHits],
         newReleases: releases,
       );
     },

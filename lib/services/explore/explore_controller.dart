@@ -220,11 +220,17 @@ class ExploreController extends ChangeNotifier {
       anchor ??= s.seed;
 
       var sources = await _fetchSources(anchor);
+      // Sliding exclusion window: keep recent 60 items so very long sessions (e.g. 50+ songs)
+      // do not permanently starve due to candidate pool exhaustion.
+      final excludeSet = s.shownItemIds.length > 60
+          ? s.shownItemIds.skip(s.shownItemIds.length - 60).toSet()
+          : s.shownItemIds;
+
       var items = await _engine.generate(
         profile: _profileProvider(),
         sources: sources,
         seed: null,
-        exclude: s.shownItemIds,
+        exclude: excludeSet,
         limit: ExplorePolicy.refillBatch,
         generation: s.generation,
       );

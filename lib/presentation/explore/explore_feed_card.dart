@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
 
@@ -488,13 +489,33 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
   }
 
   Future<void> _init() async {
-    final uri = Uri.tryParse(widget.videoUrl);
-    if (uri == null) {
+    final raw = widget.videoUrl.trim();
+    if (raw.isEmpty) {
+      widget.onError?.call();
+      return;
+    }
+    final isLocal = raw.startsWith('/') ||
+        raw.startsWith('file://') ||
+        (raw.length > 2 && raw[1] == ':');
+    final uri = Uri.tryParse(raw);
+    if (!isLocal && uri == null) {
       widget.onError?.call();
       return;
     }
     try {
-      final c = VideoPlayerController.networkUrl(uri);
+      final VideoPlayerController c;
+      if (isLocal) {
+        final filePath = raw.replaceFirst('file://', '');
+        c = VideoPlayerController.file(File(filePath));
+      } else {
+        c = VideoPlayerController.networkUrl(
+          uri!,
+          httpHeaders: const {
+            'User-Agent':
+                'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)',
+          },
+        );
+      }
       _controller = c;
       await c.initialize();
       if (!mounted) return;
