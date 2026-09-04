@@ -234,6 +234,7 @@ class ExploreController extends ChangeNotifier {
         }
       } else {
         _emptyStreak = 0;
+        _exhausted = false;
         s.appendBatch(items);
       }
       debugPrint('EXPLORE_PREFETCH prepared=[${s.remaining.length} ahead] '
@@ -282,6 +283,9 @@ class ExploreController extends ChangeNotifier {
   List<Track> upcomingTracks({int count = ExplorePolicy.prefetchAhead}) =>
       _session?.upcoming(count: count).map((i) => i.track).toList() ??
       const [];
+
+  /// Triggers background refill of the candidate stream when near end of loaded items.
+  Future<void> maybeRefill() => _maybeRefill();
 
   @visibleForTesting
   Future<void> maybeRefillForTest() => _maybeRefill();

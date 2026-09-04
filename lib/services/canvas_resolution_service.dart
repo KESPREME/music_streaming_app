@@ -77,26 +77,25 @@ class CanvasResolutionService {
     // is a static still JPEG of the album art. To get a real looping video canvas
     // (matching Spotify Canvas and Muzo discovery), we query YouTube for the
     // official music video (OMV / UGC) matching the track title and artist.
+    // We prioritize official videos by the artist/label and reject secondary lyrical channels.
     if (track.trackName.isNotEmpty) {
       try {
-        final query = '${track.trackName} ${track.artistName}'.trim();
+        final query = '${track.trackName} ${track.artistName} Official Video'.trim();
         final videoResults = await InnerTubeService.instance
-            .searchVideos(query, limit: 3)
+            .searchVideos(query, limit: 6)
             .timeout(const Duration(seconds: 4));
         if (videoResults.isNotEmpty) {
-          // Prefer results whose ID differs from track.id (guaranteeing OMV instead of ATV)
-          for (final video in videoResults) {
-            if (video.id.isNotEmpty && video.id != track.id) {
-              final cached = await _resolveAndCacheVideo(video.id);
-              if (cached != null) {
-                _cache[track.id] = cached;
-                return cached;
-              }
-            }
-          }
-          // Fallback to first result if none differed
-          if (videoResults.first.id.isNotEmpty) {
-            final cached = await _resolveAndCacheVideo(videoResults.first.id);
+          // Score candidates to strictly prefer official artist/label videos and reject
+          // lyrical, fan-made, or secondary channel uploads.
+          final scored = videoResults
+              .map((v) => (video: v, score: _scoreCandidate(v, track)))
+              .where((e) => e.score >= 80 && e.video.id != track.id)
+              .toList();
+
+          scored.sort((a, b) => b.score.compareTo(a.score));
+
+          for (final candidate in scored) {
+            final cached = await _resolveAndCacheVideo(candidate.video.id);
             if (cached != null) {
               _cache[track.id] = cached;
               return cached;
@@ -108,10 +107,81 @@ class CanvasResolutionService {
       }
     }
 
-    // Graceful fallback: If no real music video exists, do NOT return track.id (which is a static still picture).
+    // Graceful fallback: If no real official music video exists (or only secondary lyric videos exist),
+    // do NOT return track.id (which is a static still picture) or a fan lyric video.
     // Returning null allows ExploreFeedCard to show the centered album artwork, ambient glow, and equalizer.
     _cache[track.id] = null;
     return null;
+  }
+
+  /// Evaluates video candidates to ensure genuine official artist/label uploads are preferred,
+  /// heavily penalizing fan lyric videos, remixes, and secondary channels.
+  static int _scoreCandidate(Track candidate, Track target) {
+    final cTitle = candidate.trackName.toLowerCase();
+    final cArtist = candidate.artistName.toLowerCase();
+    final tArtist = target.artistName.toLowerCase();
+
+    int score = 100;
+
+    // Heavy penalties for non-official / secondary / lyric channels
+    const penaltyKeywords = [
+      'lyrics',
+      'lyric',
+      'lyrical',
+      'audio',
+      'visualizer',
+      'karaoke',
+      'cover',
+      'remix',
+      'synthwave',
+      'slowed',
+      'reverb',
+      '8d',
+      'bass boosted',
+      'status',
+      'reaction',
+      'shorts',
+      'fan made',
+      'edit',
+    ];
+
+    for (final word in penaltyKeywords) {
+      if (cTitle.contains(word)) score -= 150;
+      if (cArtist.contains(word)) score -= 200;
+    }
+
+    // Major bonus for official music video markers
+    if (cTitle.contains('official music video') ||
+        cTitle.contains('official video')) {
+      score += 80;
+    } else if (cTitle.contains('official') ||
+        cTitle.contains('music video') ||
+        cTitle.contains('video')) {
+      score += 40;
+    }
+
+    // Bonus for artist match in channel/byline name
+    final primaryArtist = tArtist.split(',').first.split('&').first.trim();
+    if (primaryArtist.isNotEmpty && cArtist.contains(primaryArtist)) {
+      score += 60;
+    }
+
+    // Bonus for official label / vevo channels
+    if (cArtist.contains('vevo') ||
+        cArtist.contains('records') ||
+        cArtist.contains('entertainment') ||
+        cArtist.contains('t-series') ||
+        cArtist.contains('sony music') ||
+        cArtist.contains('zee music') ||
+        cArtist.contains('yrf') ||
+        cArtist.contains('speed records') ||
+        cArtist.contains('tips') ||
+        cArtist.contains('warner') ||
+        cArtist.contains('universal')) {
+      score += 40;
+    }
+
+    return score;
   }
 
   /// Resolves direct stream URL and fetches a clean ~500KB fMP4 loop segment

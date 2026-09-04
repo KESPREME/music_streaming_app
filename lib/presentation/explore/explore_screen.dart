@@ -63,17 +63,16 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-const List<String> _trendingRotationQueries = [
-  'Top Trending Hits',
-  'Global Top 50',
-  'Viral Music Hits',
-  'Trending Songs Right Now',
-  'Billboard Hot 100',
-  'Chart Toppers',
-  'Popular Songs',
-  'New Music Trending',
+/// Verified, official YouTube-curated real-time chart playlists.
+/// (Replacing random user search queries with genuine real-time YouTube charts).
+const List<String> _officialYouTubeChartPlaylists = [
+  'PL4fGSI1pDJn6t3TXLGiiJdD-sZbrG3tG0', // Daily Top Music Videos - Global (updated daily)
+  'PL4fGSI1pDJn5kI81J1fYWK5eZRl1zJ5kM', // Top 100 Music Videos - Global (updated weekly)
+  'PL4fGSI1pDJn40WjZ6utkIuj2rNg-7iGsq', // Top 100 Music Videos - India (regional chart)
+  'PLFgquLnL59alW3xmYiWRaoz0oM3H17Lth', // YouTube Trending Music (updated real-time)
+  'PL4fGSI1pDJn69On1f-8NAvX_CYlx7QyZc', // Top 100 Music Videos - United States
 ];
-int _rotationIndex = 0;
+int _chartRotationIndex = 0;
 
 /// Wires the controller to the app's existing services. Kept here (not
 /// in MusicProvider) so the god-object stays untouched; session
@@ -85,7 +84,7 @@ ExploreController bootstrapExploreController(BuildContext context,
     engine: ExploreEngine(),
     fetchSources: (anchor) async {
       // Source ladder: related → quick picks → favorites →
-      // recents → charts → home shelves → top trending hits.
+      // recents → charts → home shelves → official YouTube real-time charts.
       List<Track> related = const [];
       final relatedSeed = anchor ?? seed;
       if (relatedSeed != null &&
@@ -99,12 +98,12 @@ ExploreController bootstrapExploreController(BuildContext context,
 
       List<Track> charts = provider.fullTrendingTracks;
       List<Track> homeShelves = const [];
-      List<Track> topHits = const [];
+      List<Track> officialChartTracks = const [];
 
       final isRefilling = anchor != null;
-      final query = _trendingRotationQueries[
-          _rotationIndex % _trendingRotationQueries.length];
-      _rotationIndex++;
+      final playlistId = _officialYouTubeChartPlaylists[
+          _chartRotationIndex % _officialYouTubeChartPlaylists.length];
+      _chartRotationIndex++;
 
       final futures = <Future<void>>[];
 
@@ -130,16 +129,13 @@ ExploreController bootstrapExploreController(BuildContext context,
         }());
       }
 
-      // High-quality top hits / rotated dynamic queries - avoid skipping on refill
-      if (isRefilling ||
-          related.length + charts.length + homeShelves.length < 16) {
-        futures.add(() async {
-          try {
-            topHits =
-                await InnerTubeService.instance.searchSongs(query, limit: 30);
-          } catch (_) {}
-        }());
-      }
+      // Official YouTube real-time chart playlist (updated in real-time by YouTube)
+      futures.add(() async {
+        try {
+          officialChartTracks = await InnerTubeService.instance
+              .getPlaylistDetails(playlistId);
+        } catch (_) {}
+      }());
 
       if (futures.isNotEmpty) {
         await Future.wait(futures);
@@ -162,13 +158,14 @@ ExploreController bootstrapExploreController(BuildContext context,
           'favorites=${provider.likedSongs.length} '
           'recents=${provider.recentlyPlayed.length} '
           'charts=${charts.length} home=${homeShelves.length} '
-          'topHits=${topHits.length} releases=${releases.length}');
+          'officialCharts=${officialChartTracks.length} releases=${releases.length}');
       return ExploreSources(
         seedRelated: related,
         quickPicks: quickPicks,
         favorites: provider.likedSongs,
         recentlyPlayed: provider.recentlyPlayed,
-        regionalChart: [...charts, ...homeShelves, ...topHits],
+        regionalChart: [...charts, ...homeShelves],
+        globalChart: officialChartTracks,
         newReleases: releases,
       );
     },
@@ -518,6 +515,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 HapticFeedback.selectionClick();
               }
               _lastTickIndex = currentIdx;
+              // Proactively replenish feed as user nears the end of loaded items
+              if (items.length - currentIdx <= 4 && !controller.isRefilling) {
+                controller.maybeRefill();
+              }
             }
           } else if (n is ScrollEndNotification) {
             _snapToCurrent();

@@ -1373,9 +1373,9 @@ class InnerTubeService {
         }
       }
 
-      // Fallback for SingleColumn (sometimes user created playlists?)
+      // Fallback for SingleColumn (official YouTube chart playlists, user playlists)
       if (tracks.isEmpty) {
-        return _parseHomeResults(data, 100); // reuse mostly similar parser
+        return _songsFromAllShelves(data, 100);
       }
 
       return tracks;
