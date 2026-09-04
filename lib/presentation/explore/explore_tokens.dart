@@ -40,6 +40,25 @@ abstract class ExploreTokens {
   /// Reason gate (traces/future surfaces; no visible reason text).
   static const double reasonConfidenceFloor = 0.35;
 
+  /// Rotary wheel chrome.
+  static const double wheelMinExtent = 96.0;
+  static const double wheelMaxExtent = 128.0;
+  static const double wheelVisibleRows = 5.0;
+  static const double arcK = 72.0;
+  static const double arcThetaMax = 1.2;
+  static const double scaleMin = 0.65;
+  static const double opacityMin = 0.2;
+  static const double textFadeStart = 0.35;
+  static const double glassFadeStart = 0.5;
+  static const double vinylSize = 56.0;
+  static const double vinylActiveSize = 72.0;
+  static const double vinylHoleSize = 16.0;
+  static const Duration spinDuration = Duration(seconds: 9);
+  static const Duration snapDebounce = Duration(milliseconds: 180);
+  static const Duration meshTransition = Duration(milliseconds: 600);
+  static const int eqBarCount = 4;
+  static const Duration eqLoop = Duration(milliseconds: 700);
+
   /// Ambient background cross-fade (spec #32).
   static const Duration ambientTransition = Duration(milliseconds: 500);
 

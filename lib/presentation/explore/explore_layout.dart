@@ -1,64 +1,72 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'explore_tokens.dart';
 
-/// Deterministic stream geometry: viewport in, exact spec out.
-/// Five slots (-2..+2) flow along fixed diagonal offsets; far peeks drop
-/// on short viewports. Never overflows by construction — pages need no
-/// scroll view inside the vertical PageView.
-class ExploreStreamSpec {
-  const ExploreStreamSpec({
-    required this.activeArt,
-    required this.nearArt,
-    required this.farArt,
-    required this.activeRowH,
-    required this.nearRowH,
-    required this.farRowH,
-    required this.slotDx,
-    required this.showFar,
+/// Deterministic rotary-wheel geometry: viewport in, exact spec out.
+/// Rows flow along Δx = k·(1−cos(|t|·θmax)); scale/opacity/text/glass all
+/// derive from centrality c = 1−|t|. Pure functions — fully unit-tested.
+class ExploreWheelSpec {
+  const ExploreWheelSpec({
+    required this.itemExtent,
+    required this.arcK,
+    required this.maxTheta,
     required this.contentMaxWidth,
   });
 
-  final double activeArt;
-  final double nearArt;
-  final double farArt;
-  final double activeRowH;
-  final double nearRowH;
-  final double farRowH;
-
-  /// Lateral offsets for slots -2..+2 (top-right → bottom-left flow).
-  final List<double> slotDx;
-  final bool showFar;
+  final double itemExtent;
+  final double arcK;
+  final double maxTheta;
   final double contentMaxWidth;
 }
 
-class ExploreLayout {
-  /// Pure planner: PageView constraints → deterministic spec.
-  static ExploreStreamSpec plan(Size viewport) {
-    final h = viewport.height;
-    // Fixed chrome without far rows: active 104 + 2×near 76 + rail 48 +
-    // not-interested 28 + 5 gaps ×12 + vertical padding 24 = 416.
-    const base = 104.0 + 2 * 76.0 + 48.0 + 28.0 + 5 * 12.0 + 24.0;
-    const withFar = base + 2 * 56.0 + 2 * 12.0;
-    return ExploreStreamSpec(
-      activeArt: ExploreTokens.activeArtSize,
-      nearArt: ExploreTokens.neighborArtSize,
-      farArt: ExploreTokens.farArtSize,
-      activeRowH: ExploreTokens.activeRowHeight,
-      nearRowH: ExploreTokens.neighborRowHeight,
-      farRowH: ExploreTokens.farRowHeight,
-      slotDx: const [
-        ExploreTokens.slotDxFar,
-        ExploreTokens.slotDxNear,
-        0,
-        -ExploreTokens.slotDxNear,
-        -ExploreTokens.slotDxFar,
-      ],
-      showFar: h >= withFar,
-      contentMaxWidth: ExploreTokens.contentMaxWidth,
-    );
+class ExploreWheelMath {
+  /// Uniform row height: ~5 rows visible, clamped for small/tablet.
+  static double itemExtentFor(double viewportH) =>
+      (viewportH / ExploreTokens.wheelVisibleRows)
+          .clamp(ExploreTokens.wheelMinExtent, ExploreTokens.wheelMaxExtent);
+
+  static ExploreWheelSpec plan(Size viewport) => ExploreWheelSpec(
+        itemExtent: itemExtentFor(viewport.height),
+        arcK: ExploreTokens.arcK,
+        maxTheta: ExploreTokens.arcThetaMax,
+        contentMaxWidth: ExploreTokens.contentMaxWidth,
+      );
+
+  /// Signed centrality t in [-1,1] from row-center distance to viewport
+  /// center. Symmetric centering padding ⇒ centered offset = index·extent.
+  static double tForIndex(int index, double offset, double extent,
+      double viewportH, double padTop) {
+    final rowCenter = padTop + index * extent + extent / 2 - offset;
+    return ((rowCenter - viewportH / 2) / (viewportH / 2))
+        .clamp(-1.0, 1.0);
   }
 
-  /// Render-time reason gate (kept for traces/future surfaces).
+  static double centrality(double t) => (1.0 - t.abs()).clamp(0.0, 1.0);
+
+  /// Arc lateral offset, always +x (wheel curves right).
+  static double arcDx(double t, double k, double maxTheta) =>
+      k * (1 - cos(t.abs() * maxTheta));
+
+  static double scaleFor(double c) =>
+      ExploreTokens.scaleMin + (1 - ExploreTokens.scaleMin) * c;
+  static double opacityFor(double c) =>
+      ExploreTokens.opacityMin + (1 - ExploreTokens.opacityMin) * c;
+
+  /// Text gone at edges (vinyl-only peripherals).
+  static double textOpacityFor(double c) =>
+      ((c - ExploreTokens.textFadeStart) / (1 - ExploreTokens.textFadeStart))
+          .clamp(0.0, 1.0);
+
+  /// Pill chrome only near center.
+  static double glassFor(double c) =>
+      ((c - ExploreTokens.glassFadeStart) / (1 - ExploreTokens.glassFadeStart))
+          .clamp(0.0, 1.0);
+}
+
+/// Legacy planner shim: the stream-list spec now lives in the wheel math.
+/// Kept so existing reason-gate callers don't churn.
+class ExploreLayout {
   static bool shouldShowReason(double confidence) =>
       confidence >= ExploreTokens.reasonConfidenceFloor;
 }
