@@ -3,7 +3,6 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
@@ -86,9 +85,12 @@ ExploreController bootstrapExploreController(BuildContext context,
         } catch (_) {}
       }
       List<Track> charts = provider.fullTrendingTracks;
-      if (charts.isEmpty) {
+      if (charts.isEmpty || related.length < 5) {
         try {
-          charts = await provider.fetchTrendingTracks();
+          final trending = await InnerTubeService.instance.getTrendingTracks(limit: 25);
+          if (trending.isNotEmpty) {
+            charts = [...charts, ...trending];
+          }
         } catch (_) {}
       }
       List<Track> releases = provider.newReleases;
@@ -151,8 +153,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Timer? _snapTimer;
   int _snappedIndex = -1;
   int _lastTickIndex = -1;
-  bool _isUserScrolling = false;
-  String? _lastTrackId;
   bool _restored = false;
   double _viewportH = 600;
 
@@ -165,9 +165,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       _provider = context.read<MusicProvider>();
       if (widget.isActive) {
         _handleActivation();
-        if (!widget.embedded) {
-          _provider!.setHideMiniPlayer(true);
-        }
+        _provider?.setHideMiniPlayer(true);
       }
       _resolvePalette(controller);
       _playerStateSub =
@@ -181,13 +179,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   void _handleActivation() {
     if (!widget.isActive) return;
-    _hidePill();
+    _provider?.setHideMiniPlayer(true);
   }
 
   void _handleDeactivation() {
     _invalidateSnap();
     final provider = _provider;
-    if (provider != null && !widget.embedded) {
+    if (provider != null) {
       provider.setHideMiniPlayer(false);
     }
   }
@@ -201,6 +199,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
       } else {
         _handleDeactivation();
       }
+    } else if (widget.isActive) {
+      _provider?.setHideMiniPlayer(true);
     }
   }
 
@@ -233,7 +233,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     // Restore the pill post-frame: notifying during pop finalization
     // trips locked-tree assertions (debug) on every Explore exit.
     final provider = _provider;
-    if (provider != null && !widget.embedded) {
+    if (provider != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {
           provider.setHideMiniPlayer(false);
@@ -244,7 +244,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _hidePill() {
-    if (!widget.embedded) {
+    if (widget.isActive) {
       _provider?.setHideMiniPlayer(true);
     }
   }
@@ -354,22 +354,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
     _ensureRestored(controller);
 
-    // Track auto-advance sync: if player advanced to next song in explore queue
-    final currentId = provider.currentTrack?.id;
-    if (currentId != null && currentId != _lastTrackId) {
-      _lastTrackId = currentId;
-      if (!_isUserScrolling && active != null && active.id != currentId) {
-        final matchIdx = items.indexWhere((it) => it.id == currentId);
-        if (matchIdx != -1 && matchIdx != controller.session?.currentIndex) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            _jumpTo(matchIdx);
-            controller.settle(matchIdx);
-          });
-        }
-      }
-    }
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -468,7 +452,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
       return NotificationListener<ScrollNotification>(
         onNotification: (n) {
           if (n is ScrollStartNotification) {
-            _isUserScrolling = true;
             _snapTimer?.cancel();
             final extent = _itemExtent;
             if (extent > 0) {
@@ -484,10 +467,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
               _lastTickIndex = currentIdx;
             }
           } else if (n is ScrollEndNotification) {
-            _isUserScrolling = false;
-            _snapToCurrent();
-          } else if (n is UserScrollNotification && n.direction == ScrollDirection.idle) {
-            _isUserScrolling = false;
             _snapToCurrent();
           }
           return false;

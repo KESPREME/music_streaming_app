@@ -797,6 +797,85 @@ class InnerTubeService {
     return null;
   }
 
+  /// Resolves a direct, playable video stream URL for [videoId] using InnerTube client ladder
+  /// (VISIONOS -> ANDROID_VR -> TVHTML5). Does NOT scrape youtube.com/watch, avoiding rate limits.
+  Future<String?> getDirectVideoStreamUrl(
+    String videoId, {
+    int preferredHeight = 480,
+  }) async {
+    const ladder = <YouTubeClientType>[
+      YouTubeClientType.ios,
+      YouTubeClientType.visionos,
+      YouTubeClientType.androidVr,
+      YouTubeClientType.tvEmbedded,
+    ];
+    for (final client in ladder) {
+      try {
+        final playerResponse = await _getPlayerWithClient(videoId, client);
+        final status = playerResponse['playabilityStatus'];
+        if (status?['status'] != 'OK') {
+          continue;
+        }
+        final streamingData = playerResponse['streamingData'];
+        if (streamingData == null) continue;
+        final url = _extractBestVideoStream(streamingData, preferredHeight);
+        if (url != null) {
+          debugPrint('InnerTubeService: video stream resolved via $client');
+          return url;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('InnerTubeService: $client video stream failed: $e');
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Extracts the best looping video stream from InnerTube streamingData.
+  /// Prefers lightweight 360p or 480p MP4 formats (hardware-decoded, low bandwidth).
+  String? _extractBestVideoStream(
+      Map<String, dynamic> streamingData, int preferredHeight) {
+    // 1. Check adaptive formats (video-only)
+    final adaptiveFormats = streamingData['adaptiveFormats'] as List?;
+    if (adaptiveFormats != null && adaptiveFormats.isNotEmpty) {
+      final videoFormats = adaptiveFormats.where((f) {
+        final mimeType = f['mimeType'] as String?;
+        return mimeType != null && mimeType.startsWith('video/mp4') && f['url'] != null;
+      }).toList();
+
+      if (videoFormats.isNotEmpty) {
+        // Sort by height closest to preferredHeight (e.g. 360p/480p)
+        videoFormats.sort((a, b) {
+          final hA = (a['height'] as int? ?? 360) - preferredHeight;
+          final hB = (b['height'] as int? ?? 360) - preferredHeight;
+          return hA.abs().compareTo(hB.abs());
+        });
+        return videoFormats.first['url'] as String?;
+      }
+    }
+
+    // 2. Check muxed formats (video + audio) as fallback
+    final formats = streamingData['formats'] as List?;
+    if (formats != null && formats.isNotEmpty) {
+      final videoFormats = formats.where((f) {
+        final mimeType = f['mimeType'] as String?;
+        return mimeType != null && mimeType.startsWith('video/mp4') && f['url'] != null;
+      }).toList();
+
+      if (videoFormats.isNotEmpty) {
+        videoFormats.sort((a, b) {
+          final hA = (a['height'] as int? ?? 360) - preferredHeight;
+          final hB = (b['height'] as int? ?? 360) - preferredHeight;
+          return hA.abs().compareTo(hB.abs());
+        });
+        return videoFormats.first['url'] as String?;
+      }
+    }
+
+    return null;
+  }
+
   // Legacy Piped method removed. Use PipedService class.
 
   /// Helper to extract best stream from InnerTube response

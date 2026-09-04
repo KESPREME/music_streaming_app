@@ -184,6 +184,7 @@ class ExploreController extends ChangeNotifier {
       try {
         debugPrint('EXPLORE_PLAY title=${item.track.trackName} gen=$gen');
         await _play(item.track, upcoming);
+        if (gen != _playbackGeneration) return;
         debugPrint('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
             'artist=${item.track.artistName} reason=${item.reason.name} '
             'score=${item.score.toStringAsFixed(2)} '

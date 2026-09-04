@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/track.dart';
+import 'innertube/innertube_service.dart';
 
 /// Service that resolves looping video canvas streams for tracks
 /// (matching Spotify Canvas and Muzo Video discovery).
@@ -56,86 +55,37 @@ class CanvasResolutionService {
       }
     }
 
-    // 2. YouTube tracks (11 character IDs): fetch lightweight MP4 video stream for looping
+    // 2. YouTube tracks (11 character IDs): fetch lightweight MP4 video stream via InnerTube iOS client
     if (track.id.length == 11 && !track.id.startsWith('MPREb')) {
-      YoutubeExplode? yt;
       try {
-        yt = YoutubeExplode();
-        final manifest = await yt.videos.streamsClient
-            .getManifest(track.id)
-            .timeout(const Duration(seconds: 6));
-
-        // 2a. MP4 video-only stream (360p/480p) - zero audio overhead, hardware decoded, instant loop
-        final mp4VideoOnly = manifest.videoOnly
-            .where((s) => s.container == StreamContainer.mp4)
-            .sortByVideoQuality();
-        if (mp4VideoOnly.isNotEmpty) {
-          final chosen = mp4VideoOnly.firstWhere(
-            (s) =>
-                s.qualityLabel == '360p' ||
-                s.qualityLabel == '480p' ||
-                s.qualityLabel == '720p' ||
-                s.qualityLabel == '240p',
-            orElse: () => mp4VideoOnly.first,
-          );
-          final videoUrl = chosen.url.toString();
-          _cache[track.id] = videoUrl;
-          return videoUrl;
-        }
-
-        // 2b. Muxed 360p / 480p format fallback
-        final muxed = manifest.muxed.sortByVideoQuality();
-        if (muxed.isNotEmpty) {
-          final chosen = muxed.firstWhere(
-            (s) =>
-                s.qualityLabel == '360p' ||
-                s.qualityLabel == '480p' ||
-                s.qualityLabel == '240p',
-            orElse: () => muxed.first,
-          );
-          final videoUrl = chosen.url.toString();
+        final videoUrl = await InnerTubeService.instance
+            .getDirectVideoStreamUrl(track.id, preferredHeight: 480)
+            .timeout(const Duration(seconds: 5));
+        if (videoUrl != null && videoUrl.isNotEmpty) {
           _cache[track.id] = videoUrl;
           return videoUrl;
         }
       } catch (e) {
         debugPrint('CanvasResolutionService: could not resolve canvas for ${track.id}: $e');
-      } finally {
-        yt?.close();
       }
     } else if (track.trackName.isNotEmpty) {
-      // 3. Non-11-character tracks: quick search fallback
-      YoutubeExplode? yt;
+      // 3. Non-11-character tracks: quick search fallback via InnerTube
       try {
-        yt = YoutubeExplode();
         final query = '${track.trackName} ${track.artistName}'.trim();
-        final searchResults = await yt.search.search(query).timeout(const Duration(seconds: 5));
-        if (searchResults.isNotEmpty) {
-          final firstVideo = searchResults.first;
-          final manifest = await yt.videos.streamsClient
-              .getManifest(firstVideo.id)
-              .timeout(const Duration(seconds: 6));
-
-          final mp4VideoOnly = manifest.videoOnly
-              .where((s) => s.container == StreamContainer.mp4)
-              .sortByVideoQuality();
-          if (mp4VideoOnly.isNotEmpty) {
-            final chosen = mp4VideoOnly.firstWhere(
-              (s) =>
-                  s.qualityLabel == '360p' ||
-                  s.qualityLabel == '480p' ||
-                  s.qualityLabel == '720p' ||
-                  s.qualityLabel == '240p',
-              orElse: () => mp4VideoOnly.first,
-            );
-            final videoUrl = chosen.url.toString();
+        final searchResults = await InnerTubeService.instance
+            .searchSongs(query, limit: 3)
+            .timeout(const Duration(seconds: 4));
+        if (searchResults.isNotEmpty && searchResults.first.id.isNotEmpty) {
+          final videoUrl = await InnerTubeService.instance
+              .getDirectVideoStreamUrl(searchResults.first.id, preferredHeight: 480)
+              .timeout(const Duration(seconds: 5));
+          if (videoUrl != null && videoUrl.isNotEmpty) {
             _cache[track.id] = videoUrl;
             return videoUrl;
           }
         }
       } catch (e) {
         debugPrint('CanvasResolutionService search fallback failed for ${track.trackName}: $e');
-      } finally {
-        yt?.close();
       }
     }
 
