@@ -41,10 +41,15 @@ class ExploreWheelMath {
 
   static double centrality(double t) => (1.0 - t.abs()).clamp(0.0, 1.0);
 
-  /// Arc lateral offset: center sweeps furthest right (0), top and
-  /// bottom curve back left: x = −A·(1−cos(|t|·π/2)).
+  /// Arc lateral offset: center sits furthest left (0), top and
+  /// bottom curve back right: x = A·(1−cos(|t|·π/2)).
   static double arcDx(double t, double a) =>
-      -a * (1 - cos(t.abs() * pi / 2));
+      a * (1 - cos(t.abs() * pi / 2));
+
+  /// Tangent rotation: rows above center tilt clockwise (>0), rows
+  /// below center tilt counter-clockwise (<0), center row is level (0).
+  static double angleFor(double t, [double maxAngle = ExploreTokens.arcMaxAngle]) =>
+      -t * maxAngle;
 
   /// Anchors: c=1 → 1.0/1.0; neighbor band (c≈0.67) → ≈0.74/0.46;
   /// edge c=0 → 0.60/0.18.

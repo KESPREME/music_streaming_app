@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/services/explore/explore_controller.dart';
 import 'package:music_streaming_app/services/explore/explore_engine.dart';
-import 'package:music_streaming_app/services/explore/explore_session.dart';
 import 'package:music_streaming_app/services/recommendation/candidate.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/presentation/explore/explore_screen.dart';

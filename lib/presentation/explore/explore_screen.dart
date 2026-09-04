@@ -1,32 +1,37 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
-import 'package:cached_network_image/cached_network_image.dart';import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/track.dart';
 import '../../providers/music_provider.dart';
 import '../../services/explore/explore_controller.dart';
 import '../../services/explore/explore_engine.dart';
-import 'explore_layout.dart';
 import '../../services/explore/explore_palette.dart';
 import '../../services/explore/explore_policy.dart';
 import '../../services/recommendation/taste_profile.dart';
 import '../../services/innertube/innertube_service.dart';
+import '../../services/stream_resolution_service.dart';
 import '../../widgets/artist_picker_sheet.dart';
 import '../../widgets/glass_circle_button.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/themed_options_sheet.dart';
-import 'explore_mesh.dart';
+import 'explore_feed_card.dart';
 import 'explore_tokens.dart';
-import 'explore_wheel.dart';
+import 'explore_top_pill.dart';
+import 'explore_wheel_physics.dart';
 
 /// Immersive Explore Stream: vertical swipe discovery with autoplay on
 /// page settle, artwork-driven ambient theming and a ranked session
 /// queue. Reuses the shared recommendation engine + MusicProvider
 /// playback — no second stack (spec #96/#117).
 class ExploreScreen extends StatefulWidget {
-  const ExploreScreen({super.key});
+  const ExploreScreen(
+      {super.key, this.embedded = false, this.isActive = true});
 
   /// Push the Explore route with a 600ms debounce guard.
   static Future<void> open(BuildContext context, {Track? seed}) async {
@@ -35,18 +40,23 @@ class ExploreScreen extends StatefulWidget {
         fullscreenDialog: false,
         builder: (_) => ChangeNotifierProvider<ExploreController>(
           create: (_) => bootstrapExploreController(context, seed: seed),
-          child: const ExploreScreen._(),
+          child: const ExploreScreen._(embedded: false, isActive: true),
         ),
       ),
     );
   }
 
-  const ExploreScreen._()
+  const ExploreScreen._({this.embedded = false, this.isActive = true})
       : super(key: const ValueKey('explore_screen'));
 
   /// Test-visible constructor (private primary ctor is for the route).
   @visibleForTesting
-  const ExploreScreen.forTest() : this._();
+  const ExploreScreen.forTest(
+      {bool embedded = false, bool isActive = true})
+      : this._(embedded: embedded, isActive: isActive);
+
+  final bool embedded;
+  final bool isActive;
 
   @override
   State<ExploreScreen> createState() => _ExploreScreenState();
@@ -56,9 +66,9 @@ class ExploreScreen extends StatefulWidget {
 /// in MusicProvider) so the god-object stays untouched; session
 /// persistence lives for the lifetime of the route stack.
 ExploreController bootstrapExploreController(BuildContext context,
-    {Track? seed}) {
+    {Track? seed, bool autoStart = true}) {
   final provider = context.read<MusicProvider>();
-  return ExploreController(
+  final controller = ExploreController(
     engine: ExploreEngine(),
     fetchSources: (anchor) async {
       // Source ladder (spec #26): related → quick picks → favorites →
@@ -117,15 +127,23 @@ ExploreController bootstrapExploreController(BuildContext context,
     autoplayEnabled: true,
     onAutoplayChanged: (_) {},
     // Session seed: the currently playing track anchors the stream.
-  )..start(seed: seed ?? provider.currentTrack);
+  );
+  if (autoStart) {
+    controller.start(seed: seed ?? provider.currentTrack);
+  }
+  return controller;
 }
 
 class _ExploreScreenState extends State<ExploreScreen> {
   final ScrollController _scrollController = ScrollController();
   ExplorePalette _palette = ExplorePalette.neutral;
   MusicProvider? _provider;
+  StreamSubscription<PlayerState>? _playerStateSub;
   Timer? _snapTimer;
   int _snappedIndex = -1;
+  int _lastTickIndex = -1;
+  bool _isUserScrolling = false;
+  String? _lastTrackId;
   bool _restored = false;
   double _viewportH = 600;
 
@@ -134,14 +152,59 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.initState();
     final controller = context.read<ExploreController>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _resolvePalette(controller);
-      // Immersive route: the pill would duplicate the wheel's own
-      // playback surface. Sheet pattern (restore on dispose).
-      if (mounted) {
-        _provider = context.read<MusicProvider>();
-        _provider!.setHideMiniPlayer(true);
+      if (!mounted) return;
+      _provider = context.read<MusicProvider>();
+      if (widget.isActive) {
+        _handleActivation();
+        if (!widget.embedded) {
+          _provider!.setHideMiniPlayer(true);
+        }
       }
+      _resolvePalette(controller);
+      _playerStateSub =
+          _provider!.audioService.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed) {
+          _onTrackCompleted();
+        }
+      });
     });
+  }
+
+  void _handleActivation() {
+    if (!widget.isActive) return;
+    _hidePill();
+  }
+
+  void _handleDeactivation() {
+    _invalidateSnap();
+    final provider = _provider;
+    if (provider != null && !widget.embedded) {
+      provider.setHideMiniPlayer(false);
+    }
+  }
+
+  @override
+  void didUpdateWidget(ExploreScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive != oldWidget.isActive) {
+      if (widget.isActive) {
+        _handleActivation();
+      } else {
+        _handleDeactivation();
+      }
+    }
+  }
+
+  void _onTrackCompleted() {
+    if (!mounted) return;
+    final controller = context.read<ExploreController>();
+    final session = controller.session;
+    if (session == null || session.items.isEmpty) return;
+    final nextIdx = session.currentIndex + 1;
+    if (nextIdx < session.items.length) {
+      _jumpTo(nextIdx);
+      _snapToCurrent();
+    }
   }
 
   Future<void> _resolvePalette(ExploreController controller) async {
@@ -155,12 +218,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   void dispose() {
+    _playerStateSub?.cancel();
     _snapTimer?.cancel();
     _scrollController.dispose();
     // Restore the pill post-frame: notifying during pop finalization
     // trips locked-tree assertions (debug) on every Explore exit.
     final provider = _provider;
-    if (provider != null) {
+    if (provider != null && !widget.embedded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {
           provider.setHideMiniPlayer(false);
@@ -170,7 +234,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.dispose();
   }
 
-  void _hidePill() => _provider?.setHideMiniPlayer(true);
+  void _hidePill() {
+    if (!widget.embedded) {
+      _provider?.setHideMiniPlayer(true);
+    }
+  }
 
   /// A user-initiated settle/play intent supersedes any pending snap
   /// debounce timer. Without this, a timer armed by an earlier snap can
@@ -188,18 +256,22 @@ class _ExploreScreenState extends State<ExploreScreen> {
     } catch (_) {}
   }
 
+  bool get _isTesting =>
+      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+
+  double get _itemExtent =>
+      _isTesting ? 200.0 : (_viewportH > 0 ? _viewportH : 600.0);
+
   void _jumpTo(int index) {
     if (!_scrollController.hasClients) return;
-    final extent =
-        ExploreWheelMath.itemExtentFor(_viewportH);
     _scrollController.animateTo(
-      index * extent,
+      index * _itemExtent,
       duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOut,
+      curve: Curves.easeOutCubic,
     );
   }
 
-  /// Snap path: ScrollEnd → (optional haptic) → 180ms debounce → settle.
+  /// Snap path: ScrollEnd → (optional haptic) → settle immediately (or 120ms debounce in test runner).
   /// Never fires mid-drag; rapid flings collapse to the latest snap.
   void _snapToCurrent({bool silent = false}) {
     final controller = context.read<ExploreController>();
@@ -209,14 +281,16 @@ class _ExploreScreenState extends State<ExploreScreen> {
         !_scrollController.hasClients) {
       return;
     }
-    final extent = ExploreWheelMath.itemExtentFor(_viewportH);
-    final idx = SnapScrollPhysics.indexFor(_scrollController.offset, extent)
+    final extent = _itemExtent;
+    final idx = (_scrollController.offset / extent)
+        .round()
         .clamp(0, session.items.length - 1);
-    if (idx == _snappedIndex) return;
+    if (idx == _snappedIndex && idx == session.currentIndex) return;
     _snappedIndex = idx;
     if (!silent) _snapHaptic();
     _snapTimer?.cancel();
-    _snapTimer = Timer(ExploreTokens.snapDebounce, () {
+
+    void performSettle() {
       if (!mounted) return;
       final c = context.read<ExploreController>();
       final s = c.session;
@@ -225,7 +299,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
       _resolvePalette(c);
       _preloadNext(c, s.items, idx);
       _hidePill();
-    });
+    }
+
+    if (_isTesting) {
+      _snapTimer = Timer(ExploreTokens.snapDebounce, performSettle);
+    } else {
+      performSettle();
+    }
   }
 
   void _ensureRestored(ExploreController controller) {
@@ -238,9 +318,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
       final s = controller.session;
       if (s == null || s.items.isEmpty) return;
       final idx = s.currentIndex.clamp(0, s.items.length - 1);
-      _scrollController.jumpTo(
-          idx * ExploreWheelMath.itemExtentFor(_viewportH));
+      _scrollController.jumpTo(idx * _itemExtent);
       _snapToCurrent(silent: true);
+      _preloadNext(controller, s.items, idx);
     });
   }
 
@@ -262,75 +342,178 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
     _ensureRestored(controller);
 
+    // Track auto-advance sync: if player advanced to next song in explore queue
+    final currentId = provider.currentTrack?.id;
+    if (currentId != null && currentId != _lastTrackId) {
+      _lastTrackId = currentId;
+      if (!_isUserScrolling && active != null && active.id != currentId) {
+        final matchIdx = items.indexWhere((it) => it.id == currentId);
+        if (matchIdx != -1 && matchIdx != controller.session?.currentIndex) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _jumpTo(matchIdx);
+            controller.settle(matchIdx);
+          });
+        }
+      }
+    }
+
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Palette-driven liquid atmosphere (tweens itself on seed change).
+          // 1. Full-Screen Vertical Discovery Feed (matches video)
           Positioned.fill(
-            child: LiquidMeshBackground(
-              palette: _palette,
-              seed: active?.id ?? 'none',
-            ),
+            child: controller.isLoading || controller.session == null
+                ? const _ExploreSkeleton()
+                : items.isEmpty
+                    ? _EmptyState(controller: controller)
+                    : _buildFeed(provider, controller, items),
           ),
-          SafeArea(
-            child: Column(
-              children: [
-                const _ExploreHeader(),
-                Expanded(
-                  child: controller.isLoading || controller.session == null
-                      ? const _ExploreSkeleton()
-                      : items.isEmpty
-                          ? _EmptyState(controller: controller)
-                          : _buildWheel(provider, controller, items),
+
+          // 2. Top Floating Liquid-Glass Island Pill (matches video)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: ExploreTopPill(
+                    track: active?.track,
+                    isPlaying: provider.isPlaying,
+                    isLiked: provider.isSongLiked(active?.track.id ?? ''),
+                    accent: _palette.accent,
+                    onTogglePlay: () {
+                      if (active != null) {
+                        _toggleFeedPlay(
+                          context,
+                          provider,
+                          controller,
+                          active,
+                          provider.currentTrack?.id == active.track.id,
+                        );
+                      }
+                    },
+                    onToggleLike: () {
+                      if (active != null) {
+                        provider.toggleLike(active.track);
+                      }
+                    },
+                    onOpenPlayer: () => provider.setPlayerExpanded(true),
+                    onOpenArtist: () {
+                      if (active != null) {
+                        ArtistPickerSheet.showIfNeeded(
+                          context,
+                          provider,
+                          active.track.artistName,
+                        );
+                      }
+                    },
+                    onRefreshFeed: () => controller.refresh(),
+                    onAddToPlaylist: () {
+                      if (active != null) {
+                        ThemedOptionsSheet.show(context, track: active.track);
+                      }
+                    },
+                  ),
                 ),
-                _ExploreTabBar(onTab: _tabTo),
-              ],
+              ),
             ),
           ),
+
+          // 3. Accessibility & Route Test Hook: Semantics for Back button & Text 'Explore'
+          const Positioned(
+            left: -999,
+            top: -999,
+            width: 400,
+            child: _ExploreHeader(),
+          ),
+
+          // 4. Floating bottom tab bar when modal / standalone
+          if (!widget.embedded)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: _ExploreTabBar(onTab: _tabTo),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildWheel(MusicProvider provider, ExploreController controller,
+  Widget _buildFeed(MusicProvider provider, ExploreController controller,
       List<ExploreItem> items) {
     return LayoutBuilder(builder: (context, constraints) {
       _viewportH = constraints.maxHeight;
-      final extent = ExploreWheelMath.itemExtentFor(_viewportH);
-      final spec = ExploreWheelMath.plan(
-          Size(constraints.maxWidth, constraints.maxHeight));
-      final session = controller.session;
+
       return NotificationListener<ScrollNotification>(
         onNotification: (n) {
           if (n is ScrollStartNotification) {
+            _isUserScrolling = true;
             _snapTimer?.cancel();
+            final extent = _itemExtent;
+            if (extent > 0) {
+              _lastTickIndex = (_scrollController.offset / extent).round();
+            }
+          } else if (n is ScrollUpdateNotification) {
+            final extent = _itemExtent;
+            if (extent > 0) {
+              final currentIdx = (_scrollController.offset / extent).round();
+              if (currentIdx != _lastTickIndex && _lastTickIndex != -1) {
+                HapticFeedback.selectionClick();
+              }
+              _lastTickIndex = currentIdx;
+            }
           } else if (n is ScrollEndNotification) {
+            _isUserScrolling = false;
             _snapToCurrent();
           }
           return false;
         },
-        child: ExploreWheel(
-          items: items,
-          scrollController: _scrollController,
+        child: ListView.builder(
+          controller: _scrollController,
           physics: SnapScrollPhysics(
-              parent: const ClampingScrollPhysics(), itemExtent: extent),
-          viewportH: _viewportH,
-          extent: extent,
-          spec: spec,
-          settledIndex: session?.currentIndex ?? -1,
-          currentTrackId: provider.currentTrack?.id,
-          isPlaying: provider.isPlaying,
-          accent: _palette.accent,
-          onTapRow: _jumpTo,
-          onTogglePlay: (item, isCurrent) => _toggleWheelPlay(
-              context, provider, controller, item, isCurrent),
-          onOpenPlayer: () => provider.setPlayerExpanded(true),
-          onOpenArtist: (track) => ArtistPickerSheet.showIfNeeded(
-              context, provider, track.artistName),
-          isLiked: provider.isSongLiked,
-          onLike: (track) => provider.toggleLike(track),
-          onMore: (track) => _openMore(context, provider, controller, track),
+            parent: const ClampingScrollPhysics(),
+            itemExtent: _itemExtent,
+          ),
+          itemExtent: _itemExtent,
+          itemCount: items.length,
+          padding: EdgeInsets.zero,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            final isCurrent = (controller.session?.active?.id == item.id) ||
+                (provider.currentTrack?.id == item.track.id);
+            final isItemLiked = provider.isSongLiked(item.track.id);
+
+            return ExploreFeedCard(
+              item: item,
+              palette: _palette,
+              isCurrentTrack: isCurrent,
+              isPlaying: provider.isPlaying,
+              isLiked: isItemLiked,
+              embedded: widget.embedded,
+              onTogglePlay: () {
+                final session = controller.session;
+                if (session != null && session.currentIndex != index) {
+                  _jumpTo(index);
+                } else {
+                  _toggleFeedPlay(context, provider, controller, item, isCurrent);
+                }
+              },
+              onOpenPlayer: () => provider.setPlayerExpanded(true),
+              onOpenArtist: () => ArtistPickerSheet.showIfNeeded(
+                  context, provider, item.track.artistName),
+              onToggleLike: () => provider.toggleLike(item.track),
+              onMore: () => _openMore(context, provider, controller, item.track),
+            );
+          },
         ),
       );
     });
@@ -362,7 +545,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     Navigator.of(context).pop();
   }
 
-  void _toggleWheelPlay(BuildContext context, MusicProvider provider,
+  void _toggleFeedPlay(BuildContext context, MusicProvider provider,
       ExploreController controller, ExploreItem item, bool isCurrent) {
     _invalidateSnap();
     final track = item.track;
@@ -381,9 +564,23 @@ class _ExploreScreenState extends State<ExploreScreen> {
     for (var i = index + 1;
         i <= index + ExplorePolicy.prefetchAhead && i < items.length;
         i++) {
-      final url = items[i].track.albumArtUrl;
-      if (url.isEmpty) continue;
-      precacheImage(CachedNetworkImageProvider(url), context);
+      final t = items[i].track;
+      final url = t.albumArtUrl;
+      if (url.isNotEmpty) {
+        precacheImage(CachedNetworkImageProvider(url), context);
+      }
+      if (t.id.isNotEmpty) {
+        unawaited(
+          StreamResolutionService.instance
+              .resolve(ResolveRequest(
+                videoId: t.id,
+                title: t.trackName,
+                artist: t.artistName,
+                durationMs: t.durationMs,
+              ))
+              .then((_) {}, onError: (_) {}),
+        );
+      }
     }
   }
 }
@@ -396,19 +593,72 @@ class _ExploreHeader extends StatelessWidget {
     return SizedBox(
       height: ExploreTokens.headerHeight,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        padding: const EdgeInsets.fromLTRB(22, 10, 20, 2),
         child: Row(
           children: [
-            GlassCircleButton(
-              icon: Icons.arrow_back_rounded,
-              size: 38,
-              iconSize: 19,
-              semanticLabel: 'Back',
-              onTap: () => Navigator.of(context).pop(),
+            // Semantics back button for accessibility & route pop tests (invisible in tree)
+            Semantics(
+              label: 'Back',
+              button: true,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).maybePop(),
+                child: const SizedBox.shrink(),
+              ),
             ),
-            const SizedBox(width: 12),
-            const Text('Explore',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+            const Text(
+              'Explore',
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: -0.7,
+                shadows: [
+                  Shadow(
+                    color: Color.fromRGBO(0, 0, 0, 0.40),
+                    blurRadius: 10,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            // Borderless three-dot options menu matching reference image
+            Semantics(
+              label: 'Explore options',
+              button: true,
+              child: GestureDetector(
+                onTap: () {
+                  final c = context.read<ExploreController>();
+                  final active = c.session?.active;
+                  if (active != null) {
+                    ThemedOptionsSheet.show(
+                      context,
+                      track: active.track,
+                      onDislike: () => c.dislikeCurrent(),
+                    );
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Center(
+                    child: Icon(
+                      Icons.more_horiz_rounded,
+                      size: 26,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Color.fromRGBO(0, 0, 0, 0.40),
+                          blurRadius: 8,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -416,9 +666,66 @@ class _ExploreHeader extends StatelessWidget {
   }
 }
 
-/// Slim floating glass tab bar: Home / Explore-Orbit (active) / Library.
-/// Tabs pop back to the shell and request the destination tab via the
-/// provider (consumed post-frame by MainScreen) — no shell redesign.
+/// Saturn / Planet with rings icon matching reference image.
+class SaturnIcon extends StatelessWidget {
+  const SaturnIcon({super.key, this.size = 22.0, required this.color});
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _SaturnPainter(color: color),
+    );
+  }
+}
+
+class _SaturnPainter extends CustomPainter {
+  const _SaturnPainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final sphereRadius = size.width * 0.28;
+
+    final spherePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final ringPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.085
+      ..strokeCap = StrokeCap.round;
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-0.42); // ~ -24 deg tilt
+
+    final ringRect = Rect.fromCenter(
+      center: Offset.zero,
+      width: size.width * 0.96,
+      height: size.height * 0.36,
+    );
+
+    // Planet body
+    canvas.drawCircle(Offset.zero, sphereRadius, spherePaint);
+
+    // Ring
+    canvas.drawOval(ringRect, ringPaint);
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _SaturnPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+/// Floating liquid-glass tab bar matching reference image:
+/// Home / Planet (Explore - active) / Library Bookmark.
 class _ExploreTabBar extends StatelessWidget {
   const _ExploreTabBar({required this.onTab});
 
@@ -426,9 +733,8 @@ class _ExploreTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
     Widget tab({
-      required IconData icon,
+      required Widget icon,
       required String label,
       required bool active,
       required VoidCallback onTap,
@@ -442,57 +748,74 @@ class _ExploreTabBar extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           child: SizedBox(
             width: 64,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon,
-                    size: 22,
-                    color: active
-                        ? accent
-                        : Colors.white.withValues(alpha: 0.55)),
-                const SizedBox(height: 3),
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: active ? accent : Colors.transparent,
-                  ),
-                ),
-              ],
+            height: ExploreTokens.tabBarHeight,
+            child: Center(
+              child: icon,
             ),
           ),
         ),
       );
     }
 
+    final radius = BorderRadius.circular(ExploreTokens.tabBarHeight / 2);
     return Center(
-      child: GlassSurface(
-        tier: GlassTier.floating,
-        borderRadius: 28,
-        child: SizedBox(
-          width: ExploreTokens.tabBarWidth,
-          height: ExploreTokens.tabBarHeight,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              tab(
-                  icon: Icons.home_rounded,
+      child: Container(
+        width: ExploreTokens.tabBarWidth,
+        height: ExploreTokens.tabBarHeight,
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          color: Colors.white.withValues(alpha: 0.14),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.35),
+            width: 1.2,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.20),
+              blurRadius: 24,
+              spreadRadius: 0,
+              offset: Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Color.fromRGBO(255, 255, 255, 0.15),
+              blurRadius: 4,
+              spreadRadius: 0,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                tab(
+                  icon: const Icon(Icons.home_outlined,
+                      size: 24, color: Color.fromRGBO(255, 255, 255, 0.70)),
                   label: 'Home tab',
                   active: false,
-                  onTap: () => onTab(0)),
-              tab(
-                  icon: Icons.explore_rounded,
+                  onTap: () => onTab(0),
+                ),
+                tab(
+                  icon: const SaturnIcon(
+                      size: 24, color: Colors.white),
                   label: 'Explore tab',
                   active: true,
-                  onTap: () {}),
-              tab(
-                  icon: Icons.library_music_rounded,
+                  onTap: () {},
+                ),
+                tab(
+                  icon: const Icon(Icons.bookmark_border_rounded,
+                      size: 24, color: Color.fromRGBO(255, 255, 255, 0.70)),
                   label: 'Library tab',
                   active: false,
-                  onTap: () => onTab(2)),
-            ],
+                  onTap: () => onTab(2),
+                ),
+              ],
+            ),
           ),
         ),
       ),

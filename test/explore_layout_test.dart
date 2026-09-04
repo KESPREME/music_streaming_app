@@ -9,10 +9,15 @@ void main() {
       expect(ExploreWheelMath.itemExtentFor(457), closeTo(96, 0.01));
       expect(ExploreWheelMath.itemExtentFor(560), closeTo(112, 0.01));
     });
-    test('arc: center 0, edges curve left', () {
+    test('arc: center 0 (leftmost), edges curve right', () {
       expect(ExploreWheelMath.arcDx(0, 32), 0);
-      expect(ExploreWheelMath.arcDx(1, 32), closeTo(-32, 0.01));
-      expect(ExploreWheelMath.arcDx(-1, 32), closeTo(-32, 0.01));
+      expect(ExploreWheelMath.arcDx(1, 32), closeTo(32, 0.01));
+      expect(ExploreWheelMath.arcDx(-1, 32), closeTo(32, 0.01));
+    });
+    test('angleFor: rotates along tangent of curve', () {
+      expect(ExploreWheelMath.angleFor(0, 0.16), 0);
+      expect(ExploreWheelMath.angleFor(-0.5, 0.16), closeTo(0.08, 0.001));
+      expect(ExploreWheelMath.angleFor(0.5, 0.16), closeTo(-0.08, 0.001));
     });
     test('anchors match spec steps', () {
       expect(ExploreWheelMath.scaleFor(1), 1.0);

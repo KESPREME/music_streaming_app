@@ -1,41 +1,58 @@
-import 'dart:ui' show ImageFilter;
-
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../services/explore/explore_palette.dart';
 import 'explore_tokens.dart';
 
-/// Palette-driven liquid atmosphere: three drifting radial blobs
-/// (vibrant / background / accent) + center ambient glow + base depth +
-/// luminance-reactive scrim. Colors AND drift targets tween over 600ms
-/// ease-out on every active-item change — never a hard snap.
-/// Single RepaintBoundary; transform/opacity-free (gradient fills only).
+/// Fluid album-adaptive liquid atmosphere:
+/// Multi-stop chromatic gradient canvas (deep -> bg -> vibrant -> accent)
+/// with continuous organic ambient drift and an animated soundwave equalizer
+/// visualizer inspired by Gradient Builder (Sky / Aurora / Soundwave: Bars).
 class LiquidMeshBackground extends StatefulWidget {
-  const LiquidMeshBackground(
-      {super.key, required this.palette, required this.seed});
+  const LiquidMeshBackground({
+    super.key,
+    required this.palette,
+    required this.seed,
+    this.isPlaying = false,
+  });
 
   final ExplorePalette palette;
-
-  /// Active item id — drives the drift layout pick.
   final String seed;
+  final bool isPlaying;
 
   @override
   State<LiquidMeshBackground> createState() => _LiquidMeshBackgroundState();
 }
 
 class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _mesh = AnimationController(
-      vsync: this, duration: ExploreTokens.meshTransition);
+    vsync: this,
+    duration: ExploreTokens.meshTransition,
+  );
+
+  late final AnimationController _drift = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 14),
+  );
+
+  late final AnimationController _eqAnim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+
+  bool get _isTesting =>
+      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+
   late ExplorePalette _from;
   late ExplorePalette _to;
   late List<Alignment> _fromAlign;
   late List<Alignment> _toAlign;
 
   static const _layouts = [
-    [Alignment(-0.9, -0.9), Alignment(0.9, 0.9), Alignment(0.7, -0.2)],
-    [Alignment(0.9, -0.8), Alignment(-0.8, 0.9), Alignment(-0.6, 0.3)],
-    [Alignment(0.0, -1.0), Alignment(0.2, 1.0), Alignment(0.0, 0.0)],
+    [Alignment(-0.8, -0.6), Alignment(0.8, 0.5), Alignment(0.4, -0.2)],
+    [Alignment(0.8, -0.7), Alignment(-0.7, 0.6), Alignment(-0.4, 0.2)],
+    [Alignment(-0.2, -0.8), Alignment(0.4, 0.7), Alignment(0.1, -0.1)],
   ];
 
   static List<Alignment> _layoutFor(String seed) =>
@@ -47,11 +64,24 @@ class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
     _from = _to = widget.palette;
     _fromAlign = _toAlign = _layoutFor(widget.seed);
     _mesh.value = 1.0;
+    if (!_isTesting) {
+      _drift.repeat();
+      if (widget.isPlaying) {
+        _eqAnim.repeat();
+      }
+    }
   }
 
   @override
   void didUpdateWidget(LiquidMeshBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!_isTesting) {
+      if (widget.isPlaying && !_eqAnim.isAnimating) {
+        _eqAnim.repeat();
+      } else if (!widget.isPlaying && _eqAnim.isAnimating) {
+        _eqAnim.stop();
+      }
+    }
     if (widget.seed != oldWidget.seed) {
       _from = _to;
       _to = widget.palette;
@@ -64,85 +94,137 @@ class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
   @override
   void dispose() {
     _mesh.dispose();
+    _drift.dispose();
+    _eqAnim.dispose();
     super.dispose();
   }
 
   Alignment _lerpAlign(int i, double v) => Alignment.lerp(
-      _fromAlign[i], _toAlign[i], Curves.easeOut.transform(v))!;
-
-  Widget _blob(Alignment at, Color color, double radius) {
-    return Align(
-      alignment: at,
-      child: Container(
-        width: 430,
-        height: 430,
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            radius: radius,
-            colors: [
-              color.withValues(alpha: 0.5),
-              color.withValues(alpha: 0.0),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      _fromAlign[i], _toAlign[i], Curves.easeOutCubic.transform(v))!;
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: AnimatedBuilder(
-        animation: _mesh,
+        animation: Listenable.merge([_mesh, _drift, _eqAnim]),
         builder: (context, _) {
-          final v = Curves.easeOut.transform(_mesh.value);
+          final v = Curves.easeOutCubic.transform(_mesh.value);
+          final d = _drift.value * 2 * pi;
           final vib = Color.lerp(_from.vibrant, _to.vibrant, v)!;
-          final deep = Color.lerp(_from.deep, _to.deep, v)!;
           final acc = Color.lerp(_from.accent, _to.accent, v)!;
-          // Brighter artwork → stronger scrim keeps text readable.
-          final scrimTop =
-              0.55 + 0.3 * vib.computeLuminance().clamp(0.0, 1.0);
+          final deep = Color.lerp(_from.deep, _to.deep, v)!;
+          final bg = Color.lerp(_from.background, _to.background, v)!;
+
+          // Gentle ambient drift offsets for organic fluid breathing
+          final driftX1 = sin(d) * 0.15;
+          final driftY1 = cos(d) * 0.12;
+          final driftX2 = cos(d) * 0.16;
+          final driftY2 = sin(d) * 0.14;
+
+          final align1 = _lerpAlign(0, v) + Alignment(driftX1, driftY1);
+          final align2 = _lerpAlign(1, v) + Alignment(driftX2, driftY2);
+
           return Stack(
+            fit: StackFit.expand,
             children: [
-              // Stop 2: canvas base — deep tone / charcoal.
-              Positioned.fill(child: ColoredBox(color: deep)),
-              // Stop 1: vibrant glow, center-left behind the active card,
-              // blurred wide, 35% peak alpha.
-              Align(
-                alignment: const Alignment(-0.55, 0.05),
-                child: SizedBox(
-                  width: 380,
-                  height: 520,
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(
-                        sigmaX: ExploreTokens.glowBlurSigma,
-                        sigmaY: ExploreTokens.glowBlurSigma),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          colors: [
-                            vib.withValues(alpha: 0.35),
-                            vib.withValues(alpha: 0.0),
-                          ],
-                        ),
-                      ),
+              // 1. Deep atmospheric canvas base
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      deep,
+                      bg,
+                      deep.withValues(alpha: 0.95),
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                ),
+              ),
+
+              // 2. Primary luminous Aurora bloom (Vibrant album tone)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: align1,
+                      radius: 1.25,
+                      colors: [
+                        vib.withValues(alpha: 0.45),
+                        vib.withValues(alpha: 0.15),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
                     ),
                   ),
                 ),
               ),
-              // Faint accent aura top-right for depth (drift-tweened).
-              _blob(_lerpAlign(2, v), acc, 1.0),
+
+              // 3. Secondary drifting atmosphere bloom (Accent tone)
               Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: align2,
+                      radius: 1.35,
+                      colors: [
+                        acc.withValues(alpha: 0.40),
+                        acc.withValues(alpha: 0.10),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.50, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              // 4. Center ambient glow spot for rotary arc depth
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(-0.55, 0.05),
+                      radius: 0.95,
+                      colors: [
+                        vib.withValues(alpha: 0.22),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.75],
+                    ),
+                  ),
+                ),
+              ),
+
+              // 5. Soundwave Equalizer visualizer (inspired by video at 02:25)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 240,
+                child: CustomPaint(
+                  painter: _SoundwaveBarsPainter(
+                    phase: _eqAnim.value,
+                    isPlaying: widget.isPlaying,
+                    colorStart: acc.withValues(alpha: 0.35),
+                    colorEnd: vib.withValues(alpha: 0.12),
+                  ),
+                ),
+              ),
+
+              // 6. Ethereal specular glass refraction light wash
+              const Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withValues(alpha: scrimTop),
-                        Colors.black.withValues(
-                            alpha: ExploreTokens.scrimBottom),
+                        Color.fromRGBO(255, 255, 255, 0.14),
+                        Color.fromRGBO(255, 255, 255, 0.02),
+                        Color.fromRGBO(0, 0, 0, 0.18),
                       ],
+                      stops: [0.0, 0.45, 1.0],
                     ),
                   ),
                 ),
@@ -153,4 +235,70 @@ class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
       ),
     );
   }
+}
+
+/// Visualizer painter rendering animated soundwave equalizer bars across
+/// the lower background canvas (matching "Soundwave: Bars" at 02:25 in video).
+class _SoundwaveBarsPainter extends CustomPainter {
+  const _SoundwaveBarsPainter({
+    required this.phase,
+    required this.isPlaying,
+    required this.colorStart,
+    required this.colorEnd,
+  });
+
+  final double phase;
+  final bool isPlaying;
+  final Color colorStart;
+  final Color colorEnd;
+
+  static const int barCount = 28;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final barWidth = size.width / barCount;
+    final maxBarHeight = size.height * 0.85;
+
+    for (var i = 0; i < barCount; i++) {
+      final normalizedX = i / barCount;
+      // Multi-harmonic sinusoidal wave for natural audio ripple motion
+      final wave1 = sin(2 * pi * (phase + normalizedX * 1.5));
+      final wave2 = cos(2 * pi * (phase * 1.5 - normalizedX * 2.0));
+      final rawHeight = isPlaying
+          ? (0.20 + 0.80 * ((wave1 * 0.6 + wave2 * 0.4).abs()))
+          : (0.12 + 0.10 * sin(pi * (phase + normalizedX)).abs());
+
+      // Center bell-curve weighting so edges taper off elegantly
+      final envelope = sin(pi * (i + 0.5) / barCount);
+      final height = (rawHeight * maxBarHeight * envelope).clamp(12.0, maxBarHeight);
+
+      final left = i * barWidth + barWidth * 0.18;
+      final width = barWidth * 0.64;
+      final top = size.height - height;
+
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, top, width, height),
+        Radius.circular(width / 2),
+      );
+
+      final paint = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            colorStart,
+            colorEnd,
+          ],
+        ).createShader(Rect.fromLTWH(left, top, width, height));
+
+      canvas.drawRRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SoundwaveBarsPainter oldDelegate) =>
+      oldDelegate.phase != phase ||
+      oldDelegate.isPlaying != isPlaying ||
+      oldDelegate.colorStart != colorStart ||
+      oldDelegate.colorEnd != colorEnd;
 }

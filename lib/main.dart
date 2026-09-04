@@ -16,7 +16,8 @@ import 'widgets/themed_playlist_detail_screen.dart';
 import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
-import 'screens/discover_screen.dart';
+import 'presentation/explore/explore_screen.dart';
+import 'services/explore/explore_controller.dart';
 import 'widgets/themed_nav_bar.dart';
 import 'widgets/themed_home_screen.dart';
 import 'widgets/themed_search_screen.dart';
@@ -206,6 +207,44 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
+class ThemedExploreScreen extends StatefulWidget {
+  const ThemedExploreScreen({super.key, this.isActive = false});
+
+  final bool isActive;
+
+  @override
+  State<ThemedExploreScreen> createState() => _ThemedExploreScreenState();
+}
+
+class _ThemedExploreScreenState extends State<ThemedExploreScreen> {
+  ExploreController? _controller;
+
+  @override
+  void didUpdateWidget(ThemedExploreScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive && _controller != null) {
+      if (_controller!.session == null) {
+        _controller!.start(seed: context.read<MusicProvider>().currentTrack);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider<ExploreController>(
+      create: (ctx) {
+        final c = bootstrapExploreController(ctx, autoStart: false);
+        _controller = c;
+        if (widget.isActive) {
+          c.start(seed: ctx.read<MusicProvider>().currentTrack);
+        }
+        return c;
+      },
+      child: ExploreScreen(embedded: true, isActive: widget.isActive),
+    );
+  }
+}
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -219,12 +258,6 @@ class _MainScreenState extends State<MainScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
-  final List<Widget> _screens = const [
-    ThemedHomeScreen(),
-    DiscoverScreen(),
-    ThemedLibraryScreen(),
-  ];
-
   @override
   void dispose() {
     _searchController.dispose();
@@ -235,7 +268,14 @@ class _MainScreenState extends State<MainScreen> {
   void _onItemTapped(int index) {
     if (_currentIndex == index && !_searchMode) return;
     if (_searchMode) _exitSearch();
+    final wasExplore = _currentIndex == 1;
+    final isExplore = index == 1;
     setState(() => _currentIndex = index);
+    if (isExplore) {
+      context.read<MusicProvider>().setHideMiniPlayer(true);
+    } else if (wasExplore) {
+      context.read<MusicProvider>().setHideMiniPlayer(false);
+    }
   }
 
   void _enterSearch() {
@@ -309,7 +349,11 @@ class _MainScreenState extends State<MainScreen> {
             const AmbientBackdrop(),
             FadeIndexedStack(
               index: _currentIndex,
-              children: _screens,
+              children: [
+                const ThemedHomeScreen(),
+                ThemedExploreScreen(isActive: _currentIndex == 1 && !_searchMode),
+                const ThemedLibraryScreen(),
+              ],
             ),
             // Search overlay (in-place transition). The nav bar's search
             // pill morphs into the input; the overlay shows only tabs +
@@ -355,7 +399,7 @@ class _MainScreenState extends State<MainScreen> {
                         onTap: _onItemTapped,
                         items: const [
                           BottomNavigationBarItem(icon: Icon(Icons.home_rounded), activeIcon: Icon(Icons.home_filled), label: 'Home'),
-                          BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Discover'),
+                          BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Explore'),
                           BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
                         ],
                       ),
@@ -411,7 +455,7 @@ class _MainScreenState extends State<MainScreen> {
                   },
                   items: const [
                     BottomNavigationBarItem(icon: Icon(Icons.home_rounded), activeIcon: Icon(Icons.home_filled), label: 'Home'),
-                    BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Discover'),
+                    BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore_rounded), label: 'Explore'),
                     BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
                   ],
                 ),

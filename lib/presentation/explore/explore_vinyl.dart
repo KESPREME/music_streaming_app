@@ -60,54 +60,39 @@ class _VinylDiscState extends State<VinylDisc>
       height: widget.size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white,
+          width: 1.5,
+        ),
         boxShadow: [
           if (widget.accent != null)
             BoxShadow(
-              color: widget.accent!.withValues(alpha: 0.3),
+              color: widget.accent!.withValues(alpha: 0.22),
               blurRadius: 18,
               spreadRadius: 1,
             ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+          const BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.12),
+            blurRadius: 14,
+            offset: Offset(0, 5),
+          ),
+          const BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.04),
+            blurRadius: 4,
+            offset: Offset(0, 1),
           ),
         ],
       ),
       child: ClipOval(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            widget.imageUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: widget.imageUrl,
-                    fit: BoxFit.cover,
-                    memCacheWidth: (widget.size * 2).round(),
-                    fadeInDuration: const Duration(milliseconds: 250),
-                    errorWidget: (_, __, ___) => const _DiscFallback(),
-                  )
-                : const _DiscFallback(),
-            // Realistic micro-grooves: subtle concentric rings.
-            const CustomPaint(painter: _GroovePainter()),
-            // White spindle label cutout with metallic ring.
-            Center(
-              child: Container(
-                width: ExploreTokens.spindleSize,
-                height: ExploreTokens.spindleSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  border: Border.all(
-                      color: const Color(0xFF9AA0AE), width: 2),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Colors.black45, blurRadius: 3),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: widget.imageUrl.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: widget.imageUrl,
+                fit: BoxFit.cover,
+                memCacheWidth: (widget.size * 2).round(),
+                fadeInDuration: const Duration(milliseconds: 200),
+                errorWidget: (_, __, ___) => const _DiscFallback(),
+              )
+            : const _DiscFallback(),
       ),
     );
     if (!widget.spinning) return disc;
@@ -116,36 +101,27 @@ class _VinylDiscState extends State<VinylDisc>
   }
 }
 
-/// Static micro-groove rings (never repaints; spins with the disc).
-class _GroovePainter extends CustomPainter {
-  const _GroovePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.white.withValues(alpha: 0.05);
-    final center = size.center(Offset.zero);
-    final maxR = size.shortestSide / 2;
-    for (var i = 1; i <= ExploreTokens.grooveCount; i++) {
-      canvas.drawCircle(
-          center, maxR * i / (ExploreTokens.grooveCount + 1), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GroovePainter oldDelegate) => false;
-}
-
-class _DiscFallback extends StatelessWidget {  const _DiscFallback();
+class _DiscFallback extends StatelessWidget {
+  const _DiscFallback();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white.withValues(alpha: 0.06),
-      child: const Icon(Icons.music_note_rounded,
-          size: 28, color: Colors.white24),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFECEEF3),
+            Color(0xFFDDE0E8),
+          ],
+        ),
+      ),
+      child: const Icon(
+        Icons.music_note_rounded,
+        size: 26,
+        color: Color(0xFF9E9EA7),
+      ),
     );
   }
 }

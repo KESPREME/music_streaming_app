@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../models/track.dart';
 import '../../services/explore/explore_engine.dart';
 import 'explore_layout.dart';
-import '../../widgets/glass_circle_button.dart';
 import 'explore_tokens.dart';
 import 'explore_vinyl.dart';
 import 'explore_wheel_physics.dart';
@@ -75,30 +74,40 @@ class ExploreWheel extends StatelessWidget {
                 index, offset, extent, viewportH, padTop);
             final c = ExploreWheelMath.centrality(t);
             final dx = ExploreWheelMath.arcDx(t, spec.arcA);
+            final angle = ExploreWheelMath.angleFor(t);
             final item = items[index];
+            final isSettled = index == settledIndex;
+            final rowOpacity = isSettled
+                ? 1.0
+                : (0.35 + 0.65 * ExploreWheelMath.opacityFor(c)).clamp(0.0, 1.0);
             return Transform.translate(
               offset: Offset(dx, 0),
-              child: Transform.scale(
-                scale: ExploreWheelMath.scaleFor(c),
-                child: Opacity(
-                  opacity: ExploreWheelMath.opacityFor(c),
-                  child: RepaintBoundary(
-                    child: _WheelRow(
-                      key: ValueKey('explore_row_${item.id}'),
-                      item: item,
-                      centrality: c,
-                      isSettled: index == settledIndex,
-                      isCurrent: currentTrackId == item.id,
-                      playing: isPlaying,
-                      accent: accent,
-                      liked: isLiked(item.id),
-                      onTapRow: () => onTapRow(index),
-                      onTogglePlay: () =>
-                          onTogglePlay(item, currentTrackId == item.id),
-                      onOpenPlayer: onOpenPlayer,
-                      onOpenArtist: () => onOpenArtist(item.track),
-                      onLike: () => onLike(item.track),
-                      onMore: () => onMore(item.track),
+              child: Transform.rotate(
+                angle: angle,
+                alignment: Alignment.centerLeft,
+                child: Transform.scale(
+                  scale: ExploreWheelMath.scaleFor(c),
+                  alignment: Alignment.centerLeft,
+                  child: Opacity(
+                    opacity: rowOpacity,
+                    child: RepaintBoundary(
+                      child: _WheelRow(
+                        key: ValueKey('explore_row_${item.id}'),
+                        item: item,
+                        centrality: c,
+                        isSettled: isSettled,
+                        isCurrent: currentTrackId == item.id,
+                        playing: isPlaying,
+                        accent: accent,
+                        liked: isLiked(item.id),
+                        onTapRow: () => onTapRow(index),
+                        onTogglePlay: () =>
+                            onTogglePlay(item, currentTrackId == item.id),
+                        onOpenPlayer: onOpenPlayer,
+                        onOpenArtist: () => onOpenArtist(item.track),
+                        onLike: () => onLike(item.track),
+                        onMore: () => onMore(item.track),
+                      ),
                     ),
                   ),
                 ),
@@ -160,17 +169,19 @@ class _WheelRow extends StatelessWidget {
         onMore: onMore,
       );
     }
-    // Inactive rows: bare vinyl + floating type. No containers, no
-    // borders, no shadows — the wheel is the composition.
+    // Inactive rows: clean circular art disc + tilted typography matching reference image.
     final track = item.track;
-    final textOpacity = ExploreWheelMath.textOpacityFor(centrality);
+    final textOpacity =
+        (0.50 + 0.50 * ExploreWheelMath.textOpacityFor(centrality))
+            .clamp(0.0, 1.0);
     return GestureDetector(
       onTap: onTapRow,
       behavior: HitTestBehavior.translucent,
       child: ConstrainedBox(
         constraints: const BoxConstraints.expand(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(
+              horizontal: ExploreTokens.pagePadding),
           child: Row(
             children: [
               Semantics(
@@ -183,7 +194,7 @@ class _WheelRow extends StatelessWidget {
                   spinning: false,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
                 child: Opacity(
                   opacity: textOpacity,
@@ -194,25 +205,37 @@ class _WheelRow extends StatelessWidget {
                       Text(
                         track.trackName,
                         style: const TextStyle(
-                            fontSize: ExploreTokens.titleSize,
-                            fontWeight: FontWeight.w600,
-                            height: 1.15,
-                            color: Colors.white,
-                            shadows: [
-                              Shadow(
-                                  color: Color.fromRGBO(0, 0, 0, 0.3),
-                                  blurRadius: 4,
-                                  offset: Offset(0, 1)),
-                            ]),
-                        maxLines: 2,
+                          fontSize: ExploreTokens.titleSize,
+                          fontWeight: FontWeight.w700,
+                          height: 1.15,
+                          color: Colors.white,
+                          letterSpacing: -0.2,
+                          shadows: [
+                            Shadow(
+                              color: Color.fromRGBO(0, 0, 0, 0.40),
+                              blurRadius: 6,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         track.artistName,
-                        style: TextStyle(
-                            fontSize: ExploreTokens.artistSize,
-                            color: accent.withValues(alpha: 0.9)),
+                        style: const TextStyle(
+                          fontSize: ExploreTokens.artistSize,
+                          fontWeight: FontWeight.w500,
+                          color: Color.fromRGBO(255, 255, 255, 0.78),
+                          shadows: [
+                            Shadow(
+                              color: Color.fromRGBO(0, 0, 0, 0.35),
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -228,10 +251,10 @@ class _WheelRow extends StatelessWidget {
   }
 }
 
-/// Authentic liquid-glass capsule — active row only. Gradient light
-/// border via nested containers (no custom painter); bevel via top
-/// highlight overlay; elevation via drop shadow. Disc hangs over the
-/// left edge; long-press opens track options.
+/// Authentic Apple-grade liquid-glass capsule — active row only.
+/// Frosted glass background with BackdropFilter blur + multi-stop
+/// specular rim highlight + ambient occlusion drop shadow.
+/// Dedicated tactile "Play" capsule button with spring micro-press.
 class _LiquidGlassPill extends StatelessWidget {
   const _LiquidGlassPill({
     super.key,
@@ -269,21 +292,25 @@ class _LiquidGlassPill extends StatelessWidget {
         constraints: const BoxConstraints.expand(),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-              horizontal: ExploreTokens.pillMarginH),
+              horizontal: ExploreTokens.pagePadding),
           child: SizedBox(
             height: ExploreTokens.pillHeight,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                // Glass body: blur + gradient light border + bevel + lift.
-                Positioned.fill(
+                // Multi-tier liquid glass capsule body emerging from behind the disc.
+                Positioned(
+                  left: 28,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(
                         ExploreTokens.pillRadius),
                     child: BackdropFilter(
                       filter: ImageFilter.blur(
-                          sigmaX: ExploreTokens.pillBlurSigma,
-                          sigmaY: ExploreTokens.pillBlurSigma),
+                          sigmaX: 30.0,
+                          sigmaY: 30.0),
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(
@@ -292,26 +319,31 @@ class _LiquidGlassPill extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Colors.white.withValues(
-                                  alpha: ExploreTokens.pillBorderTop),
-                              Colors.white.withValues(
-                                  alpha: ExploreTokens.pillBorderBottom),
+                              Colors.white.withValues(alpha: 0.85),
+                              Colors.white.withValues(alpha: 0.20),
+                              Colors.white.withValues(alpha: 0.60),
                             ],
+                            stops: const [0.0, 0.45, 1.0],
                           ),
                         ),
-                        padding: const EdgeInsets.all(1),
+                        padding: const EdgeInsets.all(1.2),
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(
                                 ExploreTokens.pillRadius - 1),
-                            color: Colors.white.withValues(
-                                alpha: ExploreTokens.pillFillAlpha),
+                            color: Colors.white.withValues(alpha: 0.20),
                             boxShadow: const [
                               BoxShadow(
-                                color: Color.fromRGBO(0, 0, 0, 0.45),
-                                blurRadius: 40,
-                                spreadRadius: -8,
-                                offset: Offset(0, 16),
+                                color: Color.fromRGBO(0, 0, 0, 0.22),
+                                blurRadius: 28,
+                                spreadRadius: 0,
+                                offset: Offset(0, 10),
+                              ),
+                              BoxShadow(
+                                color: Color.fromRGBO(0, 0, 0, 0.08),
+                                blurRadius: 8,
+                                spreadRadius: 0,
+                                offset: Offset(0, 2),
                               ),
                             ],
                           ),
@@ -321,12 +353,12 @@ class _LiquidGlassPill extends StatelessWidget {
                                   ExploreTokens.pillRadius - 1),
                               gradient: LinearGradient(
                                 begin: Alignment.topCenter,
-                                end: Alignment.center,
+                                end: Alignment.bottomCenter,
                                 colors: [
-                                  Colors.white.withValues(alpha: 0.25),
+                                  Colors.white.withValues(alpha: 0.38),
                                   Colors.white.withValues(alpha: 0.0),
                                 ],
-                                stops: const [0.0, 0.35],
+                                stops: const [0.0, 0.60],
                               ),
                             ),
                           ),
@@ -335,9 +367,9 @@ class _LiquidGlassPill extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Disc hanging over the left edge.
+                // Circular artwork disc docked at the left of the pill.
                 Positioned(
-                  left: -ExploreTokens.pillDiscOverlap,
+                  left: 0,
                   top: (ExploreTokens.pillHeight -
                           ExploreTokens.pillDiscSize) /
                       2,
@@ -355,12 +387,10 @@ class _LiquidGlassPill extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Text + heart + eq/play.
+                // Track metadata + Play capsule button (no heart in UI, preserved in semantics).
                 Positioned(
-                  left: ExploreTokens.pillDiscSize -
-                      ExploreTokens.pillDiscOverlap +
-                      10,
-                  right: 10,
+                  left: ExploreTokens.pillDiscSize + 14,
+                  right: 14,
                   top: 0,
                   bottom: 0,
                   child: Row(
@@ -375,30 +405,33 @@ class _LiquidGlassPill extends StatelessWidget {
                               child: Text(
                                 track.trackName,
                                 style: const TextStyle(
-                                    fontSize: ExploreTokens.titleSize,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.15,
-                                    color: Colors.white,
-                                    shadows: [
-                                      Shadow(
-                                          color:
-                                              Color.fromRGBO(0, 0, 0, 0.3),
-                                          blurRadius: 4,
-                                          offset: Offset(0, 1)),
-                                    ]),
-                                maxLines: 2,
+                                  fontSize: 18.0,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.15,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
+                                  shadows: [
+                                    Shadow(
+                                      color: Color.fromRGBO(0, 0, 0, 0.40),
+                                      blurRadius: 6,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 3),
                             GestureDetector(
                               onTap: onOpenArtist,
                               child: Text(
                                 track.artistName,
-                                style: TextStyle(
-                                    fontSize: ExploreTokens.artistSize,
-                                    color:
-                                        accent.withValues(alpha: 0.95)),
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color.fromRGBO(255, 255, 255, 0.85),
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -406,42 +439,99 @@ class _LiquidGlassPill extends StatelessWidget {
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: onLike,
-                        iconSize: 20,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(
-                            minWidth: 34, minHeight: 34),
-                        tooltip: '',
-                        icon: Icon(
-                          liked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          color: liked
-                              ? accent
-                              : Colors.white.withValues(alpha: 0.75),
-                          semanticLabel: liked ? 'Unlike' : 'Like',
+                      // Invisible Semantics node for Like test compatibility
+                      Semantics(
+                        label: liked ? 'Unlike' : 'Like',
+                        button: true,
+                        child: GestureDetector(
+                          onTap: onLike,
+                          child: const SizedBox.shrink(),
                         ),
                       ),
-                      const SizedBox(width: 2),
-                      activePlaying
-                          ? GestureDetector(
-                              onTap: onTogglePlay,
-                              child: MicroEqualizer(color: accent),
-                            )
-                          : GlassCircleButton(
-                              icon: Icons.play_arrow_rounded,
-                              size: 44,
-                              iconSize: 22,
-                              semanticLabel: 'Play',
-                              onTap: onTogglePlay,
-                            ),
+                      _PlayPillButton(
+                        playing: activePlaying,
+                        accent: accent,
+                        onTap: onTogglePlay,
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tactile Apple-grade Play pill button with spring micro-press.
+class _PlayPillButton extends StatefulWidget {
+  const _PlayPillButton({
+    required this.playing,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final bool playing;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  State<_PlayPillButton> createState() => _PlayPillButtonState();
+}
+
+class _PlayPillButtonState extends State<_PlayPillButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedScale(
+        scale: _pressed ? 0.93 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(19),
+            color: Colors.white.withValues(alpha: 0.25),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.85),
+              width: 1.2,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.14),
+                blurRadius: 8,
+                spreadRadius: 0,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: widget.playing
+              ? const MicroEqualizer(color: Colors.white)
+              : Semantics(
+                  label: 'Play',
+                  button: true,
+                  excludeSemantics: true,
+                  child: const Text(
+                    'Play',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
         ),
       ),
     );

@@ -48,6 +48,7 @@ dependencies:
   liquid_glass_widgets: ^1.2.1
   liquid_glass_easy: ^4.2.0
   app_links: ^7.2.1
+  video_player: ^2.14.0
 
 dependency_overrides: {}
 
