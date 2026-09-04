@@ -40,5 +40,18 @@ void main() {
       expect(hsl.lightness, inExclusiveRange(0.05, 0.2));
       expect(ExplorePalette.neutral.isBright, isFalse);
     });
+
+    test('tone map exposes vibrant + deep bands', () async {
+      expect(ExplorePalette.neutral.vibrant, isNotNull);
+      expect(ExplorePalette.neutral.deep, isNotNull);
+      final hsl = HSLColor.fromColor(ExplorePalette.neutral.deep);
+      expect(hsl.lightness, inExclusiveRange(0.0, 0.12));
+    });
+
+    test('resolve stores vibrant/deep (empty url → neutral path)', () async {
+      final p = await ExplorePaletteCache.resolve('vx', '');
+      expect(p.vibrant, ExplorePalette.neutral.vibrant);
+      expect(p.deep, ExplorePalette.neutral.deep);
+    });
   });
 }

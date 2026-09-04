@@ -7,6 +7,8 @@ class ExplorePalette {
   const ExplorePalette({
     required this.background,
     required this.accent,
+    required this.vibrant,
+    required this.deep,
     required this.isBright,
   });
 
@@ -15,6 +17,10 @@ class ExplorePalette {
   final Color background;
   final Color accent;
 
+  /// Vivid tone → mesh blob 1. Dark tone → mesh blob 2 / base depth.
+  final Color vibrant;
+  final Color deep;
+
   /// Dominant luminance > 0.5 → glass surfaces darken themselves.
   final bool isBright;
 
@@ -22,6 +28,8 @@ class ExplorePalette {
   static const ExplorePalette neutral = ExplorePalette(
     background: Color(0xFF101018),
     accent: Color(0xFF9E9EB8),
+    vibrant: Color(0xFF6E6E96),
+    deep: Color(0xFF08080F),
     isBright: false,
   );
 }
@@ -73,16 +81,27 @@ class ExplorePaletteCache {
   static ExplorePalette _toneMap(PaletteGenerator palette) {
     final dominant = palette.dominantColor?.color;
     if (dominant == null) return ExplorePalette.neutral;
-    final vibrant = palette.vibrantColor?.color ?? dominant;
+    final vibrant = palette.vibrantColor?.color ??
+        palette.lightVibrantColor?.color ??
+        dominant;
     final hsl = HSLColor.fromColor(dominant);
     // Reduce saturation slightly for bright artwork so glass stays calm.
     final sat = hsl.lightness > 0.5 ? hsl.saturation * 0.7 : hsl.saturation;
     final background =
         _darken(dominant).withSaturation(sat.clamp(0.0, 0.7)).toColor();
+    // Deep: darkest usable tone, banded to 0.03–0.08 lightness.
+    final deepBase =
+        palette.darkMutedColor?.color ?? palette.darkVibrantColor?.color ?? dominant;
+    final deepBaseHsl = HSLColor.fromColor(deepBase);
+    final deep = deepBaseHsl
+        .withLightness(deepBaseHsl.lightness.clamp(0.03, 0.08))
+        .toColor();
     final luminance = background.computeLuminance();
     return ExplorePalette(
       background: background,
       accent: vibrant,
+      vibrant: vibrant,
+      deep: deep,
       isBright: luminance > 0.18,
     );
   }
