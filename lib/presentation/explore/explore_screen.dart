@@ -64,9 +64,10 @@ class ExploreScreen extends StatefulWidget {
 }
 
 /// Verified, official YouTube-curated playlists covering English global hits,
-/// US/UK charts, pop, hip-hop, rock, chill, jazz, and electronic hits (no regional playlists).
+/// US/UK charts, Top India, pop, hip-hop, rock, chill, jazz, and electronic hits.
 const List<String> _officialYouTubeCuratedPlaylists = [
   'RDCLAK5uy_k8QSlZPzi4R3781ftLrAKefTJJ6x7JrVA', // Pop's Biggest Hits (English Global)
+  'PL4fGSI1pDJn40WjZ6utkIuj2rNg-7iGsq', // Top 100 Music Videos India
   'PL4fGSI1pDJn6O1LS0XSdF3RyO0Rq_LDeI', // TOP 100 Songs America (English)
   'PL4fGSI1pDJn6_f5P3MnzXg9l3GDfnSlXa', // Top 100 Songs Britain (English)
   'RDCLAK5uy_mGYde2Wyx9INZd6GbPcMWkxDOu6Utmedw', // Last Decade Hits (10's)
