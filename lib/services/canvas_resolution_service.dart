@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -112,12 +114,12 @@ class CanvasResolutionService {
     return null;
   }
 
-  /// Resolves direct stream URL and fetches a clean ~450KB fMP4 loop segment
-  /// aligned to MP4 frame boundaries, cached locally to prevent YouTube 403 blocks.
+  /// Resolves direct stream URL and fetches a clean ~500KB fMP4 loop segment
+  /// aligned to MP4 frame boundaries with synchronized durations for seamless looping.
   Future<String?> _resolveAndCacheVideo(String videoId) async {
     try {
       final dir = await _getCacheDir();
-      final targetFile = File('${dir.path}/canvas_$videoId.mp4');
+      final targetFile = File('${dir.path}/canvas_v2_$videoId.mp4');
       if (await targetFile.exists() && (await targetFile.length()) > 50000) {
         return targetFile.path;
       }
@@ -127,8 +129,8 @@ class CanvasResolutionService {
           .timeout(const Duration(seconds: 5));
       if (directUrl == null || directUrl.isEmpty) return null;
 
-      // Query ~450KB bounded chunk (approx 10-15 seconds of looping 360p/480p video)
-      final rangeUrl = '$directUrl&range=0-450000';
+      // Query ~500KB bounded chunk (approx 12-16 seconds of looping 360p/480p video)
+      final rangeUrl = '$directUrl&range=0-500000';
       final ua = InnerTubeService.userAgentForStreamUrl(directUrl) ??
           'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
       final resp = await http.get(
@@ -142,30 +144,16 @@ class CanvasResolutionService {
       }
 
       final bytes = resp.bodyBytes;
-      if (bytes.length < 8) return null;
+      if (bytes.length < 32) return null;
 
-      // Ensure clean fragmented MP4 boundary: truncate cleanly after the last complete mdat box
-      int lastCompleteOffset = 0;
-      int offset = 0;
-      while (offset + 8 <= bytes.length) {
-        final size = (bytes[offset] << 24) |
-            (bytes[offset + 1] << 16) |
-            (bytes[offset + 2] << 8) |
-            bytes[offset + 3];
-        if (size <= 0 || offset + size > bytes.length) break;
-        final type = String.fromCharCodes(bytes.sublist(offset + 4, offset + 8));
-        offset += size;
-        if (type == 'mdat') {
-          lastCompleteOffset = offset;
-        }
+      final sanitizedBytes = _sanitizeMp4Chunk(bytes);
+      if (sanitizedBytes.length < 50000) {
+        debugPrint('CanvasResolutionService: sanitized chunk too small (${sanitizedBytes.length} bytes) for $videoId');
+        return null;
       }
 
-      final validBytes = lastCompleteOffset > 0
-          ? bytes.sublist(0, lastCompleteOffset)
-          : bytes;
-
       final tmpFile = File('${targetFile.path}.tmp');
-      await tmpFile.writeAsBytes(validBytes);
+      await tmpFile.writeAsBytes(sanitizedBytes);
       if (await targetFile.exists()) {
         await targetFile.delete();
       }
@@ -175,5 +163,144 @@ class CanvasResolutionService {
       debugPrint('CanvasResolutionService: could not resolve canvas for $videoId: $e');
       return null;
     }
+  }
+
+  /// Sanitizes an fMP4 byte stream:
+  /// 1. Locates complete movie fragments (`moof` + `mdat`) and discards any partial trailing box.
+  /// 2. Omits the global `sidx` box (which indexes the full multi-minute video), preventing ExoPlayer
+  ///    from reporting unexpected EOF / buffering stalls when reaching the end of the downloaded chunk.
+  /// 3. Patches `mvhd`, `tkhd`, and `mdhd` inside `moov` to the exact duration of the downloaded fragments
+  ///    so the media framework recognizes the end of file as `STATE_ENDED` and natively loops seamlessly.
+  static Uint8List _sanitizeMp4Chunk(Uint8List bytes) {
+    if (bytes.length < 32) return bytes;
+    final bd = ByteData.sublistView(bytes);
+    int offset = 0;
+    int lastCompleteOffset = 0;
+    int completeFragments = 0;
+    int sidxOffset = -1;
+    int sidxSize = 0;
+
+    // First pass: locate atoms and find last complete mdat
+    while (offset + 8 <= bytes.length) {
+      final size = bd.getUint32(offset);
+      if (size <= 0 || offset + size > bytes.length) break;
+      final type = String.fromCharCodes(bytes.sublist(offset + 4, offset + 8));
+      if (type == 'sidx' && sidxOffset < 0) {
+        sidxOffset = offset;
+        sidxSize = size;
+      } else if (type == 'mdat') {
+        completeFragments++;
+        lastCompleteOffset = offset + size;
+      }
+      offset += size;
+    }
+
+    if (lastCompleteOffset <= 0 || completeFragments == 0) {
+      return bytes;
+    }
+
+    // Calculate actual duration of completed fragments from sidx if present
+    int actualDuration = 0;
+    if (sidxOffset >= 0 && sidxSize >= 32) {
+      final sidxBd = ByteData.sublistView(bytes, sidxOffset, sidxOffset + sidxSize);
+      final ver = sidxBd.getUint8(8);
+      int curr = 16;
+      final timescale = sidxBd.getUint32(curr);
+      curr += 4;
+      if (ver == 0) {
+        curr += 8; // earliest_presentation_time (4) + first_offset (4)
+      } else {
+        curr += 16; // earliest_presentation_time (8) + first_offset (8)
+      }
+      curr += 2; // reserved
+      final refCount = sidxBd.getUint16(curr);
+      curr += 2;
+
+      int durSum = 0;
+      final count = completeFragments < refCount ? completeFragments : refCount;
+      for (int i = 0; i < count; i++) {
+        if (curr + 12 > sidxSize) break;
+        final subDur = sidxBd.getUint32(curr + 4);
+        durSum += subDur;
+        curr += 12;
+      }
+      actualDuration = durSum;
+      if (kDebugMode) {
+        final sec = timescale > 0 ? (actualDuration / timescale).toStringAsFixed(2) : '0';
+        debugPrint('CanvasResolutionService: $completeFragments fragments, duration $sec sec');
+      }
+    }
+
+    // Build sanitized bytes without sidx (treated as standalone complete stream)
+    final builder = BytesBuilder(copy: false);
+
+    offset = 0;
+    while (offset + 8 <= lastCompleteOffset) {
+      final size = bd.getUint32(offset);
+      if (size <= 0 || offset + size > lastCompleteOffset) break;
+      final type = String.fromCharCodes(bytes.sublist(offset + 4, offset + 8));
+
+      if (type == 'sidx') {
+        // Omit sidx so ExoPlayer treats this as a complete standalone stream
+        offset += size;
+        continue;
+      }
+
+      if (type == 'moov' && actualDuration > 0) {
+        // Patch duration in mvhd, tkhd, mdhd inside moov
+        final moovBytes = Uint8List.fromList(bytes.sublist(offset, offset + size));
+        _patchMoovDurations(moovBytes, actualDuration);
+        builder.add(moovBytes);
+        offset += size;
+        continue;
+      }
+
+      builder.add(bytes.sublist(offset, offset + size));
+      offset += size;
+    }
+
+    return builder.takeBytes();
+  }
+
+  static void _patchMoovDurations(Uint8List moovBytes, int duration) {
+    final bd = ByteData.sublistView(moovBytes);
+
+    void walk(int start, int end) {
+      int off = start;
+      while (off + 8 <= end) {
+        final sz = bd.getUint32(off);
+        if (sz <= 0 || off + sz > end) break;
+        final typ = String.fromCharCodes(moovBytes.sublist(off + 4, off + 8));
+
+        if (typ == 'mvhd') {
+          final ver = moovBytes[off + 8];
+          if (ver == 0 && off + 8 + 20 <= end) {
+            bd.setUint32(off + 8 + 16, duration);
+          } else if (ver == 1 && off + 8 + 32 <= end) {
+            bd.setUint64(off + 8 + 24, duration);
+          }
+        } else if (typ == 'tkhd') {
+          final ver = moovBytes[off + 8];
+          if (ver == 0 && off + 8 + 24 <= end) {
+            bd.setUint32(off + 8 + 20, duration);
+          } else if (ver == 1 && off + 8 + 36 <= end) {
+            bd.setUint64(off + 8 + 28, duration);
+          }
+        } else if (typ == 'mdhd') {
+          final ver = moovBytes[off + 8];
+          if (ver == 0 && off + 8 + 20 <= end) {
+            bd.setUint32(off + 8 + 16, duration);
+          } else if (ver == 1 && off + 8 + 32 <= end) {
+            bd.setUint64(off + 8 + 24, duration);
+          }
+        } else if (typ == 'moov' || typ == 'trak' || typ == 'mdia' || typ == 'minf') {
+          walk(off + 8, off + sz);
+        }
+
+        off += sz;
+      }
+    }
+
+    walk(0, moovBytes.length);
   }
 }

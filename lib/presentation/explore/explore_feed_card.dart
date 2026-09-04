@@ -481,6 +481,7 @@ class _CanvasVideoPlayer extends StatefulWidget {
 class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
   VideoPlayerController? _controller;
   bool _initialized = false;
+  bool _isSeekingToLoop = false;
 
   bool get _isTesting =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');
@@ -528,6 +529,33 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       if (!mounted) return;
       await c.setLooping(true);
       await c.setVolume(0.0);
+
+      // Watchdog listener to ensure seamless looping and prevent stalls
+      c.addListener(() {
+        if (!mounted || _controller != c) return;
+        final val = c.value;
+        if (val.hasError) {
+          debugPrint('Explore Canvas Video error: ${val.errorDescription}');
+          widget.onError?.call();
+          return;
+        }
+        if (val.isInitialized && val.duration > Duration.zero) {
+          final isAtEnd = val.position >= val.duration ||
+              (val.duration - val.position) <= const Duration(milliseconds: 250);
+          if (isAtEnd && widget.isPlaying && !_isSeekingToLoop) {
+            _isSeekingToLoop = true;
+            c.seekTo(Duration.zero).then((_) {
+              _isSeekingToLoop = false;
+              if (mounted && widget.isPlaying && !c.value.isPlaying) {
+                c.play();
+              }
+            }).catchError((_) {
+              _isSeekingToLoop = false;
+            });
+          }
+        }
+      });
+
       if (widget.isPlaying) {
         await c.play();
       }
@@ -551,13 +579,27 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       _controller?.dispose();
       _controller = null;
       _initialized = false;
+      _isSeekingToLoop = false;
       _init();
       return;
     }
     final c = _controller;
     if (c != null && _initialized) {
       if (widget.isPlaying && !c.value.isPlaying) {
-        c.play();
+        if (c.value.duration > Duration.zero &&
+            (c.value.position >= c.value.duration ||
+                (c.value.duration - c.value.position) <=
+                    const Duration(milliseconds: 250))) {
+          _isSeekingToLoop = true;
+          c.seekTo(Duration.zero).then((_) {
+            _isSeekingToLoop = false;
+            if (mounted && widget.isPlaying) c.play();
+          }).catchError((_) {
+            _isSeekingToLoop = false;
+          });
+        } else {
+          c.play();
+        }
       } else if (!widget.isPlaying && c.value.isPlaying) {
         c.pause();
       }
