@@ -225,6 +225,21 @@ class ExploreController extends ChangeNotifier {
         generation: s.generation,
       );
 
+      // If initial exclusion window yielded 0 items, relax exclusion to only currently
+      // visible/upcoming items before giving up, so rotating sources can replenish.
+      if (items.isEmpty && excludeSet.length > 10) {
+        final minimalExclude = s.remaining.map((i) => i.track.id).toSet();
+        if (s.active != null) minimalExclude.add(s.active!.track.id);
+        items = await _engine.generate(
+          profile: _profileProvider(),
+          sources: sources,
+          seed: null,
+          exclude: minimalExclude,
+          limit: ExplorePolicy.refillBatch,
+          generation: s.generation,
+        );
+      }
+
       if (items.isEmpty) {
         _emptyStreak++;
         if (_emptyStreak >= 2) {
@@ -285,7 +300,13 @@ class ExploreController extends ChangeNotifier {
       const [];
 
   /// Triggers background refill of the candidate stream when near end of loaded items.
-  Future<void> maybeRefill() => _maybeRefill();
+  Future<void> maybeRefill({bool force = false}) async {
+    if (force) {
+      _exhausted = false;
+      _emptyStreak = 0;
+    }
+    await _maybeRefill();
+  }
 
   @visibleForTesting
   Future<void> maybeRefillForTest() => _maybeRefill();

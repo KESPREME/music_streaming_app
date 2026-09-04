@@ -73,6 +73,45 @@ class ExploreEngine {
         id.startsWith('UC');
   }
 
+  /// Filters out tracks in scripts (Cyrillic, Hangul, Kana, Arabic, Thai) that the
+  /// user has never listened to, preventing random foreign language songs from invading Explore.
+  bool _isScriptIncompatible(Track t, TasteProfile profile) {
+    final text = '${t.trackName} ${t.artistName}';
+    final hasCyrillic = RegExp(r'[\u0400-\u04FF]').hasMatch(text);
+    final hasHangul =
+        RegExp(r'[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]').hasMatch(text);
+    final hasKana = RegExp(r'[\u3040-\u309F\u30A0-\u30FF]').hasMatch(text);
+    final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+    final hasThai = RegExp(r'[\u0E00-\u0E7F]').hasMatch(text);
+
+    if (!hasCyrillic && !hasHangul && !hasKana && !hasArabic && !hasThai) {
+      return false;
+    }
+
+    // Check if user has explicit affinity or interaction with these scripts
+    for (final artist in profile.artists.keys) {
+      if (hasCyrillic && RegExp(r'[\u0400-\u04FF]').hasMatch(artist)) {
+        return false;
+      }
+      if (hasHangul &&
+          RegExp(r'[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]')
+              .hasMatch(artist)) {
+        return false;
+      }
+      if (hasKana &&
+          RegExp(r'[\u3040-\u309F\u30A0-\u30FF]').hasMatch(artist)) {
+        return false;
+      }
+      if (hasArabic && RegExp(r'[\u0600-\u06FF]').hasMatch(artist)) {
+        return false;
+      }
+      if (hasThai && RegExp(r'[\u0E00-\u0E7F]').hasMatch(artist)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// Synchronous core. The async variant only adds graph affinity lookups
   /// (kept for future seeding); ranking itself is pure.
   List<ExploreItem> generateSync({
@@ -90,6 +129,7 @@ class ExploreEngine {
     void addPool(List<Track> tracks, String tag) {
       for (final track in tracks) {
         if (_isInvalid(track)) continue;
+        if (_isScriptIncompatible(track, profile)) continue;
         if (exclude.contains(track.id)) continue;
         if (poolOf.containsKey(track.id)) continue;
         poolOf[track.id] = tag;

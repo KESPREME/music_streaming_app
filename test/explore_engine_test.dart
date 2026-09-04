@@ -76,6 +76,83 @@ void main() {
       );
       expect(items.map((i) => i.track.id), ['bbb11111111']);
     });
+
+    test('filters out incompatible foreign scripts when user profile has no history', () {
+      final engine = ExploreEngine();
+      final englishTrack = _t('eng11111111', artist: 'Dua Lipa');
+      final hindiTrack = Track(
+        id: 'hin11111111',
+        trackName: 'Chikni Chameli',
+        artistName: 'Shreya Ghoshal',
+        albumName: '',
+        previewUrl: '',
+        source: 'youtube',
+      );
+      final cyrillicTrack = Track(
+        id: 'cyr11111111',
+        trackName: 'Инстасамка',
+        artistName: 'INSTASAMKA',
+        albumName: '',
+        previewUrl: '',
+        source: 'youtube',
+      );
+      final hangulTrack = Track(
+        id: 'kor11111111',
+        trackName: '르세라핌',
+        artistName: 'LE SSERAFIM',
+        albumName: '',
+        previewUrl: '',
+        source: 'youtube',
+      );
+
+      final items = engine.generateSync(
+        profile: TasteProfile.build(events: const []),
+        sources: ExploreSources(
+          regionalChart: [englishTrack, hindiTrack, cyrillicTrack, hangulTrack],
+        ),
+        limit: 10,
+        generation: 0,
+      );
+
+      final ids = items.map((i) => i.track.id).toList();
+      expect(ids, containsAll(['eng11111111', 'hin11111111']));
+      expect(ids, isNot(contains('cyr11111111')));
+      expect(ids, isNot(contains('kor11111111')));
+    });
+
+    test('preserves foreign scripts when user has explicit profile affinity with that script', () {
+      final engine = ExploreEngine();
+      final cyrillicTrack = Track(
+        id: 'cyr11111111',
+        trackName: 'Песня года',
+        artistName: 'Виктор Цой',
+        albumName: '',
+        previewUrl: '',
+        source: 'youtube',
+      );
+      final profile = TasteProfile.build(
+        events: [
+          TrackEvent(
+            trackId: 'old11111111',
+            artistName: 'Виктор Цой',
+            completionRate: 1.0,
+            playCount: 5,
+            lastPlayed: DateTime.now(),
+          ),
+        ],
+      );
+
+      final items = engine.generateSync(
+        profile: profile,
+        sources: ExploreSources(
+          regionalChart: [cyrillicTrack],
+        ),
+        limit: 10,
+        generation: 0,
+      );
+
+      expect(items.map((i) => i.track.id), contains('cyr11111111'));
+    });
   });
 
   group('ExploreEngine ranking behavior', () {

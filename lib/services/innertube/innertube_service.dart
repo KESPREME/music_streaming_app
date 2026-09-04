@@ -161,12 +161,21 @@ class InnerTubeService {
           },
         };
       case YouTubeClientType.webRemix:
+        final locale = PlatformDispatcher.instance.locale;
+        final country = locale.countryCode?.toUpperCase();
+        final gl = (country != null && country.length == 2)
+            ? country
+            : (DateTime.now().timeZoneOffset.inMinutes >= 300 &&
+                    DateTime.now().timeZoneOffset.inMinutes <= 360)
+                ? 'IN'
+                : 'US';
+        final hl = locale.languageCode.isNotEmpty ? locale.languageCode : 'en';
         return {
           'client': {
             'clientName': _webRemixClientName,
             'clientVersion': _webRemixClientVersion,
-            'hl': 'en',
-            'gl': 'US',
+            'hl': hl,
+            'gl': gl,
             'platform': 'DESKTOP',
           },
         };
@@ -1329,9 +1338,18 @@ class InnerTubeService {
       }
       // Ensure browseId starts with VL if needed? Usually passing ID directly works.
 
+      final String resolvedBrowseId;
+      if (browseId.startsWith('VL')) {
+        resolvedBrowseId = browseId;
+      } else if (browseId.startsWith('PL') || browseId.startsWith('RDCLAK')) {
+        resolvedBrowseId = 'VL$browseId';
+      } else {
+        resolvedBrowseId = browseId;
+      }
+
       final body = jsonEncode({
         'context': _buildContext(),
-        'browseId': browseId.startsWith('PL') ? 'VL$browseId' : browseId,
+        'browseId': resolvedBrowseId,
       });
 
       final response = await _httpClient.post(

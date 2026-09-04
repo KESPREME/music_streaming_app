@@ -63,14 +63,24 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-/// Verified, official YouTube-curated real-time chart playlists.
-/// (Replacing random user search queries with genuine real-time YouTube charts).
-const List<String> _officialYouTubeChartPlaylists = [
-  'PL4fGSI1pDJn6t3TXLGiiJdD-sZbrG3tG0', // Daily Top Music Videos - Global (updated daily)
-  'PL4fGSI1pDJn5kI81J1fYWK5eZRl1zJ5kM', // Top 100 Music Videos - Global (updated weekly)
-  'PL4fGSI1pDJn40WjZ6utkIuj2rNg-7iGsq', // Top 100 Music Videos - India (regional chart)
-  'PLFgquLnL59alW3xmYiWRaoz0oM3H17Lth', // YouTube Trending Music (updated real-time)
-  'PL4fGSI1pDJn69On1f-8NAvX_CYlx7QyZc', // Top 100 Music Videos - United States
+/// Verified, official YouTube-curated playlists (English global/US/UK hits + Indian/Hindi/Punjabi hits).
+/// Curated directly from YouTube Music official channels.
+const List<String> _officialYouTubeCuratedPlaylists = [
+  'RDCLAK5uy_k8QSlZPzi4R3781ftLrAKefTJJ6x7JrVA', // Pop's Biggest Hits (English Global)
+  'PL4fGSI1pDJn40WjZ6utkIuj2rNg-7iGsq', // Top 100 Music Videos India
+  'PL4fGSI1pDJn6O1LS0XSdF3RyO0Rq_LDeI', // TOP 100 Songs America (English)
+  'RDCLAK5uy_lhIiKLMQM6_gokxx581SC-xQBSfJm9gqc', // Hindi Essentials
+  'PL4fGSI1pDJn6_f5P3MnzXg9l3GDfnSlXa', // Top 100 Songs Britain (English)
+  'RDCLAK5uy_mGYde2Wyx9INZd6GbPcMWkxDOu6Utmedw', // Last Decade Hits (English)
+  'RDCLAK5uy_lE0yLj4nuJ--AIHE67gUQdKmfpdkTKNFk', // Hindi Indie
+  'RDCLAK5uy_nHSqCJjDrW9HBhCNdF6tWPdnOMngOv0wA', // Pop Gold (English)
+  'PL4fGSI1pDJn5JXkyIohg2RstsbL2SnRew', // Top Songs Punjabi
+  'RDCLAK5uy_mVRuj5egfh21e-pXyA3ymx_0p4Xlg-c0I', // Hip Hop Essentials (English)
+  'RDCLAK5uy_khs3a0YMI9WYs2k1Oqb2ukWX3dA3-lnwI', // Relaxing Soft Pop (English)
+  'RDCLAK5uy_l3PeyHeqJh1dR78WjfsMJwRHJx9ofMvvc', // Modern Rock (English)
+  'RDCLAK5uy_mPolD_J22gS1SKxufARWcTZd1UrAH_0ZI', // Deep Chill (English)
+  'RDCLAK5uy_nOha9Uq4l7E2r4ZjujKFFlBfbFevTQ048', // Electronic Bliss (English)
+  'RDCLAK5uy_kb7EBi6y3GrtJri4_ZH56Ms786DFEimbM', // Lofi Loft (English)
 ];
 int _chartRotationIndex = 0;
 
@@ -101,8 +111,8 @@ ExploreController bootstrapExploreController(BuildContext context,
       List<Track> officialChartTracks = const [];
 
       final isRefilling = anchor != null;
-      final playlistId = _officialYouTubeChartPlaylists[
-          _chartRotationIndex % _officialYouTubeChartPlaylists.length];
+      final playlistId = _officialYouTubeCuratedPlaylists[
+          _chartRotationIndex % _officialYouTubeCuratedPlaylists.length];
       _chartRotationIndex++;
 
       final futures = <Future<void>>[];
@@ -200,10 +210,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
   ExplorePalette _palette = ExplorePalette.neutral;
   MusicProvider? _provider;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<void>? _skipToNextSub;
   Timer? _snapTimer;
   int _snappedIndex = -1;
   int _lastTickIndex = -1;
   bool _restored = false;
+  bool _isUserDragging = false;
   double _viewportH = 600;
 
   @override
@@ -224,7 +236,26 @@ class _ExploreScreenState extends State<ExploreScreen> {
           _onTrackCompleted();
         }
       });
+      _skipToNextSub = _provider!.audioService.onSkipToNext.listen((_) {
+        _onTrackCompleted();
+      });
+      _provider!.addListener(_onProviderNotification);
     });
+  }
+
+  void _onProviderNotification() {
+    if (!mounted || !widget.isActive || _isUserDragging) return;
+    final controller = context.read<ExploreController>();
+    final session = controller.session;
+    if (session == null || session.items.isEmpty) return;
+    final nextIdx = session.currentIndex + 1;
+    if (nextIdx < session.items.length) {
+      final nextTrack = session.items[nextIdx].track;
+      if (_provider?.currentTrack?.id == nextTrack.id &&
+          _snappedIndex != nextIdx) {
+        _onTrackCompleted();
+      }
+    }
   }
 
   void _handleActivation() {
@@ -255,15 +286,27 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _onTrackCompleted() {
-    if (!mounted) return;
+    if (!mounted || !widget.isActive || _isUserDragging) return;
     final controller = context.read<ExploreController>();
     final session = controller.session;
     if (session == null || session.items.isEmpty) return;
     final nextIdx = session.currentIndex + 1;
-    if (nextIdx < session.items.length) {
-      _jumpTo(nextIdx);
-      _snapToCurrent();
+    if (nextIdx >= session.items.length) return;
+    if (_snappedIndex == nextIdx) return;
+
+    _invalidateSnap();
+    _snappedIndex = nextIdx;
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        nextIdx * _itemExtent,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+      );
     }
+    controller.settle(nextIdx);
+    _resolvePalette(controller);
+    _preloadNext(controller, session.items, nextIdx);
+    _hidePill();
   }
 
   Future<void> _resolvePalette(ExploreController controller) async {
@@ -278,6 +321,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   void dispose() {
     _playerStateSub?.cancel();
+    _skipToNextSub?.cancel();
+    _provider?.removeListener(_onProviderNotification);
     _snapTimer?.cancel();
     _scrollController.dispose();
     // Restore the pill post-frame: notifying during pop finalization
@@ -502,6 +547,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       return NotificationListener<ScrollNotification>(
         onNotification: (n) {
           if (n is ScrollStartNotification) {
+            _isUserDragging = n.dragDetails != null;
             _snapTimer?.cancel();
             final extent = _itemExtent;
             if (extent > 0) {
@@ -517,10 +563,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
               _lastTickIndex = currentIdx;
               // Proactively replenish feed as user nears the end of loaded items
               if (items.length - currentIdx <= 4 && !controller.isRefilling) {
-                controller.maybeRefill();
+                controller.maybeRefill(force: items.length - currentIdx <= 2);
               }
             }
           } else if (n is ScrollEndNotification) {
+            _isUserDragging = false;
             _snapToCurrent();
           }
           return false;
