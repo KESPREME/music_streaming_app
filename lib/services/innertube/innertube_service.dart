@@ -161,21 +161,12 @@ class InnerTubeService {
           },
         };
       case YouTubeClientType.webRemix:
-        final locale = PlatformDispatcher.instance.locale;
-        final country = locale.countryCode?.toUpperCase();
-        final gl = (country != null && country.length == 2)
-            ? country
-            : (DateTime.now().timeZoneOffset.inMinutes >= 300 &&
-                    DateTime.now().timeZoneOffset.inMinutes <= 360)
-                ? 'IN'
-                : 'US';
-        final hl = locale.languageCode.isNotEmpty ? locale.languageCode : 'en';
         return {
           'client': {
             'clientName': _webRemixClientName,
             'clientVersion': _webRemixClientVersion,
-            'hl': hl,
-            'gl': gl,
+            'hl': 'en',
+            'gl': 'US',
             'platform': 'DESKTOP',
           },
         };

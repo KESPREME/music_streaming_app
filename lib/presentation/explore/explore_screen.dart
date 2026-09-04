@@ -63,24 +63,26 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-/// Verified, official YouTube-curated playlists (English global/US/UK hits + Indian/Hindi/Punjabi hits).
-/// Curated directly from YouTube Music official channels.
+/// Verified, official YouTube-curated playlists covering English global hits,
+/// US/UK charts, pop, hip-hop, rock, chill, jazz, and electronic hits (no regional playlists).
 const List<String> _officialYouTubeCuratedPlaylists = [
   'RDCLAK5uy_k8QSlZPzi4R3781ftLrAKefTJJ6x7JrVA', // Pop's Biggest Hits (English Global)
-  'PL4fGSI1pDJn40WjZ6utkIuj2rNg-7iGsq', // Top 100 Music Videos India
   'PL4fGSI1pDJn6O1LS0XSdF3RyO0Rq_LDeI', // TOP 100 Songs America (English)
-  'RDCLAK5uy_lhIiKLMQM6_gokxx581SC-xQBSfJm9gqc', // Hindi Essentials
   'PL4fGSI1pDJn6_f5P3MnzXg9l3GDfnSlXa', // Top 100 Songs Britain (English)
-  'RDCLAK5uy_mGYde2Wyx9INZd6GbPcMWkxDOu6Utmedw', // Last Decade Hits (English)
-  'RDCLAK5uy_lE0yLj4nuJ--AIHE67gUQdKmfpdkTKNFk', // Hindi Indie
+  'RDCLAK5uy_mGYde2Wyx9INZd6GbPcMWkxDOu6Utmedw', // Last Decade Hits (10's)
   'RDCLAK5uy_nHSqCJjDrW9HBhCNdF6tWPdnOMngOv0wA', // Pop Gold (English)
-  'PL4fGSI1pDJn5JXkyIohg2RstsbL2SnRew', // Top Songs Punjabi
   'RDCLAK5uy_mVRuj5egfh21e-pXyA3ymx_0p4Xlg-c0I', // Hip Hop Essentials (English)
   'RDCLAK5uy_khs3a0YMI9WYs2k1Oqb2ukWX3dA3-lnwI', // Relaxing Soft Pop (English)
   'RDCLAK5uy_l3PeyHeqJh1dR78WjfsMJwRHJx9ofMvvc', // Modern Rock (English)
   'RDCLAK5uy_mPolD_J22gS1SKxufARWcTZd1UrAH_0ZI', // Deep Chill (English)
+  'RDCLAK5uy_np_soSTj6w3-N7Dh_xmdDpQINJ8LsVpa8', // Unwind (English)
   'RDCLAK5uy_nOha9Uq4l7E2r4ZjujKFFlBfbFevTQ048', // Electronic Bliss (English)
+  'RDCLAK5uy_k16Jz1rrCopbgWM2ajYI8KFyLHgbBVVMk', // Left Brain, Right Beat (English)
+  'RDCLAK5uy_mVvnZOzJPD1C1SqIu44Hwl9AT00fafKNs', // Deep House Pure (English)
+  'RDCLAK5uy_nm4NA8cldZNPqj1D0ayZxfySeY89qedRs', // Smoothestest Jazz (English)
+  'RDCLAK5uy_n9hGvSNdO2TpX8jJuiThvnfrfIi1qNRnY', // Classical Focus (English)
   'RDCLAK5uy_kb7EBi6y3GrtJri4_ZH56Ms786DFEimbM', // Lofi Loft (English)
+  'PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i', // TOP 100 Songs Global (English)
 ];
 int _chartRotationIndex = 0;
 

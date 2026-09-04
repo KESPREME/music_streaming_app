@@ -3,12 +3,11 @@ import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/services/explore/explore_engine.dart';
 import 'package:music_streaming_app/services/explore/explore_policy.dart';
 import 'package:music_streaming_app/services/recommendation/candidate.dart';
-import 'package:music_streaming_app/services/recommendation/candidate_metadata.dart';
 import 'package:music_streaming_app/services/recommendation/ranker.dart';
 import 'package:music_streaming_app/services/recommendation/taste_profile.dart';
 
 Track _t(String id,
-    {String? artist, int? year, String? album, String? genre}) {
+    {String? artist, String? album, String? genre}) {
   final valid = RegExp(r'^[a-z0-9]{11}$').hasMatch(id);
   return Track(
     id: id,
@@ -96,6 +95,14 @@ void main() {
         previewUrl: '',
         source: 'youtube',
       );
+      final thaiTrack = Track(
+        id: 'tha11111111',
+        trackName: 'เพลงรัก',
+        artistName: 'ศิลปินไทย',
+        albumName: '',
+        previewUrl: '',
+        source: 'youtube',
+      );
       final hangulTrack = Track(
         id: 'kor11111111',
         trackName: '르세라핌',
@@ -108,16 +115,16 @@ void main() {
       final items = engine.generateSync(
         profile: TasteProfile.build(events: const []),
         sources: ExploreSources(
-          regionalChart: [englishTrack, hindiTrack, cyrillicTrack, hangulTrack],
+          regionalChart: [englishTrack, hindiTrack, cyrillicTrack, thaiTrack, hangulTrack],
         ),
         limit: 10,
         generation: 0,
       );
 
       final ids = items.map((i) => i.track.id).toList();
-      expect(ids, containsAll(['eng11111111', 'hin11111111']));
+      expect(ids, containsAll(['eng11111111', 'hin11111111', 'kor11111111']));
       expect(ids, isNot(contains('cyr11111111')));
-      expect(ids, isNot(contains('kor11111111')));
+      expect(ids, isNot(contains('tha11111111')));
     });
 
     test('preserves foreign scripts when user has explicit profile affinity with that script', () {
