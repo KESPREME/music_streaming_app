@@ -1665,7 +1665,7 @@ class MusicProvider
       return;
     }
 
-    _playbackGeneration++; // invalidate stale async continuations
+    final gen = ++_playbackGeneration; // invalidate stale async continuations
     _isOfflineContext = false; // Reset offline flag for online playback
 
     // Resume audio service if it was stopped
@@ -1780,6 +1780,8 @@ class MusicProvider
         durationMs: effectiveTrack.durationMs,
       ));
 
+      if (gen != _playbackGeneration) return;
+
       if (resolved == null || resolved.url.isEmpty) {
         throw Exception('Failed to get stream: all sources exhausted');
       }
@@ -1787,15 +1789,12 @@ class MusicProvider
         debugPrint('MusicProvider: Stream resolved via ${resolved.source}');
       }
 
-      final playHeaders = <String, String>{
-        if (resolved.userAgent != null) 'User-Agent': resolved.userAgent!,
-      };
-
       // Play the resolved URL. YouTube bot-gates URLs per-request (rotation),
       // so a rejected URL often just needs a fresh resolution — retry up to
       // 3 times, invalidating the cache each round.
       ResolvedStream current = resolved;
       for (var attempt = 1; attempt <= 3; attempt++) {
+        if (gen != _playbackGeneration) return;
         final headers = <String, String>{
           if (current.userAgent != null) 'User-Agent': current.userAgent!,
         };
@@ -1812,6 +1811,7 @@ class MusicProvider
           );
           break;
         } catch (e) {
+          if (gen != _playbackGeneration) return;
           if (attempt == 3) rethrow;
           if (kDebugMode) {
             debugPrint(
@@ -1824,10 +1824,13 @@ class MusicProvider
             artist: effectiveTrack.artistName,
             durationMs: effectiveTrack.durationMs,
           ));
+          if (gen != _playbackGeneration) return;
           if (retry == null || retry.url.isEmpty) rethrow;
           current = retry;
         }
       }
+
+      if (gen != _playbackGeneration) return;
 
       // Update state - Note: _isPlaying will be updated by the stream listener
       // Don't set _isPlaying = true here to avoid race condition
@@ -1863,6 +1866,13 @@ class MusicProvider
       _consecutiveErrors = 0; // Reset error count on success
       _failedTrackIds.remove(effectiveTrack.id);
     } catch (e, s) {
+      if (gen != _playbackGeneration) {
+        if (kDebugMode) {
+          debugPrint(
+              'MusicProvider: Discarding error from superseded playback request (gen $gen vs $_playbackGeneration)');
+        }
+        return;
+      }
       if (kDebugMode) {
         debugPrint('MusicProvider: ERROR PLAYING TRACK');
         debugPrint('Track: ${track.trackName}');

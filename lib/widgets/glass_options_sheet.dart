@@ -39,6 +39,7 @@ class GlassOptionsSheet extends StatelessWidget {
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
+    final wasHidden = provider.hideMiniPlayer;
     // Hide Mini Player
     provider.setHideMiniPlayer(true);
 
@@ -57,7 +58,9 @@ class GlassOptionsSheet extends StatelessWidget {
       );
     } finally {
       // Restore Mini Player
-      provider.setHideMiniPlayer(false);
+      if (!wasHidden) {
+        provider.setHideMiniPlayer(false);
+      }
     }
   }
 

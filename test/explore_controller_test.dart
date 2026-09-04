@@ -108,6 +108,36 @@ void main() {
           lessThanOrEqualTo(1));
     });
 
+    test('superseded settle failure does not set error or disrupt state', () async {
+      final controller = ExploreController(
+        engine: ExploreEngine(),
+        fetchSources: (anchor) async => ExploreSources(regionalChart: [
+          _t('tra11111111'),
+          _t('trb11111111'),
+          _t('trc11111111'),
+        ]),
+        play: (track, upcoming) async {
+          if (track.id == 'trb11111111') {
+            await Future.delayed(Duration(milliseconds: 20));
+            throw Exception('Resolution failed for trb11111111');
+          }
+        },
+        profileProvider: () => TasteProfile.build(events: const []),
+        recordSwipeOutcome: (_, {required wasAccepted}) {},
+        isCurrentTrack: (_) => false,
+        autoplayEnabled: true,
+        onAutoplayChanged: (_) {},
+      );
+      await controller.start();
+      // Rapid swipe: settle(1) then immediately settle(2)
+      final f1 = controller.settle(1);
+      final f2 = controller.settle(2);
+      await Future.wait([f1, f2]);
+      // Controller should NOT report error from trb11111111 since it was superseded by trc11111111
+      expect(controller.error, isNull);
+      expect(controller.session!.currentIndex, 2);
+    });
+
     test('autoplay off: swipe advances, no play calls', () async {
       final h = Harness();
       final c = h.build(autoplay: false);

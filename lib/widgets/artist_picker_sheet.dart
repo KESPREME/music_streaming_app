@@ -57,6 +57,7 @@ class ArtistPickerSheet extends StatelessWidget {
     } else {
       // Multiple artists - show picker
       HapticFeedback.selectionClick();
+      final wasHidden = provider.hideMiniPlayer;
       provider.setHideMiniPlayer(true);
 
       // Show sheet and wait for result
@@ -72,7 +73,9 @@ class ArtistPickerSheet extends StatelessWidget {
           ),
         );
       } finally {
-        provider.setHideMiniPlayer(false);
+        if (!wasHidden) {
+          provider.setHideMiniPlayer(false);
+        }
       }
 
       // Navigate using the PARENT context

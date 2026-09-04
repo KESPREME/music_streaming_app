@@ -41,4 +41,89 @@ void main() {
       );
     });
   });
+
+  group('InnerTubeService _parseTrackFromRenderer artist parsing', () {
+    Map<String, dynamic> makeRenderer({
+      required String videoId,
+      required String title,
+      required List<dynamic> artistRuns,
+    }) {
+      return {
+        'playlistItemData': {'videoId': videoId},
+        'flexColumns': [
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': title}
+                ]
+              }
+            }
+          },
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': artistRuns,
+              }
+            }
+          },
+        ],
+      };
+    }
+
+    test('parses clean string artist names from runs (not stringified maps)', () {
+      final renderer = makeRenderer(
+        videoId: 'abc12345678',
+        title: 'Rush',
+        artistRuns: [
+          {'text': ' Ayra Starr '},
+          {'text': ' & '},
+          {'text': ' Rema '},
+          {'text': ' • '},
+          {'text': ' 100M views '},
+        ],
+      );
+
+      final track =
+          InnerTubeService.instance.parseTrackFromRendererForTest(renderer);
+      expect(track, isNotNull);
+      expect(track!.trackName, 'Rush');
+      expect(track.artistName, 'Ayra Starr, Rema');
+    });
+
+    test('falls back to Unknown Artist if all runs are metadata or delimiters', () {
+      final renderer = makeRenderer(
+        videoId: 'abc12345678',
+        title: 'No Artist Song',
+        artistRuns: [
+          {'text': ' • '},
+          {'text': ' & '},
+          {'text': ' 3:45 '},
+          {'text': ' 50M views '},
+        ],
+      );
+
+      final track =
+          InnerTubeService.instance.parseTrackFromRendererForTest(renderer);
+      expect(track, isNotNull);
+      expect(track!.artistName, 'Unknown Artist');
+    });
+
+    test('ignores null or non-string run text safely', () {
+      final renderer = makeRenderer(
+        videoId: 'abc12345678',
+        title: 'Safe Song',
+        artistRuns: [
+          {'text': null},
+          {'text': 123},
+          {'text': ' Burna Boy '},
+        ],
+      );
+
+      final track =
+          InnerTubeService.instance.parseTrackFromRendererForTest(renderer);
+      expect(track, isNotNull);
+      expect(track!.artistName, 'Burna Boy');
+    });
+  });
 }

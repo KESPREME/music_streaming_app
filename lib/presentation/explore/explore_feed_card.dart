@@ -506,10 +506,14 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       final VideoPlayerController c;
       if (isLocal) {
         final filePath = raw.replaceFirst('file://', '');
-        c = VideoPlayerController.file(File(filePath));
+        c = VideoPlayerController.file(
+          File(filePath),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
       } else {
         c = VideoPlayerController.networkUrl(
           uri!,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
           httpHeaders: const {
             'User-Agent':
                 'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)',

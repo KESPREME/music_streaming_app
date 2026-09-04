@@ -20,8 +20,6 @@ class GlobalMusicOverlay extends StatefulWidget {
 class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     with SingleTickerProviderStateMixin {
   late AnimationController _panelController;
-  // FIX: Add HeroController for nested Navigator to prevent null check errors
-  late HeroController _heroController;
 
   // Height of the phone screen
   double get screenHeight => MediaQuery.of(context).size.height;
@@ -36,9 +34,6 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
         lowerBound: 0.0,
         upperBound: 1.0,
         value: 0.0);
-
-    // FIX: Initialize HeroController for nested Navigator
-    _heroController = HeroController();
 
     // Sync with Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -206,31 +201,31 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                               child: GestureDetector(
                                 onVerticalDragUpdate: _handleVerticalDragUpdate,
                                 onVerticalDragEnd: _handleVerticalDragEnd,
-                                child: Navigator(
-                                  key: musicProvider.playerNavigatorKey,
-                                  // FIX: Add HeroController observer to prevent null check errors
-                                  observers: [_heroController],
-                                  onGenerateRoute: (settings) {
-                                    // FIX: Added null check for currentTrack
-                                    final track = musicProvider.currentTrack;
-                                    if (track == null) {
+                                child: HeroControllerScope.none(
+                                  child: Navigator(
+                                    key: musicProvider.playerNavigatorKey,
+                                    onGenerateRoute: (settings) {
+                                      // FIX: Added null check for currentTrack
+                                      final track = musicProvider.currentTrack;
+                                      if (track == null) {
+                                        return MaterialPageRoute(
+                                          builder: (context) =>
+                                              const SizedBox.shrink(),
+                                        );
+                                      }
                                       return MaterialPageRoute(
-                                        builder: (context) =>
-                                            const SizedBox.shrink(),
-                                      );
-                                    }
-                                    return MaterialPageRoute(
-                                      builder: (context) => Material(
-                                        elevation: 0,
-                                        color: Colors.transparent,
-                                        child: ThemedNowPlayingScreen(
-                                          track: track,
-                                          onMinimize: () =>
-                                              _animatePanelTo(0.0),
+                                        builder: (context) => Material(
+                                          elevation: 0,
+                                          color: Colors.transparent,
+                                          child: ThemedNowPlayingScreen(
+                                            track: track,
+                                            onMinimize: () =>
+                                                _animatePanelTo(0.0),
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
                             ),

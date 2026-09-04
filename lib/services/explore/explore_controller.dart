@@ -75,11 +75,6 @@ class ExploreController extends ChangeNotifier {
   int get playbackGeneration => _playbackGeneration;
   Track? get activeTrack => _session?.active?.track;
 
-  /// Serialization of playback starts: rapid swipes queue, and each
-  /// queued start re-checks its generation so only the latest settle
-  /// actually plays (spec: no A/B/C simultaneous resolution).
-  Future<void> _playQueue = Future.value();
-
   Future<void> start({Track? seed, bool forceNew = false}) async {
     // Restore (spec #122): an existing, non-exhausted session returns
     // as-is; an explicit new session request rebuilds (spec #68).
@@ -179,26 +174,21 @@ class ExploreController extends ChangeNotifier {
 
     final upcoming =
         s.upcoming(count: 4).map((i) => i.track).toList();
-    _playQueue = _playQueue.then((_) async {
-      if (gen != _playbackGeneration) return; // superseded — bail silently
-      try {
-        debugPrint('EXPLORE_PLAY title=${item.track.trackName} gen=$gen');
-        await _play(item.track, upcoming);
-        if (gen != _playbackGeneration) return;
-        debugPrint('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
-            'artist=${item.track.artistName} reason=${item.reason.name} '
-            'score=${item.score.toStringAsFixed(2)} '
-            'confidence=${item.confidence.toStringAsFixed(2)}');
-      } catch (e) {
-        if (gen == _playbackGeneration) {
-          _error = 'Playback failed — swipe to continue';
-          debugPrint('EXPLORE_ITEM play failed: $e');
-        }
+    try {
+      debugPrint('EXPLORE_PLAY title=${item.track.trackName} gen=$gen');
+      await _play(item.track, upcoming);
+      if (gen != _playbackGeneration) return;
+      debugPrint('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
+          'artist=${item.track.artistName} reason=${item.reason.name} '
+          'score=${item.score.toStringAsFixed(2)} '
+          'confidence=${item.confidence.toStringAsFixed(2)}');
+    } catch (e) {
+      if (gen == _playbackGeneration) {
+        _error = 'Playback failed — swipe to continue';
+        debugPrint('EXPLORE_ITEM play failed: $e');
       }
-    }).catchError((e) {
-      debugPrint('EXPLORE_PLAY queue error: $e');
-    });
-    await _playQueue;
+    }
+    if (gen != _playbackGeneration) return;
     notifyListeners();
     await _maybeRefill();
   }

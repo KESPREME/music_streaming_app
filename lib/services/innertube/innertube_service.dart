@@ -275,8 +275,9 @@ class InnerTubeService {
   Future<List<Track>> _searchWithParams(
       String query, String params, int limit) async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: Searching "$query" with params $params');
+      }
       final body = jsonEncode({
         'context': _buildContext(clientType: YouTubeClientType.webRemix),
         'query': query,
@@ -289,8 +290,9 @@ class InnerTubeService {
         body: body,
       );
 
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw Exception('Search failed: ${response.statusCode}');
+      }
       final data = jsonDecode(response.body);
 
       // Parse Logic - pass allowBrowseIds: true for artist/playlist search
@@ -410,6 +412,11 @@ class InnerTubeService {
 
   /// Parse a track from MusicResponsiveListItemRenderer
   /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
+  @visibleForTesting
+  Track? parseTrackFromRendererForTest(Map<String, dynamic> renderer,
+          {bool allowBrowseIds = false}) =>
+      _parseTrackFromRenderer(renderer, allowBrowseIds: allowBrowseIds);
+
   Track? _parseTrackFromRenderer(Map<String, dynamic> renderer,
       {bool allowBrowseIds = false}) {
     try {
@@ -440,8 +447,9 @@ class InnerTubeService {
               videoId.startsWith('OLAK') || // Album
               videoId.startsWith('MPREb'))) {
         // Album browse ID
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('InnerTubeService: Skipping non-playable ID: $videoId');
+        }
         return null;
       }
 
@@ -466,14 +474,20 @@ class InnerTubeService {
                 ?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
             as List?;
         if (artistRuns != null && artistRuns.isNotEmpty) {
-          artist = artistRuns
+          final parsed = artistRuns
               .where((r) =>
                   r['text'] != null &&
+                  r['text'] is String &&
                   r['text'] != ' • ' &&
                   r['text'] != ' & ' &&
                   !_isMetadataRun(r['text'] as String))
+              .map((r) => (r['text'] as String).trim())
+              .where((text) => text.isNotEmpty)
               .take(3)
               .join(', ');
+          if (parsed.isNotEmpty) {
+            artist = parsed;
+          }
         }
       }
 
@@ -715,8 +729,9 @@ class InnerTubeService {
         _captureVisitorData(jsonDecode(response.body));
       }
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: visitorData fetch failed: $e');
+      }
     }
   }
 
@@ -1157,8 +1172,9 @@ class InnerTubeService {
   /// Get Artist Details (Top Songs)
   Future<Map<String, dynamic>> getArtistDetails(String browseId) async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: Getting artist details for $browseId');
+      }
 
       final body = jsonEncode({
         'context': _buildContext(),
@@ -1171,8 +1187,9 @@ class InnerTubeService {
         body: body,
       );
 
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw Exception('Artist browse failed: ${response.statusCode}');
+      }
 
       final data = jsonDecode(response.body);
       final tracks = <Track>[];
@@ -1190,8 +1207,9 @@ class InnerTubeService {
       // Usually under 'contents' -> 'singleColumnBrowseResultsRenderer' -> 'tabs' -> tab 0 -> 'sectionListRenderer'
       final tabs =
           data['contents']?['singleColumnBrowseResultsRenderer']?['tabs'];
-      if (tabs == null || tabs.isEmpty)
+      if (tabs == null || tabs.isEmpty) {
         return {'tracks': [], 'albums': [], 'singles': []};
+      }
 
       final sections = tabs[0]?['tabRenderer']?['content']
           ?['sectionListRenderer']?['contents'] as List?;
@@ -1292,8 +1310,9 @@ class InnerTubeService {
   /// Get Playlist Details
   Future<List<Track>> getPlaylistDetails(String browseId) async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: Getting playlist details for $browseId');
+      }
       // Ensure browseId starts with VL if needed? Usually passing ID directly works.
 
       final body = jsonEncode({
@@ -1307,8 +1326,9 @@ class InnerTubeService {
         body: body,
       );
 
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw Exception('Playlist browse failed: ${response.statusCode}');
+      }
 
       final data = jsonDecode(response.body);
       final tracks = <Track>[];
@@ -1346,8 +1366,9 @@ class InnerTubeService {
 
       return tracks;
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: Playlist details error: $e');
+      }
       return [];
     }
   }
@@ -1356,8 +1377,9 @@ class InnerTubeService {
   /// Album browseIds typically start with 'MPREb_' for music albums
   Future<List<Track>> getAlbumTracks(String browseId) async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: Getting album tracks for $browseId');
+      }
 
       final body = jsonEncode({
         'context': _buildContext(),
@@ -1432,11 +1454,14 @@ class InnerTubeService {
         }
       }
 
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('InnerTubeService: Found ${tracks.length} tracks in album');
+      }
       return tracks;
     } catch (e) {
-      if (kDebugMode) debugPrint('InnerTubeService: Album tracks error: $e');
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: Album tracks error: $e');
+      }
       return [];
     }
   }
@@ -1472,22 +1497,28 @@ class InnerTubeService {
         // Skip non-playable items ONLY when NOT in browse mode
         // Artists and Playlists need to be navigated to, not played directly
         if (!allowBrowseIds && (isArtist || isPlaylist)) {
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint(
                 'InnerTubeService: Skipping non-playable item: $title (ID: $videoId)');
+          }
           return null;
         }
 
         // Normal Song or browse mode
-        artist = subtitleRuns
+        final parsed = subtitleRuns
             .where((r) =>
                 r['text'] != null &&
+                r['text'] is String &&
                 r['text'] != ' • ' &&
                 r['text'] != ' & ' &&
                 !_isMetadataRun(r['text'] as String))
-            .map((r) => r['text'])
+            .map((r) => (r['text'] as String).trim())
+            .where((text) => text.isNotEmpty)
             .take(2)
             .join(', ');
+        if (parsed.isNotEmpty) {
+          artist = parsed;
+        }
       }
 
       // Thumbnail

@@ -63,6 +63,18 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
+const List<String> _trendingRotationQueries = [
+  'Top Trending Hits',
+  'Global Top 50',
+  'Viral Music Hits',
+  'Trending Songs Right Now',
+  'Billboard Hot 100',
+  'Chart Toppers',
+  'Popular Songs',
+  'New Music Trending',
+];
+int _rotationIndex = 0;
+
 /// Wires the controller to the app's existing services. Kept here (not
 /// in MusicProvider) so the god-object stays untouched; session
 /// persistence lives for the lifetime of the route stack.
@@ -86,29 +98,51 @@ ExploreController bootstrapExploreController(BuildContext context,
       }
 
       List<Track> charts = provider.fullTrendingTracks;
-      if (charts.isEmpty || related.length < 8) {
-        try {
-          final trending = await InnerTubeService.instance.getTrendingTracks(limit: 30);
-          if (trending.isNotEmpty) {
-            charts = [...charts, ...trending];
-          }
-        } catch (_) {}
-      }
-
-      // Dynamic Home shelves (mixed hits, trending now)
       List<Track> homeShelves = const [];
-      if (related.length + charts.length < 16) {
-        try {
-          homeShelves = await InnerTubeService.instance.getHomeTracks(limit: 30);
-        } catch (_) {}
+      List<Track> topHits = const [];
+
+      final isRefilling = anchor != null;
+      final query = _trendingRotationQueries[
+          _rotationIndex % _trendingRotationQueries.length];
+      _rotationIndex++;
+
+      final futures = <Future<void>>[];
+
+      if (charts.isEmpty || isRefilling || related.length < 8) {
+        futures.add(() async {
+          try {
+            final trending =
+                await InnerTubeService.instance.getTrendingTracks(limit: 30);
+            if (trending.isNotEmpty) {
+              charts = [...charts, ...trending];
+            }
+          } catch (_) {}
+        }());
       }
 
-      // High-quality top hits fallback: guarantees popular chart-toppers (not randos)
-      List<Track> topHits = const [];
-      if (related.length + charts.length + homeShelves.length < 16) {
-        try {
-          topHits = await InnerTubeService.instance.searchSongs('Top Trending Hits', limit: 30);
-        } catch (_) {}
+      // Dynamic Home shelves (mixed hits, trending now) - avoid skipping on refill
+      if (isRefilling || related.length + charts.length < 16) {
+        futures.add(() async {
+          try {
+            homeShelves =
+                await InnerTubeService.instance.getHomeTracks(limit: 30);
+          } catch (_) {}
+        }());
+      }
+
+      // High-quality top hits / rotated dynamic queries - avoid skipping on refill
+      if (isRefilling ||
+          related.length + charts.length + homeShelves.length < 16) {
+        futures.add(() async {
+          try {
+            topHits =
+                await InnerTubeService.instance.searchSongs(query, limit: 30);
+          } catch (_) {}
+        }());
+      }
+
+      if (futures.isNotEmpty) {
+        await Future.wait(futures);
       }
 
       List<Track> releases = provider.newReleases;
