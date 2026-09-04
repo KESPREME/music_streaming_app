@@ -318,6 +318,20 @@ class InnerTubeService {
     }
   }
 
+  /// Search for official music videos on YouTube Music (OMV / UGC)
+  Future<List<Track>> searchVideos(String query, {int limit = 10}) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: Searching videos for "$query"');
+      }
+      return await _searchWithParams(
+          query, 'EgWKAQIQAWoKEAkQBRAKEAMQBA%3D%3D', limit);
+    } catch (e) {
+      if (kDebugMode) debugPrint('InnerTubeService: searchVideos error: $e');
+      return const [];
+    }
+  }
+
   /// Parse search results into Track objects
   /// [allowBrowseIds] - when true, allows UC/VL/PL IDs (for artist/playlist search)
   List<Track> _parseSearchResults(Map<String, dynamic> data, int limit,

@@ -70,43 +70,55 @@ class CanvasResolutionService {
       }
     }
 
-    // 2. YouTube tracks (11 character IDs)
-    if (track.id.length == 11 && !track.id.startsWith('MPREb')) {
-      final cached = await _resolveAndCacheVideo(track.id);
-      if (cached != null) {
-        _cache[track.id] = cached;
-        return cached;
-      }
-    } else if (track.trackName.isNotEmpty) {
-      // 3. Non-11-character tracks: quick search fallback via InnerTube
+    // 2. Official Music Video search via InnerTube
+    // YouTube Music's track.id for songs is an Audio Track (ATV) whose video stream
+    // is a static still JPEG of the album art. To get a real looping video canvas
+    // (matching Spotify Canvas and Muzo discovery), we query YouTube for the
+    // official music video (OMV / UGC) matching the track title and artist.
+    if (track.trackName.isNotEmpty) {
       try {
         final query = '${track.trackName} ${track.artistName}'.trim();
-        final searchResults = await InnerTubeService.instance
-            .searchSongs(query, limit: 3)
+        final videoResults = await InnerTubeService.instance
+            .searchVideos(query, limit: 3)
             .timeout(const Duration(seconds: 4));
-        if (searchResults.isNotEmpty && searchResults.first.id.isNotEmpty) {
-          final cached = await _resolveAndCacheVideo(searchResults.first.id);
-          if (cached != null) {
-            _cache[track.id] = cached;
-            return cached;
+        if (videoResults.isNotEmpty) {
+          // Prefer results whose ID differs from track.id (guaranteeing OMV instead of ATV)
+          for (final video in videoResults) {
+            if (video.id.isNotEmpty && video.id != track.id) {
+              final cached = await _resolveAndCacheVideo(video.id);
+              if (cached != null) {
+                _cache[track.id] = cached;
+                return cached;
+              }
+            }
+          }
+          // Fallback to first result if none differed
+          if (videoResults.first.id.isNotEmpty) {
+            final cached = await _resolveAndCacheVideo(videoResults.first.id);
+            if (cached != null) {
+              _cache[track.id] = cached;
+              return cached;
+            }
           }
         }
       } catch (e) {
-        debugPrint('CanvasResolutionService search fallback failed for ${track.trackName}: $e');
+        debugPrint('CanvasResolutionService: video search failed for ${track.trackName}: $e');
       }
     }
 
+    // Graceful fallback: If no real music video exists, do NOT return track.id (which is a static still picture).
+    // Returning null allows ExploreFeedCard to show the centered album artwork, ambient glow, and equalizer.
     _cache[track.id] = null;
     return null;
   }
 
-  /// Resolves direct stream URL and fetches a clean ~320KB fMP4 loop segment
+  /// Resolves direct stream URL and fetches a clean ~450KB fMP4 loop segment
   /// aligned to MP4 frame boundaries, cached locally to prevent YouTube 403 blocks.
   Future<String?> _resolveAndCacheVideo(String videoId) async {
     try {
       final dir = await _getCacheDir();
       final targetFile = File('${dir.path}/canvas_$videoId.mp4');
-      if (await targetFile.exists() && (await targetFile.length()) > 30000) {
+      if (await targetFile.exists() && (await targetFile.length()) > 50000) {
         return targetFile.path;
       }
 
@@ -115,8 +127,8 @@ class CanvasResolutionService {
           .timeout(const Duration(seconds: 5));
       if (directUrl == null || directUrl.isEmpty) return null;
 
-      // Query ~320KB bounded chunk (approx 8-12 seconds of looping 360p/480p video)
-      final rangeUrl = '$directUrl&range=0-320000';
+      // Query ~450KB bounded chunk (approx 10-15 seconds of looping 360p/480p video)
+      final rangeUrl = '$directUrl&range=0-450000';
       final ua = InnerTubeService.userAgentForStreamUrl(directUrl) ??
           'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
       final resp = await http.get(
@@ -152,7 +164,12 @@ class CanvasResolutionService {
           ? bytes.sublist(0, lastCompleteOffset)
           : bytes;
 
-      await targetFile.writeAsBytes(validBytes);
+      final tmpFile = File('${targetFile.path}.tmp');
+      await tmpFile.writeAsBytes(validBytes);
+      if (await targetFile.exists()) {
+        await targetFile.delete();
+      }
+      await tmpFile.rename(targetFile.path);
       return targetFile.path;
     } catch (e) {
       debugPrint('CanvasResolutionService: could not resolve canvas for $videoId: $e');

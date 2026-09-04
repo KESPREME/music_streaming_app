@@ -73,7 +73,10 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
       }
     } else if (widget.isCurrentTrack) {
       CanvasResolutionService.instance.resolveCanvas(track).then((url) {
-        if (mounted && url != null && url.isNotEmpty) {
+        if (mounted &&
+            url != null &&
+            url.isNotEmpty &&
+            widget.item.track.id == track.id) {
           setState(() {
             _canvasUrl = url;
             _canvasReady = false;
