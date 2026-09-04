@@ -216,13 +216,13 @@ lib/services/recommendation/
 | lib/services/explore/explore_session.dart | ExploreSession: stream, shown-set dedupe, artist-run cap, identity dedupe |
 | lib/services/explore/explore_controller.dart | ExploreController: autoplay-on-settle, generation races, refill, feedback |
 | lib/services/explore/explore_palette.dart | ExplorePaletteCache: 100px decode, cap 30, tone-mapped ambient colors |
-| lib/presentation/explore/explore_screen.dart | ExploreScreen: wheel snap/debounce/haptics, mesh, action cluster |
-| lib/presentation/explore/explore_tokens.dart | ExploreTokens: rotary geometry + motion constants |
-| lib/presentation/explore/explore_layout.dart | ExploreWheelMath: arc/centrality curves, snap index math |
+| lib/presentation/explore/explore_screen.dart | ExploreScreen: wheel snap/debounce/haptics, mesh, tab bar |
+| lib/presentation/explore/explore_tokens.dart | ExploreTokens: arc/pill/vinyl/tab constants |
+| lib/presentation/explore/explore_layout.dart | ExploreWheelMath: cosine arc (center-rightmost), anchor curves |
 | lib/presentation/explore/explore_wheel_physics.dart | SnapScrollPhysics: magnetic snap-to-row |
-| lib/presentation/explore/explore_wheel.dart | ExploreWheel + rows + fixed action cluster |
-| lib/presentation/explore/explore_vinyl.dart | VinylDisc (9s linear spin) + MicroEqualizer |
-| lib/presentation/explore/explore_mesh.dart | LiquidMeshBackground: 3-blob tween + aura + luminance scrim |
+| lib/presentation/explore/explore_wheel.dart | ExploreWheel + bare rows + LiquidGlassPill |
+| lib/presentation/explore/explore_vinyl.dart | VinylDisc (grooves, spindle, 6s spin) + MicroEqualizer |
+| lib/presentation/explore/explore_mesh.dart | Mesh: blurred vibrant glow + deep base + luminance scrim |
 
 ### Tests
 | File | Covers |
@@ -240,6 +240,8 @@ lib/services/recommendation/
 | test/explore_screen_widget_test.dart | Wheel states (rows/snap/eq/spin/expand), FakeExploreProvider |
 | test/explore_layout_test.dart | Wheel math (extent/arc/curves/tForIndex), reason gate |
 | test/explore_wheel_physics_test.dart | Snap target/index rounding |
+| lib/widgets/glass_options_sheet.dart | +onDislike row (Explore-only, null-hidden) |
+| lib/providers/music_provider.dart | +requestedTab plumbing (Explore tab bar → MainScreen) |
 ---
 
 ## COMMIT LOG (this branch, newest last)
@@ -296,6 +298,14 @@ c737dbb nav: GlassTabBar.searchable
    snap spring tension, debounce 180ms feel, mesh drift layouts,
    vinyl spin speed (9s), eq bar motion, autoplay toggle persistence
    (currently session-only).
+   NOTE (2026-09-07 fidelity pass): arc is now cosine center-rightmost
+   (A=32), vinyl 6s + grooves + white spindle, pill is bespoke glass
+   (80px, gradient border, bevel), header 28 without toggle, slim tab
+   bar with provider tab plumbing, actions re-homed (heart in pill,
+   rest in More sheet + Not-interested row). Awaited-HapticFeedback
+   hangs in widget tests — always fire-and-forget haptics; modal
+   sheets need providers ABOVE MaterialApp in test trees; dispose()
+   must not notify during pop finalization (post-frame restore).
 3. **Explore seed entry points**: open Explore from artist/album/mood with
    explicit seed (screen already accepts `ExploreScreen.open(seed:)`).
 3. **Logged-in renderer coverage (fixture-gated)**: run logged-in, pull
