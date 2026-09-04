@@ -9,14 +9,12 @@ import 'explore_tokens.dart';
 class ExploreWheelSpec {
   const ExploreWheelSpec({
     required this.itemExtent,
-    required this.arcK,
-    required this.maxTheta,
+    required this.arcA,
     required this.contentMaxWidth,
   });
 
   final double itemExtent;
-  final double arcK;
-  final double maxTheta;
+  final double arcA;
   final double contentMaxWidth;
 }
 
@@ -28,8 +26,7 @@ class ExploreWheelMath {
 
   static ExploreWheelSpec plan(Size viewport) => ExploreWheelSpec(
         itemExtent: itemExtentFor(viewport.height),
-        arcK: ExploreTokens.arcK,
-        maxTheta: ExploreTokens.arcThetaMax,
+        arcA: ExploreTokens.arcA,
         contentMaxWidth: ExploreTokens.contentMaxWidth,
       );
 
@@ -44,14 +41,22 @@ class ExploreWheelMath {
 
   static double centrality(double t) => (1.0 - t.abs()).clamp(0.0, 1.0);
 
-  /// Arc lateral offset, always +x (wheel curves right).
-  static double arcDx(double t, double k, double maxTheta) =>
-      k * (1 - cos(t.abs() * maxTheta));
+  /// Arc lateral offset: center sweeps furthest right (0), top and
+  /// bottom curve back left: x = −A·(1−cos(|t|·π/2)).
+  static double arcDx(double t, double a) =>
+      -a * (1 - cos(t.abs() * pi / 2));
 
-  static double scaleFor(double c) =>
-      ExploreTokens.scaleMin + (1 - ExploreTokens.scaleMin) * c;
-  static double opacityFor(double c) =>
-      ExploreTokens.opacityMin + (1 - ExploreTokens.opacityMin) * c;
+  /// Anchors: c=1 → 1.0/1.0; neighbor band (c≈0.67) → ≈0.74/0.46;
+  /// edge c=0 → 0.60/0.18.
+  static double scaleFor(double c) {
+    final u = ((1 - c) * 2).clamp(0.0, 1.0);
+    return 1 - 0.40 * u;
+  }
+
+  static double opacityFor(double c) {
+    final u = ((1 - c) * 2).clamp(0.0, 1.0);
+    return 1 - 0.82 * u;
+  }
 
   /// Text gone at edges (vinyl-only peripherals).
   static double textOpacityFor(double c) =>

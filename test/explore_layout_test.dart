@@ -9,19 +9,18 @@ void main() {
       expect(ExploreWheelMath.itemExtentFor(457), closeTo(96, 0.01));
       expect(ExploreWheelMath.itemExtentFor(560), closeTo(112, 0.01));
     });
-    test('arc: center 0, edges ≈46px', () {
-      expect(ExploreWheelMath.arcDx(0, 72, 1.2), 0);
-      expect(ExploreWheelMath.arcDx(1, 72, 1.2), closeTo(45.9, 0.2));
-      expect(ExploreWheelMath.arcDx(-1, 72, 1.2), closeTo(45.9, 0.2));
+    test('arc: center 0, edges curve left', () {
+      expect(ExploreWheelMath.arcDx(0, 32), 0);
+      expect(ExploreWheelMath.arcDx(1, 32), closeTo(-32, 0.01));
+      expect(ExploreWheelMath.arcDx(-1, 32), closeTo(-32, 0.01));
     });
-    test('curves: center full, edge minimums', () {
+    test('anchors match spec steps', () {
       expect(ExploreWheelMath.scaleFor(1), 1.0);
-      expect(ExploreWheelMath.scaleFor(0), 0.65);
-      expect(ExploreWheelMath.opacityFor(0), 0.2);
-      expect(ExploreWheelMath.textOpacityFor(0), 0.0);
-      expect(ExploreWheelMath.textOpacityFor(1), 1.0);
-      expect(ExploreWheelMath.glassFor(0.4), 0.0);
-      expect(ExploreWheelMath.glassFor(1), 1.0);
+      expect(ExploreWheelMath.scaleFor(0), closeTo(0.60, 0.001));
+      expect(ExploreWheelMath.opacityFor(1), 1.0);
+      expect(ExploreWheelMath.opacityFor(0), closeTo(0.18, 0.001));
+      expect(ExploreWheelMath.opacityFor(0.67), closeTo(0.46, 0.03));
+      expect(ExploreWheelMath.scaleFor(0.67), closeTo(0.74, 0.03));
     });
     test('tForIndex: centered row → 0 (with centering pad)', () {
       // extent 120, viewport 600, pad 240: row 2 centered at offset 240.
