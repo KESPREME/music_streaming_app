@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -157,8 +156,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   void dispose() {
     _snapTimer?.cancel();
-    _provider?.setHideMiniPlayer(false);
     _scrollController.dispose();
+    // Restore the pill post-frame: notifying during pop finalization
+    // trips locked-tree assertions (debug) on every Explore exit.
+    final provider = _provider;
+    if (provider != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          provider.setHideMiniPlayer(false);
+        } catch (_) {}
+      });
+    }
     super.dispose();
   }
 
@@ -328,16 +336,18 @@ class _ExploreScreenState extends State<ExploreScreen> {
     });
   }
 
-  Future<void> _buzz() async {
+  /// Fire-and-forget haptic: never awaited (platform futures can hang
+  /// in tests) with async errors swallowed.
+  void _buzz() {
     try {
-      await HapticFeedback.mediumImpact();
+      unawaited(HapticFeedback.mediumImpact().then((_) {}, onError: (_) {}));
     } catch (_) {}
   }
 
   /// Pill long-press → full track options incl. Not-interested.
   Future<void> _openMore(BuildContext context, MusicProvider provider,
       ExploreController controller, Track track) async {
-    await _buzz();
+    _buzz();
     if (!context.mounted) return;
     await ThemedOptionsSheet.show(context, track: track, onDislike: () {
       _invalidateSnap();

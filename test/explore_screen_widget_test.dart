@@ -7,6 +7,7 @@ import 'package:music_streaming_app/services/recommendation/candidate.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/presentation/explore/explore_screen.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
+import 'package:music_streaming_app/providers/theme_provider.dart';
 import 'package:music_streaming_app/services/recommendation/taste_profile.dart';
 import 'package:provider/provider.dart';
 
@@ -115,12 +116,15 @@ void main() {
   ];
 
   Widget wrap(ExploreController controller, FakeExploreProvider provider) {
+    // Providers ABOVE MaterialApp (production shape) so modal routes
+    // (options sheet) resolve them too.
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<MusicProvider>(create: (_) => provider),
         ChangeNotifierProvider<ExploreController>.value(value: controller),
+        ChangeNotifierProvider<ThemeProvider>(create: (_) => ThemeProvider()),
       ],
-      child: const ExploreScreen.forTest(),
+      child: const MaterialApp(home: ExploreScreen.forTest()),
     );
   }
 
@@ -129,7 +133,7 @@ void main() {
       final controller = _controller(batches: [batch5], autoplay: false);
       await controller.start();
       await tester.pumpWidget(
-          MaterialApp(home: wrap(controller, FakeExploreProvider())));
+          wrap(controller, FakeExploreProvider()));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('explore_row_aaa11111111')),
           findsOneWidget);
@@ -143,7 +147,7 @@ void main() {
           _controller(batches: [batch5], autoplay: true, played: played);
       await controller.start();
       await tester.pumpWidget(
-          MaterialApp(home: wrap(controller, FakeExploreProvider())));
+          wrap(controller, FakeExploreProvider()));
       await tester.pumpAndSettle();
       expect(played.map((t) => t.id), ['aaa11111111']);
       played.clear();
@@ -156,15 +160,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(played, isNotEmpty);
       expect(controller.session!.currentIndex, greaterThan(0));
-      expect(played.last.id,
-          controller.session!.active!.track.id);
+      expect(played.last.id, controller.session!.active!.track.id);
     });
 
     testWidgets('neighbor tap jumps to that row', (tester) async {
       final controller = _controller(batches: [batch5], autoplay: false);
       await controller.start();
       await tester.pumpWidget(
-          MaterialApp(home: wrap(controller, FakeExploreProvider())));
+          wrap(controller, FakeExploreProvider()));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('explore_row_bbb11111111')));
       await tester.pumpAndSettle();
@@ -179,7 +182,7 @@ void main() {
       final provider = FakeExploreProvider()
         ..fakeCurrent = _t('aaa11111111')
         ..fakePlaying = true;
-      await tester.pumpWidget(MaterialApp(home: wrap(controller, provider)));
+      await tester.pumpWidget(wrap(controller, provider));
       // Bounded pumps: the eq loop + vinyl spin schedule frames forever,
       // so pumpAndSettle would never return while playing.
       await tester.pump(const Duration(milliseconds: 100));
@@ -200,7 +203,7 @@ void main() {
       final provider = FakeExploreProvider()
         ..fakeCurrent = _t('aaa11111111')
         ..fakePlaying = true;
-      await tester.pumpWidget(MaterialApp(home: wrap(controller, provider)));
+      await tester.pumpWidget(wrap(controller, provider));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byKey(const ValueKey('vinyl_spin')), findsOneWidget);
@@ -211,48 +214,115 @@ void main() {
       expect(find.byKey(const ValueKey('vinyl_spin')), findsNothing);
     });
 
-    testWidgets('expand opens fullscreen panel', (tester) async {
+    testWidgets('title tap expands fullscreen panel', (tester) async {
       final controller = _controller(batches: [batch5], autoplay: false);
       await controller.start();
       final provider = FakeExploreProvider();
-      await tester.pumpWidget(MaterialApp(home: wrap(controller, provider)));
+      await tester.pumpWidget(wrap(controller, provider));
       await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel('Open player'));
+      await tester.tap(find.text('Song aaa11111111'));
       await tester.pumpAndSettle();
       expect(provider.expandCalls, isTrue);
     });
+  });
 
-    testWidgets('actions operate on active track', (tester) async {
+  group('Explore liquid pill', () {
+    testWidgets('pill key, title, heart', (tester) async {
       final controller = _controller(batches: [batch5], autoplay: false);
       await controller.start();
       await tester.pumpWidget(
-          MaterialApp(home: wrap(controller, FakeExploreProvider())));
+          wrap(controller, FakeExploreProvider()));
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('explore_pill_aaa11111111')),
+          findsOneWidget);
+      expect(find.text('Song aaa11111111'), findsWidgets);
       expect(find.bySemanticsLabel('Like'), findsOneWidget);
-      expect(find.bySemanticsLabel('Add to queue'), findsOneWidget);
-      expect(find.bySemanticsLabel('Share'), findsOneWidget);
-      expect(find.bySemanticsLabel('More options'), findsOneWidget);
+    });
+
+    testWidgets('long-press pill → sheet Not-interested advances',
+        (tester) async {
+      final controller = _controller(batches: [batch5], autoplay: false);
+      await controller.start();
+      await tester.pumpWidget(
+          wrap(controller, FakeExploreProvider()));
+      await tester.pumpAndSettle();
+      expect(controller.session!.currentIndex, 0);
+      await tester.longPress(
+          find.byKey(const ValueKey('explore_pill_aaa11111111')));
+      await tester.pumpAndSettle();
+      expect(find.text('Go to Artist'), findsOneWidget);
       expect(find.text('Not interested'), findsOneWidget);
       await tester.tap(find.text('Not interested'));
       await tester.pumpAndSettle();
       expect(controller.session!.currentIndex, 1);
     });
 
+    testWidgets('header bold title, no autoplay toggle', (tester) async {
+      final controller = _controller(batches: [batch5], autoplay: false);
+      await controller.start();
+      await tester.pumpWidget(
+          wrap(controller, FakeExploreProvider()));
+      await tester.pumpAndSettle();
+      expect(find.text('Explore'), findsOneWidget);
+      expect(find.bySemanticsLabel('Toggle autoplay'), findsNothing);
+      expect(find.bySemanticsLabel('Back'), findsOneWidget);
+    });
+  });
+
+  group('Explore tab bar', () {
+    testWidgets('three tabs, Explore active', (tester) async {
+      final controller = _controller(batches: [batch5], autoplay: false);
+      await controller.start();
+      await tester.pumpWidget(
+          wrap(controller, FakeExploreProvider()));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Home tab'), findsOneWidget);
+      expect(find.bySemanticsLabel('Explore tab'), findsOneWidget);
+      expect(find.bySemanticsLabel('Library tab'), findsOneWidget);
+    });
+
+    testWidgets('Library tab requests tab + pops route', (tester) async {
+      final controller = _controller(batches: [batch5], autoplay: false);
+      await controller.start();
+      final provider = FakeExploreProvider();
+      await tester.pumpWidget(wrap(controller, provider));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Library tab'));
+      await tester.pumpAndSettle();
+      expect(provider.requestedTab, 2);
+      expect(find.byType(ExploreScreen), findsNothing);
+    });
+
+    testWidgets('provider tab request/clear', (tester) async {
+      final provider = FakeExploreProvider();
+      expect(provider.requestedTab, isNull);
+      provider.requestTab(0);
+      expect(provider.requestedTab, 0);
+      provider.requestTab(0); // idempotent, no crash
+      provider.clearRequestedTab();
+      expect(provider.requestedTab, isNull);
+      provider.clearRequestedTab(); // idempotent, no crash
+    });
+  });
+
+  group('Explore states', () {
     testWidgets('skeleton before session, empty state when exhausted',
         (tester) async {
       final controller = _controller(batches: [batch5]);
       await tester.pumpWidget(
-          MaterialApp(home: wrap(controller, FakeExploreProvider())));
+          wrap(controller, FakeExploreProvider()));
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byIcon(Icons.music_note_rounded), findsWidgets);
 
       final empty = _controller(batches: [const []]);
       await empty.start();
-      await tester.pumpWidget(
-          MaterialApp(home: wrap(empty, FakeExploreProvider())));
+      await tester.pumpWidget(wrap(empty, FakeExploreProvider()));
       await tester.pumpAndSettle();
       expect(find.text('Nothing new right now'), findsOneWidget);
     });
   });
 }
+
+
+

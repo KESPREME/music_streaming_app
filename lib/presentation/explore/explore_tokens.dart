@@ -12,9 +12,7 @@ abstract class ExploreTokens {
 
   /// Rotary chrome.
   static const double headerHeight = 56.0;
-  static const double railHeight = 48.0;
   static const double contentMaxWidth = 560.0;
-  static const double controlSizeSmall = 36.0;
 
   /// Reason gate (traces/future surfaces; no visible reason text).
   static const double reasonConfidenceFloor = 0.35;
@@ -27,7 +25,6 @@ abstract class ExploreTokens {
   static const double textFadeStart = 0.35;
   static const double glassFadeStart = 0.5;
   static const double vinylSize = 56.0;
-  static const double vinylHoleSize = 16.0;
   static const Duration spinDuration = Duration(seconds: 6);
   static const Duration snapDebounce = Duration(milliseconds: 180);
   static const Duration meshTransition = Duration(milliseconds: 600);
