@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/services/explore/explore_engine.dart';
@@ -30,6 +31,7 @@ class ExploreController extends ChangeNotifier {
     required TasteProfile Function() profileProvider,
     required ExploreSwipeFeedback recordSwipeOutcome,
     required bool Function(String trackId) isCurrentTrack,
+    bool Function(String trackId)? isPlayingTrack,
     required void Function(bool enabled) onAutoplayChanged,
     this.autoplayEnabled = true,
     ExploreSession? existingSession,
@@ -39,6 +41,7 @@ class ExploreController extends ChangeNotifier {
         _profileProvider = profileProvider,
         _recordSwipeOutcome = recordSwipeOutcome,
         _isCurrentTrack = isCurrentTrack,
+        _isPlayingTrack = isPlayingTrack,
         _onAutoplayChanged = onAutoplayChanged,
         _session = existingSession {
     _settledAt = _session?.active == null ? null : DateTime.now();
@@ -50,6 +53,7 @@ class ExploreController extends ChangeNotifier {
   final TasteProfile Function() _profileProvider;
   final ExploreSwipeFeedback _recordSwipeOutcome;
   final bool Function(String trackId) _isCurrentTrack;
+  final bool Function(String trackId)? _isPlayingTrack;
   final void Function(bool enabled) _onAutoplayChanged;
 
   ExploreSession? _session;
@@ -163,10 +167,13 @@ class ExploreController extends ChangeNotifier {
           'autoplay=off');
       return;
     }
-    if (_isCurrentTrack(item.track.id)) {
-      // Same track already active (restore/rebuild) — never restart.
+
+    final isAlreadyPlaying = _isCurrentTrack(item.track.id) &&
+        (_isPlayingTrack?.call(item.track.id) ?? true);
+    if (isAlreadyPlaying) {
+      // Same track already actively playing — never restart mid-stride.
       debugPrint('EXPLORE_PREFETCH prepared=[$index] mediaResolved=skip '
-          'already-current');
+          'already-playing');
       return;
     }
 
@@ -187,6 +194,8 @@ class ExploreController extends ChangeNotifier {
           debugPrint('EXPLORE_ITEM play failed: $e');
         }
       }
+    }).catchError((e) {
+      debugPrint('EXPLORE_PLAY queue error: $e');
     });
     await _playQueue;
     notifyListeners();
@@ -199,9 +208,18 @@ class ExploreController extends ChangeNotifier {
     _isRefilling = true;
     notifyListeners();
     try {
-      final anchor = s.active?.track ?? s.seed;
-      final sources = await _fetchSources(anchor);
-      final items = await _engine.generate(
+      // 1. Pick a seed track from recent unexhausted items to avoid hammering an anchor with no related songs
+      Track? anchor = s.active?.track;
+      if (anchor == null || _emptyStreak > 0) {
+        final candidates = s.items.reversed.take(6).map((i) => i.track).toList();
+        if (candidates.isNotEmpty) {
+          anchor = candidates[_emptyStreak % candidates.length];
+        }
+      }
+      anchor ??= s.seed;
+
+      var sources = await _fetchSources(anchor);
+      var items = await _engine.generate(
         profile: _profileProvider(),
         sources: sources,
         seed: null,
@@ -209,6 +227,7 @@ class ExploreController extends ChangeNotifier {
         limit: ExplorePolicy.refillBatch,
         generation: s.generation,
       );
+
       if (items.isEmpty) {
         _emptyStreak++;
         if (_emptyStreak >= 2) {

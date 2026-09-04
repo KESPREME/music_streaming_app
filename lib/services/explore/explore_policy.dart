@@ -6,19 +6,19 @@ import 'package:music_streaming_app/services/recommendation/taste_profile.dart';
 /// One shared recommendation stack, one config variant (spec #96/#97).
 abstract class ExplorePolicy {
   /// Initial session batch (spec #24: bounded startup, 6–12).
-  static const int initialBatch = 8;
+  static const int initialBatch = 12;
 
   /// Refill batch size.
-  static const int refillBatch = 8;
+  static const int refillBatch = 14;
 
   /// Refill when this many items remain ahead of the user (spec #25).
-  static const int refillThreshold = 3;
+  static const int refillThreshold = 5;
 
   /// How many upcoming artworks to prefetch (spec #88).
   static const int prefetchAhead = 3;
 
   /// Related-songs fetch size for the seed chain.
-  static const int relatedLimit = 10;
+  static const int relatedLimit = 25;
 
   /// Max consecutive pages from one artist (session-level soft cap).
   static const int maxArtistRun = 2;

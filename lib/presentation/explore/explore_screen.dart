@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
@@ -16,6 +17,7 @@ import '../../services/explore/explore_policy.dart';
 import '../../services/recommendation/taste_profile.dart';
 import '../../services/innertube/innertube_service.dart';
 import '../../services/stream_resolution_service.dart';
+import '../../services/canvas_resolution_service.dart';
 import '../../widgets/artist_picker_sheet.dart';
 import '../../widgets/glass_circle_button.dart';
 import '../../widgets/glass_surface.dart';
@@ -95,14 +97,20 @@ ExploreController bootstrapExploreController(BuildContext context,
           releases = await InnerTubeService.instance.getNewReleases(limit: 10);
         } catch (_) {}
       }
+      List<Track> quickPicks = provider.quickPicks;
+      if (quickPicks.isEmpty) {
+        quickPicks = provider.tracks.isNotEmpty
+            ? provider.tracks
+            : provider.recommendedTracks;
+      }
       debugPrint('EXPLORE_LOAD seed=${(anchor ?? seed)?.trackName ?? 'none'} '
-          'related=${related.length} quickPicks=${provider.quickPicks.length} '
+          'related=${related.length} quickPicks=${quickPicks.length} '
           'favorites=${provider.likedSongs.length} '
           'recents=${provider.recentlyPlayed.length} '
           'charts=${charts.length} releases=${releases.length}');
       return ExploreSources(
         seedRelated: related,
-        quickPicks: provider.quickPicks,
+        quickPicks: quickPicks,
         favorites: provider.likedSongs,
         recentlyPlayed: provider.recentlyPlayed,
         regionalChart: charts,
@@ -124,6 +132,7 @@ ExploreController bootstrapExploreController(BuildContext context,
         provider.recommendationService.recordSwipeOutcome(
             artistName: artist, wasAccepted: wasAccepted),
     isCurrentTrack: (id) => provider.currentTrack?.id == id,
+    isPlayingTrack: (id) => provider.currentTrack?.id == id && provider.isPlaying,
     autoplayEnabled: true,
     onAutoplayChanged: (_) {},
     // Session seed: the currently playing track anchors the stream.
@@ -285,7 +294,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final idx = (_scrollController.offset / extent)
         .round()
         .clamp(0, session.items.length - 1);
-    if (idx == _snappedIndex && idx == session.currentIndex) return;
+    final isAlreadyPlayingThis = (idx == session.currentIndex) &&
+        (_provider?.currentTrack?.id == session.items[idx].track.id) &&
+        (_provider?.isPlaying ?? false);
+    if (idx == _snappedIndex && isAlreadyPlayingThis) return;
     _snappedIndex = idx;
     if (!silent) _snapHaptic();
     _snapTimer?.cancel();
@@ -474,6 +486,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
           } else if (n is ScrollEndNotification) {
             _isUserScrolling = false;
             _snapToCurrent();
+          } else if (n is UserScrollNotification && n.direction == ScrollDirection.idle) {
+            _isUserScrolling = false;
+            _snapToCurrent();
           }
           return false;
         },
@@ -561,6 +576,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   void _preloadNext(ExploreController controller, List<ExploreItem> items,
       int index) {
+    if (_isTesting) return;
     for (var i = index + 1;
         i <= index + ExplorePolicy.prefetchAhead && i < items.length;
         i++) {
@@ -570,6 +586,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
         precacheImage(CachedNetworkImageProvider(url), context);
       }
       if (t.id.isNotEmpty) {
+        // Pre-resolve looping canvas video stream so it loads instantly on swipe
+        unawaited(
+          CanvasResolutionService.instance
+              .resolveCanvas(t)
+              .then((_) {}, onError: (_) {}),
+        );
         unawaited(
           StreamResolutionService.instance
               .resolve(ResolveRequest(

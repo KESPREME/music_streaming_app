@@ -5,6 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:video_player_win/video_player_win.dart';
+
 import 'core/navigation/root_navigator.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
@@ -36,6 +39,10 @@ class AppColors {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    WindowsVideoPlayer.registerWith();
+  }
   
   // FIX: Request high refresh rate for smoother 120Hz animations
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);

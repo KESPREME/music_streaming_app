@@ -54,6 +54,7 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   );
 
   String? _canvasUrl;
+  bool _canvasReady = false;
 
   bool get _isTesting =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');
@@ -62,12 +63,20 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
     if (_isTesting) return;
     final track = widget.item.track;
     final cached = CanvasResolutionService.instance.cachedCanvas(track.id);
-    if (cached != null) {
-      if (mounted) setState(() => _canvasUrl = cached);
+    if (cached != null && cached.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _canvasUrl = cached;
+          _canvasReady = false;
+        });
+      }
     } else if (widget.isCurrentTrack) {
       CanvasResolutionService.instance.resolveCanvas(track).then((url) {
         if (mounted && url != null && url.isNotEmpty) {
-          setState(() => _canvasUrl = url);
+          setState(() {
+            _canvasUrl = url;
+            _canvasReady = false;
+          });
         }
       });
     }
@@ -95,6 +104,7 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
     }
     if (widget.item.track.id != oldWidget.item.track.id) {
       _canvasUrl = null;
+      _canvasReady = false;
       _checkCanvas();
     } else if (widget.isCurrentTrack && !oldWidget.isCurrentTrack && _canvasUrl == null) {
       _checkCanvas();
@@ -120,20 +130,34 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Full-bleed Background: Video Canvas OR Blurred Album Artwork (matches Muzo 00:05, 00:14)
+          // 1. Base Layer: Blurred Album Artwork Background (ALWAYS rendered, matches Muzo)
           Positioned.fill(
-            child: hasCanvas
-                ? _CanvasVideoPlayer(
-                    videoUrl: _canvasUrl!,
-                    isPlaying: activePlaying,
-                  )
-                : _BlurredAlbumArtBackground(
-                    imageUrl: track.albumArtUrl,
-                    palette: widget.palette,
-                  ),
+            child: _BlurredAlbumArtBackground(
+              imageUrl: track.albumArtUrl,
+              palette: widget.palette,
+            ),
           ),
 
-          // 2. Full-Screen Tap Surface for Play / Pause
+          // 2. Video Canvas Overlay (loops smoothly over blurred art when ready)
+          if (hasCanvas)
+            Positioned.fill(
+              child: _CanvasVideoPlayer(
+                videoUrl: _canvasUrl!,
+                isPlaying: activePlaying,
+                onReady: () {
+                  if (mounted && !_canvasReady) {
+                    setState(() => _canvasReady = true);
+                  }
+                },
+                onError: () {
+                  if (mounted && _canvasReady) {
+                    setState(() => _canvasReady = false);
+                  }
+                },
+              ),
+            ),
+
+          // 3. Full-Screen Tap Surface for Play / Pause
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -144,34 +168,41 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
             ),
           ),
 
-          // 3. Center Column: Cover Art + Animated Soundwave Equalizer (for audio tracks)
-          if (!hasCanvas)
-            Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Album artwork with soft ambient drop shadows
-                    _AlbumCover(
-                      imageUrl: track.albumArtUrl,
-                      accent: accent,
-                      onTap: widget.onTogglePlay,
-                    ),
-                    const SizedBox(height: 32),
-                    // Animated Soundwave Equalizer (only when playing, matches video 00:00 - 01:13 & test suite)
-                    if (activePlaying)
-                      _FeedSoundwaveEqualizer(
-                        animation: _eqAnim,
-                        isPlaying: activePlaying,
-                        color: accent,
-                      )
-                    else
-                      const SizedBox(height: 44),
-                  ],
+          // 4. Center Column: Cover Art + Animated Soundwave Equalizer (smoothly fades out when canvas is active)
+          Center(
+            child: AnimatedOpacity(
+              opacity: _canvasReady ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              child: IgnorePointer(
+                ignoring: _canvasReady,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Album artwork with soft ambient drop shadows
+                      _AlbumCover(
+                        imageUrl: track.albumArtUrl,
+                        accent: accent,
+                        onTap: widget.onTogglePlay,
+                      ),
+                      const SizedBox(height: 32),
+                      // Animated Soundwave Equalizer (only when playing, matches video 00:00 - 01:13 & test suite)
+                      if (activePlaying)
+                        _FeedSoundwaveEqualizer(
+                          animation: _eqAnim,
+                          isPlaying: activePlaying,
+                          color: accent,
+                        )
+                      else
+                        const SizedBox(height: 44),
+                    ],
+                  ),
                 ),
               ),
             ),
+          ),
 
           // 4. Centered Frosted Glass Play Button (visible when paused, matches 00:00, 00:26, 01:14)
           if (widget.isCurrentTrack)
@@ -430,10 +461,14 @@ class _CanvasVideoPlayer extends StatefulWidget {
   const _CanvasVideoPlayer({
     required this.videoUrl,
     required this.isPlaying,
+    this.onReady,
+    this.onError,
   });
 
   final String videoUrl;
   final bool isPlaying;
+  final VoidCallback? onReady;
+  final VoidCallback? onError;
 
   @override
   State<_CanvasVideoPlayer> createState() => _CanvasVideoPlayerState();
@@ -454,7 +489,10 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
 
   Future<void> _init() async {
     final uri = Uri.tryParse(widget.videoUrl);
-    if (uri == null) return;
+    if (uri == null) {
+      widget.onError?.call();
+      return;
+    }
     try {
       final c = VideoPlayerController.networkUrl(uri);
       _controller = c;
@@ -465,8 +503,16 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       if (widget.isPlaying) {
         await c.play();
       }
-      setState(() => _initialized = true);
-    } catch (_) {}
+      if (mounted) {
+        setState(() => _initialized = true);
+        widget.onReady?.call();
+      }
+    } catch (e) {
+      debugPrint('Explore Canvas VideoPlayer error: $e');
+      if (mounted) {
+        widget.onError?.call();
+      }
+    }
   }
 
   @override
@@ -499,41 +545,46 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
   @override
   Widget build(BuildContext context) {
     final c = _controller;
-    if (c == null || !_initialized) {
-      return Container(color: Colors.black);
+    if (c == null || !_initialized || !c.value.isInitialized) {
+      return const SizedBox.shrink();
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            clipBehavior: Clip.hardEdge,
-            child: SizedBox(
-              width: c.value.size.width > 0 ? c.value.size.width : 1080,
-              height: c.value.size.height > 0 ? c.value.size.height : 1920,
-              child: VideoPlayer(c),
-            ),
-          ),
-        ),
-        // Subtle dark gradient over canvas video for readability
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.50),
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: 0.70),
-                ],
-                stops: const [0.0, 0.40, 1.0],
+    return AnimatedOpacity(
+      opacity: _initialized ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOut,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: c.value.size.width > 0 ? c.value.size.width : 1080,
+                height: c.value.size.height > 0 ? c.value.size.height : 1920,
+                child: VideoPlayer(c),
               ),
             ),
           ),
-        ),
-      ],
+          // Subtle dark gradient over canvas video for readability
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.50),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.70),
+                  ],
+                  stops: const [0.0, 0.40, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
