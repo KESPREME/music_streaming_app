@@ -2,6 +2,19 @@
 // Data model for synced lyrics
 
 
+/// Represents word or syllable-level timing for karaoke sync
+class WordTiming {
+  final int timeMs;
+  final int durationMs;
+  final String text;
+
+  const WordTiming({
+    required this.timeMs,
+    required this.durationMs,
+    required this.text,
+  });
+}
+
 /// Represents a single lyric line with timestamp
 class LyricsEntry implements Comparable<LyricsEntry> {
   /// Timestamp in milliseconds
@@ -9,10 +22,18 @@ class LyricsEntry implements Comparable<LyricsEntry> {
   
   /// The lyric text
   final String text;
+
+  /// Optional end timestamp in milliseconds
+  final int? endMs;
+
+  /// Optional word or syllable-level timing list
+  final List<WordTiming>? words;
   
   const LyricsEntry({
     required this.timeMs,
     required this.text,
+    this.endMs,
+    this.words,
   });
   
   /// Empty entry for list header

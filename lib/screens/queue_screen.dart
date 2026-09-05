@@ -11,8 +11,9 @@ import '../providers/music_provider.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/animated_equalizer_icon.dart';
+import '../widgets/audio_quality_language_sheet.dart';
 import '../utils/color_utils.dart';
-import '../theme/glass_tokens.dart';
+import '../utils/image_quality_utils.dart';
 
 /// Queue / Playing Next Screen with Apple Music / Muzo liquid glass design (Image 4).
 class QueueScreen extends StatelessWidget {
@@ -44,21 +45,28 @@ class QueueScreen extends StatelessWidget {
         children: [
           // 1. Blurred album art background (only when standalone)
           if (!isEmbedded) ...[
-            Positioned.fill(
-              child: currentTrack != null && currentTrack.albumArtUrl.isNotEmpty
-                  ? RepaintBoundary(
+            const Positioned.fill(
+              child: ColoredBox(color: Color(0xFF08080A)),
+            ),
+            if (currentTrack != null && currentTrack.albumArtUrl.isNotEmpty)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: ClipRect(
+                    child: Transform.scale(
+                      scale: 1.25,
                       child: ImageFiltered(
                         imageFilter: ImageFilter.blur(
-                          sigmaX: GlassTokens.playerBackdropBlur,
-                          sigmaY: GlassTokens.playerBackdropBlur,
+                          sigmaX: 65,
+                          sigmaY: 65,
                         ),
                         child: SizedBox.expand(
                           child: _buildAlbumArtImage(currentTrack),
                         ),
                       ),
-                    )
-                  : const ColoredBox(color: Color(0xFF121212)),
-            ),
+                    ),
+                  ),
+                ),
+              ),
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
@@ -258,45 +266,58 @@ class QueueScreen extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
       child: Row(
         children: [
-          // Album art thumbnail
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 46,
-              height: 46,
-              child: _buildAlbumArtImage(track),
+          // Album art thumbnail (tapping returns to normal album view)
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              onTabTap?.call(1);
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 46,
+                height: 46,
+                child: _buildAlbumArtImage(track),
+              ),
             ),
           ),
           const SizedBox(width: 12),
 
-          // Title & Artist
+          // Title & Artist (tapping returns to normal album view)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  track.trackName,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onTabTap?.call(1);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    track.trackName,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  track.artistName,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 2),
+                  Text(
+                    track.artistName,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
@@ -313,7 +334,7 @@ class QueueScreen extends StatelessWidget {
 
           const SizedBox(width: 8),
 
-          // Pronunciation / Translation button ("aあ")
+          // Multi-Language Audio & Quality Control button ("aあ")
           _buildCircleButtonWidget(
             semanticLabel: 'Pronunciation',
             child: Text(
@@ -326,7 +347,7 @@ class QueueScreen extends StatelessWidget {
             ),
             onTap: () {
               HapticFeedback.lightImpact();
-              showGlassSnackBar(context, 'Lyrics translation / phonetics');
+              AudioQualityLanguageSheet.show(context);
             },
           ),
 
@@ -681,8 +702,9 @@ class QueueScreen extends StatelessWidget {
   }
 
   Widget _buildAlbumArtImage(Track track) {
-    final art = track.albumArtUrl;
-    if (art.isEmpty) return _buildArtPlaceholder();
+    final rawArt = track.albumArtUrl;
+    if (rawArt.isEmpty) return _buildArtPlaceholder();
+    final art = ImageQualityUtils.getHighResArtwork(rawArt);
     if (!art.contains('://')) {
       final f = File(art);
       if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);

@@ -11,11 +11,12 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/artist_picker_sheet.dart';
 import '../widgets/glass_options_sheet.dart';
+import '../widgets/glass_snackbar.dart';
 import '../widgets/apple_player_icons.dart';
 import '../screens/lyrics_screen.dart';
 import '../screens/queue_screen.dart';
 import '../utils/color_utils.dart';
-import '../theme/glass_tokens.dart';
+import '../utils/image_quality_utils.dart';
 
 /// Full-screen Now Playing experience matching Apple Music / Muzo liquid glass UI/UX.
 ///
@@ -62,10 +63,19 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   void _navigateToTab(int index) {
     HapticFeedback.selectionClick();
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+
     if (_currentTab == index && index == 1) {
-      // Tapping Canvas tab while already on main player toggles visualizer canvas
-      final provider = Provider.of<MusicProvider>(context, listen: false);
+      // Tapping Canvas / Wave tab while already on main player toggles Lofi Mode (0.9x speed + pitch correction)
+      provider.lofi.toggle();
       provider.toggleCanvas();
+      final isLofi = provider.isLofiEnabled;
+      GlassSnackBar.show(
+        context,
+        message: isLofi
+            ? 'Lofi Vibe Active • 0.9× Speed, Warm Pitch'
+            : 'Lofi Mode Off • Original Speed',
+      );
       return;
     }
     _pageController.animateToPage(
@@ -90,24 +100,34 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           backgroundColor: Colors.transparent,
           body: Stack(
             children: [
-              // 1. Blurred album art background (Single-render master backdrop)
+              // 0. Solid dark foundation base (prevents underlying screen text from bleeding on edges)
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0xFF08080A)),
+              ),
+
+              // 1. Blurred album art background (Single-render master backdrop, scaled to eliminate edge feathering)
               Positioned.fill(
                 child: currentTrack.albumArtUrl.isNotEmpty
                     ? RepaintBoundary(
-                        child: ImageFiltered(
-                          imageFilter: ImageFilter.blur(
-                            sigmaX: GlassTokens.playerBackdropBlur,
-                            sigmaY: GlassTokens.playerBackdropBlur,
-                          ),
-                          child: SizedBox.expand(
-                            child: _buildAlbumArtImage(currentTrack),
+                        child: ClipRect(
+                          child: Transform.scale(
+                            scale: 1.25,
+                            child: ImageFiltered(
+                              imageFilter: ImageFilter.blur(
+                                sigmaX: 65,
+                                sigmaY: 65,
+                              ),
+                              child: SizedBox.expand(
+                                child: _buildAlbumArtImage(currentTrack),
+                              ),
+                            ),
                           ),
                         ),
                       )
                     : const ColoredBox(color: Color(0xFF101010)),
               ),
 
-              // 2. Dark gradient scrim overlay
+              // 2. Dark ambient gradient scrim overlay
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -115,11 +135,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.40),
-                        Colors.black.withValues(alpha: 0.62),
+                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: 0.58),
                         Colors.black.withValues(alpha: 0.82),
                       ],
-                      stops: const [0.0, 0.55, 1.0],
+                      stops: const [0.0, 0.50, 1.0],
                     ),
                   ),
                 ),
@@ -171,7 +191,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     ),
 
                     // Persistent Bottom Mode Selector Tab Bar (Images 1, 2, 4)
-                    _buildBottomTabBar(context),
+                    _buildBottomTabBar(context, musicProvider, accentColor),
                     const SizedBox(height: 14),
                   ],
                 ),
@@ -319,27 +339,34 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       );
     }
 
-    return AnimatedScale(
-      scale: isPlaying ? 1.0 : 0.88,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOutCubic,
-      child: Container(
-        width: maxDimension,
-        height: maxDimension,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isPlaying ? 0.45 : 0.28),
-              blurRadius: isPlaying ? 34 : 20,
-              spreadRadius: -2,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: _buildAlbumArtImage(track),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        _navigateToTab(0); // Tapping album cover opens Lyrics screen!
+      },
+      child: AnimatedScale(
+        scale: isPlaying ? 1.0 : 0.88,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          width: maxDimension,
+          height: maxDimension,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isPlaying ? 0.45 : 0.28),
+                blurRadius: isPlaying ? 34 : 20,
+                spreadRadius: -2,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: _buildAlbumArtImage(track),
+          ),
         ),
       ),
     );
@@ -632,7 +659,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   // ── Bottom Mode Selector Tab Bar (Images 1, 2, 4) ───────────────────────
 
-  Widget _buildBottomTabBar(BuildContext context) {
+  // ── Bottom Mode Selector Tab Bar (Images 1, 2, 4) ───────────────────────
+
+  Widget _buildBottomTabBar(
+    BuildContext context,
+    MusicProvider musicProvider,
+    Color accentColor,
+  ) {
+    final isLofiActive = musicProvider.isLofiEnabled;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 48),
       child: Row(
@@ -650,15 +685,42 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             ),
           ),
 
-          // Tab 1: Canvas / Waves (Image 1: 3 horizontal wavy lines)
+          // Tab 1: Lofi Waves / Canvas (Image 1: 3 horizontal wavy lines)
           _buildTabItem(
             tabIndex: 1,
             semanticLabel: 'Canvas tab',
-            child: AppleCanvasIcon(
-              color: _currentTab == 1
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.42),
-              size: 24,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                AppleCanvasIcon(
+                  color: isLofiActive
+                      ? accentColor
+                      : (_currentTab == 1
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.42)),
+                  size: 24,
+                ),
+                if (isLofiActive)
+                  Positioned(
+                    top: -2,
+                    right: -4,
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: accentColor.withValues(alpha: 0.8),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
 
@@ -744,7 +806,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   }
 
   Widget _buildAlbumArtImage(Track track) {
-    final art = track.albumArtUrl;
+    final art = ImageQualityUtils.getHighResArtwork(track.albumArtUrl);
     if (art.isEmpty) return _buildArtPlaceholder();
     if (!art.contains('://')) {
       final f = File(art);

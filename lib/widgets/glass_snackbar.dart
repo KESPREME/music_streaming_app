@@ -9,6 +9,14 @@ class GlassSnackBar extends StatelessWidget {
 
   const GlassSnackBar({super.key, required this.message});
 
+  static void show(
+    BuildContext context, {
+    required String message,
+    Duration duration = const Duration(milliseconds: 2000),
+  }) {
+    showGlassSnackBar(context, message, duration: duration);
+  }
+
   @override
   Widget build(BuildContext context) {
     return GlassSurface(

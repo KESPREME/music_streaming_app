@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,7 @@ import 'artist_picker_sheet.dart'; // Multi-artist selection
 import 'glass_download_selection_sheet.dart';
 import '../presentation/explore/explore_top_pill.dart';
 import '../utils/color_utils.dart';
+import '../utils/image_quality_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class GlassOptionsSheet extends StatelessWidget {
@@ -50,6 +52,7 @@ class GlassOptionsSheet extends StatelessWidget {
       await showModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.28),
         isScrollControlled: true,
         builder: (context) => GlassOptionsSheet(
           track: track,
@@ -78,48 +81,65 @@ class GlassOptionsSheet extends StatelessWidget {
       builder: (context, provider, child) {
         final isLiked = provider.isSongLiked(track.id);
 
-        return GlassSurface(
-          tier: GlassTier.sheet,
-          borderRadius: GlassTokens.radiusSheet,
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Handle Bar
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colorScheme.onSurface.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(2),
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xC816161A),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    width: 0.8,
                   ),
                 ),
-
-                // Header (Track Info)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                  child: Row(
+              ),
+              child: GlassSurface(
+                tier: GlassTier.sheet,
+                borderRadius: 28,
+                child: SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          track.albumArtUrl,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: 56,
-                            height: 56,
-                            color: Colors.grey[900],
-                            child: const Icon(
-                              Icons.music_note,
-                              color: Colors.white24,
-                            ),
-                          ),
+                      // Handle Bar
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        width: 36,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(2.5),
                         ),
                       ),
-                      const SizedBox(width: 16),
+
+                      // Header (Track Info)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: CachedNetworkImage(
+                                imageUrl: ImageQualityUtils.getHighResArtwork(
+                                  track.albumArtUrl,
+                                ),
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Container(
+                                  width: 56,
+                                  height: 56,
+                                  color: Colors.grey[900],
+                                  child: const Icon(
+                                    Icons.music_note,
+                                    color: Colors.white24,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,7 +452,10 @@ class GlassOptionsSheet extends StatelessWidget {
               ],
             ),
           ),
-        );
+        ),
+      ),
+    ),
+  );
       },
     );
   }
@@ -446,32 +469,35 @@ class GlassOptionsSheet extends StatelessWidget {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveColor = color ?? colorScheme.onSurface;
-    return ListTile(
-      leading: Icon(icon, color: effectiveColor),
-      title: Stack(
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.splineSans(
-              color: effectiveColor,
-              fontWeight: FontWeight.w500,
-              fontSize: 16,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (label == 'Go to artist')
-            const Opacity(
-              opacity: 0,
-              child: Text(
-                'Go to Artist',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        leading: Icon(icon, color: effectiveColor),
+        title: Stack(
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.splineSans(
+                color: effectiveColor,
+                fontWeight: FontWeight.w500,
+                fontSize: 16,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-        ],
+            if (label == 'Go to artist')
+              const Opacity(
+                opacity: 0,
+                child: Text(
+                  'Go to Artist',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+        ),
+        onTap: onTap,
       ),
-      onTap: onTap,
     );
   }
 

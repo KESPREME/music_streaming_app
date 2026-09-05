@@ -14,8 +14,8 @@ import '../models/lyrics_entry.dart';
 import '../utils/lyrics_utils.dart';
 import '../utils/color_utils.dart';
 import '../widgets/glass_options_sheet.dart';
-import '../widgets/glass_snackbar.dart';
-import '../theme/glass_tokens.dart';
+import '../widgets/audio_quality_language_sheet.dart';
+import '../utils/image_quality_utils.dart';
 
 /// Real-time Animated Kinetic Lyrics Screen matching Image 2 with Apple Music liquid glass design.
 class LyricsScreen extends StatefulWidget {
@@ -143,12 +143,12 @@ class _LyricsScreenState extends State<LyricsScreen>
 
   void _startPositionUpdates() {
     _positionUpdateTimer = Timer.periodic(
-      const Duration(milliseconds: 100),
-      (_) => _updateCurrentLine(),
+      const Duration(milliseconds: 32),
+      (_) => _updateLyricsProgress(),
     );
   }
 
-  void _updateCurrentLine() {
+  void _updateLyricsProgress() {
     if (!mounted) return;
 
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
@@ -156,11 +156,11 @@ class _LyricsScreenState extends State<LyricsScreen>
 
     if (lyrics == null || lyrics.isEmpty) return;
 
-    _ensureKeys(lyrics.length);
     final positionMs = musicProvider.position.inMilliseconds;
     final newIndex = LyricsUtils.findCurrentLineIndex(lyrics, positionMs);
 
     if (newIndex != _currentLineIndex && newIndex >= 0) {
+      _ensureKeys(lyrics.length);
       setState(() {
         _currentLineIndex = newIndex;
       });
@@ -170,6 +170,9 @@ class _LyricsScreenState extends State<LyricsScreen>
           if (mounted) _scrollToCurrentLine();
         });
       }
+    } else if (musicProvider.isPlaying) {
+      // High-FPS progressive karaoke sweep
+      setState(() {});
     }
   }
 
@@ -199,9 +202,9 @@ class _LyricsScreenState extends State<LyricsScreen>
       if (keyContext != null) {
         Scrollable.ensureVisible(
           keyContext,
-          alignment: 0.45,
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOutCubic,
+          alignment: 0.42,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
         );
       } else if (_scrollController.hasClients) {
         final screenHeight = MediaQuery.of(context).size.height;
@@ -209,12 +212,12 @@ class _LyricsScreenState extends State<LyricsScreen>
         const double estimatedItemHeight = 85.0;
         final itemTop = paddingTop + (_currentLineIndex * estimatedItemHeight);
         final targetOffset =
-            itemTop - (screenHeight * 0.45) + (estimatedItemHeight / 2);
+            itemTop - (screenHeight * 0.42) + (estimatedItemHeight / 2);
 
         _scrollController.animateTo(
           targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOutCubic,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
         );
       }
     }
@@ -236,21 +239,28 @@ class _LyricsScreenState extends State<LyricsScreen>
         children: [
           // 1. Blurred album art background (only when standalone)
           if (!widget.isEmbedded) ...[
-            Positioned.fill(
-              child: track != null && track.albumArtUrl.isNotEmpty
-                  ? RepaintBoundary(
+            const Positioned.fill(
+              child: ColoredBox(color: Color(0xFF08080A)),
+            ),
+            if (track != null && track.albumArtUrl.isNotEmpty)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: ClipRect(
+                    child: Transform.scale(
+                      scale: 1.25,
                       child: ImageFiltered(
                         imageFilter: ImageFilter.blur(
-                          sigmaX: GlassTokens.playerBackdropBlur,
-                          sigmaY: GlassTokens.playerBackdropBlur,
+                          sigmaX: 65,
+                          sigmaY: 65,
                         ),
                         child: SizedBox.expand(
                           child: _buildAlbumArtImage(track),
                         ),
                       ),
-                    )
-                  : const ColoredBox(color: Color(0xFF101010)),
-            ),
+                    ),
+                  ),
+                ),
+              ),
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
@@ -271,54 +281,92 @@ class _LyricsScreenState extends State<LyricsScreen>
 
           // 2. Lyrics scrolling list
           Positioned.fill(
-            child: _buildLyricsBody(context, musicProvider),
+            child: _buildLyricsBody(context, musicProvider, accentColor),
           ),
 
-          // 3. Top Header (Pill handle + Mini Track Card)
+          // 3. Top Header with Frosted Liquid Glass Blur Overlay
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: widget.isEmbedded
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (track != null)
-                        _buildTopMiniTrackHeader(
-                          context,
-                          track,
-                          musicProvider,
-                          accentColor,
-                        ),
-                    ],
-                  )
-                : SafeArea(
-                    bottom: false,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildPullHandle(context),
-                        if (track != null)
-                          _buildTopMiniTrackHeader(
-                            context,
-                            track,
-                            musicProvider,
-                            accentColor,
-                          ),
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.85),
+                        Colors.black.withValues(alpha: 0.52),
+                        Colors.transparent,
                       ],
+                      stops: const [0.0, 0.72, 1.0],
                     ),
                   ),
+                  child: widget.isEmbedded
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (track != null)
+                              _buildTopMiniTrackHeader(
+                                context,
+                                track,
+                                musicProvider,
+                                accentColor,
+                              ),
+                          ],
+                        )
+                      : SafeArea(
+                          bottom: false,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildPullHandle(context),
+                              if (track != null)
+                                _buildTopMiniTrackHeader(
+                                  context,
+                                  track,
+                                  musicProvider,
+                                  accentColor,
+                                ),
+                            ],
+                          ),
+                        ),
+                ),
+              ),
+            ),
           ),
 
-          // 4. Bottom Mini Player Scrubber (Image 2)
+          // 4. Bottom Mini Player Scrubber with Frosted Liquid Glass Blur Overlay (Image 2)
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _buildBottomMiniPlayerScrubber(
-              context,
-              musicProvider,
-              accentColor,
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.60),
+                        Colors.black.withValues(alpha: 0.90),
+                      ],
+                      stops: const [0.0, 0.35, 1.0],
+                    ),
+                  ),
+                  child: _buildBottomMiniPlayerScrubber(
+                    context,
+                    musicProvider,
+                    accentColor,
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -363,45 +411,58 @@ class _LyricsScreenState extends State<LyricsScreen>
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
       child: Row(
         children: [
-          // Album art thumbnail
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 46,
-              height: 46,
-              child: _buildAlbumArtImage(track),
+          // Album art thumbnail (tapping returns to normal album view)
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              widget.onTabTap?.call(1);
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 46,
+                height: 46,
+                child: _buildAlbumArtImage(track),
+              ),
             ),
           ),
           const SizedBox(width: 12),
 
-          // Title & Artist
+          // Title & Artist (tapping returns to normal album view)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  track.trackName,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onTabTap?.call(1);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    track.trackName,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  track.artistName,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 2),
+                  Text(
+                    track.artistName,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
@@ -418,7 +479,7 @@ class _LyricsScreenState extends State<LyricsScreen>
 
           const SizedBox(width: 8),
 
-          // Translation / Pronunciation button ("aあ")
+          // Translation / Audio Quality button ("aあ")
           _buildCircleButtonWidget(
             semanticLabel: 'Pronunciation',
             child: Text(
@@ -431,7 +492,7 @@ class _LyricsScreenState extends State<LyricsScreen>
             ),
             onTap: () {
               HapticFeedback.lightImpact();
-              showGlassSnackBar(context, 'Lyrics translation / phonetics');
+              AudioQualityLanguageSheet.show(context);
             },
           ),
 
@@ -452,7 +513,11 @@ class _LyricsScreenState extends State<LyricsScreen>
     );
   }
 
-  Widget _buildLyricsBody(BuildContext context, MusicProvider musicProvider) {
+  Widget _buildLyricsBody(
+    BuildContext context,
+    MusicProvider musicProvider,
+    Color accentColor,
+  ) {
     if (musicProvider.isLoadingLyrics) {
       return Center(
         child: Column(
@@ -513,13 +578,23 @@ class _LyricsScreenState extends State<LyricsScreen>
         physics: const BouncingScrollPhysics(),
         itemCount: lyrics.length,
         itemBuilder: (context, index) {
-          return _buildKineticLyricLine(index, lyrics);
+          return _buildKineticLyricLine(
+            index,
+            lyrics,
+            accentColor,
+            musicProvider,
+          );
         },
       ),
     );
   }
 
-  Widget _buildKineticLyricLine(int index, List<LyricsEntry> lyrics) {
+  Widget _buildKineticLyricLine(
+    int index,
+    List<LyricsEntry> lyrics,
+    Color accentColor,
+    MusicProvider musicProvider,
+  ) {
     final entry = lyrics[index];
     final isCurrentLine = index == _currentLineIndex;
 
@@ -530,42 +605,125 @@ class _LyricsScreenState extends State<LyricsScreen>
       key = _itemKeys[index];
     }
 
+    Widget lineWidget;
+
+    if (isCurrentLine) {
+      final currentPosMs = musicProvider.position.inMilliseconds;
+      double progress = 0.0;
+
+      if (entry.words != null && entry.words!.isNotEmpty) {
+        final words = entry.words!;
+        final fullText = entry.text;
+        int charsDone = 0;
+        double activeWordFraction = 0.0;
+        int activeWordLen = 0;
+
+        for (int wIdx = 0; wIdx < words.length; wIdx++) {
+          final w = words[wIdx];
+          final wStart = w.timeMs;
+          final wEnd = w.timeMs + w.durationMs;
+          if (currentPosMs >= wEnd) {
+            charsDone += w.text.length + 1;
+          } else if (currentPosMs >= wStart) {
+            activeWordLen = w.text.length;
+            activeWordFraction = ((currentPosMs - wStart) /
+                    (w.durationMs > 0 ? w.durationMs : 1))
+                .clamp(0.0, 1.0);
+            break;
+          }
+        }
+        final effectiveChars = charsDone + (activeWordLen * activeWordFraction);
+        progress = (effectiveChars /
+                (fullText.isNotEmpty ? fullText.length : 1))
+            .clamp(0.0, 1.0);
+      } else {
+        final startMs = entry.timeMs;
+        final endMs = entry.endMs ??
+            (index + 1 < lyrics.length ? lyrics[index + 1].timeMs : startMs + 4000);
+        final durationMs = endMs > startMs ? endMs - startMs : 3000;
+        progress = ((currentPosMs - startMs) / durationMs).clamp(0.0, 1.0);
+      }
+
+      final sweep = progress.clamp(0.0, 1.0);
+
+      lineWidget = ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (Rect bounds) {
+          const double feather = 0.08;
+          return LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Colors.white,
+              Colors.white,
+              Colors.white.withValues(alpha: 0.35),
+              Colors.white.withValues(alpha: 0.35),
+            ],
+            stops: [
+              0.0,
+              sweep,
+              (sweep + feather).clamp(0.0, 1.0),
+              1.0,
+            ],
+          ).createShader(bounds);
+        },
+        child: Text(
+          entry.text,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 27,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+            height: 1.35,
+            shadows: [
+              Shadow(
+                color: Colors.white.withValues(alpha: 0.60),
+                blurRadius: 18,
+              ),
+              Shadow(
+                color: accentColor.withValues(alpha: 0.35),
+                blurRadius: 32,
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      final isPastLine = index < _currentLineIndex;
+      lineWidget = ImageFiltered(
+        imageFilter: ImageFilter.blur(
+          sigmaX: isPastLine ? 0.3 : 0.6,
+          sigmaY: isPastLine ? 0.3 : 0.6,
+        ),
+        child: Text(
+          entry.text,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withValues(alpha: isPastLine ? 0.42 : 0.32),
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       key: key,
       onTap: () => _onLineTap(index, lyrics),
       behavior: HitTestBehavior.translucent,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 350),
+      child: AnimatedSlide(
+        offset: isCurrentLine ? const Offset(0.024, 0.0) : Offset.zero,
+        duration: const Duration(milliseconds: 380),
         curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.symmetric(vertical: 14),
-        child: isCurrentLine
-            ? Text(
-                entry.text,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.35,
-                  shadows: [
-                    Shadow(
-                      color: Colors.white.withValues(alpha: 0.60),
-                      blurRadius: 18,
-                    ),
-                  ],
-                ),
-              )
-            : ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 0.6, sigmaY: 0.6),
-                child: Text(
-                  entry.text,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.38),
-                    height: 1.35,
-                  ),
-                ),
-              ),
+        child: AnimatedScale(
+          scale: isCurrentLine ? 1.02 : 1.0,
+          alignment: Alignment.centerLeft,
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutCubic,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 14),
+            child: lineWidget,
+          ),
+        ),
       ),
     );
   }
@@ -723,8 +881,9 @@ class _LyricsScreenState extends State<LyricsScreen>
   }
 
   Widget _buildAlbumArtImage(Track track) {
-    final art = track.albumArtUrl;
-    if (art.isEmpty) return _buildArtPlaceholder();
+    final rawArt = track.albumArtUrl;
+    if (rawArt.isEmpty) return _buildArtPlaceholder();
+    final art = ImageQualityUtils.getHighResArtwork(rawArt);
     if (!art.contains('://')) {
       final f = File(art);
       if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);

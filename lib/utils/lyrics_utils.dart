@@ -72,8 +72,40 @@ class LyricsUtils {
     
     // Sort by timestamp
     entries.sort();
+
+    // Compute endMs and word timings for high-fps karaoke sweep
+    final enrichedEntries = <LyricsEntry>[];
+    for (int i = 0; i < entries.length; i++) {
+      final current = entries[i];
+      if (current.timeMs == 0 && current.text.isEmpty) {
+        enrichedEntries.add(current);
+        continue;
+      }
+      final nextTime = (i + 1 < entries.length)
+          ? entries[i + 1].timeMs
+          : current.timeMs + 4500;
+      final lineDuration = (nextTime - current.timeMs).clamp(800, 10000);
+      final rawWords = current.text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      final wordTimings = <WordTiming>[];
+      if (rawWords.isNotEmpty) {
+        final perWordDuration = lineDuration ~/ rawWords.length;
+        for (int w = 0; w < rawWords.length; w++) {
+          wordTimings.add(WordTiming(
+            timeMs: current.timeMs + (w * perWordDuration),
+            durationMs: perWordDuration,
+            text: rawWords[w],
+          ));
+        }
+      }
+      enrichedEntries.add(LyricsEntry(
+        timeMs: current.timeMs,
+        text: current.text,
+        endMs: nextTime,
+        words: wordTimings,
+      ));
+    }
     
-    return entries;
+    return enrichedEntries;
   }
   
   /// Find the current line index based on playback position
