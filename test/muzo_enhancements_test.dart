@@ -11,6 +11,10 @@ import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/screens/home_screen.dart';
 import 'package:music_streaming_app/services/home/home_models.dart';
+import 'package:music_streaming_app/models/playlist.dart';
+import 'package:music_streaming_app/services/recommendation/quick_picks_engine.dart';
+import 'package:music_streaming_app/services/recommendation/candidate.dart';
+import 'package:music_streaming_app/widgets/home_sections.dart';
 
 class MockMusicProvider extends MusicProvider {
   MockMusicProvider({this.initialTrack, bool playing = false, bool loggedIn = false})
@@ -26,6 +30,12 @@ class MockMusicProvider extends MusicProvider {
   final List<Track> _testQueue = [];
   List<LyricsEntry>? _testLyrics;
   HomeFeed? _testHomeFeed;
+  List<Track> _testRecents = [];
+  List<Track> _testQuickPicks = [];
+  List<QuickPickCandidate> _testCandidates = [];
+  List<Track> _testRecs = [];
+  List<Track> _testTrending = [];
+  List<Playlist> _testPlaylists = [];
 
   @override
   Track? get currentTrack => initialTrack;
@@ -72,6 +82,57 @@ class MockMusicProvider extends MusicProvider {
 
   void setTestHomeFeed(HomeFeed? f) {
     _testHomeFeed = f;
+    notifyListeners();
+  }
+
+  @override
+  List<Track> get recentlyPlayed => _testRecents;
+
+  void setTestRecentlyPlayed(List<Track> r) {
+    _testRecents = r;
+    notifyListeners();
+  }
+
+  @override
+  List<Track> get quickPicks => _testQuickPicks;
+
+  @override
+  List<QuickPickCandidate> get quickPickCandidates => _testCandidates;
+
+  void setTestQuickPicks(List<Track> qp, [List<QuickPickCandidate>? candidates]) {
+    _testQuickPicks = qp;
+    _testCandidates = candidates ??
+        qp
+            .map((t) => QuickPickCandidate(
+                  track: t,
+                  reason: CandidateReason.globalTrending,
+                  score: 1.0,
+                ))
+            .toList();
+    notifyListeners();
+  }
+
+  @override
+  List<Track> get recommendedTracks => _testRecs;
+
+  void setTestRecommendedTracks(List<Track> recs) {
+    _testRecs = recs;
+    notifyListeners();
+  }
+
+  @override
+  List<Track> get trendingTracks => _testTrending;
+
+  void setTestTrendingTracks(List<Track> tr) {
+    _testTrending = tr;
+    notifyListeners();
+  }
+
+  @override
+  List<Playlist> get userPlaylists => _testPlaylists;
+
+  void setTestUserPlaylists(List<Playlist> pl) {
+    _testPlaylists = pl;
     notifyListeners();
   }
 }
@@ -229,7 +290,7 @@ void main() {
       expect(find.text('Sleep Timer'), findsOneWidget);
     });
 
-    testWidgets('Home: Guest mode renders only new releases and one more shelf, no moods or quick picks', (tester) async {
+    testWidgets('Home: Guest mode renders all shelves/sections in feed including quick picks', (tester) async {
       final provider = MockMusicProvider(
         initialTrack: sampleTrack(),
         loggedIn: false, // Guest / anonymous mode
@@ -351,14 +412,181 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // New releases and Trending are present
+      // All feed shelves (New releases, Charts & Trending, Quick picks) are present in guest mode
       expect(find.text('New releases'), findsOneWidget);
       expect(find.text('Charts & Trending'), findsOneWidget);
+      expect(find.text('Quick picks'), findsOneWidget);
+    });
 
-      // Quick picks, Top picks for you, Moods are NOT rendered in guest mode
-      expect(find.text('Quick picks'), findsNothing);
-      expect(find.text('Top picks for you'), findsNothing);
-      expect(find.text('Moods & Genres'), findsNothing);
+    testWidgets('Home: Guest mode renders personalized sections (Jump Back In, Quick Picks, Playlists) when available', (tester) async {
+      final provider = MockMusicProvider(
+        initialTrack: sampleTrack(id: 'current_playing'),
+        loggedIn: false, // Guest / anonymous mode
+      );
+
+      final recentTrack = sampleTrack(id: 'recent_1', title: 'Recent Track');
+      final quickPickTrack = sampleTrack(id: 'qp_track_1', title: 'Pick Track');
+      provider.setTestRecentlyPlayed([recentTrack]);
+      provider.setTestQuickPicks(
+        [quickPickTrack],
+        [
+          QuickPickCandidate(
+            track: quickPickTrack,
+            reason: CandidateReason.globalTrending,
+            score: 1.0,
+          )
+        ],
+      );
+      provider.setTestUserPlaylists([
+        Playlist(id: 'p1', name: 'Guest Playlist', imageUrl: '', tracks: [recentTrack]),
+      ]);
+
+      final theme = GlassTheme.build(AccentColors.peach);
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MusicProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            theme: theme,
+            home: const HomeScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Jump back in'), findsOneWidget);
+      expect(find.text('Quick picks'), findsOneWidget);
+      expect(find.text('Your playlists'), findsOneWidget);
+    });
+
+    testWidgets('Home: Guest mode renders fallback sections (Made for you, Artists) when feed is null', (tester) async {
+      final provider = MockMusicProvider(
+        initialTrack: sampleTrack(),
+        loggedIn: false, // Guest / anonymous mode
+      );
+
+      final track1 = sampleTrack(id: 'rec_1', title: 'Rec Track', artist: 'Daft Punk');
+      provider.setTestRecommendedTracks([track1]);
+      provider.setTestTrendingTracks([track1]);
+
+      final theme = GlassTheme.build(AccentColors.peach);
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MusicProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            theme: theme,
+            home: const HomeScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(HomeSectionHeader, 'Top picks for you'), findsOneWidget);
+      expect(find.widgetWithText(HomeSectionHeader, 'Made for you'), findsOneWidget);
+      expect(find.widgetWithText(HomeSectionHeader, 'Artists'), findsOneWidget);
+    });
+
+    testWidgets('Home: Guest mode renders promoted hero shelf and lower shelves without dropping sections', (tester) async {
+      final provider = MockMusicProvider(
+        initialTrack: sampleTrack(),
+        loggedIn: false, // Guest / anonymous mode
+      );
+
+      final feed = HomeFeed(
+        source: 'ytm',
+        fetchedAt: DateTime.now(),
+        sections: const [
+          HomeSection(
+            id: 'sec_hero_songs',
+            title: 'Featured Tracks',
+            presentation: HomePresentation.compactTracks,
+            provenance: 'editorial',
+            items: [
+              HomeItem(
+                id: '12345678901',
+                videoId: '12345678901',
+                title: 'Hero Song 1',
+                subtitle: 'Artist 1',
+                artworkUrl: 'https://example.com/1.jpg',
+                contentType: HomeContentType.song,
+              ),
+              HomeItem(
+                id: '12345678902',
+                videoId: '12345678902',
+                title: 'Hero Song 2',
+                subtitle: 'Artist 2',
+                artworkUrl: 'https://example.com/2.jpg',
+                contentType: HomeContentType.song,
+              ),
+              HomeItem(
+                id: '12345678903',
+                videoId: '12345678903',
+                title: 'Hero Song 3',
+                subtitle: 'Artist 3',
+                artworkUrl: 'https://example.com/3.jpg',
+                contentType: HomeContentType.song,
+              ),
+            ],
+          ),
+          HomeSection(
+            id: 'sec_new_albums',
+            title: 'Fresh Albums',
+            presentation: HomePresentation.artworkRail,
+            provenance: 'new_release',
+            items: [
+              HomeItem(
+                id: 'album_1',
+                browseId: 'MPREb_album1',
+                title: 'Album 1',
+                subtitle: 'Artist A',
+                artworkUrl: 'https://example.com/a.jpg',
+                contentType: HomeContentType.album,
+              ),
+              HomeItem(
+                id: 'album_2',
+                browseId: 'MPREb_album2',
+                title: 'Album 2',
+                subtitle: 'Artist B',
+                artworkUrl: 'https://example.com/b.jpg',
+                contentType: HomeContentType.album,
+              ),
+              HomeItem(
+                id: 'album_3',
+                browseId: 'MPREb_album3',
+                title: 'Album 3',
+                subtitle: 'Artist C',
+                artworkUrl: 'https://example.com/c.jpg',
+                contentType: HomeContentType.album,
+              ),
+            ],
+          ),
+        ],
+      );
+      provider.setTestHomeFeed(feed);
+
+      final theme = GlassTheme.build(AccentColors.peach);
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MusicProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            theme: theme,
+            home: const HomeScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Featured Tracks is promoted to hero and Fresh Albums is in lower sections
+      expect(find.widgetWithText(HomeSectionHeader, 'Featured Tracks'), findsOneWidget);
+      expect(find.widgetWithText(HomeSectionHeader, 'Fresh Albums'), findsOneWidget);
     });
   });
 }
