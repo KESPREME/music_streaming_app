@@ -379,7 +379,7 @@ class _ProfileCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(isLoggedIn ? 'Connected' : 'Muzo Account & Media', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 12.5)),
+                  Text(isLoggedIn ? 'Connected' : 'Mine Music Account & Media', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 12.5)),
                 ],
               ),
             ),

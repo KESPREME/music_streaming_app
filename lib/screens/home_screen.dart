@@ -9,11 +9,9 @@ import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/home/home_models.dart';
-import '../services/home/ytm_home_source.dart' show HomeLoadTrace;
 import '../services/innertube/innertube_service.dart';
 import '../services/recommendation/quick_picks_engine.dart'
     show QuickPickCandidate, kCandidateVersion, kRankerVersion;
-import '../services/recommendation/candidate.dart' show CandidateReason;
 import '../presentation/home/home_playback.dart'
     show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
@@ -208,6 +206,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildTopPicks(BuildContext context) {
     final provider = context.watch<MusicProvider>();
+    if (!provider.isLoggedIn) {
+      return const SizedBox.shrink();
+    }
     final hero = _heroCandidate(provider);
 
     // Curated feed hero → render with the source's real shelf title.
@@ -407,12 +408,14 @@ class _SquareRailSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cardW = t.HomeTokens.contentWidth(MediaQuery.sizeOf(context).width) *
+        t.HomeTokens.squareCardFraction;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 178 + homeRailTextBlockHeight(context),
+          height: cardW + homeRailTextBlockHeight(context) + 12,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -501,7 +504,7 @@ class _SquareRailSection extends StatelessWidget {
 }
 
 /// Dense compact list rows (spec #12): thumbnail + title + artist — the
-/// Muzo-style editorial block for trending/chart content. Height derives
+/// Mine Music-style editorial block for trending/chart content. Height derives
 /// from row count, never a fixed oversized container.
 class _CompactListSection extends StatelessWidget {
   const _CompactListSection({required this.section, required this.tracks});
@@ -797,82 +800,90 @@ class _LowerSections extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
+    final isLoggedIn = provider.isLoggedIn;
     final sections = <Widget>[];
     final renderedKinds = <String>[];
-    // Local overlay — continue listening, always first when meaningful.
-    final recents = provider.recentlyPlayed
-        .where((t) => t.id != provider.currentTrack?.id)
-        .toList();
-    if (recents.isNotEmpty) {
-      sections.add(_JumpBackInSection(
-        recents: recents,
-        onPlay: (track) => _play(context, track, recents),
-        onOptions: (track) => ThemedOptionsSheet.show(
-          context,
-          track: track,
-          isRecentlyPlayedContext: true,
-        ),
-      ));
-    }
 
-    // Quick Picks (spec #2A/#61): deterministic personalized picks, high
-    // on the page. Always shown when candidates exist (cold start uses
-    // chart/trending as popularity prior).
-    final quickPicks = provider.quickPicks;
-    if (quickPicks.isNotEmpty) {
-      sections.add(_QuickPicksSection(
-        candidates: provider.quickPickCandidates,
-        onPlay: (track) => _play(context, track, quickPicks),
-        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-      ));
+    // Local overlay — continue listening, only when logged in.
+    if (isLoggedIn) {
+      final recents = provider.recentlyPlayed
+          .where((t) => t.id != provider.currentTrack?.id)
+          .toList();
+      if (recents.isNotEmpty) {
+        sections.add(_JumpBackInSection(
+          recents: recents,
+          onPlay: (track) => _play(context, track, recents),
+          onOptions: (track) => ThemedOptionsSheet.show(
+            context,
+            track: track,
+            isRecentlyPlayedContext: true,
+          ),
+        ));
+      }
+
+      // Quick Picks (spec #2A/#61): deterministic personalized picks, high
+      // on the page. Always shown when candidates exist (cold start uses
+      // chart/trending as popularity prior).
+      final quickPicks = provider.quickPicks;
+      if (quickPicks.isNotEmpty) {
+        sections.add(_QuickPicksSection(
+          candidates: provider.quickPickCandidates,
+          onPlay: (track) => _play(context, track, quickPicks),
+          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        ));
+      }
     }
 
     final feed = provider.homeFeed;
     if (feed != null) {
       // Curated shelves in source order — titles come from the source.
-      for (final section in feed.sections) {
-        if (section.id == excludeHeroSectionId) {
-          if (kDebugMode) {
-            HomeLoadTrace.loss(
-              stage: 'presentation',
-              shelf: section.title,
-              reason: 'promoted to hero carousel',
-            );
+      // When anonymous / not logged in: only new releases along with one more thing from the feed.
+      final List<HomeSection> feedSections;
+      if (!isLoggedIn) {
+        HomeSection? newReleaseSection;
+        HomeSection? oneMoreSection;
+        for (final s in feed.sections) {
+          if (s.id == excludeHeroSectionId) continue;
+          final isNewRel = s.provenance == 'new_release' ||
+              s.title.toLowerCase().contains('new release');
+          if (isNewRel && newReleaseSection == null) {
+            newReleaseSection = s;
+          } else if (!isNewRel && oneMoreSection == null) {
+            oneMoreSection = s;
           }
-          continue;
         }
+        feedSections = [
+          if (newReleaseSection != null) newReleaseSection,
+          if (oneMoreSection != null) oneMoreSection,
+        ];
+      } else {
+        feedSections = feed.sections
+            .where((s) => s.id != excludeHeroSectionId)
+            .toList();
+      }
+
+      for (final section in feedSections) {
         final plan = planPresentation(section);
         if (kDebugMode) renderedKinds.add(plan.semanticType.name);
         sections.add(_FeedSection(section: section));
       }
     } else {
       // No feed yet → legacy fallback sections (trusted sources only).
-      final recs = provider.recommendedTracks;
-      final mfy =
-          (recs.length > 5 ? recs.skip(5).take(6) : recs.take(6)).toList();
-      final mfyFallback =
-          mfy.isEmpty ? provider.trendingTracks.take(6).toList() : mfy;
-      if (mfyFallback.isNotEmpty) {
-        sections.add(_MadeForYouSection(
-          tracks: mfyFallback,
-          isPlaying: (t) =>
-              provider.currentTrack?.id == t.id && provider.isPlaying,
-          onPlay: (track) => _play(context, track, mfyFallback),
-          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-        ));
-      }
-
-      final trending = provider.trendingTracks;
-      if (trending.isNotEmpty) {
-        sections.add(_WhatsHotSection(
-          tracks: trending,
-          onPlay: (track) => _play(context, track, trending),
-          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
-          onSeeAll: () => _pushGuarded(
-            context,
-            (_) => const ThemedTrendingNowScreen(),
-          ),
-        ));
+      if (isLoggedIn) {
+        final recs = provider.recommendedTracks;
+        final mfy =
+            (recs.length > 5 ? recs.skip(5).take(6) : recs.take(6)).toList();
+        final mfyFallback =
+            mfy.isEmpty ? provider.trendingTracks.take(6).toList() : mfy;
+        if (mfyFallback.isNotEmpty) {
+          sections.add(_MadeForYouSection(
+            tracks: mfyFallback,
+            isPlaying: (t) =>
+                provider.currentTrack?.id == t.id && provider.isPlaying,
+            onPlay: (track) => _play(context, track, mfyFallback),
+            onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+          ));
+        }
       }
 
       final newReleases = provider.newReleases;
@@ -901,24 +912,43 @@ class _LowerSections extends StatelessWidget {
         ));
       }
 
-      final artists = _dedupeArtists(provider);
-      if (artists.isNotEmpty) {
-        sections.add(_ArtistsSection(
-          artists: artists,
-          onTap: (artist) => _openArtist(context, artist),
+      final trending = provider.trendingTracks;
+      if (trending.isNotEmpty) {
+        sections.add(_WhatsHotSection(
+          tracks: trending,
+          onPlay: (track) => _play(context, track, trending),
+          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+          onSeeAll: () => _pushGuarded(
+            context,
+            (_) => const ThemedTrendingNowScreen(),
+          ),
         ));
+      }
+
+      if (isLoggedIn) {
+        final artists = _dedupeArtists(provider);
+        if (artists.isNotEmpty) {
+          sections.add(_ArtistsSection(
+            artists: artists,
+            onTap: (artist) => _openArtist(context, artist),
+          ));
+        }
       }
     }
 
     // COLLECTIONS — user playlists (distinct from external recommendations).
-    final playlists = provider.userPlaylists;
-    if (playlists.isNotEmpty) {
-      sections.add(_PlaylistsSection(playlists: playlists));
+    if (isLoggedIn) {
+      final playlists = provider.userPlaylists;
+      if (playlists.isNotEmpty) {
+        sections.add(_PlaylistsSection(playlists: playlists));
+      }
     }
 
-    // EXPLORATION — moods: real Moods & Genres discovery from InnerTube,
-    // not hardcoded filter pills.
-    sections.add(const _MoodsSection());
+    // EXPLORATION — moods: real Moods & Genres discovery from InnerTube
+    // Only available when logged in; guest mode receives only new releases + 1 shelf.
+    if (isLoggedIn) {
+      sections.add(const _MoodsSection());
+    }
 
     // Collapsed sections return SizedBox.shrink() — they must NOT
     // contribute their inter-section spacing (the giant-gap bug).

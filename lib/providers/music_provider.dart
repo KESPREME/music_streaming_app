@@ -776,6 +776,7 @@ class MusicProvider
       _downloads.currentlyDownloadingTracks;
   List<Track> get downloadQueue => _downloads.downloadQueue;
   List<Track> get queue => List.unmodifiable(_queue); // Added queue getter
+  bool get isLoggedIn => AuthService().isLoggedIn;
   int get currentIndex => _currentIndex;
   @override
   List<Track>? get currentPlayingTracks => _currentPlayingTracks;
@@ -1539,6 +1540,62 @@ class MusicProvider
     }
   }
 
+  /// Automatically populates the queue with the best and related tracks
+  /// using InnerTube suggestions and recommendation ranking (no random music).
+  Future<void> _autoFillQueue(Track seedTrack, {required int generation}) async {
+    if (!_isAutoQueueEnabled || _isOfflineMode) return;
+    try {
+      List<Track> recommendations;
+      if (seedTrack.id.length == 11 && seedTrack.source != 'local') {
+        recommendations =
+            await _innerTubeService.getSuggestions(seedTrack.id, limit: 20);
+      } else if (seedTrack.source != 'local' && seedTrack.trackName.isNotEmpty) {
+        recommendations = await _innerTubeService.searchSongs(
+            '${seedTrack.trackName} ${seedTrack.artistName}'.trim(),
+            limit: 20);
+      } else {
+        recommendations = await _fetchPersonalizedForYou();
+      }
+
+      if (generation != _playbackGeneration) return;
+
+      var filtered = recommendations.where(_isPlayableAutoplayCandidate).toList();
+
+      if (filtered.isEmpty) {
+        final seen = <String>{seedTrack.id};
+        filtered = [
+          ..._quickPicks,
+          ..._recommendedTracks,
+          ..._trendingTracks,
+          ..._recentlyPlayed,
+        ].where((t) => _isPlayableAutoplayCandidate(t) && seen.add(t.id)).toList();
+      }
+
+      if (filtered.isEmpty || generation != _playbackGeneration) return;
+
+      final ranked = _recommendationService.getAutoplayRecommendations(
+        seedTrack,
+        filtered,
+        limit: 15,
+      );
+
+      if (ranked.isEmpty || generation != _playbackGeneration) return;
+
+      // Only fill if queue is still empty and same seed track is active
+      if (_queue.isEmpty && _currentTrack?.id == seedTrack.id) {
+        _queue.addAll(ranked);
+        notifyListeners();
+        _prefetchNextTrack();
+        if (kDebugMode) {
+          debugPrint(
+              'MusicProvider: Auto-filled queue with ${ranked.length} related tracks for ${seedTrack.trackName}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: Auto-fill queue error: $e');
+    }
+  }
+
   Future<void> _playTrackInternal(Track track,
       {bool setContext = true, bool clearQueue = true}) async {
     if (setContext) {
@@ -1858,6 +1915,14 @@ class MusicProvider
 
       // Preload next track (Audio + Lyrics)
       _prefetchNextTrack();
+
+      // Auto-fill queue with best and related tracks if queue is empty
+      if (_isAutoQueueEnabled &&
+          _queue.isEmpty &&
+          !_suppressAutoplayOnce &&
+          (_currentPlayingTracks == null || _currentPlayingTracks!.length <= 1)) {
+        unawaited(_autoFillQueue(effectiveTrack, generation: gen));
+      }
 
       // Prefetch Metadata (Artist & Album) for Instant Navigation (suppressed in Explore to save battery/data)
       if (prefetchMetadata) {

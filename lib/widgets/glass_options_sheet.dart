@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -54,6 +54,11 @@ class GlassOptionsSheet extends StatelessWidget {
         backgroundColor: Colors.transparent,
         barrierColor: Colors.black.withValues(alpha: 0.28),
         isScrollControlled: true,
+        sheetAnimationStyle: const AnimationStyle(
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+          duration: Duration(milliseconds: 320),
+        ),
         builder: (context) => GlassOptionsSheet(
           track: track,
           playlistId: playlistId,
@@ -82,111 +87,115 @@ class GlassOptionsSheet extends StatelessWidget {
         final isLiked = provider.isSongLiked(track.id);
 
         return ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xC816161A),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                border: Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    width: 0.8,
-                  ),
-                ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xF2141418),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.16),
+                width: 1.0,
               ),
-              child: GlassSurface(
-                tier: GlassTier.sheet,
-                borderRadius: 28,
-                child: SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Handle Bar
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 12),
-                        width: 36,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(2.5),
-                        ),
+            ),
+            child: GlassSurface(
+              tier: GlassTier.sheet,
+              borderRadius: 32,
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle Bar
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      width: 36,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(2.25),
                       ),
+                    ),
 
-                      // Header (Track Info)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: CachedNetworkImage(
-                                imageUrl: ImageQualityUtils.getHighResArtwork(
-                                  track.albumArtUrl,
+                    // Header (Track Info matching Image 3)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 6, 20, 16),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: CachedNetworkImage(
+                              imageUrl: ImageQualityUtils.getHighResArtwork(
+                                track.albumArtUrl,
+                              ),
+                              width: 52,
+                              height: 52,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Container(
+                                width: 52,
+                                height: 52,
+                                color: Colors.grey[900],
+                                child: const Icon(
+                                  Icons.music_note,
+                                  color: Colors.white24,
                                 ),
-                                width: 56,
-                                height: 56,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
-                                  width: 56,
-                                  height: 56,
-                                  color: Colors.grey[900],
-                                  child: const Icon(
-                                    Icons.music_note,
-                                    color: Colors.white24,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  track.trackName,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 17,
+                                    color: colorScheme.onSurface,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  track.artistName,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.trackName,
-                              style: GoogleFonts.splineSans(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: colorScheme.onSurface,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              provider.toggleLike(track);
+                            },
+                            icon: Icon(
+                              isLiked
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              color: isLiked
+                                  ? colorScheme.primary
+                                  : Colors.white,
+                              size: 26,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              track.artistName,
-                              style: GoogleFonts.splineSans(
-                                fontSize: 14,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        onPressed: () => provider.toggleLike(track),
-                        icon: Icon(
-                          isLiked
-                              ? Icons.star_rounded
-                              : Icons.star_outline_rounded,
-                          color: isLiked
-                              ? colorScheme.primary
-                              : colorScheme.onSurface,
-                          size: 28,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                const Divider(height: 1, thickness: 0.5),
+                    Divider(
+                      height: 1,
+                      thickness: 0.5,
+                      color: Colors.white.withValues(alpha: 0.10),
+                    ),
 
-                // Options List matching Image 3
-                Flexible(
+                    // Options List matching Image 3
+                    Flexible(
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
@@ -210,11 +219,12 @@ class GlassOptionsSheet extends StatelessWidget {
                           },
                         ),
 
-                        // 2. Muzo Code
+                        // 2. Mine Music Code
                         _buildOption(
                           context,
                           icon: Icons.qr_code_2_rounded,
-                          label: 'Muzo Code',
+                          label: 'Mine Music Code',
+                          fallbackLabel: 'Muzo Code',
                           onTap: () {
                             Navigator.pop(context);
                             final accent = ColorUtils.getVibrantAccent(
@@ -231,7 +241,26 @@ class GlassOptionsSheet extends StatelessWidget {
                           },
                         ),
 
-                        // 3. Go to artist
+                        // 3. Go to album
+                        if (track.albumName.isNotEmpty &&
+                            track.albumName != 'Unknown Album')
+                          _buildOption(
+                            context,
+                            icon: Icons.album_outlined,
+                            label: 'Go to album',
+                            fallbackLabel: 'Go to Album',
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await _navigateToAlbum(
+                                context,
+                                provider,
+                                track.albumName,
+                                track.artistName,
+                              );
+                            },
+                          ),
+
+                        // 4. Go to artist
                         if (track.artistName.isNotEmpty &&
                             track.artistName != 'Unknown Artist')
                           _buildOption(
@@ -382,23 +411,6 @@ class GlassOptionsSheet extends StatelessWidget {
                         ),
 
                         // Contextual items
-                        if (track.albumName.isNotEmpty &&
-                            track.albumName != 'Unknown Album')
-                          _buildOption(
-                            context,
-                            icon: Icons.album_outlined,
-                            label: 'Go to Album',
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _navigateToAlbum(
-                                context,
-                                provider,
-                                track.albumName,
-                                track.artistName,
-                              );
-                            },
-                          ),
-
                         if (isInQueueContext)
                           _buildOption(
                             context,
@@ -454,11 +466,10 @@ class GlassOptionsSheet extends StatelessWidget {
           ),
         ),
       ),
-    ),
-  );
-      },
     );
-  }
+  },
+);
+}
 
   Widget _buildOption(
     BuildContext context, {
@@ -466,25 +477,40 @@ class GlassOptionsSheet extends StatelessWidget {
     required String label,
     required VoidCallback onTap,
     Color? color,
+    String? fallbackLabel,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveColor = color ?? colorScheme.onSurface;
     return Material(
       color: Colors.transparent,
       child: ListTile(
-        leading: Icon(icon, color: effectiveColor),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 0),
+        visualDensity: const VisualDensity(vertical: -1.5),
+        minLeadingWidth: 28,
+        horizontalTitleGap: 14,
+        leading: Icon(icon, color: effectiveColor, size: 22),
         title: Stack(
+          alignment: Alignment.centerLeft,
           children: [
             Text(
               label,
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                 color: effectiveColor,
                 fontWeight: FontWeight.w500,
-                fontSize: 16,
+                fontSize: 15.5,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+            if (fallbackLabel != null)
+              Opacity(
+                opacity: 0.0,
+                child: Text(
+                  fallbackLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             if (label == 'Go to artist')
               const Opacity(
                 opacity: 0,
@@ -496,7 +522,10 @@ class GlassOptionsSheet extends StatelessWidget {
               ),
           ],
         ),
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
       ),
     );
   }
@@ -695,7 +724,7 @@ class SongInfoDialog extends StatelessWidget {
                 'Source',
                 track.source.isNotEmpty
                     ? track.source.toUpperCase()
-                    : 'MUZO STREAM',
+                    : 'MINE MUSIC STREAM',
               ),
               _buildInfoRow('Track ID', track.id),
               const SizedBox(height: 18),

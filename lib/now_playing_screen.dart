@@ -15,6 +15,7 @@ import '../widgets/glass_snackbar.dart';
 import '../widgets/apple_player_icons.dart';
 import '../screens/lyrics_screen.dart';
 import '../screens/queue_screen.dart';
+import '../screens/canvas_video_screen.dart';
 import '../utils/color_utils.dart';
 import '../utils/image_quality_utils.dart';
 
@@ -45,7 +46,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   static const Color _defaultPrimaryColor = Color(0xFFE89838);
 
   late final PageController _pageController;
-  int _currentTab = 1; // Default: Page 1 (Main Player)
+  int _currentTab = -1; // Default: Page 1 (Main Player / Album Art has no active bottom tab)
   bool _isPlayPressed = false;
   double? _draggedPositionSec;
 
@@ -65,11 +66,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     HapticFeedback.selectionClick();
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
-    if (_currentTab == index && index == 1) {
-      // Tapping Canvas / Wave tab while already on main player toggles Lofi Mode (0.9x speed + pitch correction)
+    if (index == 2) {
+      // Wave / Lofi tab: Toggle lofi on/off only! Do not change page.
       provider.lofi.toggle();
       provider.toggleCanvas();
       final isLofi = provider.isLofiEnabled;
+      HapticFeedback.mediumImpact();
       GlassSnackBar.show(
         context,
         message: isLofi
@@ -78,8 +80,30 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       );
       return;
     }
+
+    if (_currentTab == index) {
+      // Tapping the active tab toggles back to album art (Page 1)
+      _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+
+    final int targetPage;
+    if (index == 0) {
+      targetPage = 0; // Lyrics
+    } else if (index == 1) {
+      targetPage = 2; // Canvas Video
+    } else if (index == 3) {
+      targetPage = 3; // Queue
+    } else {
+      targetPage = 1; // Album Art
+    }
+
     _pageController.animateToPage(
-      index,
+      targetPage,
       duration: const Duration(milliseconds: 380),
       curve: Curves.easeOutCubic,
     );
@@ -153,25 +177,37 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     // Pull-down handle (present on all pages)
                     _buildPullDownHandle(context),
 
-                    // PageView containing Lyrics, Main Player, and Queue
+                    // PageView containing Lyrics, Main Player, Canvas Video, and Queue
                     Expanded(
                       child: PageView(
                         controller: _pageController,
                         physics: const BouncingScrollPhysics(),
                         onPageChanged: (page) {
                           setState(() {
-                            _currentTab = page;
+                            if (page == 0) {
+                              _currentTab = 0; // Lyrics
+                            } else if (page == 1) {
+                              _currentTab = -1; // Main Player (album art)
+                            } else if (page == 2) {
+                              _currentTab = 1; // Canvas Video
+                            } else if (page == 3) {
+                              _currentTab = 3; // Queue
+                            }
                           });
                         },
                         children: [
                           // Page 0: Lyrics (Image 2)
                           LyricsScreen(
                             onMinimize: widget.onMinimize,
-                            onTabTap: _navigateToTab,
+                            onTabTap: (_) => _pageController.animateToPage(
+                              1,
+                              duration: const Duration(milliseconds: 380),
+                              curve: Curves.easeOutCubic,
+                            ),
                             isEmbedded: true,
                           ),
 
-                          // Page 1: Main Player (Image 1)
+                          // Page 1: Main Player Album Art (Image 1)
                           _buildMainPlayerPage(
                             context,
                             currentTrack,
@@ -180,10 +216,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             isPlaying,
                           ),
 
-                          // Page 2: Queue (Image 4)
+                          // Page 2: Canvas Video (Image 2 Film tab)
+                          CanvasVideoScreen(
+                            onMinimize: widget.onMinimize,
+                            onTabTap: (_) => _pageController.animateToPage(
+                              1,
+                              duration: const Duration(milliseconds: 380),
+                              curve: Curves.easeOutCubic,
+                            ),
+                            isEmbedded: true,
+                          ),
+
+                          // Page 3: Queue (Image 4)
                           QueueScreen(
                             onMinimize: widget.onMinimize,
-                            onTabTap: _navigateToTab,
+                            onTabTap: (_) => _pageController.animateToPage(
+                              1,
+                              duration: const Duration(milliseconds: 380),
+                              curve: Curves.easeOutCubic,
+                            ),
                             isEmbedded: true,
                           ),
                         ],
@@ -685,9 +736,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             ),
           ),
 
-          // Tab 1: Lofi Waves / Canvas (Image 1: 3 horizontal wavy lines)
+          // Tab 1: Film / Canvas Video (Image 2)
           _buildTabItem(
             tabIndex: 1,
+            semanticLabel: 'Film tab',
+            child: AppleFilmIcon(
+              color: _currentTab == 1
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.42),
+              size: 24,
+            ),
+          ),
+
+          // Tab 2: Wave (Lofi Mode / Visualizer Canvas Toggle) (Image 1 & 2)
+          _buildTabItem(
+            tabIndex: 2,
             semanticLabel: 'Canvas tab',
             child: Stack(
               clipBehavior: Clip.none,
@@ -696,9 +759,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                 AppleCanvasIcon(
                   color: isLofiActive
                       ? accentColor
-                      : (_currentTab == 1
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.42)),
+                      : Colors.white.withValues(alpha: 0.42),
                   size: 24,
                 ),
                 if (isLofiActive)
@@ -724,13 +785,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             ),
           ),
 
-          // Tab 2: Queue (Image 1 & 4)
+          // Tab 3: Queue (Image 1 & 4)
           _buildTabItem(
-            tabIndex: 2,
+            tabIndex: 3,
             semanticLabel: 'Queue tab',
             child: Icon(
               Icons.format_list_bulleted_rounded,
-              color: _currentTab == 2
+              color: _currentTab == 3
                   ? Colors.white
                   : Colors.white.withValues(alpha: 0.42),
               size: 24,
@@ -758,18 +819,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: isSelected
-                ? Colors.white.withValues(alpha: 0.16)
+                ? Colors.white.withValues(alpha: 0.10)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
-            border: isSelected
-                ? Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    width: 0.6,
-                  )
-                : null,
           ),
           child: child,
         ),

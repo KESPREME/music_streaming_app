@@ -19,24 +19,26 @@ class GlassSnackBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
     return GlassSurface(
       tier: GlassTier.floating,
       borderRadius: GlassTokens.radiusButton,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            message,
-            style: GoogleFonts.splineSans(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontWeight: FontWeight.w500,
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: screenW > 120 ? screenW - 96 : 280,
+        ),
+        child: Text(
+          message,
+          style: GoogleFonts.plusJakartaSans(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+            fontSize: 13.5,
           ),
-        ],
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
   }

@@ -233,144 +233,82 @@ class _LyricsScreenState extends State<LyricsScreen>
       const Color(0xFFE89838),
     );
 
+    final Widget mainContent = Column(
+      children: [
+        if (track != null)
+          _buildTopMiniTrackHeader(
+            context,
+            track,
+            musicProvider,
+            accentColor,
+          ),
+        Expanded(
+          child: _buildLyricsBody(context, musicProvider, accentColor),
+        ),
+        _buildBottomMiniPlayerScrubber(
+          context,
+          musicProvider,
+          accentColor,
+        ),
+      ],
+    );
+
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Stack(
-        children: [
-          // 1. Blurred album art background (only when standalone)
-          if (!widget.isEmbedded) ...[
-            const Positioned.fill(
-              child: ColoredBox(color: Color(0xFF08080A)),
-            ),
-            if (track != null && track.albumArtUrl.isNotEmpty)
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: ClipRect(
-                    child: Transform.scale(
-                      scale: 1.25,
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(
-                          sigmaX: 65,
-                          sigmaY: 65,
-                        ),
-                        child: SizedBox.expand(
-                          child: _buildAlbumArtImage(track),
+      body: widget.isEmbedded
+          ? mainContent
+          : Stack(
+              children: [
+                // 1. Blurred album art background (only when standalone)
+                const Positioned.fill(
+                  child: ColoredBox(color: Color(0xFF08080A)),
+                ),
+                if (track != null && track.albumArtUrl.isNotEmpty)
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: ClipRect(
+                        child: Transform.scale(
+                          scale: 1.25,
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(
+                              sigmaX: 65,
+                              sigmaY: 65,
+                            ),
+                            child: SizedBox.expand(
+                              child: _buildAlbumArtImage(track),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.45),
+                          Colors.black.withValues(alpha: 0.65),
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.45),
-                      Colors.black.withValues(alpha: 0.65),
-                      Colors.black.withValues(alpha: 0.85),
+                SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      _buildPullHandle(context),
+                      Expanded(child: mainContent),
                     ],
-                    stops: const [0.0, 0.5, 1.0],
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
-
-          // 2. Lyrics scrolling list
-          Positioned.fill(
-            child: _buildLyricsBody(context, musicProvider, accentColor),
-          ),
-
-          // 3. Top Header with Frosted Liquid Glass Blur Overlay
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.85),
-                        Colors.black.withValues(alpha: 0.52),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.72, 1.0],
-                    ),
-                  ),
-                  child: widget.isEmbedded
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (track != null)
-                              _buildTopMiniTrackHeader(
-                                context,
-                                track,
-                                musicProvider,
-                                accentColor,
-                              ),
-                          ],
-                        )
-                      : SafeArea(
-                          bottom: false,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildPullHandle(context),
-                              if (track != null)
-                                _buildTopMiniTrackHeader(
-                                  context,
-                                  track,
-                                  musicProvider,
-                                  accentColor,
-                                ),
-                            ],
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
-
-          // 4. Bottom Mini Player Scrubber with Frosted Liquid Glass Blur Overlay (Image 2)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.60),
-                        Colors.black.withValues(alpha: 0.90),
-                      ],
-                      stops: const [0.0, 0.35, 1.0],
-                    ),
-                  ),
-                  child: _buildBottomMiniPlayerScrubber(
-                    context,
-                    musicProvider,
-                    accentColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -563,28 +501,41 @@ class _LyricsScreenState extends State<LyricsScreen>
     }
 
     _ensureKeys(lyrics.length);
-    final screenHeight = MediaQuery.of(context).size.height;
 
     return FadeTransition(
       opacity: _fadeController,
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: EdgeInsets.only(
-          top: screenHeight * 0.18,
-          bottom: screenHeight * 0.28,
-          left: 24,
-          right: 24,
-        ),
-        physics: const BouncingScrollPhysics(),
-        itemCount: lyrics.length,
-        itemBuilder: (context, index) {
-          return _buildKineticLyricLine(
-            index,
-            lyrics,
-            accentColor,
-            musicProvider,
-          );
+      child: ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (Rect bounds) {
+          return const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.white,
+              Colors.white,
+              Colors.transparent,
+            ],
+            stops: [0.0, 0.05, 0.95, 1.0],
+          ).createShader(bounds);
         },
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 16,
+          ),
+          physics: const BouncingScrollPhysics(),
+          itemCount: lyrics.length,
+          itemBuilder: (context, index) {
+            return _buildKineticLyricLine(
+              index,
+              lyrics,
+              accentColor,
+              musicProvider,
+            );
+          },
+        ),
       ),
     );
   }
@@ -609,84 +560,188 @@ class _LyricsScreenState extends State<LyricsScreen>
 
     if (isCurrentLine) {
       final currentPosMs = musicProvider.position.inMilliseconds;
-      double progress = 0.0;
+      final activeTextStyle = GoogleFonts.plusJakartaSans(
+        fontSize: 27,
+        fontWeight: FontWeight.w800,
+        color: Colors.white,
+        height: 1.35,
+        shadows: [
+          Shadow(
+            color: Colors.white.withValues(alpha: 0.60),
+            blurRadius: 18,
+          ),
+          Shadow(
+            color: accentColor.withValues(alpha: 0.35),
+            blurRadius: 32,
+          ),
+        ],
+      );
 
-      if (entry.words != null && entry.words!.isNotEmpty) {
-        final words = entry.words!;
-        final fullText = entry.text;
-        int charsDone = 0;
-        double activeWordFraction = 0.0;
-        int activeWordLen = 0;
+      final inactiveTextStyle = GoogleFonts.plusJakartaSans(
+        fontSize: 27,
+        fontWeight: FontWeight.w800,
+        color: Colors.white.withValues(alpha: 0.35),
+        height: 1.35,
+      );
 
-        for (int wIdx = 0; wIdx < words.length; wIdx++) {
-          final w = words[wIdx];
-          final wStart = w.timeMs;
-          final wEnd = w.timeMs + w.durationMs;
-          if (currentPosMs >= wEnd) {
-            charsDone += w.text.length + 1;
-          } else if (currentPosMs >= wStart) {
-            activeWordLen = w.text.length;
-            activeWordFraction = ((currentPosMs - wStart) /
-                    (w.durationMs > 0 ? w.durationMs : 1))
-                .clamp(0.0, 1.0);
-            break;
+      // Multi-line word-by-word sequential covering:
+      // Line 1's words complete 1st before Line 2's words begin highlighting
+      final rawText = entry.text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      final wordPattern = RegExp(r'(\S+)(\s*)');
+      final matches = wordPattern.allMatches(rawText).toList();
+      final List<String> words = matches.map((m) => m.group(1)!).toList();
+
+      if (words.isEmpty) {
+        lineWidget = Text(entry.text, style: activeTextStyle);
+      } else {
+        int activeWordIndex = 0;
+        double activeWordProgress = 0.0;
+
+        if (entry.words != null && entry.words!.isNotEmpty) {
+          final timedWords = entry.words!;
+          bool found = false;
+          for (int w = 0; w < timedWords.length && w < words.length; w++) {
+            final tw = timedWords[w];
+            final wStart = tw.timeMs;
+            final wEnd = tw.timeMs + tw.durationMs;
+            if (currentPosMs >= wEnd) {
+              // Word finished
+            } else if (currentPosMs >= wStart) {
+              activeWordIndex = w;
+              activeWordProgress = ((currentPosMs - wStart) /
+                      (tw.durationMs > 0 ? tw.durationMs : 1))
+                  .clamp(0.0, 1.0);
+              found = true;
+              break;
+            } else {
+              activeWordIndex = w;
+              activeWordProgress = 0.0;
+              found = true;
+              break;
+            }
+          }
+          if (!found && currentPosMs >= timedWords.last.timeMs + timedWords.last.durationMs) {
+            activeWordIndex = words.length;
+            activeWordProgress = 1.0;
+          }
+        } else {
+          final startMs = entry.timeMs;
+          final endMs = entry.endMs ??
+              (index + 1 < lyrics.length ? lyrics[index + 1].timeMs : startMs + 4000);
+          final durationMs = endMs > startMs ? endMs - startMs : 3000;
+          final lineProgress = ((currentPosMs - startMs) / durationMs).clamp(0.0, 1.0);
+
+          if (lineProgress >= 1.0) {
+            activeWordIndex = words.length;
+            activeWordProgress = 1.0;
+          } else {
+            final totalChars = rawText.isNotEmpty ? rawText.length : 1;
+            final targetChar = (lineProgress * totalChars).round();
+            int charAcc = 0;
+            bool matched = false;
+            for (int w = 0; w < words.length; w++) {
+              final wLen = words[w].length + 1;
+              if (charAcc + wLen > targetChar) {
+                activeWordIndex = w;
+                activeWordProgress = ((targetChar - charAcc) /
+                        (words[w].isNotEmpty ? words[w].length : 1))
+                    .clamp(0.0, 1.0);
+                matched = true;
+                break;
+              }
+              charAcc += wLen;
+            }
+            if (!matched && words.isNotEmpty) {
+              activeWordIndex = words.length - 1;
+              activeWordProgress = 1.0;
+            }
           }
         }
-        final effectiveChars = charsDone + (activeWordLen * activeWordFraction);
-        progress = (effectiveChars /
-                (fullText.isNotEmpty ? fullText.length : 1))
-            .clamp(0.0, 1.0);
-      } else {
-        final startMs = entry.timeMs;
-        final endMs = entry.endMs ??
-            (index + 1 < lyrics.length ? lyrics[index + 1].timeMs : startMs + 4000);
-        final durationMs = endMs > startMs ? endMs - startMs : 3000;
-        progress = ((currentPosMs - startMs) / durationMs).clamp(0.0, 1.0);
-      }
 
-      final sweep = progress.clamp(0.0, 1.0);
+        final String completedText;
+        final String activeWordStr;
+        final String remainingText;
 
-      lineWidget = ShaderMask(
-        blendMode: BlendMode.srcIn,
-        shaderCallback: (Rect bounds) {
-          const double feather = 0.08;
-          return LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Colors.white,
-              Colors.white,
-              Colors.white.withValues(alpha: 0.35),
-              Colors.white.withValues(alpha: 0.35),
-            ],
-            stops: [
-              0.0,
-              sweep,
-              (sweep + feather).clamp(0.0, 1.0),
-              1.0,
-            ],
-          ).createShader(bounds);
-        },
-        child: Text(
-          entry.text,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 27,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            height: 1.35,
-            shadows: [
-              Shadow(
-                color: Colors.white.withValues(alpha: 0.60),
-                blurRadius: 18,
-              ),
-              Shadow(
-                color: accentColor.withValues(alpha: 0.35),
-                blurRadius: 32,
-              ),
+        if (activeWordIndex >= matches.length) {
+          completedText = rawText;
+          activeWordStr = '';
+          remainingText = '';
+        } else {
+          final completedBuffer = StringBuffer();
+          for (int i = 0; i < activeWordIndex; i++) {
+            completedBuffer.write(matches[i].group(0));
+          }
+          completedText = completedBuffer.toString();
+          activeWordStr = matches[activeWordIndex].group(1)!;
+
+          final remainingBuffer = StringBuffer();
+          remainingBuffer.write(matches[activeWordIndex].group(2) ?? '');
+          for (int i = activeWordIndex + 1; i < matches.length; i++) {
+            remainingBuffer.write(matches[i].group(0));
+          }
+          remainingText = remainingBuffer.toString();
+        }
+
+        lineWidget = Text.rich(
+          TextSpan(
+            children: [
+              if (completedText.isNotEmpty)
+                TextSpan(
+                  text: completedText,
+                  style: activeTextStyle,
+                ),
+              if (activeWordStr.isNotEmpty)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (Rect bounds) {
+                      const double feather = 0.12;
+                      return LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Colors.white,
+                          Colors.white,
+                          Colors.white.withValues(alpha: 0.35),
+                          Colors.white.withValues(alpha: 0.35),
+                        ],
+                        stops: [
+                          0.0,
+                          activeWordProgress,
+                          (activeWordProgress + feather).clamp(0.0, 1.0),
+                          1.0,
+                        ],
+                      ).createShader(bounds);
+                    },
+                    child: Text(
+                      activeWordStr,
+                      style: activeTextStyle,
+                    ),
+                  ),
+                ),
+              if (remainingText.isNotEmpty)
+                TextSpan(
+                  text: remainingText,
+                  style: inactiveTextStyle,
+                ),
             ],
           ),
-        ),
-      );
+        );
+        lineWidget = Stack(
+          children: [
+            Opacity(
+              opacity: 0.0,
+              child: Text(
+                entry.text,
+                style: activeTextStyle,
+              ),
+            ),
+            lineWidget,
+          ],
+        );
+      }
     } else {
       final isPastLine = index < _currentLineIndex;
       lineWidget = ImageFiltered(

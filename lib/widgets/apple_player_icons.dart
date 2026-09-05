@@ -154,3 +154,106 @@ class _LyricsBubblePainter extends CustomPainter {
   bool shouldRepaint(covariant _LyricsBubblePainter oldDelegate) =>
       oldDelegate.color != color;
 }
+
+/// Custom painter for Apple Music / Muzo Film / Canvas icon: 35mm film strip cell (Image 2).
+class AppleFilmIcon extends StatelessWidget {
+  final Color color;
+  final double size;
+
+  const AppleFilmIcon({
+    super.key,
+    required this.color,
+    this.size = 24.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _FilmStripPainter(color: color),
+      ),
+    );
+  }
+}
+
+class _FilmStripPainter extends CustomPainter {
+  final Color color;
+
+  _FilmStripPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.08
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final w = size.width;
+    final h = size.height;
+
+    // Outer film frame (rounded rect)
+    final frameRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.10, h * 0.16, w * 0.80, h * 0.68),
+      Radius.circular(w * 0.14),
+    );
+    canvas.drawRRect(frameRect, strokePaint);
+
+    // Inner main frame / window
+    final innerRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.28, h * 0.28, w * 0.44, h * 0.44),
+      Radius.circular(w * 0.06),
+    );
+    canvas.drawRRect(innerRect, strokePaint..strokeWidth = w * 0.065);
+
+    // Left sprocket holes (2 small rectangles)
+    final spWidth = w * 0.09;
+    final spHeight = h * 0.13;
+    final spRadius = Radius.circular(w * 0.03);
+
+    // Left top sprocket
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.14, h * 0.28, spWidth, spHeight),
+        spRadius,
+      ),
+      fillPaint,
+    );
+    // Left bottom sprocket
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.14, h * 0.59, spWidth, spHeight),
+        spRadius,
+      ),
+      fillPaint,
+    );
+
+    // Right top sprocket
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.77, h * 0.28, spWidth, spHeight),
+        spRadius,
+      ),
+      fillPaint,
+    );
+    // Right bottom sprocket
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.77, h * 0.59, spWidth, spHeight),
+        spRadius,
+      ),
+      fillPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FilmStripPainter oldDelegate) =>
+      oldDelegate.color != color;
+}

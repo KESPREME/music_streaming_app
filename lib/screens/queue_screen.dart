@@ -199,13 +199,22 @@ class QueueScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                'From Muzo',
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
+              Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  const Opacity(
+                    opacity: 0.0,
+                    child: Text('From Muzo'),
+                  ),
+                  Text(
+                    'From Mine Music',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

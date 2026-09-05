@@ -518,6 +518,7 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
   VideoPlayerController? _controller;
   bool _initialized = false;
   bool _isSeekingToLoop = false;
+  Duration _highlightStart = Duration.zero;
 
   bool get _isTesting =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');
@@ -563,8 +564,21 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       _controller = c;
       await c.initialize();
       if (!mounted) return;
-      await c.setLooping(true);
       await c.setVolume(0.0);
+
+      // Pick main most watchable scene (chorus / peak ~30% into track duration)
+      if (c.value.duration > const Duration(seconds: 32)) {
+        final targetMs = (c.value.duration.inMilliseconds * 0.30).round();
+        final clampedMs = targetMs.clamp(
+          25000,
+          max(25000, c.value.duration.inMilliseconds - 22000),
+        );
+        _highlightStart = Duration(milliseconds: clampedMs.toInt());
+        await c.seekTo(_highlightStart);
+      } else {
+        _highlightStart = Duration.zero;
+        await c.setLooping(true);
+      }
 
       // Watchdog listener to ensure seamless looping and prevent stalls
       c.addListener(_onControllerTick);
@@ -601,11 +615,15 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       return;
     }
     if (val.isInitialized && val.duration > Duration.zero) {
-      final isAtEnd = val.position >= val.duration ||
+      final loopEnd = val.duration > const Duration(seconds: 32)
+          ? _highlightStart + const Duration(seconds: 18)
+          : val.duration;
+      final isAtEnd = (val.duration > const Duration(seconds: 32) && val.position >= loopEnd) ||
+          val.position >= val.duration ||
           (val.duration - val.position) <= const Duration(milliseconds: 250);
       if (isAtEnd && widget.isPlaying && !_isSeekingToLoop) {
         _isSeekingToLoop = true;
-        c.seekTo(Duration.zero).then((_) {
+        c.seekTo(_highlightStart).then((_) {
           _isSeekingToLoop = false;
           if (mounted && widget.isPlaying && !c.value.isPlaying) {
             c.play();

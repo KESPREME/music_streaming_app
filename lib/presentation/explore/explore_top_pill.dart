@@ -440,7 +440,7 @@ class _GlassDropdownMenu extends StatelessWidget {
               ),
               _MenuItem(
                 icon: Icons.grid_view_rounded,
-                label: 'Muzo Code',
+                label: 'Mine Music Code',
                 onTap: onSongCode,
               ),
             ],

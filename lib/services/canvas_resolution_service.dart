@@ -120,6 +120,13 @@ class CanvasResolutionService {
 
           // Try the highest-confidence official video candidate
           for (final candidate in scored.take(1)) {
+            final directStream = await InnerTubeService.instance
+                .getDirectVideoStreamUrl(candidate.video.id, preferredHeight: 360)
+                .timeout(const Duration(seconds: 5));
+            if (directStream != null && directStream.isNotEmpty) {
+              _cache[track.id] = directStream;
+              return directStream;
+            }
             final cached = await _resolveAndCacheVideo(candidate.video.id);
             if (cached != null) {
               try {
