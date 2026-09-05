@@ -15,8 +15,6 @@ import '../../services/explore/explore_palette.dart';
 import '../../services/explore/explore_policy.dart';
 import '../../services/recommendation/taste_profile.dart';
 import '../../services/innertube/innertube_service.dart';
-import '../../services/stream_resolution_service.dart';
-import '../../services/canvas_resolution_service.dart';
 import '../../widgets/artist_picker_sheet.dart';
 import '../../widgets/glass_circle_button.dart';
 import '../../widgets/glass_surface.dart';
@@ -87,6 +85,26 @@ const List<String> _officialYouTubeCuratedPlaylists = [
 ];
 int _chartRotationIndex = 0;
 
+/// In-memory cache for static/slow-moving Explore charts and shelves
+/// to prevent unthrottled continuous network requests during browsing/refills.
+class _ExploreSourceCache {
+  static List<Track> cachedTrending = const [];
+  static DateTime? trendingCachedAt;
+
+  static List<Track> cachedHomeShelves = const [];
+  static DateTime? homeCachedAt;
+
+  static final Map<String, (List<Track>, DateTime)> cachedPlaylists = {};
+  static final Map<String, (List<Track>, DateTime)> cachedSuggestions = {};
+
+  static const Duration cacheTtl = Duration(minutes: 30);
+
+  static bool isFresh(DateTime? timestamp) {
+    if (timestamp == null) return false;
+    return DateTime.now().difference(timestamp) < cacheTtl;
+  }
+}
+
 /// Wires the controller to the app's existing services. Kept here (not
 /// in MusicProvider) so the god-object stays untouched; session
 /// persistence lives for the lifetime of the route stack.
@@ -103,52 +121,93 @@ ExploreController bootstrapExploreController(BuildContext context,
       if (relatedSeed != null &&
           relatedSeed.id.length == 11 &&
           !relatedSeed.id.startsWith('MPREb')) {
-        try {
-          related = await InnerTubeService.instance
-              .getSuggestions(relatedSeed.id, limit: 30);
-        } catch (_) {}
+        final cached = _ExploreSourceCache.cachedSuggestions[relatedSeed.id];
+        if (cached != null && _ExploreSourceCache.isFresh(cached.$2)) {
+          related = cached.$1;
+        } else {
+          try {
+            related = await InnerTubeService.instance
+                .getSuggestions(relatedSeed.id, limit: 30);
+            if (related.isNotEmpty) {
+              _ExploreSourceCache.cachedSuggestions[relatedSeed.id] =
+                  (related, DateTime.now());
+            }
+          } catch (_) {}
+        }
       }
 
       List<Track> charts = provider.fullTrendingTracks;
+      if (charts.isEmpty &&
+          _ExploreSourceCache.isFresh(_ExploreSourceCache.trendingCachedAt)) {
+        charts = _ExploreSourceCache.cachedTrending;
+      }
+
       List<Track> homeShelves = const [];
+      if (_ExploreSourceCache.isFresh(_ExploreSourceCache.homeCachedAt)) {
+        homeShelves = _ExploreSourceCache.cachedHomeShelves;
+      }
+
       List<Track> officialChartTracks = const [];
 
-      final isRefilling = anchor != null;
       final playlistId = _officialYouTubeCuratedPlaylists[
           _chartRotationIndex % _officialYouTubeCuratedPlaylists.length];
       _chartRotationIndex++;
 
+      final cachedPl = _ExploreSourceCache.cachedPlaylists[playlistId];
+      if (cachedPl != null && _ExploreSourceCache.isFresh(cachedPl.$2)) {
+        officialChartTracks = cachedPl.$1;
+      }
+
       final futures = <Future<void>>[];
 
-      if (charts.isEmpty || isRefilling || related.length < 8) {
+      // Only fetch trending tracks if we have nothing in provider and nothing fresh in cache
+      final needTrending = charts.isEmpty &&
+          !_ExploreSourceCache.isFresh(_ExploreSourceCache.trendingCachedAt);
+      if (needTrending) {
         futures.add(() async {
           try {
             final trending =
                 await InnerTubeService.instance.getTrendingTracks(limit: 30);
             if (trending.isNotEmpty) {
               charts = [...charts, ...trending];
+              _ExploreSourceCache.cachedTrending = trending;
+              _ExploreSourceCache.trendingCachedAt = DateTime.now();
             }
           } catch (_) {}
         }());
       }
 
-      // Dynamic Home shelves (mixed hits, trending now) - avoid skipping on refill
-      if (isRefilling || related.length + charts.length < 16) {
+      // Only fetch home shelves if empty and not fresh in cache
+      final needHome = homeShelves.isEmpty &&
+          !_ExploreSourceCache.isFresh(_ExploreSourceCache.homeCachedAt);
+      if (needHome) {
         futures.add(() async {
           try {
-            homeShelves =
+            final fetched =
                 await InnerTubeService.instance.getHomeTracks(limit: 30);
+            if (fetched.isNotEmpty) {
+              homeShelves = fetched;
+              _ExploreSourceCache.cachedHomeShelves = fetched;
+              _ExploreSourceCache.homeCachedAt = DateTime.now();
+            }
           } catch (_) {}
         }());
       }
 
-      // Official YouTube real-time chart playlist (updated in real-time by YouTube)
-      futures.add(() async {
-        try {
-          officialChartTracks = await InnerTubeService.instance
-              .getPlaylistDetails(playlistId);
-        } catch (_) {}
-      }());
+      // Official YouTube real-time chart playlist
+      if (officialChartTracks.isEmpty) {
+        futures.add(() async {
+          try {
+            final fetched = await InnerTubeService.instance
+                .getPlaylistDetails(playlistId);
+            if (fetched.isNotEmpty) {
+              officialChartTracks = fetched;
+              _ExploreSourceCache.cachedPlaylists[playlistId] =
+                  (fetched, DateTime.now());
+            }
+          } catch (_) {}
+        }());
+      }
 
       if (futures.isNotEmpty) {
         await Future.wait(futures);
@@ -185,7 +244,8 @@ ExploreController bootstrapExploreController(BuildContext context,
     play: (track, upcoming) => provider.playTrack(track,
         playlistTracks: [track, ...upcoming],
         setContext: true,
-        clearQueue: true),
+        clearQueue: true,
+        prefetchMetadata: false),
     profileProvider: () {
       final service = provider.recommendationService;
       return TasteProfile.build(
@@ -208,7 +268,8 @@ ExploreController bootstrapExploreController(BuildContext context,
   return controller;
 }
 
-class _ExploreScreenState extends State<ExploreScreen> {
+class _ExploreScreenState extends State<ExploreScreen>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   ExplorePalette _palette = ExplorePalette.neutral;
   MusicProvider? _provider;
@@ -219,11 +280,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
   int _lastTickIndex = -1;
   bool _restored = false;
   bool _isUserDragging = false;
+  bool _isAppResumed = true;
   double _viewportH = 600;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final controller = context.read<ExploreController>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -246,8 +309,18 @@ class _ExploreScreenState extends State<ExploreScreen> {
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (_isAppResumed != resumed) {
+      setState(() {
+        _isAppResumed = resumed;
+      });
+    }
+  }
+
   void _onProviderNotification() {
-    if (!mounted || !widget.isActive || _isUserDragging) return;
+    if (!mounted || !widget.isActive || !_isAppResumed || _isUserDragging) return;
     final controller = context.read<ExploreController>();
     final session = controller.session;
     if (session == null || session.items.isEmpty) return;
@@ -283,6 +356,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       } else {
         _handleDeactivation();
       }
+      setState(() {});
     } else if (widget.isActive) {
       _provider?.setHideMiniPlayer(true);
     }
@@ -323,6 +397,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _playerStateSub?.cancel();
     _skipToNextSub?.cancel();
     _provider?.removeListener(_onProviderNotification);
@@ -562,12 +637,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
               final currentIdx = (_scrollController.offset / extent).round();
               if (currentIdx != _lastTickIndex && _lastTickIndex != -1) {
                 HapticFeedback.selectionClick();
+                // Proactively replenish feed as user nears the end of loaded items (debounced on item boundary crossing)
+                if (items.length - currentIdx <= 4 &&
+                    !controller.isRefilling &&
+                    !controller.exhausted) {
+                  controller.maybeRefill();
+                }
               }
               _lastTickIndex = currentIdx;
-              // Proactively replenish feed as user nears the end of loaded items
-              if (items.length - currentIdx <= 4 && !controller.isRefilling) {
-                controller.maybeRefill(force: items.length - currentIdx <= 2);
-              }
             }
           } else if (n is ScrollEndNotification) {
             _isUserDragging = false;
@@ -589,6 +666,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
             final isCurrent = (controller.session?.active?.id == item.id) ||
                 (provider.currentTrack?.id == item.track.id);
             final isItemLiked = provider.isSongLiked(item.track.id);
+            final isVisuallyActive = widget.isActive && _isAppResumed;
 
             return ExploreFeedCard(
               item: item,
@@ -597,6 +675,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               isPlaying: provider.isPlaying,
               isLiked: isItemLiked,
               embedded: widget.embedded,
+              isActive: isVisuallyActive,
               onTogglePlay: () {
                 final session = controller.session;
                 if (session != null && session.currentIndex != index) {
@@ -659,7 +738,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   void _preloadNext(ExploreController controller, List<ExploreItem> items,
       int index) {
-    if (_isTesting) return;
+    if (_isTesting || !widget.isActive || !_isAppResumed) return;
     for (var i = index + 1;
         i <= index + ExplorePolicy.prefetchAhead && i < items.length;
         i++) {
@@ -667,24 +746,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
       final url = t.albumArtUrl;
       if (url.isNotEmpty) {
         precacheImage(CachedNetworkImageProvider(url), context);
-      }
-      if (t.id.isNotEmpty) {
-        // Pre-resolve looping canvas video stream so it loads instantly on swipe
-        unawaited(
-          CanvasResolutionService.instance
-              .resolveCanvas(t)
-              .then((_) {}, onError: (_) {}),
-        );
-        unawaited(
-          StreamResolutionService.instance
-              .resolve(ResolveRequest(
-                videoId: t.id,
-                title: t.trackName,
-                artist: t.artistName,
-                durationMs: t.durationMs,
-              ))
-              .then((_) {}, onError: (_) {}),
-        );
       }
     }
   }

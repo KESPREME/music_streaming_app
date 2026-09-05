@@ -1652,6 +1652,7 @@ class MusicProvider
     List<Track>? playlistTracks,
     bool setContext = true,
     bool clearQueue = true,
+    bool prefetchMetadata = true,
   }) async {
     final isQueueRowPlayback = !setContext && !clearQueue;
 
@@ -1858,8 +1859,10 @@ class MusicProvider
       // Preload next track (Audio + Lyrics)
       _prefetchNextTrack();
 
-      // Prefetch Metadata (Artist & Album) for Instant Navigation
-      prefetchMetadata(effectiveTrack);
+      // Prefetch Metadata (Artist & Album) for Instant Navigation (suppressed in Explore to save battery/data)
+      if (prefetchMetadata) {
+        this.prefetchMetadata(effectiveTrack);
+      }
 
       // Lyrics prefetch for upcoming tracks
       _prefetchUpcomingLyrics();

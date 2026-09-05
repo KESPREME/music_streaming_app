@@ -110,6 +110,7 @@ class TestMusicProvider extends MusicProvider {
     List<Track>? playlistTracks,
     bool setContext = true,
     bool clearQueue = true,
+    bool prefetchMetadata = true,
   }) async {
     _lastPlayedTrack = track;
     initialTrack = track;

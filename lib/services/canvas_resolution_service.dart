@@ -33,6 +33,8 @@ class CanvasResolutionService {
   /// Check if canvas is already resolved in memory.
   String? cachedCanvas(String trackId) => _cache[trackId];
 
+  Future<void> _concurrencyLock = Future.value();
+
   /// Resolves a video stream URL or local cached MP4 for [track].
   Future<String?> resolveCanvas(Track track) async {
     final trackId = track.id;
@@ -49,12 +51,24 @@ class CanvasResolutionService {
       return _inFlight[trackId];
     }
 
-    final future = _resolveUncached(track).whenComplete(() {
+    final future = _queueResolve(track).whenComplete(() {
       _inFlight.remove(trackId);
     });
 
     _inFlight[trackId] = future;
     return future;
+  }
+
+  Future<String?> _queueResolve(Track track) async {
+    final prev = _concurrencyLock;
+    final completer = Completer<void>();
+    _concurrencyLock = completer.future;
+    try {
+      await prev.timeout(const Duration(seconds: 4), onTimeout: () {});
+      return await _resolveUncached(track);
+    } finally {
+      completer.complete();
+    }
   }
 
   Future<String?> _resolveUncached(Track track) async {
@@ -71,6 +85,16 @@ class CanvasResolutionService {
         return preview;
       }
     }
+
+    // Check if target file for track.id already exists on disk (instant 0-network hit)
+    try {
+      final dir = await _getCacheDir();
+      final trackFile = File('${dir.path}/canvas_track_${track.id}.mp4');
+      if (await trackFile.exists() && (await trackFile.length()) > 50000) {
+        _cache[track.id] = trackFile.path;
+        return trackFile.path;
+      }
+    } catch (_) {}
 
     // 2. Official Music Video search via InnerTube
     // YouTube Music's track.id for songs is an Audio Track (ATV) whose video stream
@@ -94,9 +118,17 @@ class CanvasResolutionService {
 
           scored.sort((a, b) => b.score.compareTo(a.score));
 
-          for (final candidate in scored) {
+          // Try the highest-confidence official video candidate
+          for (final candidate in scored.take(1)) {
             final cached = await _resolveAndCacheVideo(candidate.video.id);
             if (cached != null) {
+              try {
+                final dir = await _getCacheDir();
+                final trackFile = File('${dir.path}/canvas_track_${track.id}.mp4');
+                if (!await trackFile.exists()) {
+                  await File(cached).copy(trackFile.path);
+                }
+              } catch (_) {}
               _cache[track.id] = cached;
               return cached;
             }
@@ -195,12 +227,12 @@ class CanvasResolutionService {
       }
 
       final directUrl = await InnerTubeService.instance
-          .getDirectVideoStreamUrl(videoId, preferredHeight: 480)
+          .getDirectVideoStreamUrl(videoId, preferredHeight: 360)
           .timeout(const Duration(seconds: 5));
       if (directUrl == null || directUrl.isEmpty) return null;
 
-      // Query ~500KB bounded chunk (approx 12-16 seconds of looping 360p/480p video)
-      final rangeUrl = '$directUrl&range=0-500000';
+      // Query ~400KB bounded chunk (approx 12-16 seconds of looping 360p video)
+      final rangeUrl = '$directUrl&range=0-400000';
       final ua = InnerTubeService.userAgentForStreamUrl(directUrl) ??
           'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)';
       final resp = await http.get(

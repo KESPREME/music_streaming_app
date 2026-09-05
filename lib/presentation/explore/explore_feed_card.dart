@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
@@ -24,6 +25,7 @@ class ExploreFeedCard extends StatefulWidget {
     required this.isPlaying,
     required this.isLiked,
     required this.embedded,
+    this.isActive = true,
     required this.onTogglePlay,
     required this.onOpenPlayer,
     required this.onOpenArtist,
@@ -37,6 +39,7 @@ class ExploreFeedCard extends StatefulWidget {
   final bool isPlaying;
   final bool isLiked;
   final bool embedded;
+  final bool isActive;
   final VoidCallback onTogglePlay;
   final VoidCallback onOpenPlayer;
   final VoidCallback onOpenArtist;
@@ -56,12 +59,20 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
 
   String? _canvasUrl;
   bool _canvasReady = false;
+  Timer? _canvasDebounceTimer;
 
   bool get _isTesting =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');
 
+  bool get _isVisuallyActive => widget.isActive && widget.isCurrentTrack;
+
+  bool get _shouldAnimateEq =>
+      !_isTesting && _isVisuallyActive && widget.isPlaying && !_canvasReady;
+
   void _checkCanvas() {
-    if (_isTesting) return;
+    _canvasDebounceTimer?.cancel();
+    _canvasDebounceTimer = null;
+    if (_isTesting || !_isVisuallyActive) return;
     final track = widget.item.track;
     final cached = CanvasResolutionService.instance.cachedCanvas(track.id);
     if (cached != null && cached.isNotEmpty) {
@@ -71,25 +82,32 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
           _canvasReady = false;
         });
       }
-    } else if (widget.isCurrentTrack) {
+      return;
+    }
+
+    // Dwell debounce: only resolve canvas if user dwells on this card for >= 1200ms.
+    // This stops rapid swipes from firing multiple YouTube video searches and 400KB downloads!
+    _canvasDebounceTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (!mounted || !_isVisuallyActive || widget.item.track.id != track.id) return;
       CanvasResolutionService.instance.resolveCanvas(track).then((url) {
         if (mounted &&
             url != null &&
             url.isNotEmpty &&
-            widget.item.track.id == track.id) {
+            widget.item.track.id == track.id &&
+            _isVisuallyActive) {
           setState(() {
             _canvasUrl = url;
             _canvasReady = false;
           });
         }
       });
-    }
+    });
   }
 
   @override
   void initState() {
     super.initState();
-    if (!_isTesting && widget.isCurrentTrack && widget.isPlaying) {
+    if (_shouldAnimateEq) {
       _eqAnim.repeat();
     }
     _checkCanvas();
@@ -98,25 +116,35 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   @override
   void didUpdateWidget(ExploreFeedCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final active = widget.isCurrentTrack && widget.isPlaying;
     if (!_isTesting) {
-      if (active && !_eqAnim.isAnimating) {
+      if (_shouldAnimateEq && !_eqAnim.isAnimating) {
         _eqAnim.repeat();
-      } else if (!active && _eqAnim.isAnimating) {
+      } else if (!_shouldAnimateEq && _eqAnim.isAnimating) {
         _eqAnim.stop();
       }
     }
     if (widget.item.track.id != oldWidget.item.track.id) {
+      _canvasDebounceTimer?.cancel();
       _canvasUrl = null;
       _canvasReady = false;
       _checkCanvas();
-    } else if (widget.isCurrentTrack && !oldWidget.isCurrentTrack && _canvasUrl == null) {
+    } else if (_isVisuallyActive && (!oldWidget.isCurrentTrack || !oldWidget.isActive)) {
       _checkCanvas();
+    } else if (!_isVisuallyActive) {
+      _canvasDebounceTimer?.cancel();
+      if (_canvasUrl != null) {
+        setState(() {
+          _canvasUrl = null;
+          _canvasReady = false;
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _canvasDebounceTimer?.cancel();
+    _eqAnim.stop();
     _eqAnim.dispose();
     super.dispose();
   }
@@ -125,8 +153,8 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   Widget build(BuildContext context) {
     final track = widget.item.track;
     final accent = widget.palette.accent;
-    final activePlaying = widget.isCurrentTrack && widget.isPlaying;
-    final hasCanvas = (_canvasUrl != null && _canvasUrl!.isNotEmpty) && !_isTesting;
+    final activePlaying = _isVisuallyActive && widget.isPlaying;
+    final hasCanvas = _isVisuallyActive && (_canvasUrl != null && _canvasUrl!.isNotEmpty) && !_isTesting;
 
     return Container(
       key: ValueKey('explore_row_${widget.item.id}'),
@@ -151,11 +179,15 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
                 onReady: () {
                   if (mounted && !_canvasReady) {
                     setState(() => _canvasReady = true);
+                    _eqAnim.stop();
                   }
                 },
                 onError: () {
                   if (mounted && _canvasReady) {
                     setState(() => _canvasReady = false);
+                    if (_shouldAnimateEq && !_eqAnim.isAnimating) {
+                      _eqAnim.repeat();
+                    }
                   }
                 },
               ),
@@ -375,17 +407,19 @@ class _BlurredAlbumArtBackground extends StatelessWidget {
   final String imageUrl;
   final ExplorePalette palette;
 
-  static String _highResUrl(String url) {
+  static String _backdropUrl(String url) {
     if (url.isEmpty) return url;
     if (url.contains('googleusercontent.com') || url.contains('ggpht.com')) {
-      return url.replaceAll(RegExp(r'=w\d+-h\d+.*'), '=w800-h800-l90-rj');
+      // Use lightweight 300x300 image: blurs identically to 800x800 but saves ~75% network data
+      // and drastically cuts GPU memory and fill-rate heat during blur passes.
+      return url.replaceAll(RegExp(r'=w\d+-h\d+.*'), '=w300-h300-l80-rj');
     }
     if (url.contains('i.ytimg.com')) {
-      if (url.contains('hqdefault.jpg') ||
-          url.contains('mqdefault.jpg') ||
+      if (url.contains('maxresdefault.jpg') ||
+          url.contains('hqdefault.jpg') ||
           url.contains('default.jpg')) {
         return url.replaceAll(
-            RegExp(r'(hq|mq|sd|default)\.jpg'), 'maxresdefault.jpg');
+            RegExp(r'(maxresdefault|hqdefault|default)\.jpg'), 'mqdefault.jpg');
       }
     }
     return url;
@@ -393,25 +427,27 @@ class _BlurredAlbumArtBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final highRes = _highResUrl(imageUrl);
+    final backdrop = _backdropUrl(imageUrl);
     return Stack(
       fit: StackFit.expand,
       children: [
         // Base dark canvas
         Container(color: const Color(0xFF0C0C10)),
 
-        // Enlarged and softened artwork (clearly visible, not muddy black)
-        if (highRes.isNotEmpty)
+        // Enlarged and softened artwork wrapped in RepaintBoundary to cache GPU blur pass
+        if (backdrop.isNotEmpty)
           Positioned.fill(
-            child: Transform.scale(
-              scale: 1.18,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                child: CachedNetworkImage(
-                  imageUrl: highRes,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => const SizedBox.shrink(),
-                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            child: RepaintBoundary(
+              child: Transform.scale(
+                scale: 1.18,
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                  child: CachedNetworkImage(
+                    imageUrl: backdrop,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => const SizedBox.shrink(),
+                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                  ),
                 ),
               ),
             ),
@@ -531,30 +567,7 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
       await c.setVolume(0.0);
 
       // Watchdog listener to ensure seamless looping and prevent stalls
-      c.addListener(() {
-        if (!mounted || _controller != c) return;
-        final val = c.value;
-        if (val.hasError) {
-          debugPrint('Explore Canvas Video error: ${val.errorDescription}');
-          widget.onError?.call();
-          return;
-        }
-        if (val.isInitialized && val.duration > Duration.zero) {
-          final isAtEnd = val.position >= val.duration ||
-              (val.duration - val.position) <= const Duration(milliseconds: 250);
-          if (isAtEnd && widget.isPlaying && !_isSeekingToLoop) {
-            _isSeekingToLoop = true;
-            c.seekTo(Duration.zero).then((_) {
-              _isSeekingToLoop = false;
-              if (mounted && widget.isPlaying && !c.value.isPlaying) {
-                c.play();
-              }
-            }).catchError((_) {
-              _isSeekingToLoop = false;
-            });
-          }
-        }
-      });
+      c.addListener(_onControllerTick);
 
       if (widget.isPlaying) {
         await c.play();
@@ -571,11 +584,46 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
     }
   }
 
+  int _lastTickMs = 0;
+
+  void _onControllerTick() {
+    if (!mounted || _controller == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Throttle watchdog to twice a second (500ms) instead of on every video frame (60-120fps)
+    if (now - _lastTickMs < 500) return;
+    _lastTickMs = now;
+
+    final c = _controller!;
+    final val = c.value;
+    if (val.hasError) {
+      debugPrint('Explore Canvas Video error: ${val.errorDescription}');
+      widget.onError?.call();
+      return;
+    }
+    if (val.isInitialized && val.duration > Duration.zero) {
+      final isAtEnd = val.position >= val.duration ||
+          (val.duration - val.position) <= const Duration(milliseconds: 250);
+      if (isAtEnd && widget.isPlaying && !_isSeekingToLoop) {
+        _isSeekingToLoop = true;
+        c.seekTo(Duration.zero).then((_) {
+          _isSeekingToLoop = false;
+          if (mounted && widget.isPlaying && !c.value.isPlaying) {
+            c.play();
+          }
+        }).catchError((_) {
+          _isSeekingToLoop = false;
+        });
+      }
+    }
+  }
+
   @override
   void didUpdateWidget(_CanvasVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_isTesting) return;
     if (widget.videoUrl != oldWidget.videoUrl) {
+      _controller?.removeListener(_onControllerTick);
+      _controller?.pause();
       _controller?.dispose();
       _controller = null;
       _initialized = false;
@@ -608,7 +656,10 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
 
   @override
   void dispose() {
+    _controller?.removeListener(_onControllerTick);
+    _controller?.pause();
     _controller?.dispose();
+    _controller = null;
     super.dispose();
   }
 
@@ -749,6 +800,13 @@ class _FeedSoundwaveEqualizer extends StatelessWidget {
   static const double _maxHeight = 44.0;
   static const double _minHeight = 4.0;
 
+  // Precomputed Gaussian bell envelope for all 36 bars (never recalculates at runtime)
+  static final List<double> _bellFactors = List.generate(_barCount, (i) {
+    final norm = i / (_barCount - 1); // 0.0 -> 1.0
+    final distFromCenter = (norm - 0.5) * 2; // -1.0 -> +1.0
+    return exp(-pow(distFromCenter * 1.8, 2));
+  });
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -758,14 +816,12 @@ class _FeedSoundwaveEqualizer extends StatelessWidget {
         animation: animation,
         builder: (context, _) {
           final t = animation.value * 2 * pi;
+          final barColor = color.withValues(alpha: isPlaying ? 0.95 : 0.60);
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: List.generate(_barCount, (i) {
-              // Symmetrical Gaussian bell envelope (taller in center, sloping to edges)
-              final norm = i / (_barCount - 1); // 0.0 -> 1.0
-              final distFromCenter = (norm - 0.5) * 2; // -1.0 -> +1.0
-              final bell = exp(-pow(distFromCenter * 1.8, 2));
+              final bell = _bellFactors[i];
 
               double height;
               if (isPlaying) {
@@ -773,8 +829,10 @@ class _FeedSoundwaveEqualizer extends StatelessWidget {
                 final wave1 = sin(t * 1.8 + i * 0.35);
                 final wave2 = cos(t * 2.4 - i * 0.45);
                 final wave3 = sin(t * 3.6 + i * 0.70);
-                final energy = ((wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) + 1.0) / 2.0;
-                height = _minHeight + (_maxHeight - _minHeight) * bell * (0.35 + 0.65 * energy);
+                final energy =
+                    ((wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) + 1.0) / 2.0;
+                height = _minHeight +
+                    (_maxHeight - _minHeight) * bell * (0.35 + 0.65 * energy);
               } else {
                 // Resting baseline waveform
                 height = _minHeight + (_maxHeight * 0.45 - _minHeight) * bell;
@@ -786,16 +844,7 @@ class _FeedSoundwaveEqualizer extends StatelessWidget {
                 height: height.clamp(_minHeight, _maxHeight),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(2.0),
-                  color: color.withValues(alpha: isPlaying ? 0.95 : 0.60),
-                  boxShadow: isPlaying
-                      ? [
-                          BoxShadow(
-                            color: color.withValues(alpha: 0.35),
-                            blurRadius: 4,
-                            spreadRadius: 0,
-                          ),
-                        ]
-                      : null,
+                  color: barColor,
                 ),
               );
             }),

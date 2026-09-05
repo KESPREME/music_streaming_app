@@ -67,6 +67,7 @@ class FakeMusicProvider extends MusicProvider {
     List<Track>? playlistTracks,
     bool setContext = true,
     bool clearQueue = true,
+    bool prefetchMetadata = true,
   }) async {
     if (failQueuePlay) throw StateError('Queue playback failed');
     lastPlayed = track;

@@ -26,6 +26,7 @@ class ExploreWheel extends StatelessWidget {
     required this.settledIndex,
     required this.currentTrackId,
     required this.isPlaying,
+    this.isActive = true,
     required this.accent,
     required this.isLiked,
     required this.onTapRow,
@@ -45,6 +46,7 @@ class ExploreWheel extends StatelessWidget {
   final int settledIndex;
   final String? currentTrackId;
   final bool isPlaying;
+  final bool isActive;
   final Color accent;
   final bool Function(String trackId) isLiked;
   final void Function(int index) onTapRow;
@@ -97,7 +99,7 @@ class ExploreWheel extends StatelessWidget {
                         centrality: c,
                         isSettled: isSettled,
                         isCurrent: currentTrackId == item.id,
-                        playing: isPlaying,
+                        playing: isPlaying && isActive,
                         accent: accent,
                         liked: isLiked(item.id),
                         onTapRow: () => onTapRow(index),

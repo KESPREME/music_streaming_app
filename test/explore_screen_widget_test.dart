@@ -72,7 +72,8 @@ class FakeExploreProvider extends MusicProvider {
       {String? playlistId,
       List<Track>? playlistTracks,
       bool setContext = true,
-      bool clearQueue = true}) async {
+      bool clearQueue = true,
+      bool prefetchMetadata = true}) async {
     playedTracks.add(track);
   }
 

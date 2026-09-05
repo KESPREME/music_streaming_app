@@ -66,6 +66,9 @@ class ExploreController extends ChangeNotifier {
   int _playbackGeneration = 0;
   DateTime? _settledAt;
   DateTime? _lastSettledAt;
+  DateTime? _lastRefillAttemptAt;
+  static const Duration _minRefillInterval = Duration(seconds: 25);
+  static const Duration _failureCooldown = Duration(seconds: 30);
 
   ExploreSession? get session => _session;
   bool get isLoading => _isLoading;
@@ -86,6 +89,7 @@ class ExploreController extends ChangeNotifier {
       _session = null;
       _exhausted = false;
       _emptyStreak = 0;
+      _lastRefillAttemptAt = null;
     }
     final gen = ++_playbackGeneration;
     _isLoading = true;
@@ -193,9 +197,18 @@ class ExploreController extends ChangeNotifier {
     await _maybeRefill();
   }
 
-  Future<void> _maybeRefill() async {
+  Future<void> _maybeRefill({bool isTest = false}) async {
     final s = _session;
     if (s == null || _isRefilling || _exhausted || !s.needsRefill) return;
+
+    final now = DateTime.now();
+    if (!isTest && _lastRefillAttemptAt != null) {
+      final cooldown = _emptyStreak > 0 ? _failureCooldown : _minRefillInterval;
+      if (now.difference(_lastRefillAttemptAt!) < cooldown) {
+        return;
+      }
+    }
+    _lastRefillAttemptAt = now;
     _isRefilling = true;
     notifyListeners();
     try {
@@ -256,7 +269,12 @@ class ExploreController extends ChangeNotifier {
           'refill=${items.length} remaining=${s.remaining.length} '
           'exhausted=$_exhausted');
     } catch (e) {
-      // Network hiccup: keep the session alive; refill retries next settle.
+      // Network hiccup: back off and don't retry in an unthrottled loop.
+      _emptyStreak++;
+      if (_emptyStreak >= 3) {
+        _exhausted = true;
+        debugPrint('EXPLORE_SESSION sources exhausted due to errors: $e');
+      }
       debugPrint('EXPLORE_PREFETCH refill failed: $e');
     } finally {
       _isRefilling = false;
@@ -304,12 +322,13 @@ class ExploreController extends ChangeNotifier {
     if (force) {
       _exhausted = false;
       _emptyStreak = 0;
+      _lastRefillAttemptAt = null;
     }
     await _maybeRefill();
   }
 
   @visibleForTesting
-  Future<void> maybeRefillForTest() => _maybeRefill();
+  Future<void> maybeRefillForTest() => _maybeRefill(isTest: true);
 
   @visibleForTesting
   void debugForceDwell(Duration dwell) =>
