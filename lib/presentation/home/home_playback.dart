@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../models/track.dart';
 import '../../providers/music_provider.dart';
 import '../../services/home/home_models.dart';
+import '../../services/metadata/track_metadata_enricher.dart';
 
 /// Playability contract (spec #19): identity ≠ playability. Each level
 /// names the exact downstream action — no "videoId = always playable"
@@ -123,12 +124,18 @@ class HomePlaybackController {
   static Track? _toTrack(HomeItem item) {
     final videoId = item.videoId;
     if (videoId == null) return null;
+    final rawArtist =
+        item.artists.isNotEmpty ? item.artists.join(', ') : item.subtitle;
+    final sanitized = TrackMetadataEnricher.sanitize(
+      title: item.title,
+      artist: rawArtist,
+      album: '',
+    );
     return Track(
       id: videoId,
-      trackName: item.title,
-      artistName:
-          item.artists.isNotEmpty ? item.artists.join(', ') : item.subtitle,
-      albumName: '',
+      trackName: sanitized.title,
+      artistName: sanitized.artist,
+      albumName: sanitized.album,
       previewUrl: '',
       albumArt: item.artworkUrl,
       source: 'youtube',

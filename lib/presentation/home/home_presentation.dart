@@ -1,6 +1,7 @@
 import '../../models/track.dart';
 import '../../services/home/home_models.dart';
 import '../../services/recommendation/candidate.dart';
+import '../../services/metadata/track_metadata_enricher.dart';
 
 /// Presentation layer for the composed HomeFeed (spec #3/#4): content
 /// semantics → presentation semantics → geometry. The data model stays
@@ -277,12 +278,18 @@ HomePresentationModel planPresentation(HomeSection section) {
 Track? homeItemToTrack(HomeItem item) {
   final videoId = item.videoId;
   if (videoId == null) return null;
+  final rawArtist =
+      item.artists.isNotEmpty ? item.artists.join(', ') : item.subtitle;
+  final sanitized = TrackMetadataEnricher.sanitize(
+    title: item.title,
+    artist: rawArtist,
+    album: '',
+  );
   return Track(
     id: videoId,
-    trackName: item.title,
-    artistName:
-        item.artists.isNotEmpty ? item.artists.join(', ') : item.subtitle,
-    albumName: '',
+    trackName: sanitized.title,
+    artistName: sanitized.artist,
+    albumName: sanitized.album,
     previewUrl: '',
     albumArt: item.artworkUrl,
     source: 'youtube',

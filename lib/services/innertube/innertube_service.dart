@@ -7,6 +7,7 @@ import '../../models/track.dart';
 import '../../models/discover_models.dart';
 import '../potoken/po_token_webview.dart';
 import '../../models/album.dart';
+import '../metadata/track_metadata_enricher.dart';
 
 /// YouTube client types for different use cases
 enum YouTubeClientType {
@@ -483,28 +484,18 @@ class InnerTubeService {
         title = titleRuns[0]['text'] ?? 'Unknown';
       }
 
-      // Artist from second column — metadata runs (durations, view
-      // counts) excluded, live bug: "Tame Impala, Deadbeat, 3:44".
+      // Artist and Album from second column
       String artist = 'Unknown Artist';
+      String album = '';
+
       if (flexColumns.length > 1) {
         final artistRuns = flexColumns[1]
                 ?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
             as List?;
         if (artistRuns != null && artistRuns.isNotEmpty) {
-          final parsed = artistRuns
-              .where((r) =>
-                  r['text'] != null &&
-                  r['text'] is String &&
-                  r['text'] != ' • ' &&
-                  r['text'] != ' & ' &&
-                  !_isMetadataRun(r['text'] as String))
-              .map((r) => (r['text'] as String).trim())
-              .where((text) => text.isNotEmpty)
-              .take(3)
-              .join(', ');
-          if (parsed.isNotEmpty) {
-            artist = parsed;
-          }
+          final extracted = _extractCreditsFromRuns(artistRuns, trackTitle: title);
+          if (extracted.artist.isNotEmpty) artist = extracted.artist;
+          if (extracted.album.isNotEmpty) album = extracted.album;
         }
       }
 
@@ -543,16 +534,18 @@ class InnerTubeService {
         }
       }
 
-      return Track(
+      final rawTrack = Track(
         id: videoId,
         trackName: title,
         artistName: artist,
-        albumName: '', // Not always available in search
+        albumName: album,
         albumArt: thumbnail ?? '',
         previewUrl: '', // Will be fetched when playing
         source: 'youtube',
         durationMs: durationMs,
       );
+
+      return TrackMetadataEnricher.sanitizeTrack(rawTrack);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Track parse error: $e');
@@ -1601,21 +1594,10 @@ class InnerTubeService {
           return null;
         }
 
-        // Normal Song or browse mode
-        final parsed = subtitleRuns
-            .where((r) =>
-                r['text'] != null &&
-                r['text'] is String &&
-                r['text'] != ' • ' &&
-                r['text'] != ' & ' &&
-                !_isMetadataRun(r['text'] as String))
-            .map((r) => (r['text'] as String).trim())
-            .where((text) => text.isNotEmpty)
-            .take(2)
-            .join(', ');
-        if (parsed.isNotEmpty) {
-          artist = parsed;
-        }
+        // Normal Song or browse mode: extract clean artist and album
+        final extracted = _extractCreditsFromRuns(subtitleRuns, trackTitle: title);
+        if (extracted.artist.isNotEmpty) artist = extracted.artist;
+        if (extracted.album.isNotEmpty) album = extracted.album;
       }
 
       // Thumbnail
@@ -1626,7 +1608,7 @@ class InnerTubeService {
         thumbnail = thumbnails.last['url'];
       }
 
-      return Track(
+      final rawTrack = Track(
         id: videoId,
         trackName: title,
         artistName: artist,
@@ -1635,6 +1617,8 @@ class InnerTubeService {
         previewUrl: '',
         source: 'youtube',
       );
+
+      return TrackMetadataEnricher.sanitizeTrack(rawTrack);
     } catch (e) {
       return null;
     }
@@ -1718,12 +1702,21 @@ class InnerTubeService {
     }
   }
 
-  /// Get suggestions/recommendations for a track
-  Future<List<Track>> getSuggestions(String videoId, {int limit = 10}) async {
+  /// Get suggestions/recommendations for a track. Feeds AutoPlay with
+  /// YouTube Music's official "RDAMVM" radio mix.
+  Future<List<Track>> getSuggestions(String videoId, {int limit = 15}) async {
+    return getRadioTracks(videoId, limit: limit);
+  }
+
+  /// What YouTube Music would play on after [videoId]. Feeds AutoPlay; the
+  /// seed track itself comes back first, followed by curated similar tracks.
+  Future<List<Track>> getRadioTracks(String videoId, {int limit = 15}) async {
     try {
       final body = jsonEncode({
         'context': _buildContext(),
         'videoId': videoId,
+        'playlistId': 'RDAMVM$videoId',
+        'isAudioOnly': true,
       });
 
       final response = await _httpClient.post(
@@ -1746,56 +1739,55 @@ class InnerTubeService {
     }
   }
 
-  /// Parse next/suggestions results
+  /// Resolves the authoritative artist and album metadata for a track from its
+  /// watch queue entry (matching BitChord's `trackLinks`).
+  Future<Track?> fetchTrackLinks(String videoId) async {
+    try {
+      final body = jsonEncode({
+        'context': _buildContext(),
+        'videoId': videoId,
+        'playlistId': 'RDAMVM$videoId',
+        'isAudioOnly': true,
+      });
+
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/next?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: body,
+      );
+
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      final renderers = _collectRenderers(data, 'playlistPanelVideoRenderer');
+      if (renderers.isEmpty) return null;
+
+      final match = renderers.firstWhere(
+        (r) => r['videoId'] == videoId,
+        orElse: () => renderers.first,
+      );
+
+      return _parsePlaylistPanelVideoRenderer(match);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: fetchTrackLinks error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Parses watch queue entries from [data] using recursive renderer scanning.
   List<Track> _parseNextResults(Map<String, dynamic> data, int limit) {
     final tracks = <Track>[];
+    final seenIds = <String>{};
 
     try {
-      final contents = data['contents']
-                      ?['singleColumnMusicWatchNextResultsRenderer']
-                  ?['tabbedRenderer']?['watchNextTabbedResultsRenderer']
-              ?['tabs']?[0]?['tabRenderer']?['content']?['musicQueueRenderer']
-          ?['content']?['playlistPanelRenderer']?['contents'] as List?;
-
-      if (contents == null) return tracks;
-
-      for (final item in contents) {
+      final renderers = _collectRenderers(data, 'playlistPanelVideoRenderer');
+      for (final renderer in renderers) {
         if (tracks.length >= limit) break;
-
-        final renderer = item['playlistPanelVideoRenderer'];
-        if (renderer == null) continue;
-
-        final videoId = renderer['videoId'];
-        if (videoId == null) continue;
-
-        final title = renderer['title']?['runs']?[0]?['text'] ?? 'Unknown';
-
-        String artist = 'Unknown Artist';
-        final artistRuns = renderer['shortBylineText']?['runs'] as List?;
-        if (artistRuns != null && artistRuns.isNotEmpty) {
-          artist = artistRuns.map((r) => r['text']).join('');
+        final track = _parsePlaylistPanelVideoRenderer(renderer);
+        if (track != null && seenIds.add(track.id)) {
+          tracks.add(track);
         }
-
-        String? thumbnail;
-        final thumbnails = renderer['thumbnail']?['thumbnails'] as List?;
-        if (thumbnails != null && thumbnails.isNotEmpty) {
-          thumbnail = thumbnails.last['url'];
-        }
-
-        final durationText = renderer['lengthText']?['runs']?[0]?['text'];
-        final durationMs =
-            durationText != null ? _parseDuration(durationText) : null;
-
-        tracks.add(Track(
-          id: videoId,
-          trackName: title,
-          artistName: artist,
-          albumName: '',
-          albumArt: thumbnail ?? '',
-          previewUrl: '',
-          source: 'youtube',
-          durationMs: durationMs,
-        ));
       }
     } catch (e) {
       if (kDebugMode) {
@@ -1804,6 +1796,209 @@ class InnerTubeService {
     }
 
     return tracks;
+  }
+
+  /// Parses a single `playlistPanelVideoRenderer` into a clean [Track].
+  Track? _parsePlaylistPanelVideoRenderer(Map<String, dynamic> renderer) {
+    final videoId = renderer['videoId']?.toString();
+    if (videoId == null || videoId.isEmpty) return null;
+
+    final title = (renderer['title']?['runs'] as List?)
+            ?.map((r) => r['text']?.toString() ?? '')
+            .join('')
+            .trim() ??
+        'Unknown';
+    if (title.isEmpty) return null;
+
+    final bylineRuns = (renderer['longBylineText']?['runs'] ??
+        renderer['shortBylineText']?['runs']) as List?;
+
+    String artist = 'Unknown Artist';
+    String album = '';
+
+    if (bylineRuns != null && bylineRuns.isNotEmpty) {
+      final extracted = _extractCreditsFromRuns(bylineRuns, trackTitle: title);
+      if (extracted.artist.isNotEmpty) artist = extracted.artist;
+      if (extracted.album.isNotEmpty) album = extracted.album;
+    }
+
+    String? thumbnail;
+    final thumbnails = renderer['thumbnail']?['thumbnails'] as List?;
+    if (thumbnails != null && thumbnails.isNotEmpty) {
+      thumbnail = thumbnails.last['url']?.toString();
+      if (thumbnail != null && thumbnail.contains('lh3.googleusercontent.com')) {
+        thumbnail = thumbnail.replaceAll(RegExp(r'=w\d+-h\d+'), '=w500-h500');
+      }
+    }
+
+    final durationText = (renderer['lengthText']?['runs'] as List?)
+        ?.firstOrNull?['text']
+        ?.toString();
+    final durationMs = durationText != null ? _parseDuration(durationText) : null;
+
+    final rawTrack = Track(
+      id: videoId,
+      trackName: title,
+      artistName: artist,
+      albumName: album,
+      albumArt: thumbnail ?? '',
+      previewUrl: '',
+      source: 'youtube',
+      durationMs: durationMs,
+    );
+
+    return TrackMetadataEnricher.sanitizeTrack(rawTrack);
+  }
+
+  /// Recursively walks [root] collecting all maps matching [rendererName].
+  List<Map<String, dynamic>> _collectRenderers(dynamic root, String rendererName) {
+    final out = <Map<String, dynamic>>[];
+    void walk(dynamic node) {
+      if (node is Map<String, dynamic>) {
+        final match = node[rendererName];
+        if (match is Map<String, dynamic>) out.add(match);
+        for (final val in node.values) {
+          walk(val);
+        }
+      } else if (node is List) {
+        for (final item in node) {
+          walk(item);
+        }
+      }
+    }
+    walk(root);
+    return out;
+  }
+
+  /// Extracts clean artist and album strings from run elements using
+  /// browseEndpoints (when present) or delimiter separation, avoiding
+  /// concatenating albums/song names into artist credits.
+  ({String artist, String album}) _extractCreditsFromRuns(
+    List runs, {
+    String? trackTitle,
+  }) {
+    final artistNames = <String>[];
+    String? albumName;
+
+    for (final run in runs) {
+      if (run is! Map) continue;
+      final text = run['text'];
+      if (text is! String || text.trim().isEmpty) continue;
+      final trimmed = text.trim();
+      if (trimmed == '•' || trimmed == '·' || trimmed == '|' || _isMetadataRun(trimmed)) {
+        continue;
+      }
+
+      final browse = run['navigationEndpoint']?['browseEndpoint'];
+      if (browse is Map) {
+        final pageType = browse['browseEndpointContextSupportedConfigs']
+                ?['browseEndpointContextMusicConfig']?['pageType']
+            ?.toString() ??
+            '';
+        final browseId = browse['browseId']?.toString() ?? '';
+
+        if (pageType.contains('ARTIST') || browseId.startsWith('UC')) {
+          if (!artistNames.contains(trimmed)) artistNames.add(trimmed);
+          continue;
+        }
+        if (pageType.contains('ALBUM') ||
+            browseId.startsWith('MPRE') ||
+            browseId.startsWith('OLAK')) {
+          albumName ??= trimmed;
+          continue;
+        }
+      }
+    }
+
+    if (artistNames.isNotEmpty || albumName != null) {
+      final sanitized = TrackMetadataEnricher.sanitize(
+        title: trackTitle ?? '',
+        artist: artistNames.join(', '),
+        album: albumName ?? '',
+      );
+      return (artist: sanitized.artist, album: sanitized.album);
+    }
+
+    // Fallback when runs do not carry browse endpoints:
+    // 1. Safely filter for maps with string 'text' (ignores null, int, etc.)
+    final validRuns = runs
+        .whereType<Map>()
+        .where((r) => r['text'] != null && r['text'] is String)
+        .toList();
+
+    // 2. Partition runs by bullets ('•', '·', '|'):
+    //    Section 0 = artists (which may contain '&' or ',' delimiters)
+    //    Section 1+ = album or metadata
+    final sections = <List<String>>[];
+    var currentSection = <String>[];
+
+    for (final r in validRuns) {
+      final text = (r['text'] as String).trim();
+      if (text == '•' || text == '·' || text == '|') {
+        if (currentSection.isNotEmpty) {
+          sections.add(currentSection);
+          currentSection = [];
+        }
+      } else if (text.isNotEmpty && !_isMetadataRun(text)) {
+        currentSection.add(text);
+      }
+    }
+    if (currentSection.isNotEmpty) {
+      sections.add(currentSection);
+    }
+
+    if (sections.isEmpty) {
+      return (artist: '', album: '');
+    }
+
+    // Artist names from section 0 (skipping '&', ',', '/', 'feat.', 'ft.')
+    final artistCandidates = sections[0]
+        .where((t) =>
+            t != '&' &&
+            t != ',' &&
+            t != '/' &&
+            t.toLowerCase() != 'feat.' &&
+            t.toLowerCase() != 'ft.')
+        .where((t) {
+          final lower = t.toLowerCase();
+          return lower != 'song' && lower != 'video';
+        })
+        .where((t) => trackTitle == null || t.toLowerCase() != trackTitle.toLowerCase())
+        .toList();
+
+    final rawArtist = artistCandidates.join(', ');
+
+    // Album name from remaining sections (if not generic label or metadata)
+    String rawAlbum = '';
+    if (sections.length > 1) {
+      for (int i = 1; i < sections.length; i++) {
+        final cand = sections[i]
+            .where((t) => t != '&' && t != ',' && t != '/')
+            .join(' ')
+            .trim();
+        final lower = cand.toLowerCase();
+        if (lower != 'song' &&
+            lower != 'video' &&
+            lower != 'single' &&
+            lower != 'ep' &&
+            !_isMetadataRun(cand) &&
+            (trackTitle == null || lower != trackTitle.toLowerCase())) {
+          rawAlbum = cand;
+          break;
+        }
+      }
+    }
+
+    if (rawArtist.isEmpty && rawAlbum.isEmpty) {
+      return (artist: '', album: '');
+    }
+
+    final sanitized = TrackMetadataEnricher.sanitize(
+      title: trackTitle ?? '',
+      artist: rawArtist,
+      album: rawAlbum,
+    );
+    return (artist: sanitized.artist, album: sanitized.album);
   }
 
   /// Trusted trending/charts browse (FEmusic_charts).

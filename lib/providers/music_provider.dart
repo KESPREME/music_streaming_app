@@ -61,6 +61,8 @@ import '../services/recommendation/search_followup_store.dart';
 import '../services/recommendation/quick_picks_engine.dart';
 import '../services/recommendation/section_engines_v2.dart';
 import '../models/lyrics_entry.dart'; // Lyrics data model
+import '../services/metadata/track_metadata_enricher.dart';
+import '../services/recommendation/queue_builder.dart';
 // import '../services/firestore_service.dart'; // Uncomment if used
 
 // Your Project Utility Imports
@@ -605,15 +607,23 @@ class MusicProvider
   bool _isOfflineTrack = false;
   bool _shuffleEnabled = false;
 
-  /// Infinite autoplay: when a context ends, keep playing related tracks.
-  bool _isAutoQueueEnabled = true;
-  bool get isAutoQueueEnabled => _isAutoQueueEnabled;
-  Future<void> setAutoQueueEnabled(bool enabled) async {
-    if (_isAutoQueueEnabled == enabled) return;
-    _isAutoQueueEnabled = enabled;
+  /// Infinite autoplay: when a context ends or queue is empty, keep playing related tracks.
+  bool _autoplayEnabled = true;
+  bool get autoplayEnabled => _autoplayEnabled;
+  bool get isAutoQueueEnabled => _autoplayEnabled;
+
+  Future<void> setAutoQueueEnabled(bool enabled) => setAutoplayEnabled(enabled);
+
+  Future<void> setAutoplayEnabled(bool enabled) async {
+    if (_autoplayEnabled == enabled) return;
+    _autoplayEnabled = enabled;
     notifyListeners();
     final p = await SharedPreferences.getInstance();
     await p.setBool('autoQueueEnabled', enabled);
+    await p.setBool('autoplayEnabled', enabled);
+    if (enabled && _queue.isEmpty && _currentTrack != null) {
+      unawaited(_autoFillQueue(_currentTrack!, generation: _playbackGeneration));
+    }
   }
 
   RepeatMode _repeatMode = RepeatMode.off;
@@ -1253,7 +1263,9 @@ class MusicProvider
       _isLowDataMode = p.getBool('lowDataMode') ?? false;
       _isAutoBitrate = p.getBool('isAutoBitrate') ?? true;
       _shuffleEnabled = p.getBool('shuffleEnabled') ?? false;
-      _isAutoQueueEnabled = p.getBool('autoQueueEnabled') ?? true;
+      _autoplayEnabled = p.getBool('autoQueueEnabled') ??
+          p.getBool('autoplayEnabled') ??
+          true;
       _animatedCanvasEnabled = p.getBool('animated_canvas') ?? false;
       _canvasOverCellular = p.getBool('canvas_over_cellular') ?? false;
       _fullBleedArtwork = p.getBool('full_bleed_artwork') ?? true;
@@ -1589,30 +1601,23 @@ class MusicProvider
               'MusicProvider: End of Downloaded List -> Looping to start');
         _playOfflineTrackInternal(list[0],
             setContext: false, clearQueue: false);
+      } else if (_autoplayEnabled && !_suppressAutoplayOnce) {
+        // ENHANCED: Smart Autoplay across online tracks/playlists (BitChord Parity)
+        if (kDebugMode) {
+          debugPrint('MusicProvider: End of Playlist -> Continuing with AutoPlay');
+        }
+        _startAutoplayFromRecommendations();
       } else if (isListNotEmpty &&
           _currentPlayingTracks != null &&
           _currentPlayingTracks!.length > 1) {
         // Multi-track playlists loop
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint(
               'MusicProvider: End of Online Playlist -> Looping to start');
+        }
         _playTrackInternal(list[0], setContext: false, clearQueue: false);
       } else {
-        // ENHANCED: Single track or For You context -> Smart Autoplay
-        if (_suppressAutoplayOnce) {
-          _suppressAutoplayOnce = false;
-          if (kDebugMode)
-            debugPrint('MusicProvider: Autoplay suppressed after queue clear.');
-          stopTrack();
-          return;
-        }
-        if (!_isAutoQueueEnabled) {
-          if (kDebugMode)
-            debugPrint('MusicProvider: Auto Queue disabled, stopping.');
-          stopTrack();
-          return;
-        }
-        _startAutoplayFromRecommendations();
+        stopTrack();
       }
     }
   }
@@ -1633,7 +1638,7 @@ class MusicProvider
     return true;
   }
 
-  /// Start autoplay with AI-recommended tracks based on current track
+  /// Start autoplay with AI/Radio recommended tracks based on current track
   Future<void> _startAutoplayFromRecommendations() async {
     if (_currentTrack == null) {
       stopTrack();
@@ -1644,41 +1649,36 @@ class MusicProvider
     // and aborts this continuation before it can hijack playback.
     final gen = ++_playbackGeneration;
 
-    if (kDebugMode)
+    if (kDebugMode) {
       debugPrint(
           'MusicProvider: Starting autoplay recommendations for ${_currentTrack!.trackName}');
+    }
 
     try {
-      // Get recommendations based on current track
+      // Get recommendations based on current track using YouTube Music's official RDAMVM radio mix
       List<Track> recommendations;
 
       if (_currentTrack!.source == 'youtube' &&
           _currentTrack!.id.length == 11) {
-        // Use current track as seed for related content
         recommendations =
-            await _innerTubeService.getSuggestions(_currentTrack!.id, limit: 20);
+            await _innerTubeService.getRadioTracks(_currentTrack!.id, limit: 20);
       } else {
-        // Fallback: use recently played seeds
         recommendations = await _fetchPersonalizedForYou();
       }
 
       if (gen != _playbackGeneration) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('MusicProvider: Autoplay aborted (user took over).');
+        }
         return;
       }
 
       // Filter to streamable songs
       var filtered = recommendations.where(_isPlayableAutoplayCandidate).toList();
 
-      // Ladder 2: local pools (Quick Picks + recents + trending). The
-      // /next endpoint sometimes returns only artist/album rows — before
-      // this fallback that meant autoplay silently stopped. Local pools
-      // guarantee continuation.
       if (filtered.isEmpty) {
         if (kDebugMode) {
-          debugPrint('MusicProvider: /next unusable '
-              '(${recommendations.length} raw), falling back to local pools');
+          debugPrint('MusicProvider: /next unusable, falling back to local pools');
         }
         final seen = <String>{_currentTrack!.id};
         filtered = [
@@ -1690,19 +1690,26 @@ class MusicProvider
       }
 
       if (filtered.isEmpty) {
-        if (kDebugMode)
-          debugPrint(
-              'MusicProvider: No valid recommendations after filtering.');
+        if (kDebugMode) {
+          debugPrint('MusicProvider: No valid recommendations after filtering.');
+        }
         stopTrack();
         return;
       }
 
-      // Use recommendation agent for sequence-planned autoplay
-      final ranked = _recommendationService.getAutoplayRecommendations(
-        _currentTrack!,
-        filtered,
-        limit: 15,
-      );
+      // Apply BitChord QueueBuilder: deduplicate recordings and balance artist caps
+      final existingTracks = [
+        if (_currentTrack != null) _currentTrack!,
+        ..._queue,
+      ];
+      final extended = QueueBuilder.extend(existingTracks, filtered, limit: 15);
+      final ranked = extended.isNotEmpty
+          ? extended
+          : _recommendationService.getAutoplayRecommendations(
+              _currentTrack!,
+              filtered,
+              limit: 15,
+            );
 
       if (ranked.isEmpty) {
         stopTrack();
@@ -1711,14 +1718,16 @@ class MusicProvider
 
       // Set new context and play first recommendation
       if (gen != _playbackGeneration) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint(
               'MusicProvider: Autoplay aborted before start (user took over).');
+        }
         return;
       }
       final nextTrack = ranked.first;
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('MusicProvider: Autoplay -> ${nextTrack.trackName}');
+      }
 
       // Set remaining as new playlist context
       _isAutoQueueContext = true;
@@ -1731,14 +1740,15 @@ class MusicProvider
   }
 
   /// Automatically populates the queue with the best and related tracks
-  /// using InnerTube suggestions and recommendation ranking (no random music).
-  Future<void> _autoFillQueue(Track seedTrack, {required int generation}) async {
-    if (!_isAutoQueueEnabled || _isOfflineMode) return;
+  /// using InnerTube's official RDAMVM radio mix and BitChord's QueueBuilder algorithm.
+  Future<void> _autoFillQueue(Track seedTrack, {int? generation}) async {
+    final gen = generation ?? _playbackGeneration;
+    if (!_autoplayEnabled || _isOfflineMode) return;
     try {
       List<Track> recommendations;
       if (seedTrack.id.length == 11 && seedTrack.source != 'local') {
         recommendations =
-            await _innerTubeService.getSuggestions(seedTrack.id, limit: 20);
+            await _innerTubeService.getRadioTracks(seedTrack.id, limit: 20);
       } else if (seedTrack.source != 'local' && seedTrack.trackName.isNotEmpty) {
         recommendations = await _innerTubeService.searchSongs(
             '${seedTrack.trackName} ${seedTrack.artistName}'.trim(),
@@ -1747,7 +1757,7 @@ class MusicProvider
         recommendations = await _fetchPersonalizedForYou();
       }
 
-      if (generation != _playbackGeneration) return;
+      if (gen != _playbackGeneration) return;
 
       var filtered = recommendations.where(_isPlayableAutoplayCandidate).toList();
 
@@ -1761,28 +1771,76 @@ class MusicProvider
         ].where((t) => _isPlayableAutoplayCandidate(t) && seen.add(t.id)).toList();
       }
 
-      if (filtered.isEmpty || generation != _playbackGeneration) return;
+      if (filtered.isEmpty || gen != _playbackGeneration) return;
 
-      final ranked = _recommendationService.getAutoplayRecommendations(
-        seedTrack,
-        filtered,
-        limit: 15,
-      );
+      // Apply BitChord QueueBuilder: deduplicate recordings and enforce artist diversity caps
+      final existingTracks = [
+        if (_currentTrack != null) _currentTrack!,
+        ..._queue,
+      ];
+      final extended = QueueBuilder.extend(existingTracks, filtered, limit: 12);
 
-      if (ranked.isEmpty || generation != _playbackGeneration) return;
+      if (extended.isEmpty || gen != _playbackGeneration) return;
 
-      // Only fill if queue is still empty and same seed track is active
-      if (_queue.isEmpty && _currentTrack?.id == seedTrack.id) {
-        _queue.addAll(ranked);
-        notifyListeners();
-        _prefetchNextTrack();
-        if (kDebugMode) {
-          debugPrint(
-              'MusicProvider: Auto-filled queue with ${ranked.length} related tracks for ${seedTrack.trackName}');
+      // Fill queue if empty or append when low
+      if (_currentTrack?.id == seedTrack.id) {
+        if (_queue.isEmpty) {
+          _queue.addAll(extended);
+          notifyListeners();
+          _prefetchNextTrack();
+          if (kDebugMode) {
+            debugPrint(
+                'MusicProvider: Auto-filled queue with ${extended.length} BitChord-curated tracks for ${seedTrack.trackName}');
+          }
+        } else if (_queue.length < 3) {
+          _queue.addAll(extended);
+          notifyListeners();
         }
       }
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: Auto-fill queue error: $e');
+    }
+  }
+
+  /// Asynchronously resolves authoritative artist and album metadata from YouTube Music's
+  /// watch queue and updates the current track in-place (matching BitChord's `trackLinks`).
+  Future<void> _enrichCurrentTrackMetadata(Track current) async {
+    if (current.source == 'local') return;
+    try {
+      final enriched = await _innerTubeService.fetchTrackLinks(current.id);
+      if (enriched != null && _currentTrack?.id == current.id) {
+        bool changed = false;
+        var updated = _currentTrack!;
+
+        if (enriched.albumName.isNotEmpty &&
+            (updated.albumName.isEmpty ||
+                updated.albumName.toLowerCase().contains('unknown')) &&
+            enriched.albumName != updated.albumName) {
+          updated = updated.copyWith(albumName: enriched.albumName);
+          changed = true;
+        }
+
+        if (enriched.artistName.isNotEmpty &&
+            enriched.artistName != 'Unknown Artist' &&
+            enriched.artistName != updated.artistName &&
+            (updated.artistName.contains(',') ||
+                updated.artistName.contains('•') ||
+                updated.artistName == 'Unknown Artist')) {
+          updated = updated.copyWith(artistName: enriched.artistName);
+          changed = true;
+        }
+
+        if (changed) {
+          _currentTrack = updated;
+          notifyListeners();
+          if (kDebugMode) {
+            debugPrint(
+                'MusicProvider: Enriched metadata for ${current.trackName}: album="${updated.albumName}", artist="${updated.artistName}"');
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: Metadata enrichment error: $e');
     }
   }
 
@@ -1979,7 +2037,8 @@ class MusicProvider
       }
 
       // Update current track state
-      _currentTrack = track;
+      final sanitizedTrack = TrackMetadataEnricher.sanitizeTrack(track);
+      _currentTrack = sanitizedTrack;
       _paletteService.clear(); // Reset palette immediately
       _isOfflineTrack = false;
       _updateCurrentIndex();
@@ -1988,8 +2047,8 @@ class MusicProvider
       // Start generating palette in parallel (don't await)
       updatePalette();
 
-      String playableId = track.id;
-      Track effectiveTrack = track; // Restored
+      String playableId = sanitizedTrack.id;
+      Track effectiveTrack = sanitizedTrack; // Restored
       // Start bitrate check early (parallelize with other work)
       final bitrateFuture = _getBitrate();
 
@@ -2092,9 +2151,9 @@ class MusicProvider
       // Keep the ORIGINAL track so playlist index lookups (by original id),
       // same-tap toggles and download keys stay valid even after Spotify→YT
       // conversion. The playable YT variant only lives in the audio source.
-      _currentTrack = track;
-      _updateRecentlyPlayed(track);
-      _recordSearchFollowup(track);
+      _currentTrack = sanitizedTrack;
+      _updateRecentlyPlayed(sanitizedTrack);
+      _recordSearchFollowup(sanitizedTrack);
       _updateCurrentIndex();
       notifyListeners();
 
@@ -2106,8 +2165,17 @@ class MusicProvider
       // Preload next track (Audio + Lyrics)
       _prefetchNextTrack();
 
+      // Asynchronously enrich metadata (album & clean artist) if needed
+      if (!_isOfflineMode &&
+          effectiveTrack.id.length == 11 &&
+          effectiveTrack.source != 'local' &&
+          (_currentTrack!.albumName.isEmpty ||
+              _currentTrack!.albumName.toLowerCase().contains('unknown'))) {
+        unawaited(_enrichCurrentTrackMetadata(_currentTrack!));
+      }
+
       // Auto-fill queue with best and related tracks if queue is empty
-      if (_isAutoQueueEnabled &&
+      if (_autoplayEnabled &&
           _queue.isEmpty &&
           !_suppressAutoplayOnce &&
           (_currentPlayingTracks == null || _currentPlayingTracks!.length <= 1)) {
@@ -2379,11 +2447,17 @@ class MusicProvider
   }
 
   // --- Autoplay & Canvas ---
-  bool _autoplayEnabled = true;
-  bool get autoplayEnabled => _autoplayEnabled;
   void toggleAutoplay() {
-    _autoplayEnabled = !_autoplayEnabled;
+    final next = !_autoplayEnabled;
+    _autoplayEnabled = next;
     notifyListeners();
+    SharedPreferences.getInstance().then((p) {
+      p.setBool('autoQueueEnabled', next);
+      p.setBool('autoplayEnabled', next);
+    });
+    if (next && _queue.isEmpty && _currentTrack != null) {
+      unawaited(_autoFillQueue(_currentTrack!, generation: _playbackGeneration));
+    }
   }
 
   bool _isCanvasActive = false;
