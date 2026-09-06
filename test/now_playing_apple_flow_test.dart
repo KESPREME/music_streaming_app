@@ -11,6 +11,7 @@ import 'package:music_streaming_app/models/lyrics_entry.dart';
 import 'package:music_streaming_app/utils/lyrics_utils.dart';
 import 'package:music_streaming_app/services/lyrics/lyrics_service.dart';
 import 'package:music_streaming_app/services/canvas_resolution_service.dart';
+import 'package:music_streaming_app/services/canvas_video_manager.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/widgets/apple_player_icons.dart';
 
@@ -493,5 +494,68 @@ void main() {
     final normT = targetBorderline.trackName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ').trim();
     expect(normC.contains(normT), isFalse);
     expect(normT.contains(normC), isFalse);
+  });
+
+  test('CanvasVideoManager: singleton state, attach and detach lifecycle', () async {
+    final manager = CanvasVideoManager.instance;
+    expect(manager, isNotNull);
+    expect(manager.isRendered, isFalse);
+    expect(manager.currentController, isNull);
+
+    final dummyTrack = Track(
+      id: 'test_canvas_track',
+      trackName: 'Test Song',
+      artistName: 'Test Artist',
+      albumName: 'Test Album',
+      previewUrl: '',
+    );
+
+    await manager.attachTrack(dummyTrack, isPlaying: true);
+    // In test environment, _isTesting guards ExoPlayer hardware allocation
+    expect(manager.controllerNotifier.value, isNull);
+    expect(manager.isRenderedNotifier.value, isFalse);
+
+    // Detach cleanly resets track state
+    await manager.detach();
+    expect(manager.currentController, isNull);
+    expect(manager.isRendered, isFalse);
+  });
+
+  testWidgets('GlassOptionsSheet: accepts dynamic accentColor and renders themed liquid glass', (tester) async {
+    final dummyTrack = Track(
+      id: 't_borderline',
+      trackName: 'Borderline',
+      artistName: 'Tame Impala',
+      albumName: 'The Slow Rush',
+      previewUrl: '',
+      albumArtUrl: 'https://example.com/borderline.jpg',
+    );
+
+    final provider = TestMusicProvider(initialTrack: dummyTrack);
+
+    final theme = GlassTheme.build(AccentColors.peach);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: ChangeNotifierProvider<MusicProvider>.value(
+          value: provider,
+          child: Scaffold(
+            body: GlassOptionsSheet(
+              track: dummyTrack,
+              accentColor: const Color(0xFFE84828), // Crimson orange from sand dunes
+              dominantColor: const Color(0xFF882211),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Borderline'), findsOneWidget);
+    expect(find.text('Tame Impala'), findsOneWidget);
+    expect(find.text('Add to a playlist...'), findsOneWidget);
+    expect(find.text('Go to album'), findsOneWidget);
+    expect(find.text('Go to artist'), findsOneWidget);
   });
 }

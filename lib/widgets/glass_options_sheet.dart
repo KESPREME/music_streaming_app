@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -23,6 +24,8 @@ class GlassOptionsSheet extends StatelessWidget {
   final bool isInQueueContext;
   final bool isRecentlyPlayedContext; // New context
   final VoidCallback? onDislike; // Explore-only: null hides the row
+  final Color? accentColor;
+  final Color? dominantColor;
 
   const GlassOptionsSheet({
     super.key,
@@ -31,6 +34,8 @@ class GlassOptionsSheet extends StatelessWidget {
     this.isInQueueContext = false,
     this.isRecentlyPlayedContext = false,
     this.onDislike,
+    this.accentColor,
+    this.dominantColor,
   });
 
   /// Helper to show the options sheet while hiding the mini player
@@ -41,12 +46,23 @@ class GlassOptionsSheet extends StatelessWidget {
     bool isInQueueContext = false,
     bool isRecentlyPlayedContext = false,
     VoidCallback? onDislike,
+    Color? accentColor,
+    Color? dominantColor,
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
     final wasHidden = provider.hideMiniPlayer;
     // Hide Mini Player
     provider.setHideMiniPlayer(true);
+
+    final effectiveAccent = accentColor ??
+        ColorUtils.getVibrantAccent(
+          provider.paletteGenerator,
+          const Color(0xFFE89838),
+        );
+    final effectiveDominant = dominantColor ??
+        provider.paletteGenerator?.dominantColor?.color ??
+        effectiveAccent;
 
     try {
       await showModalBottomSheet(
@@ -65,6 +81,8 @@ class GlassOptionsSheet extends StatelessWidget {
           isInQueueContext: isInQueueContext,
           isRecentlyPlayedContext: isRecentlyPlayedContext,
           onDislike: onDislike,
+          accentColor: effectiveAccent,
+          dominantColor: effectiveDominant,
         ),
       );
     } finally {
@@ -86,34 +104,109 @@ class GlassOptionsSheet extends StatelessWidget {
       builder: (context, provider, child) {
         final isLiked = provider.isSongLiked(track.id);
 
+        final dynAccent = accentColor ??
+            ColorUtils.getVibrantAccent(
+              provider.paletteGenerator,
+              const Color(0xFFE89838),
+            );
+
+        final rawDominant = dominantColor ??
+            provider.paletteGenerator?.dominantColor?.color ??
+            dynAccent;
+
+        final hslDominant = HSLColor.fromColor(rawDominant);
+        // Deep chromatic background matching BitChord's dominant.withHsl(saturation.coerceIn(0.20, 0.62), lightness = 0.13)
+        final sheetBgColor = hslDominant
+            .withSaturation(hslDominant.saturation.clamp(0.20, 0.58))
+            .withLightness(0.12)
+            .toColor();
+
+        final borderTint = dynAccent.withValues(alpha: 0.28);
+
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xF2141418),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              color: sheetBgColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(32)),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.16),
+                color: Color.alphaBlend(
+                  borderTint,
+                  Colors.white.withValues(alpha: 0.16),
+                ),
                 width: 1.0,
               ),
             ),
-            child: GlassSurface(
-              tier: GlassTier.sheet,
-              borderRadius: 32,
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle Bar
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: 10),
-                      width: 36,
-                      height: 4.5,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(2.25),
+            child: Stack(
+              children: [
+                // BitChord ArtworkBackdrop: Blurred artwork wash across top 70%
+                if (track.albumArtUrl.isNotEmpty)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 260,
+                    child: ClipRect(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Transform.scale(
+                            scale: 1.4,
+                            alignment: Alignment.topCenter,
+                            child: ImageFiltered(
+                              imageFilter: ImageFilter.blur(
+                                sigmaX: 45,
+                                sigmaY: 45,
+                              ),
+                              child: CachedNetworkImage(
+                                imageUrl: ImageQualityUtils.getHighResArtwork(
+                                  track.albumArtUrl,
+                                ),
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  sheetBgColor.withValues(alpha: 0.35),
+                                  sheetBgColor.withValues(alpha: 0.55),
+                                  sheetBgColor.withValues(alpha: 0.85),
+                                  sheetBgColor,
+                                ],
+                                stops: const [0.0, 0.22, 0.60, 0.95],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
+
+                // GlassSurface overlay & rows
+                GlassSurface(
+                  tier: GlassTier.sheet,
+                  borderRadius: 32,
+                  child: SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Handle Bar
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          width: 36,
+                          height: 4.5,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(2.25),
+                          ),
+                        ),
 
                     // Header (Track Info matching Image 3)
                     Padding(
@@ -179,7 +272,7 @@ class GlassOptionsSheet extends StatelessWidget {
                                   ? Icons.star_rounded
                                   : Icons.star_outline_rounded,
                               color: isLiked
-                                  ? colorScheme.primary
+                                  ? dynAccent
                                   : Colors.white,
                               size: 26,
                             ),
@@ -465,9 +558,11 @@ class GlassOptionsSheet extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  },
+      ],
+    ),
+  ),
+);
+},
 );
 }
 
@@ -477,10 +572,12 @@ class GlassOptionsSheet extends StatelessWidget {
     required String label,
     required VoidCallback onTap,
     Color? color,
+    Color? iconColor,
     String? fallbackLabel,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveColor = color ?? colorScheme.onSurface;
+    final effectiveIconColor = color ?? iconColor ?? effectiveColor;
     return Material(
       color: Colors.transparent,
       child: ListTile(
@@ -488,7 +585,7 @@ class GlassOptionsSheet extends StatelessWidget {
         visualDensity: const VisualDensity(vertical: -1.5),
         minLeadingWidth: 28,
         horizontalTitleGap: 14,
-        leading: Icon(icon, color: effectiveColor, size: 22),
+        leading: Icon(icon, color: effectiveIconColor, size: 22),
         title: Stack(
           alignment: Alignment.centerLeft,
           children: [

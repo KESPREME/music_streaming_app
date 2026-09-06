@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
+import '../services/canvas_video_manager.dart';
 import '../widgets/artist_picker_sheet.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/glass_snackbar.dart';
@@ -227,6 +229,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final mq = MediaQuery.of(context);
         final statusBarHeight = mq.padding.top;
 
+        if (musicProvider.animatedCanvasEnabled) {
+          CanvasVideoManager.instance
+              .attachTrack(currentTrack, isPlaying: isPlaying);
+        } else {
+          CanvasVideoManager.instance.pause();
+        }
+
         return Scaffold(
           extendBodyBehindAppBar: true,
           backgroundColor: Colors.transparent,
@@ -237,12 +246,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                 child: ColoredBox(color: Color(0xFF08080A)),
               ),
 
-              // 1. Blurred album art background (Single-render master backdrop)
+              // 1. Master Backdrop: Blurred album art base + Whole-screen blurred video canvas (BitChord ArtworkMeshBackdrop)
               Positioned.fill(
-                child: currentTrack.albumArtUrl.isNotEmpty
-                    ? RepaintBoundary(
-                        child: ClipRect(
-                          child: Transform.scale(
+                child: RepaintBoundary(
+                  child: ClipRect(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Base still album art blur
+                        if (currentTrack.albumArtUrl.isNotEmpty)
+                          Transform.scale(
                             scale: 1.6,
                             alignment: Alignment.topCenter,
                             child: ImageFiltered(
@@ -257,10 +270,62 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                 ),
                               ),
                             ),
+                          )
+                        else
+                          const ColoredBox(color: Color(0xFF101010)),
+
+                        // Whole-screen video canvas blur overlay
+                        if (musicProvider.animatedCanvasEnabled)
+                          ValueListenableBuilder<VideoPlayerController?>(
+                            valueListenable:
+                                CanvasVideoManager.instance.controllerNotifier,
+                            builder: (context, vController, _) {
+                              if (vController == null ||
+                                  !vController.value.isInitialized) {
+                                return const SizedBox.shrink();
+                              }
+                              final vSize = vController.value.size;
+                              if (vSize.width <= 0 || vSize.height <= 0) {
+                                return const SizedBox.shrink();
+                              }
+                              return ValueListenableBuilder<bool>(
+                                valueListenable:
+                                    CanvasVideoManager.instance.isRenderedNotifier,
+                                builder: (context, isRendered, _) {
+                                  return AnimatedOpacity(
+                                    opacity: isRendered ? 1.0 : 0.0,
+                                    duration: const Duration(milliseconds: 400),
+                                    curve: Curves.easeOutCubic,
+                                    child: Transform.scale(
+                                      scale: 1.35,
+                                      alignment: Alignment.center,
+                                      child: ImageFiltered(
+                                        imageFilter: ImageFilter.blur(
+                                          sigmaX: 55,
+                                          sigmaY: 55,
+                                        ),
+                                        child: SizedBox.expand(
+                                          child: FittedBox(
+                                            fit: BoxFit.cover,
+                                            clipBehavior: Clip.hardEdge,
+                                            child: SizedBox(
+                                              width: vSize.width,
+                                              height: vSize.height,
+                                              child: VideoPlayer(vController),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
                           ),
-                        ),
-                      )
-                    : const ColoredBox(color: Color(0xFF101010)),
+                      ],
+                    ),
+                  ),
+                ),
               ),
 
               // 1.5 Dual radiant color mesh layers (BitChord ArtworkMeshBackdrop: vibrant luminous glow)
@@ -455,8 +520,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final totalW = constraints.maxWidth;
         final totalH = constraints.maxHeight;
 
-        // Controlled hero height: ~44% of total height, clamped to 240-350dp
-        final double heroH = (totalH * 0.44).clamp(240.0, 350.0);
+        // Controlled hero height: ~48% of total height (BitChord title at 51.6% parity)
+        final double heroH = (totalH * 0.48).clamp(280.0, totalH * 0.52);
         const double fixedControlsH = 220.0;
         final double slack =
             (totalH - heroH - 76.0 - fixedControlsH).clamp(0.0, 300.0);
@@ -722,7 +787,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     iconSize: lerpDouble(22.0, 19.0, t)!,
                     onTap: () {
                       HapticFeedback.lightImpact();
-                      GlassOptionsSheet.show(context, track: currentTrack);
+                      GlassOptionsSheet.show(
+                        context,
+                        track: currentTrack,
+                        accentColor: accentColor,
+                      );
                     },
                   ),
                 ),
