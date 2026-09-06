@@ -83,17 +83,27 @@ class BetterLyricsProvider {
       // Check if line contains per-syllable / word spans
       final spanMatches = spanRegex.allMatches(lineContent).toList();
       if (spanMatches.isNotEmpty) {
-        for (final sMatch in spanMatches) {
+        int lastIndex = 0;
+        for (int i = 0; i < spanMatches.length; i++) {
+          final sMatch = spanMatches[i];
+
+          // Preserve any inter-span characters (such as spaces or punctuation between tags)
+          if (sMatch.start > lastIndex) {
+            final inter = lineContent.substring(lastIndex, sMatch.start);
+            rawTextBuffer.write(_unescapeXml(_stripXmlTags(inter)));
+          }
+
           final sBeginStr = sMatch.group(1);
           final sEndStr = sMatch.group(2);
           var sText = sMatch.group(3) ?? '';
-          sText = _stripXmlTags(sText);
+          sText = _unescapeXml(_stripXmlTags(sText));
+
+          rawTextBuffer.write(sText);
 
           final sTimeMs = _parseTimestampMs(sBeginStr) ?? lineTimeMs;
           final sEnd = _parseTimestampMs(sEndStr) ?? (sTimeMs + 400);
           final duration = (sEnd - sTimeMs).clamp(50, 8000);
 
-          rawTextBuffer.write(sText);
           final trimmedWord = sText.trim();
           if (trimmedWord.isNotEmpty) {
             words.add(WordTiming(
@@ -102,13 +112,23 @@ class BetterLyricsProvider {
               text: trimmedWord,
             ));
           }
+
+          lastIndex = sMatch.end;
+        }
+
+        if (lastIndex < lineContent.length) {
+          final trailing = lineContent.substring(lastIndex);
+          rawTextBuffer.write(_unescapeXml(_stripXmlTags(trailing)));
         }
       } else {
         // Plain text inside <p>
-        rawTextBuffer.write(_stripXmlTags(lineContent));
+        rawTextBuffer.write(_unescapeXml(_stripXmlTags(lineContent)));
       }
 
-      final fullLineText = rawTextBuffer.toString().trim();
+      var fullLineText = rawTextBuffer.toString();
+      // Normalize any multi-whitespace or newlines into single spaces
+      fullLineText = fullLineText.replaceAll(RegExp(r'[ \t\r\n]+'), ' ').trim();
+
       if (fullLineText.isNotEmpty) {
         entries.add(LyricsEntry(
           timeMs: lineTimeMs,
@@ -124,7 +144,21 @@ class BetterLyricsProvider {
   }
 
   static String _stripXmlTags(String raw) {
-    return raw.replaceAll(RegExp(r'<[^>]*>'), '');
+    return raw
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<[^>]*>'), '');
+  }
+
+  static String _unescapeXml(String text) {
+    return text
+        .replaceAll('&apos;', "'")
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&#x27;', "'")
+        .replaceAll('&nbsp;', ' ');
   }
 
   static int? _parseTimestampMs(String? raw) {

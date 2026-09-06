@@ -74,13 +74,27 @@ class LyricsService {
     // 2. Check disk cache
     final diskEntry = await _diskCache.get(cacheKey);
     if (diskEntry != null && diskEntry.lyrics.isNotEmpty) {
-      if (kDebugMode) debugPrint('LyricsService: Disk cache hit for "$title"');
       final entries = diskEntry.isSynced
           ? LyricsUtils.parseLrc(diskEntry.lyrics)
           : LyricsUtils.parsePlainText(diskEntry.lyrics);
-      final withGaps = withInstrumentalGaps(entries);
-      _parsedCache[cacheKey] = withGaps;
-      return withGaps;
+
+      // Invalidate if contaminated by legacy BetterLyrics unspaced bug
+      final isContaminated = diskEntry.provider == LyricsProvider.betterLyrics.name &&
+          entries.any((e) =>
+              e.text.length >= 18 &&
+              !e.text.contains(' ') &&
+              RegExp(r'^[a-zA-Z0-9\x27\x22\.,!?\-]+$').hasMatch(e.text));
+
+      if (isContaminated) {
+        if (kDebugMode) {
+          debugPrint('LyricsService: Invalidating unspaced legacy disk cache for "$title"');
+        }
+      } else {
+        if (kDebugMode) debugPrint('LyricsService: Disk cache hit for "$title"');
+        final withGaps = withInstrumentalGaps(entries);
+        _parsedCache[cacheKey] = withGaps;
+        return withGaps;
+      }
     }
 
     // 3. Deduplicate in-flight requests
