@@ -35,16 +35,19 @@ class _InPlaceCanvasPlayerState extends State<InPlaceCanvasPlayer>
   @override
   void initState() {
     super.initState();
+    final alreadyRendered = CanvasVideoManager.instance.isRendered;
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 450),
+      value: alreadyRendered ? 1.0 : 0.0,
     );
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
       curve: Curves.easeOutCubic,
     );
 
-    CanvasVideoManager.instance.isRenderedNotifier.addListener(_onRenderedStateChanged);
+    CanvasVideoManager.instance.isRenderedNotifier
+        .addListener(_onRenderedStateChanged);
     _initForTrack();
   }
 
@@ -71,18 +74,29 @@ class _InPlaceCanvasPlayerState extends State<InPlaceCanvasPlayer>
 
   @override
   void dispose() {
-    CanvasVideoManager.instance.isRenderedNotifier.removeListener(_onRenderedStateChanged);
+    CanvasVideoManager.instance.isRenderedNotifier
+        .removeListener(_onRenderedStateChanged);
     _fadeController.dispose();
     super.dispose();
   }
 
   Future<void> _initForTrack() async {
-    _fadeController.reset();
-    widget.onRenderedChanged?.call(false);
+    if (CanvasVideoManager.instance.isRendered) {
+      _fadeController.value = 1.0;
+      widget.onRenderedChanged?.call(true);
+    } else {
+      _fadeController.reset();
+      widget.onRenderedChanged?.call(false);
+    }
     await CanvasVideoManager.instance.attachTrack(
       widget.track,
       isPlaying: widget.isPlaying,
     );
+    if (CanvasVideoManager.instance.isRendered && mounted) {
+      _fadeController.value = 1.0;
+      widget.onRenderedChanged?.call(true);
+      setState(() {});
+    }
   }
 
   @override

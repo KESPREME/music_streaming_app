@@ -20,7 +20,7 @@ class CanvasVideoManager {
   VideoPlayerController? _controller;
   String? _currentTrackId;
   String? _resolvedUrl;
-  bool _disposed = false;
+  bool _isInitializing = false;
 
   final ValueNotifier<VideoPlayerController?> controllerNotifier =
       ValueNotifier<VideoPlayerController?>(null);
@@ -41,29 +41,52 @@ class CanvasVideoManager {
     }
 
     if (_currentTrackId == track.id && _controller != null) {
-      _syncPlayback(isPlaying);
+      if (_controller!.value.isInitialized) {
+        if (!isRenderedNotifier.value) {
+          isRenderedNotifier.value = true;
+        }
+        _syncPlayback(isPlaying);
+      }
       return;
     }
 
+    if (_isInitializing && _currentTrackId == track.id) {
+      return;
+    }
+
+    _isInitializing = true;
     _currentTrackId = track.id;
     _resolvedUrl = null;
     isRenderedNotifier.value = false;
 
-    // Detach previous controller
+    // Detach previous controller safely
     final oldController = _controller;
     _controller = null;
     controllerNotifier.value = null;
-    await oldController?.dispose();
+    if (oldController != null) {
+      try {
+        await oldController.dispose();
+      } catch (e) {
+        debugPrint('CanvasVideoManager: old controller disposal error: $e');
+      }
+    }
 
-    if (_isTesting) return;
+    if (_isTesting) {
+      _isInitializing = false;
+      return;
+    }
 
     try {
       final resolved =
           await CanvasResolutionService.instance.resolveCanvas(track);
-      if (_currentTrackId != track.id) return;
+      if (_currentTrackId != track.id) {
+        _isInitializing = false;
+        return;
+      }
 
       if (resolved == null || resolved.isEmpty) {
         isRenderedNotifier.value = false;
+        _isInitializing = false;
         return;
       }
       _resolvedUrl = resolved;
@@ -81,7 +104,10 @@ class CanvasVideoManager {
         );
       } else {
         final uri = Uri.tryParse(resolved);
-        if (uri == null) return;
+        if (uri == null) {
+          _isInitializing = false;
+          return;
+        }
         final ua = InnerTubeService.userAgentForStreamUrl(resolved);
         c = VideoPlayerController.networkUrl(
           uri,
@@ -92,7 +118,10 @@ class CanvasVideoManager {
 
       await c.initialize();
       if (_currentTrackId != track.id) {
-        await c.dispose();
+        try {
+          await c.dispose();
+        } catch (_) {}
+        _isInitializing = false;
         return;
       }
 
@@ -110,6 +139,8 @@ class CanvasVideoManager {
       debugPrint('CanvasVideoManager: video initialization failed: $e');
       isRenderedNotifier.value = false;
       controllerNotifier.value = null;
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -120,27 +151,51 @@ class CanvasVideoManager {
 
   void _syncPlayback(bool isPlaying) {
     if (_controller != null && _controller!.value.isInitialized) {
-      if (isPlaying && !_controller!.value.isPlaying) {
-        _controller!.play();
-      } else if (!isPlaying && _controller!.value.isPlaying) {
-        _controller!.pause();
+      try {
+        if (isPlaying && !_controller!.value.isPlaying) {
+          _controller!.play();
+        } else if (!isPlaying && _controller!.value.isPlaying) {
+          _controller!.pause();
+        }
+      } catch (e) {
+        debugPrint('CanvasVideoManager: syncPlayback error: $e');
       }
     }
   }
 
-  /// Pauses the controller without disposing it.
+  /// Pauses the controller without disposing it (e.g. when lyrics view covers screen).
   void pause() {
-    _controller?.pause();
+    try {
+      if (_controller != null && _controller!.value.isInitialized && _controller!.value.isPlaying) {
+        _controller?.pause();
+      }
+    } catch (_) {}
+  }
+
+  /// Resumes playback of the canvas video (e.g. when returning to normal screen).
+  void resume() {
+    try {
+      if (_controller != null && _controller!.value.isInitialized && !_controller!.value.isPlaying) {
+        _controller?.play();
+      }
+    } catch (_) {}
   }
 
   /// Detaches and disposes the current controller.
   Future<void> detach() async {
+    _isInitializing = false;
     _currentTrackId = null;
     _resolvedUrl = null;
     isRenderedNotifier.value = false;
     final c = _controller;
     _controller = null;
     controllerNotifier.value = null;
-    await c?.dispose();
+    if (c != null) {
+      try {
+        await c.dispose();
+      } catch (e) {
+        debugPrint('CanvasVideoManager: detach dispose error: $e');
+      }
+    }
   }
 }

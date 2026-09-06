@@ -1254,7 +1254,7 @@ class MusicProvider
       _isAutoBitrate = p.getBool('isAutoBitrate') ?? true;
       _shuffleEnabled = p.getBool('shuffleEnabled') ?? false;
       _isAutoQueueEnabled = p.getBool('autoQueueEnabled') ?? true;
-      _animatedCanvasEnabled = p.getBool('animated_canvas') ?? true;
+      _animatedCanvasEnabled = p.getBool('animated_canvas') ?? false;
       _canvasOverCellular = p.getBool('canvas_over_cellular') ?? false;
       _fullBleedArtwork = p.getBool('full_bleed_artwork') ?? true;
       _syncedLyricsEnabled = p.getBool('synced_lyrics') ?? true;
@@ -2394,7 +2394,7 @@ class MusicProvider
   }
 
   // --- BitChord Settings Parity ---
-  bool _animatedCanvasEnabled = true;
+  bool _animatedCanvasEnabled = false;
   bool get animatedCanvasEnabled => _animatedCanvasEnabled;
   Future<void> setAnimatedCanvasEnabled(bool value) async {
     _animatedCanvasEnabled = value;

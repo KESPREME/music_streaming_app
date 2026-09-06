@@ -63,11 +63,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   int _currentTab = -1; // Default: Album mode has no active bottom tab
   bool _isPlayPressed = false;
   double? _draggedPositionSec;
+  String? _lastAttachedTrackId;
+  bool? _lastAttachedCanvasEnabled;
 
   @override
   void initState() {
     super.initState();
-    // Page 0: Main Player (with morphing Lyrics); Page 1: Canvas Video; Page 2: Queue
+    // Page 0: Main Player (with morphing Lyrics); Page 1: Queue
     _pageController = PageController(initialPage: 0);
     _morphController = AnimationController(
       vsync: this,
@@ -84,6 +86,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void dispose() {
     _pageController.dispose();
     _morphController.dispose();
+    // Performance & Battery Optimization: Pause silent canvas video when NowPlaying screen is dismissed
+    CanvasVideoManager.instance.pause();
     super.dispose();
   }
 
@@ -94,15 +98,23 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       _currentTab = 0;
     });
     _morphController.forward();
+    // Battery & CPU Optimization: Pause video canvas decoding while lyrics screen covers the viewport
+    CanvasVideoManager.instance.pause();
   }
 
   void _closeLyrics() {
     if (!_isLyricsOpen) return;
+    final provider = Provider.of<MusicProvider>(context, listen: false);
     setState(() {
       _isLyricsOpen = false;
-      _currentTab = -1;
+      // Properly restore tab indicator to motion canvas (1) if enabled, otherwise album mode (-1)
+      _currentTab = provider.animatedCanvasEnabled ? 1 : -1;
     });
     _morphController.reverse();
+    // Resume video canvas playback immediately upon returning to player
+    if (provider.animatedCanvasEnabled && provider.isPlaying) {
+      CanvasVideoManager.instance.resume();
+    }
   }
 
   void _toggleLyrics() {
@@ -115,8 +127,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   void _returnToAlbum() {
     HapticFeedback.selectionClick();
+    final provider = Provider.of<MusicProvider>(context, listen: false);
     setState(() {
-      _currentTab = -1;
+      _currentTab = provider.animatedCanvasEnabled ? 1 : -1;
     });
     if (_isLyricsOpen) {
       _closeLyrics();
@@ -136,7 +149,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
     if (index == 2) {
-      // Wave / Lofi tab: Toggle lofi on/off only! Do not change page.
+      // Wave / Canvas tab: Toggle lofi on/off and toggle visualizer canvas state!
       provider.lofi.toggle();
       provider.toggleCanvas();
       final isLofi = provider.isLofiEnabled;
@@ -167,6 +180,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       }
       final newEnabled = !provider.animatedCanvasEnabled;
       provider.setAnimatedCanvasEnabled(newEnabled);
+      if (newEnabled) {
+        CanvasVideoManager.instance.attachTrack(
+          provider.currentTrack ?? widget.track,
+          isPlaying: provider.isPlaying,
+        );
+      } else {
+        CanvasVideoManager.instance.pause();
+      }
       HapticFeedback.mediumImpact();
       GlassSnackBar.show(
         context,
@@ -229,11 +250,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final mq = MediaQuery.of(context);
         final statusBarHeight = mq.padding.top;
 
-        if (musicProvider.animatedCanvasEnabled) {
-          CanvasVideoManager.instance
-              .attachTrack(currentTrack, isPlaying: isPlaying);
-        } else {
-          CanvasVideoManager.instance.pause();
+        if (_lastAttachedTrackId != currentTrack.id ||
+            _lastAttachedCanvasEnabled != musicProvider.animatedCanvasEnabled) {
+          _lastAttachedTrackId = currentTrack.id;
+          _lastAttachedCanvasEnabled = musicProvider.animatedCanvasEnabled;
+          if (musicProvider.animatedCanvasEnabled) {
+            CanvasVideoManager.instance
+                .attachTrack(currentTrack, isPlaying: isPlaying);
+          } else {
+            CanvasVideoManager.instance.pause();
+          }
         }
 
         return Scaffold(
@@ -425,9 +451,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             _currentTab = _isLyricsOpen
                                 ? 0
                                 : (musicProvider.animatedCanvasEnabled ? 1 : -1);
+                            if (musicProvider.animatedCanvasEnabled &&
+                                musicProvider.isPlaying &&
+                                !_isLyricsOpen) {
+                              CanvasVideoManager.instance.resume();
+                            }
                           } else if (page == 1) {
                             _currentTab = 3; // Queue (Queue tab)
                             if (_isLyricsOpen) _closeLyrics();
+                            CanvasVideoManager.instance.pause();
                           }
                         });
                       },
@@ -683,7 +715,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                               child: _buildAlbumArtImage(currentTrack),
                             ),
                             // In-place animated motion canvas overlay
-                            if (musicProvider.animatedCanvasEnabled && t < 0.5)
+                            if (musicProvider.animatedCanvasEnabled)
                               Positioned.fill(
                                 child: InPlaceCanvasPlayer(
                                   track: currentTrack,
