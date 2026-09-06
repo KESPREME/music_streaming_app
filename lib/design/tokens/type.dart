@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 /// size + weight + opacity, not from extra families or all-bold layouts.
 abstract final class Type {
   // Display — full player track title.
-  static TextStyle display(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle display(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 28,
         fontWeight: FontWeight.w700,
         height: 1.15,
@@ -13,7 +13,7 @@ abstract final class Type {
       );
 
   // Title — screen headers, section titles.
-  static TextStyle title(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle title(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 22,
         fontWeight: FontWeight.w700,
         height: 1.2,
@@ -21,7 +21,7 @@ abstract final class Type {
       );
 
   // Section — rail headers inside screens.
-  static TextStyle section(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle section(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 17,
         fontWeight: FontWeight.w600,
         height: 1.25,
@@ -29,7 +29,7 @@ abstract final class Type {
       );
 
   // Body — primary list rows.
-  static TextStyle body(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle body(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 15,
         fontWeight: FontWeight.w500,
         height: 1.3,
@@ -37,7 +37,7 @@ abstract final class Type {
       );
 
   // Label — buttons, tabs, chips.
-  static TextStyle label(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle label(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 13,
         fontWeight: FontWeight.w600,
         height: 1.2,
@@ -45,7 +45,7 @@ abstract final class Type {
       );
 
   // Metadata — artist names, durations, secondary info.
-  static TextStyle metadata(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle metadata(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 12.5,
         fontWeight: FontWeight.w400,
         height: 1.3,
@@ -53,7 +53,7 @@ abstract final class Type {
       );
 
   // Caption — timestamps, tiny annotations.
-  static TextStyle caption(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle caption(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 11,
         fontWeight: FontWeight.w500,
         height: 1.2,
@@ -61,7 +61,7 @@ abstract final class Type {
       );
 
   // Search hint — inside the glass search pill.
-  static TextStyle searchHint(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle searchHint(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 15,
         fontWeight: FontWeight.w400,
         height: 1.2,

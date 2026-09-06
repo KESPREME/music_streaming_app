@@ -155,11 +155,11 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
         dividerColor: Colors.transparent,
         labelColor: colorScheme.onPrimary,
         unselectedLabelColor: colorScheme.onSurfaceVariant,
-        labelStyle: GoogleFonts.splineSans(
+        labelStyle: GoogleFonts.plusJakartaSans(
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
-        unselectedLabelStyle: GoogleFonts.splineSans(
+        unselectedLabelStyle: GoogleFonts.plusJakartaSans(
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
@@ -599,17 +599,17 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
         content: TextField(
           controller: nameController,
           autofocus: true,
-          style: GoogleFonts.splineSans(
+          style: GoogleFonts.plusJakartaSans(
             color: colorScheme.onSurface,
             fontSize: 16,
           ),
           decoration: InputDecoration(
             labelText: 'Playlist Name',
-            labelStyle: GoogleFonts.splineSans(
+            labelStyle: GoogleFonts.plusJakartaSans(
               color: colorScheme.onSurfaceVariant,
             ),
             hintText: 'My Awesome Mix',
-            hintStyle: GoogleFonts.splineSans(
+            hintStyle: GoogleFonts.plusJakartaSans(
               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
             enabledBorder: UnderlineInputBorder(
@@ -634,7 +634,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(
               'Cancel',
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
@@ -653,7 +653,7 @@ class _MaterialYouLibraryScreenState extends State<MaterialYouLibraryScreen>
             },
             child: Text(
               'Create',
-              style: GoogleFonts.splineSans(fontWeight: FontWeight.w600),
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
             ),
           ),
         ],

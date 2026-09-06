@@ -99,12 +99,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     Text('Explore',
-                                        style: GoogleFonts.outfit(
+                                        style: GoogleFonts.plusJakartaSans(
                                             fontSize: 20,
                                             fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 4),
                                     Text('Swipe through new music',
-                                        style: GoogleFonts.outfit(
+                                        style: GoogleFonts.plusJakartaSans(
                                             fontSize: 13,
                                             color: Colors.white
                                                 .withValues(alpha: 0.6))),
@@ -165,7 +165,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         Center(
           child: Text(
             'Could not load Discover',
-            style: GoogleFonts.outfit(color: Colors.white54),
+            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
           ),
         ),
         const SizedBox(height: 16),
@@ -182,7 +182,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
         child: Text(
           title,
-          style: GoogleFonts.splineSans(
+          style: GoogleFonts.plusJakartaSans(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -347,7 +347,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       width: 80,
                       child: Text(
                         track.artistName,
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                           color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

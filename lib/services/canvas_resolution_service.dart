@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -96,7 +97,46 @@ class CanvasResolutionService {
       }
     } catch (_) {}
 
-    // 2. Official Music Video search via InnerTube
+    // 2. Apple Music Motion Artwork (BitChord AppleMusicCanvas parity)
+    if (track.trackName.isNotEmpty) {
+      try {
+        final appleVideo = await _resolveAppleMusic(track);
+        if (appleVideo != null && appleVideo.isNotEmpty) {
+          _cache[track.id] = appleVideo;
+          return appleVideo;
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('CanvasResolutionService: Apple Music check failed: $e');
+      }
+    }
+
+    // 3. Tidal Video Cover (BitChord TidalCanvas parity: square 1280x1280 looping clips)
+    if (track.trackName.isNotEmpty) {
+      try {
+        final tidalCover = await _resolveTidalVideo(track);
+        if (tidalCover != null && tidalCover.isNotEmpty) {
+          _cache[track.id] = tidalCover;
+          return tidalCover;
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('CanvasResolutionService: Tidal check failed: $e');
+      }
+    }
+
+    // 4. Community Canvas Manifest (BitChord CommunityCanvas parity: back-catalogue loops)
+    if (track.trackName.isNotEmpty) {
+      try {
+        final communityVideo = await _resolveCommunityCanvas(track);
+        if (communityVideo != null && communityVideo.isNotEmpty) {
+          _cache[track.id] = communityVideo;
+          return communityVideo;
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('CanvasResolutionService: Community check failed: $e');
+      }
+    }
+
+    // 4. Official Music Video search via InnerTube
     // YouTube Music's track.id for songs is an Audio Track (ATV) whose video stream
     // is a static still JPEG of the album art. To get a real looping video canvas
     // (matching Spotify Canvas and Muzo discovery), we query YouTube for the
@@ -109,17 +149,16 @@ class CanvasResolutionService {
             .searchVideos(query, limit: 6)
             .timeout(const Duration(seconds: 4));
         if (videoResults.isNotEmpty) {
-          // Score candidates to strictly prefer official artist/label videos and reject
-          // lyrical, fan-made, or secondary channel uploads.
+          // Score candidates to prioritize official artist/label videos
           final scored = videoResults
               .map((v) => (video: v, score: _scoreCandidate(v, track)))
-              .where((e) => e.score >= 80 && e.video.id != track.id)
+              .where((e) => e.score >= 50)
               .toList();
 
           scored.sort((a, b) => b.score.compareTo(a.score));
 
-          // Try the highest-confidence official video candidate
-          for (final candidate in scored.take(1)) {
+          // Try up to top 3 highest-confidence official video candidates
+          for (final candidate in scored.take(3)) {
             final directStream = await InnerTubeService.instance
                 .getDirectVideoStreamUrl(candidate.video.id, preferredHeight: 360)
                 .timeout(const Duration(seconds: 5));
@@ -146,9 +185,21 @@ class CanvasResolutionService {
       }
     }
 
-    // Graceful fallback: If no real official music video exists (or only secondary lyric videos exist),
-    // do NOT return track.id (which is a static still picture) or a fan lyric video.
-    // Returning null allows ExploreFeedCard to show the centered album artwork, ambient glow, and equalizer.
+    // 3. Fallback: If search candidates failed or returned no stream, attempt direct stream from track.id
+    if (track.id.isNotEmpty && track.id.length >= 11) {
+      try {
+        final directStream = await InnerTubeService.instance
+            .getDirectVideoStreamUrl(track.id, preferredHeight: 360)
+            .timeout(const Duration(seconds: 5));
+        if (directStream != null && directStream.isNotEmpty) {
+          _cache[track.id] = directStream;
+          return directStream;
+        }
+      } catch (e) {
+        debugPrint('CanvasResolutionService: fallback to track.id failed: $e');
+      }
+    }
+
     _cache[track.id] = null;
     return null;
   }
@@ -158,7 +209,18 @@ class CanvasResolutionService {
   static int _scoreCandidate(Track candidate, Track target) {
     final cTitle = candidate.trackName.toLowerCase();
     final cArtist = candidate.artistName.toLowerCase();
+    final tTitle = target.trackName.toLowerCase();
     final tArtist = target.artistName.toLowerCase();
+
+    // CRITICAL: Strict title matching requirement (BitChord CanvasArtwork parity).
+    // A near-miss is a different song by the same artist and must be rejected outright!
+    final normCTitle = _normalizeForMatch(candidate.trackName);
+    final normTTitle = _normalizeForMatch(target.trackName);
+    if (normCTitle.isEmpty || normTTitle.isEmpty) return 0;
+    final titleMatches = normCTitle == normTTitle ||
+        normCTitle.contains(normTTitle) ||
+        normTTitle.contains(normCTitle);
+    if (!titleMatches) return 0;
 
     int score = 100;
 
@@ -411,5 +473,327 @@ class CanvasResolutionService {
     }
 
     walk(0, moovBytes.length);
+  }
+
+  // ── BitChord Canvas Multi-Source Providers ──────────────────────────
+
+  static String _normalizeForMatch(String raw) {
+    return raw
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static List<String> _splitArtists(String raw) {
+    final sep = RegExp(
+      r'(?:\s*,\s*|\s*&\s*|\s+×\s+|\s+x\s+|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)',
+      caseSensitive: false,
+    );
+    return raw
+        .split(sep)
+        .map((a) => _normalizeForMatch(a))
+        .where((a) => a.isNotEmpty)
+        .toList();
+  }
+
+  static bool _matchesTrack(
+    String title,
+    List<String> artists,
+    String wantTitle,
+    String wantArtist,
+  ) {
+    final normTitle = _normalizeForMatch(title);
+    final normWantTitle = _normalizeForMatch(wantTitle);
+    if (normTitle.isEmpty || normWantTitle.isEmpty) return false;
+    final titleOk = normTitle == normWantTitle ||
+        normTitle.contains(normWantTitle) ||
+        normWantTitle.contains(normTitle);
+
+    final wantArtists = _splitArtists(wantArtist);
+    final artistOk = wantArtists.isEmpty ||
+        artists.isEmpty ||
+        wantArtists.any((w) => artists.any((a) => a.contains(w) || w.contains(a)));
+
+    return titleOk && artistOk;
+  }
+
+  // Tidal Video Covers (Square 1280x1280 looping clips)
+  static const String _tidalEmbedToken = 'vNVdglQOjFJJGG2U';
+
+  Future<String?> _resolveTidalVideo(Track track) async {
+    final query = '${track.artistName} ${track.trackName}'.trim();
+    final url = Uri.parse(
+      'https://api.tidal.com/v1/search?query=${Uri.encodeComponent(query)}&limit=10&types=TRACKS&countryCode=US',
+    );
+    final response = await http.get(url, headers: {
+      'X-Tidal-Token': _tidalEmbedToken,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    }).timeout(const Duration(seconds: 3));
+
+    if (response.statusCode != 200) return null;
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final tracksObj = json['tracks'] as Map<String, dynamic>?;
+    final items = tracksObj?['items'] as List<dynamic>?;
+    if (items == null) return null;
+
+    for (final item in items) {
+      if (item is! Map<String, dynamic>) continue;
+      final tTitle = item['title'] as String? ?? '';
+      final artistsList = (item['artists'] as List<dynamic>?)
+              ?.map((a) => (a is Map<String, dynamic> ? a['name'] as String? : null) ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList() ??
+          [];
+
+      if (!_matchesTrack(tTitle, artistsList, track.trackName, track.artistName)) {
+        continue;
+      }
+
+      final albumObj = item['album'] as Map<String, dynamic>?;
+      final videoCover = albumObj?['videoCover'] as String?;
+      if (videoCover != null && videoCover.isNotEmpty) {
+        final videoUrl =
+            'https://resources.tidal.com/videos/${videoCover.replaceAll('-', '/')}/1280x1280.mp4';
+        return videoUrl;
+      }
+    }
+    return null;
+  }
+
+  // Community Canvas Manifest Cache (30 min TTL)
+  static List<Map<String, dynamic>>? _communityManifest;
+  static DateTime? _communityFetchedAt;
+
+  Future<String?> _resolveCommunityCanvas(Track track) async {
+    final now = DateTime.now();
+    if (_communityManifest == null ||
+        _communityFetchedAt == null ||
+        now.difference(_communityFetchedAt!).inMinutes > 30) {
+      try {
+        final res = await http
+            .get(Uri.parse('https://vivimusicanvas.mkmdevilmi.workers.dev/canvas.json'))
+            .timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200) {
+          final decoded = jsonDecode(res.body);
+          final items = (decoded is Map ? decoded['items'] : decoded) as List?;
+          if (items != null) {
+            _communityManifest = items.cast<Map<String, dynamic>>();
+            _communityFetchedAt = now;
+          }
+        }
+      } catch (_) {}
+    }
+
+    final manifest = _communityManifest;
+    if (manifest == null || manifest.isEmpty) return null;
+
+    final wantTitle = _normalizeForMatch(track.trackName);
+    final wantArtist = _normalizeForMatch(track.artistName);
+    if (wantTitle.isEmpty) return null;
+
+    for (final entry in manifest) {
+      final s = _normalizeForMatch(entry['song']?.toString() ?? '');
+      final a = _normalizeForMatch(entry['artist']?.toString() ?? '');
+      final url = entry['url']?.toString();
+      if (url == null || url.isEmpty) continue;
+
+      final titleOk = s.isNotEmpty &&
+          (wantTitle == s || wantTitle.contains(s) || s.contains(wantTitle));
+      final artistOk = a.isEmpty ||
+          wantArtist.isEmpty ||
+          wantArtist.contains(a) ||
+          a.contains(wantArtist);
+
+      if (titleOk && artistOk) {
+        return url;
+      }
+    }
+    return null;
+  }
+
+  // ── Apple Music Motion Artwork (BitChord AppleMusicCanvas parity) ──
+  static String? _appleToken;
+  static DateTime? _appleTokenExpiresAt;
+  static DateTime? _appleRetryAfter;
+  static final Set<String> _appleRejectedTokens = {};
+  static const String _canvasUa =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+  Future<String?> _getAppleToken() async {
+    final now = DateTime.now();
+    if (_appleToken != null &&
+        _appleTokenExpiresAt != null &&
+        now.isBefore(_appleTokenExpiresAt!.subtract(const Duration(minutes: 1)))) {
+      return _appleToken;
+    }
+    if (_appleRetryAfter != null && now.isBefore(_appleRetryAfter!)) {
+      return null;
+    }
+
+    try {
+      final browseRes = await http.get(
+        Uri.parse('https://music.apple.com/us/browse'),
+        headers: {'User-Agent': _canvasUa},
+      ).timeout(const Duration(seconds: 4));
+      if (browseRes.statusCode != 200) return null;
+
+      final scriptMatches = RegExp(r'/assets/index(?:-legacy)?[~-][A-Za-z0-9_-]+\.js')
+          .allMatches(browseRes.body)
+          .map((m) => m.group(0)!)
+          .toSet();
+
+      for (final path in scriptMatches) {
+        final jsRes = await http.get(
+          Uri.parse('https://music.apple.com$path'),
+          headers: {'User-Agent': _canvasUa},
+        ).timeout(const Duration(seconds: 4));
+        if (jsRes.statusCode != 200) continue;
+
+        final jwtMatches = RegExp(r'ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+')
+            .allMatches(jsRes.body)
+            .map((m) => m.group(0)!)
+            .toSet();
+
+        String? bestToken;
+        DateTime? bestExp;
+
+        for (final jwt in jwtMatches) {
+          if (_appleRejectedTokens.contains(jwt)) continue;
+          try {
+            final parts = jwt.split('.');
+            if (parts.length != 3) continue;
+            final header = utf8.decode(base64Url.decode(base64Url.normalize(parts[0])));
+            final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+            final isWebPlay = header.contains('WebPlayKid') || payload.contains('AMPWebPlay');
+
+            final expMatch = RegExp(r'"exp"\s*:\s*(\d+)').firstMatch(payload);
+            final expSeconds = expMatch != null ? int.tryParse(expMatch.group(1)!) : null;
+            final expDate = expSeconds != null
+                ? DateTime.fromMillisecondsSinceEpoch(expSeconds * 1000)
+                : now.add(const Duration(hours: 2));
+
+            if (expDate.isAfter(now)) {
+              if (isWebPlay) {
+                bestToken = jwt;
+                bestExp = expDate;
+                break;
+              } else if (bestToken == null) {
+                bestToken = jwt;
+                bestExp = expDate;
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (bestToken != null) {
+          _appleToken = bestToken;
+          _appleTokenExpiresAt = bestExp ?? now.add(const Duration(hours: 2));
+          return bestToken;
+        }
+      }
+    } catch (_) {
+      _appleRetryAfter = now.add(const Duration(minutes: 15));
+    }
+    return null;
+  }
+
+  Future<String?> _resolveAppleMusic(Track track) async {
+    final token = await _getAppleToken();
+    if (token == null) return null;
+
+    final query = '${track.artistName} ${track.trackName}'.trim();
+    final searchUrl = Uri.parse(
+      'https://amp-api.music.apple.com/v1/catalog/us/search?term=${Uri.encodeComponent(query)}&types=songs&limit=5&extend=editorialVideo&include=albums',
+    );
+
+    final res = await http.get(searchUrl, headers: {
+      'Authorization': 'Bearer $token',
+      'Origin': 'https://music.apple.com',
+      'Referer': 'https://music.apple.com/',
+      'User-Agent': _canvasUa,
+    }).timeout(const Duration(seconds: 4));
+
+    if (res.statusCode == 401) {
+      _appleRejectedTokens.add(token);
+      _appleToken = null;
+      return null;
+    }
+    if (res.statusCode != 200) return null;
+
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    final songs = json['results']?['songs']?['data'] as List<dynamic>?;
+    if (songs == null || songs.isEmpty) return null;
+
+    for (final song in songs) {
+      if (song is! Map<String, dynamic>) continue;
+      final attrs = song['attributes'] as Map<String, dynamic>?;
+      if (attrs == null) continue;
+
+      final sName = attrs['name'] as String? ?? '';
+      final normSName = _normalizeForMatch(sName);
+      final normWantName = _normalizeForMatch(track.trackName);
+      if (normSName.isEmpty || normWantName.isEmpty) continue;
+      if (normSName != normWantName &&
+          !normSName.contains(normWantName) &&
+          !normWantName.contains(normSName)) {
+        continue;
+      }
+
+      // Check inline editorialVideo
+      final inlineVideo = attrs['editorialVideo'] as Map<String, dynamic>?;
+      if (inlineVideo != null) {
+        final url = _extractMotionUrl(inlineVideo);
+        if (url != null) return url;
+      }
+
+      // Resolve album
+      String? albumId;
+      final albums = song['relationships']?['albums']?['data'] as List<dynamic>?;
+      if (albums != null && albums.isNotEmpty) {
+        albumId = (albums.first as Map<String, dynamic>?)?['id']?.toString();
+      }
+      if (albumId == null && attrs['url'] != null) {
+        final match = RegExp(r'/album/(?:[^/]+/)?(\d+)').firstMatch(attrs['url'].toString());
+        albumId = match?.group(1);
+      }
+
+      if (albumId != null && !albumId.startsWith('pl.')) {
+        final albumUrl = Uri.parse(
+          'https://amp-api.music.apple.com/v1/catalog/us/albums/$albumId?extend=editorialVideo',
+        );
+        final aRes = await http.get(albumUrl, headers: {
+          'Authorization': 'Bearer $token',
+          'Origin': 'https://music.apple.com',
+          'Referer': 'https://music.apple.com/',
+          'User-Agent': _canvasUa,
+        }).timeout(const Duration(seconds: 4));
+
+        if (aRes.statusCode == 200) {
+          final aJson = jsonDecode(aRes.body) as Map<String, dynamic>;
+          final aData = (aJson['data'] as List<dynamic>?)?.firstOrNull as Map<String, dynamic>?;
+          final aAttrs = aData?['attributes'] as Map<String, dynamic>?;
+          final aVideo = aAttrs?['editorialVideo'] as Map<String, dynamic>?;
+          if (aVideo != null) {
+            final url = _extractMotionUrl(aVideo);
+            if (url != null) return url;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  static String? _extractMotionUrl(Map<String, dynamic> video) {
+    String? link(String key) {
+      final asset = video[key] as Map<String, dynamic>?;
+      if (asset == null) return null;
+      return (asset['video'] ?? asset['videoUrl'] ?? asset['hlsUrl'] ?? asset['url'])?.toString();
+    }
+
+    final square = link('motionDetailSquare') ?? link('motionSquareVideo1x1');
+    final raw = link('motionDetailRaw');
+    final tall = link('motionDetailTall') ?? link('motionTallVideo3x4');
+    return square ?? raw ?? tall;
   }
 }

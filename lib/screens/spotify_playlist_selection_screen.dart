@@ -78,7 +78,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                                   children: [
                                     Text(
                                       name,
-                                      style: GoogleFonts.splineSans(
+                                      style: GoogleFonts.plusJakartaSans(
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 16,
@@ -86,7 +86,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                                     ),
                                     Text(
                                       '$trackCount tracks',
-                                      style: GoogleFonts.splineSans(
+                                      style: GoogleFonts.plusJakartaSans(
                                         color: Colors.white54,
                                         fontSize: 12,
                                       ),
@@ -141,7 +141,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   "Select Playlist",
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                     color: Colors.white,

@@ -90,7 +90,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                             title: Text(
                               'Your Playlists',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontWeight: FontWeight.bold,
                                 color: isDark ? Colors.white : Colors.black,
                                 fontSize: 20,
@@ -122,7 +122,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                              const SizedBox(height: 16),
                             Text(
                               'No playlists yet',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white.withValues(alpha: 0.6), 
                                 fontSize: 18,
                                 fontWeight: FontWeight.w500
@@ -131,7 +131,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                             const SizedBox(height: 8),
                             Text(
                               'Create or import playlists to get started',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 14
                               ),
@@ -231,7 +231,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                 children: [
                   Text(
                     playlist.name,
-                    style: GoogleFonts.splineSans(
+                    style: GoogleFonts.plusJakartaSans(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -242,7 +242,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                   const SizedBox(height: 4),
                   Text(
                     '${playlist.tracks.length} tracks',
-                    style: GoogleFonts.splineSans(
+                    style: GoogleFonts.plusJakartaSans(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                     ),
@@ -270,7 +270,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: Text('Create Playlist', style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Create Playlist', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold)),
         content: TextField(
           controller: nameController,
           style: const TextStyle(color: Colors.white),
@@ -314,7 +314,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.edit_rounded, color: Colors.white),
-              title: Text('Rename', style: GoogleFonts.splineSans(color: Colors.white)),
+              title: Text('Rename', style: GoogleFonts.plusJakartaSans(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 _showRenamePlaylistDialog(context, playlist);
@@ -322,7 +322,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.download_rounded, color: Colors.white),
-              title: Text('Download', style: GoogleFonts.splineSans(color: Colors.white)),
+              title: Text('Download', style: GoogleFonts.plusJakartaSans(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 final musicProvider = Provider.of<MusicProvider>(context, listen: false);
@@ -338,7 +338,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.delete_rounded, color: Colors.redAccent),
-              title: Text('Delete', style: GoogleFonts.splineSans(color: Colors.redAccent)),
+              title: Text('Delete', style: GoogleFonts.plusJakartaSans(color: Colors.redAccent)),
               onTap: () {
                 _showDeleteConfirmation(context, playlist);
               },

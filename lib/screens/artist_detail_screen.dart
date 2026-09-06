@@ -209,7 +209,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                        Text(
                          _error!,
                          textAlign: TextAlign.center,
-                         style: GoogleFonts.splineSans(
+                         style: GoogleFonts.plusJakartaSans(
                            color: Colors.white70,
                            fontSize: 16,
                            height: 1.5,
@@ -261,7 +261,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
         padding: const EdgeInsets.fromLTRB(20, 30, 20, 10),
         child: Text(
           title,
-          style: GoogleFonts.splineSans(
+          style: GoogleFonts.plusJakartaSans(
             fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white
           ),
         ),
@@ -375,7 +375,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                          name,
                          maxLines: 2,
                          overflow: TextOverflow.ellipsis,
-                         style: GoogleFonts.splineSans(
+                         style: GoogleFonts.plusJakartaSans(
                            color: Colors.white.withValues(alpha: 0.9), 
                            fontWeight: FontWeight.w600, 
                            fontSize: 13,
@@ -428,7 +428,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 centerTitle: false,
                 title: Text(
                   widget.artistName,
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontSize: 16 + (8 * percentage), // Smooth scale 16 -> 24

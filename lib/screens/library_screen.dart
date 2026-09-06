@@ -78,7 +78,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               item['title'],
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
                 letterSpacing: -0.2,
@@ -90,7 +90,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               item['subtitle'] as String,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.outfit(
+              style: GoogleFonts.plusJakartaSans(
                 color: Colors.white.withValues(alpha: 0.50),
                 fontSize: 12,
               ),
@@ -133,7 +133,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
                             title: Text(
                               'Your Library',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 fontSize: 20 + (10 * percentage),
@@ -218,7 +218,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             ),
                             child: Text(
                               label,
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.72),
                                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                                 fontSize: 13.5,
@@ -321,7 +321,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (playlists.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: Center(child: Text("No playlists yet", style: GoogleFonts.splineSans(color: Colors.white54))),
+        child: Center(child: Text("No playlists yet", style: GoogleFonts.plusJakartaSans(color: Colors.white54))),
       );
     }
     return SliverPadding(
@@ -379,9 +379,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(playlist.name, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(playlist.name, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
-                  Text('${playlist.tracks.length} tracks', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 12)),
+                  Text('${playlist.tracks.length} tracks', style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12)),
                 ],
               ),
             ),
@@ -394,7 +394,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget _buildSongsContent(BuildContext context, MusicProvider musicProvider) {
     final tracks = musicProvider.recentlyPlayed;
     if (tracks.isEmpty) {
-      return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text("No recently played songs", style: GoogleFonts.splineSans(color: Colors.white54))));
+      return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text("No recently played songs", style: GoogleFonts.plusJakartaSans(color: Colors.white54))));
     }
     return SliverList(
       delegate: SliverChildBuilderDelegate(
@@ -414,15 +414,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
         final tracks = snapshot.data!;
-        if (tracks.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text("No downloaded songs", style: GoogleFonts.splineSans(color: Colors.white54))));
+        if (tracks.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text("No downloaded songs", style: GoogleFonts.plusJakartaSans(color: Colors.white54))));
         return SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
               final track = tracks[index];
               return ListTile(
                 leading: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(track.albumArtUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.music_note))),
-                title: Text(track.trackName, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(track.artistName, style: GoogleFonts.outfit(color: Colors.white54), maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(track.trackName, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(track.artistName, style: GoogleFonts.plusJakartaSans(color: Colors.white54), maxLines: 1, overflow: TextOverflow.ellipsis),
                 onTap: () => musicProvider.playOfflineTrack(track, contextList: tracks),
                 trailing: IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.white38), onPressed: () async { await musicProvider.deleteDownloadedTrack(track.id); if (mounted) setState(() {}); }),
               );
@@ -440,7 +440,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: Colors.white)));
         final artists = snapshot.data ?? [];
-        if (artists.isEmpty) return SliverFillRemaining(child: Center(child: Text("No recommendations found", style: GoogleFonts.splineSans(color: Colors.white54))));
+        if (artists.isEmpty) return SliverFillRemaining(child: Center(child: Text("No recommendations found", style: GoogleFonts.plusJakartaSans(color: Colors.white54))));
         return SliverPadding(
           padding: const EdgeInsets.all(20),
           sliver: SliverGrid(
@@ -473,7 +473,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             child: CircleAvatar(radius: 42, backgroundImage: NetworkImage(artist.albumArtUrl), onBackgroundImageError: (_, __) {}, backgroundColor: Colors.white10),
                           ),
                           const SizedBox(height: 14),
-                          Text(artist.artistName, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          Text(artist.artistName, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
@@ -497,7 +497,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Create Playlist', style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w800)),
+        title: Text('Create Playlist', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w800)),
         content: TextField(
           controller: nameController,
           autofocus: true,
@@ -542,8 +542,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               children: [
                 Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 8),
-                ListTile(leading: const Icon(Icons.edit_rounded, color: Colors.white), title: Text('Rename', style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); _showRenamePlaylistDialog(context, playlist); }),
-                ListTile(leading: const Icon(Icons.delete_rounded, color: Colors.redAccent), title: Text('Delete', style: GoogleFonts.splineSans(color: Colors.redAccent, fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); _showDeleteConfirmation(context, playlist); }),
+                ListTile(leading: const Icon(Icons.edit_rounded, color: Colors.white), title: Text('Rename', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); _showRenamePlaylistDialog(context, playlist); }),
+                ListTile(leading: const Icon(Icons.delete_rounded, color: Colors.redAccent), title: Text('Delete', style: GoogleFonts.plusJakartaSans(color: Colors.redAccent, fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); _showDeleteConfirmation(context, playlist); }),
               ],
             ),
           ),

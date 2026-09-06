@@ -120,7 +120,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                   titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                                   title: Text(
                                     'Downloaded',
-                                    style: GoogleFonts.splineSans(
+                                    style: GoogleFonts.plusJakartaSans(
                                       fontWeight: FontWeight.bold,
                                       color: isDark ? Colors.white : Colors.black,
                                       fontSize: 20,
@@ -147,7 +147,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                   const SizedBox(height: 16),
                                   Text(
                                     'No downloaded songs yet',
-                                    style: GoogleFonts.splineSans(
+                                    style: GoogleFonts.plusJakartaSans(
                                       color: Colors.white.withValues(alpha: 0.6),
                                       fontSize: 18,
                                       fontWeight: FontWeight.w500,
@@ -156,7 +156,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                   const SizedBox(height: 8),
                                   Text(
                                     'Download songs to listen offline',
-                                    style: GoogleFonts.splineSans(
+                                    style: GoogleFonts.plusJakartaSans(
                                       color: Colors.white.withValues(alpha: 0.4),
                                       fontSize: 14,
                                     ),
@@ -173,7 +173,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                                 child: Text(
                                   'Downloading',
-                                  style: GoogleFonts.splineSans(
+                                  style: GoogleFonts.plusJakartaSans(
                                     color: Colors.white,
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -200,7 +200,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
                                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 8), // More top padding
                                 child: Text(
                                   'Downloaded',
-                                  style: GoogleFonts.splineSans(
+                                  style: GoogleFonts.plusJakartaSans(
                                     color: Colors.white,
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -249,7 +249,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
       ),
       title: Text(
         track.trackName,
-        style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w600),
+        style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -266,7 +266,7 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
           const SizedBox(height: 4),
           Text(
             '${(progress * 100).toStringAsFixed(0)}%',
-            style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
+            style: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
           ),
         ],
       ),
@@ -299,13 +299,13 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
       ),
       title: Text(
         track.trackName,
-        style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w500),
+        style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w500),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
         track.artistName,
-        style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+        style: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

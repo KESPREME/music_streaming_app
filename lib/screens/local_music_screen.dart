@@ -119,7 +119,7 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 50),
                             title: Text(
                               'Local Music',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontWeight: FontWeight.bold,
                                 color: isDark ? Colors.white : Colors.black,
                                 fontSize: 20,
@@ -159,7 +159,7 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
                           indicatorColor: const Color(0xFFEA80FC), // Purple Accent
                           labelColor: const Color(0xFFEA80FC),
                           unselectedLabelColor: Colors.white54,
-                          labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.bold),
+                          labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
                           indicatorSize: TabBarIndicatorSize.label,
                           dividerColor: Colors.transparent,
                           tabs: const [
@@ -222,8 +222,8 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
           collapsedIconColor: Colors.white54,
           iconColor: const Color(0xFFEA80FC),
           leading: const Icon(Icons.folder_open_rounded, color: Color(0xFFEA80FC)),
-          title: Text(folderName, style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.w500)),
-          subtitle: Text('${tracks.length} tracks', style: GoogleFonts.splineSans(color: Colors.white54, fontSize: 12)),
+          title: Text(folderName, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w500)),
+          subtitle: Text('${tracks.length} tracks', style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12)),
           children: sortedTracksInFolder.map((track) {
             final isPlaying = musicProvider.currentTrack?.id == track.id && musicProvider.isPlaying;
             return TrackTile(
@@ -246,12 +246,12 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
           const SizedBox(height: 20),
           Text(
             'No Local Music Found',
-            style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.6), fontSize: 18, fontWeight: FontWeight.bold),
+            style: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.6), fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Text(
             'Tap the folder icon (+) to add music folders.',
-            style: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
+            style: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.4), fontSize: 14),
           ),
           const SizedBox(height: 30),
           ElevatedButton.icon(
@@ -288,7 +288,7 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
                    // Add others as needed
                  ])
                  ListTile(
-                    title: Text(item.value, style: GoogleFonts.splineSans(color: Colors.white)),
+                    title: Text(item.value, style: GoogleFonts.plusJakartaSans(color: Colors.white)),
                     leading: Icon(Icons.sort, color: currentCriteria == item.key ? const Color(0xFFEA80FC) : Colors.white54),
                     onTap: () {
                       Navigator.pop(context);

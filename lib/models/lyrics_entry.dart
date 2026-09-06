@@ -39,14 +39,20 @@ class LyricsEntry implements Comparable<LyricsEntry> {
   /// Empty entry for list header
   static const LyricsEntry headEntry = LyricsEntry(timeMs: 0, text: '');
   
-  /// Check if this is just a musical break (empty or just symbols)
+  /// Check if this is just a musical break (empty or just symbols/dots)
   bool get isMusicalBreak {
     final trimmed = text.trim();
     return trimmed.isEmpty || 
            trimmed == '♪' || 
            trimmed == '♫' ||
-           RegExp(r'^[♪♫\s]+$').hasMatch(trimmed);
+           trimmed == '• • •' ||
+           trimmed == '...' ||
+           trimmed.startsWith('♪') ||
+           RegExp(r'^[♪♫•\.\s]+$').hasMatch(trimmed);
   }
+
+  /// Whether this entry carries syllable/word-level timing
+  bool get isWordSynced => words != null && words!.isNotEmpty;
   
   @override
   int compareTo(LyricsEntry other) => timeMs.compareTo(other.timeMs);

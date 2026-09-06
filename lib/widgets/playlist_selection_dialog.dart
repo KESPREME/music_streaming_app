@@ -53,7 +53,7 @@ Future<void> showPlaylistSelectionDialog(
                       padding: const EdgeInsets.only(bottom: 20),
                       child: Text(
                         'Add to Playlist',
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                           fontWeight: FontWeight.bold,
                           fontSize: 20,
                           color: Theme.of(context).colorScheme.onSurface,
@@ -111,7 +111,7 @@ Future<void> showPlaylistSelectionDialog(
                         padding: const EdgeInsets.all(30.0),
                         child: Text(
                           'No playlists found.',
-                          style: GoogleFonts.splineSans(
+                          style: GoogleFonts.plusJakartaSans(
                             color: Theme.of(
                               context,
                             ).colorScheme.onSurfaceVariant,
@@ -229,7 +229,7 @@ Widget _buildGlassOption(
                 children: [
                   Text(
                     label,
-                    style: GoogleFonts.splineSans(
+                    style: GoogleFonts.plusJakartaSans(
                       color: colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
@@ -238,7 +238,7 @@ Widget _buildGlassOption(
                   if (subtitle != null)
                     Text(
                       subtitle,
-                      style: GoogleFonts.splineSans(
+                      style: GoogleFonts.plusJakartaSans(
                         color: colorScheme.onSurfaceVariant,
                         fontSize: 13,
                       ),
@@ -273,7 +273,7 @@ Widget _buildGlassInputDialog(
         children: [
           Text(
             'New Playlist',
-            style: GoogleFonts.splineSans(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: colorScheme.onSurface,
@@ -286,7 +286,7 @@ Widget _buildGlassInputDialog(
             child: TextField(
               controller: controller,
               autofocus: true,
-              style: GoogleFonts.splineSans(color: colorScheme.onSurface),
+              style: GoogleFonts.plusJakartaSans(color: colorScheme.onSurface),
               cursorColor: colorScheme.primary,
               onSubmitted: (value) async {
                 if (value.trim().isEmpty) {
@@ -325,7 +325,7 @@ Widget _buildGlassInputDialog(
               },
               decoration: InputDecoration(
                 hintText: 'Playlist Name',
-                hintStyle: GoogleFonts.splineSans(
+                hintStyle: GoogleFonts.plusJakartaSans(
                   color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 ),
                 filled: true,
@@ -358,7 +358,7 @@ Widget _buildGlassInputDialog(
                 },
                 child: Text(
                   'Cancel',
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -427,7 +427,7 @@ Widget _buildGlassInputDialog(
                 ),
                 child: Text(
                   'Create',
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     color: colorScheme.onPrimary,
                     fontWeight: FontWeight.bold,
                   ),

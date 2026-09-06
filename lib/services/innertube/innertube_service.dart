@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_exp;
 import '../auth_service.dart';
 import '../../models/track.dart';
 import '../../models/discover_models.dart';
@@ -70,6 +71,8 @@ class InnerTubeService {
     if (url.contains('c=ANDROID')) {
       return 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
     }
+    if (url.contains('c=WEB_REMIX')) return _webRemixUserAgent;
+    if (url.contains('c=TVHTML5')) return _tvUserAgent;
     return null;
   }
 
@@ -827,16 +830,45 @@ class InnerTubeService {
   }
 
   /// Resolves a direct, playable video stream URL for [videoId] using InnerTube client ladder
-  /// (VISIONOS -> ANDROID_VR -> TVHTML5). Does NOT scrape youtube.com/watch, avoiding rate limits.
+  /// (webRemix+poToken -> VISIONOS -> ANDROID_VR -> TVHTML5 -> YoutubeExplode).
   Future<String?> getDirectVideoStreamUrl(
     String videoId, {
     int preferredHeight = 480,
   }) async {
+    // 1. Primary: webRemix with PoToken (consistent with getDirectAudioStreamUrl)
+    try {
+      await _ensureVisitorData();
+      await _getSignatureTimestamp();
+      final pots = await PoTokenWebGenerator.instance.generateForVideo(videoId);
+      final playerResponse = await _getPlayerWithClient(
+        videoId,
+        YouTubeClientType.webRemix,
+        poToken: pots.playerRequest,
+      );
+      final status = playerResponse['playabilityStatus'];
+      if (status?['status'] == 'OK') {
+        final streamingData = playerResponse['streamingData'];
+        if (streamingData != null) {
+          final url = _extractBestVideoStream(streamingData, preferredHeight);
+          if (url != null) {
+            final sep = url.contains('?') ? '&' : '?';
+            debugPrint('InnerTubeService: video stream resolved via webRemix+poToken');
+            return '$url${sep}pot=${Uri.encodeComponent(pots.streaming)}';
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: webRemix video stream failed: $e');
+      }
+    }
+
+    // 2. Token-less client ladder
     const ladder = <YouTubeClientType>[
-      YouTubeClientType.ios,
       YouTubeClientType.visionos,
       YouTubeClientType.androidVr,
       YouTubeClientType.tvEmbedded,
+      YouTubeClientType.ios,
     ];
     for (final client in ladder) {
       try {
@@ -858,11 +890,43 @@ class InnerTubeService {
         }
       }
     }
+
+    // 3. Resilient fallback via YoutubeExplode
+    try {
+      final yt = yt_exp.YoutubeExplode();
+      try {
+        final manifest = await yt.videos.streamsClient.getManifest(videoId);
+        final muxed = manifest.muxed.sortByVideoQuality();
+        if (muxed.isNotEmpty) {
+          final chosen = muxed.firstWhere(
+            (s) => s.videoQuality.index <= 4, // 360p - 720p range
+            orElse: () => muxed.first,
+          );
+          debugPrint('InnerTubeService: video stream resolved via YoutubeExplode muxed');
+          return chosen.url.toString();
+        }
+        final videoOnly = manifest.videoOnly
+            .where((s) => s.container.name == 'mp4' || s.container.name == 'webm')
+            .toList();
+        if (videoOnly.isNotEmpty) {
+          debugPrint('InnerTubeService: video stream resolved via YoutubeExplode video-only');
+          return videoOnly.first.url.toString();
+        }
+      } finally {
+        yt.close();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: YoutubeExplode fallback failed: $e');
+      }
+    }
+
     return null;
   }
 
   /// Extracts the best looping video stream from InnerTube streamingData.
-  /// Prefers lightweight 360p or 480p MP4 formats (hardware-decoded, low bandwidth).
+  /// Prefers lightweight 360p or 480p MP4 formats (hardware-decoded, low bandwidth),
+  /// falling back to WebM if MP4 is unavailable.
   String? _extractBestVideoStream(
       Map<String, dynamic> streamingData, int preferredHeight) {
     // 1. Check adaptive formats (video-only)
@@ -870,12 +934,17 @@ class InnerTubeService {
     if (adaptiveFormats != null && adaptiveFormats.isNotEmpty) {
       final videoFormats = adaptiveFormats.where((f) {
         final mimeType = f['mimeType'] as String?;
-        return mimeType != null && mimeType.startsWith('video/mp4') && f['url'] != null;
+        return mimeType != null &&
+            (mimeType.startsWith('video/mp4') || mimeType.startsWith('video/webm')) &&
+            f['url'] != null;
       }).toList();
 
       if (videoFormats.isNotEmpty) {
-        // Sort by height closest to preferredHeight (e.g. 360p/480p)
+        // Sort: prefer mp4 over webm, then closest height to preferredHeight
         videoFormats.sort((a, b) {
+          final isMp4A = (a['mimeType'] as String? ?? '').startsWith('video/mp4') ? 0 : 1;
+          final isMp4B = (b['mimeType'] as String? ?? '').startsWith('video/mp4') ? 0 : 1;
+          if (isMp4A != isMp4B) return isMp4A.compareTo(isMp4B);
           final hA = (a['height'] as int? ?? 360) - preferredHeight;
           final hB = (b['height'] as int? ?? 360) - preferredHeight;
           return hA.abs().compareTo(hB.abs());
@@ -889,11 +958,16 @@ class InnerTubeService {
     if (formats != null && formats.isNotEmpty) {
       final videoFormats = formats.where((f) {
         final mimeType = f['mimeType'] as String?;
-        return mimeType != null && mimeType.startsWith('video/mp4') && f['url'] != null;
+        return mimeType != null &&
+            (mimeType.startsWith('video/mp4') || mimeType.startsWith('video/webm')) &&
+            f['url'] != null;
       }).toList();
 
       if (videoFormats.isNotEmpty) {
         videoFormats.sort((a, b) {
+          final isMp4A = (a['mimeType'] as String? ?? '').startsWith('video/mp4') ? 0 : 1;
+          final isMp4B = (b['mimeType'] as String? ?? '').startsWith('video/mp4') ? 0 : 1;
+          if (isMp4A != isMp4B) return isMp4A.compareTo(isMp4B);
           final hA = (a['height'] as int? ?? 360) - preferredHeight;
           final hB = (b['height'] as int? ?? 360) - preferredHeight;
           return hA.abs().compareTo(hB.abs());

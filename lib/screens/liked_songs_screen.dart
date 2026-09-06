@@ -90,7 +90,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                             title: Text(
                               'Liked Songs',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontWeight: FontWeight.bold,
                                 color: isDark ? Colors.white : Colors.black,
                                 fontSize: 20, // Slightly smaller for pinned state app bar
@@ -146,7 +146,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                             const SizedBox(height: 16),
                             Text(
                               'Songs you like will appear here',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white.withValues(alpha: 0.6),
                                 fontSize: 18, 
                                 fontWeight: FontWeight.w500
@@ -155,7 +155,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                             const SizedBox(height: 8),
                             Text(
                               'Tap the heart icon to save music.',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 14
                               ),

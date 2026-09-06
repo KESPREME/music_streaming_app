@@ -46,7 +46,7 @@ void showLiquidSnackBar(BuildContext context, String message, {bool isError = fa
                 Expanded(
                   child: Text(
                     message,
-                    style: GoogleFonts.splineSans(
+                    style: GoogleFonts.plusJakartaSans(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,

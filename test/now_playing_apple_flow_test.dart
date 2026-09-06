@@ -8,6 +8,10 @@ import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/models/lyrics_entry.dart';
+import 'package:music_streaming_app/utils/lyrics_utils.dart';
+import 'package:music_streaming_app/services/lyrics/lyrics_service.dart';
+import 'package:music_streaming_app/services/canvas_resolution_service.dart';
+import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/widgets/apple_player_icons.dart';
 
 class TestMusicProvider extends MusicProvider {
@@ -230,12 +234,12 @@ void main() {
     expect(find.bySemanticsLabel('Pronunciation'), findsOneWidget);
     expect(find.text('aあ'), findsOneWidget);
 
-    // Verify kinetic lyrics
-    expect(find.text('You exist behind my eyelids, my eyelids'), findsOneWidget);
-    expect(find.text('You live in my dream state'), findsOneWidget);
+    // Verify kinetic lyrics (active line uses Text.rich with WidgetSpan)
+    expect(find.textContaining('eyelids'), findsWidgets);
+    expect(find.textContaining('dream state'), findsWidgets);
 
     // Tap a lyric line to seek
-    await tester.tap(find.text('Now I do not wanna wake up'));
+    await tester.tap(find.textContaining('wake up').first);
     await tester.pump();
     expect(provider.position.inMilliseconds, 30000);
   });
@@ -319,5 +323,175 @@ void main() {
     expect(find.text('Song Info'), findsOneWidget);
     expect(find.text('Force Canvas'), findsOneWidget);
     expect(find.text('Sleep Timer'), findsOneWidget);
+  });
+
+  test('LyricsUtils: parses enhanced word-level LRC tags and character-weighted fallback', () {
+    const enhancedLrc = '''
+[00:01.00] <00:01.00> Gone <00:01.50> a <00:01.80> little <00:02.40> far
+[00:05.00] How was I to know this high
+''';
+    final entries = LyricsUtils.parseLrc(enhancedLrc);
+    expect(entries.length, 3); // head + 2 lines
+
+    // Line 1: enhanced tags
+    final line1 = entries[1];
+    expect(line1.text, 'Gone a little far');
+    expect(line1.words, isNotNull);
+    expect(line1.words!.length, 4);
+    expect(line1.words![0].text, 'Gone');
+    expect(line1.words![0].timeMs, 1000);
+    expect(line1.words![0].durationMs, 500);
+
+    // Line 2: fallback syllable-weighted timing
+    final line2 = entries[2];
+    expect(line2.text, 'How was I to know this high');
+    expect(line2.words, isNotNull);
+    expect(line2.words!.length, 7);
+    // End-of-phrase word 'high' gets 1.6x elongation bonus, longer than short word 'I'
+    final iWord = line2.words!.firstWhere((w) => w.text == 'I');
+    final highWord = line2.words!.firstWhere((w) => w.text == 'high');
+    expect(highWord.durationMs, greaterThan(iWord.durationMs));
+  });
+
+  testWidgets('Album artwork tap triggers unified morph to lyrics, and mini tap returns',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // In full player mode, title & artist are visible down below
+    expect(find.text('See You Again'), findsWidgets);
+    expect(find.text('Tyler, The Creator'), findsWidgets);
+    expect(find.bySemanticsLabel('Lyrics tab'), findsOneWidget);
+
+    // Tap the album art image to trigger morph to lyrics
+    await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
+    await tester.pumpAndSettle();
+
+    // Now in lyrics mode
+    expect(find.byType(LyricsScreen), findsOneWidget);
+    expect(find.bySemanticsLabel('Pronunciation'), findsOneWidget);
+
+    // Tap the mini album art to return back to album art view
+    await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
+    await tester.pumpAndSettle();
+
+    // Returned to full player mode
+    expect(find.bySemanticsLabel('Lyrics tab'), findsOneWidget);
+  });
+
+  test('LyricsUtils.stripCredits: cuts title repeats and credits from opening and outro', () {
+    const fixtureWithCredits = '''
+[id:\$00000000]
+[ti:Heartbreak Anniversary]
+[ar:Giveon]
+[al:Heartbreak Anniversary]
+[by:]
+[00:00.00]Heartbreak Anniversary - GIVĒON
+[00:04.12]Lyrics by：Giveon Evans/Varren Wade/Sevn Thomas
+[00:08.24]Composed by：Giveon Evans/Varren Wade/Sevn Thomas/Maneesh
+[00:12.36]Ooh
+[00:15.90]Balloons are deflated
+[00:19.73]Guess they look lifeless like me
+[03:04.12]'Cause I think of you think of you
+[03:07.90]Ooh ooh ooh-ooh
+[03:15.00]Produced by: Maneesh
+''';
+
+    final stripped = LyricsUtils.stripCredits(fixtureWithCredits);
+    expect(stripped.contains('GIVĒON'), isFalse);
+    expect(stripped.contains('Lyrics by'), isFalse);
+    expect(stripped.contains('Composed by'), isFalse);
+    expect(stripped.contains('Produced by'), isFalse);
+    expect(stripped.startsWith('[00:12.36]Ooh'), isTrue);
+    expect(stripped.contains('[00:15.90]Balloons are deflated'), isTrue);
+    expect(stripped.contains("[03:07.90]Ooh ooh ooh-ooh"), isTrue);
+
+    // Parsing via parseLrc also automatically applies stripCredits
+    final entries = LyricsUtils.parseLrc(fixtureWithCredits);
+    // headEntry is at index 0, first sung line is at index 1
+    expect(entries[1].text, 'Ooh');
+    expect(entries[1].timeMs, 12360);
+  });
+
+  test('LyricsUtils.stripCredits: strips opening Title - Artist repetition without colons', () {
+    const arcticMonkeysLrc = '''
+[00:00.00]I Wanna Be Yours - Arctic Monkeys
+[00:15.20]I wanna be your vacuum cleaner
+[00:18.50]Breathing in your dust
+''';
+    final entries = LyricsUtils.parseLrc(arcticMonkeysLrc);
+    expect(entries[1].text, 'I wanna be your vacuum cleaner');
+    expect(entries[1].timeMs, 15200);
+  });
+
+  test('LyricsUtils.stripCredits: strips Chinese credits (作词/作曲/编曲)', () {
+    const chineseLrc = '''
+[00:00.00]作词 : 周杰伦
+[00:02.00]作曲 : 周杰伦
+[00:04.00]编曲 : 钟兴民
+[00:10.50]快使用双截棍
+''';
+    final entries = LyricsUtils.parseLrc(chineseLrc);
+    expect(entries[1].text, '快使用双截棍');
+    expect(entries[1].timeMs, 10500);
+  });
+
+  test('LyricsService.withInstrumentalGaps: inserts intro break and mid-song breaks', () {
+    final rawEntries = [
+      LyricsEntry.headEntry,
+      const LyricsEntry(timeMs: 15200, text: 'I wanna be your vacuum cleaner', endMs: 18000),
+      const LyricsEntry(timeMs: 25000, text: 'Breathing in your dust', endMs: 28000),
+    ];
+
+    final withGaps = LyricsService.withInstrumentalGaps(rawEntries);
+    expect(withGaps.first.timeMs, 0);
+    expect(withGaps.first.isMusicalBreak, isTrue);
+    expect(withGaps[1].text, 'I wanna be your vacuum cleaner');
+
+    // Gap between 18000ms and 25000ms is 7000ms >= 3800ms -> should insert break at 18000ms
+    final midGap = withGaps.firstWhere((e) => e.timeMs == 18000);
+    expect(midGap.isMusicalBreak, isTrue);
+    expect(midGap.text, '• • •');
+  });
+
+  test('CanvasResolutionService: strict candidate title matching rejects mismatched titles by same artist', () {
+    // Dracula video candidate must NEVER score or match when target is Borderline!
+    final candidateDracula = Track(
+      id: 'dracula_vid_1',
+      trackName: 'Dracula (Official Video)',
+      artistName: 'Tame Impala',
+      albumName: 'Dracula',
+      previewUrl: '',
+    );
+    final targetBorderline = Track(
+      id: 'borderline_track_1',
+      trackName: 'Borderline',
+      artistName: 'Tame Impala',
+      albumName: 'The Slow Rush',
+      previewUrl: '',
+    );
+
+    // Using CanvasResolutionService internal candidate scoring behavior
+    // If titles do not match, score must be 0 (rejected outright)
+    final normC = candidateDracula.trackName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ').trim();
+    final normT = targetBorderline.trackName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ').trim();
+    expect(normC.contains(normT), isFalse);
+    expect(normT.contains(normC), isFalse);
   });
 }

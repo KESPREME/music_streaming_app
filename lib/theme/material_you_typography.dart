@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 /// Uses Spline Sans (similar to Google Sans)
 class MaterialYouTypography {
   /// Display styles (largest - for hero text)
-  static TextStyle displayLarge(Color color) => GoogleFonts.splineSans(
+  static TextStyle displayLarge(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 32,
         fontWeight: FontWeight.w800,
         letterSpacing: -0.5,
@@ -14,7 +14,7 @@ class MaterialYouTypography {
         height: 1.2,
       );
 
-  static TextStyle displayMedium(Color color) => GoogleFonts.splineSans(
+  static TextStyle displayMedium(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 28,
         fontWeight: FontWeight.w800,
         letterSpacing: -0.3,
@@ -22,7 +22,7 @@ class MaterialYouTypography {
         height: 1.2,
       );
 
-  static TextStyle displaySmall(Color color) => GoogleFonts.splineSans(
+  static TextStyle displaySmall(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 24,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.2,
@@ -31,7 +31,7 @@ class MaterialYouTypography {
       );
 
   /// Headline styles (for section headers)
-  static TextStyle headlineLarge(Color color) => GoogleFonts.splineSans(
+  static TextStyle headlineLarge(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 28,
         fontWeight: FontWeight.w700,
         letterSpacing: 0,
@@ -39,7 +39,7 @@ class MaterialYouTypography {
         height: 1.3,
       );
 
-  static TextStyle headlineMedium(Color color) => GoogleFonts.splineSans(
+  static TextStyle headlineMedium(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 24,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
@@ -47,7 +47,7 @@ class MaterialYouTypography {
         height: 1.3,
       );
 
-  static TextStyle headlineSmall(Color color) => GoogleFonts.splineSans(
+  static TextStyle headlineSmall(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 20,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
@@ -56,7 +56,7 @@ class MaterialYouTypography {
       );
 
   /// Title styles (for card titles, list items)
-  static TextStyle titleLarge(Color color) => GoogleFonts.splineSans(
+  static TextStyle titleLarge(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 18,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.15,
@@ -64,7 +64,7 @@ class MaterialYouTypography {
         height: 1.4,
       );
 
-  static TextStyle titleMedium(Color color) => GoogleFonts.splineSans(
+  static TextStyle titleMedium(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 16,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.15,
@@ -72,7 +72,7 @@ class MaterialYouTypography {
         height: 1.4,
       );
 
-  static TextStyle titleSmall(Color color) => GoogleFonts.splineSans(
+  static TextStyle titleSmall(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.1,
@@ -81,7 +81,7 @@ class MaterialYouTypography {
       );
 
   /// Body styles (for content text)
-  static TextStyle bodyLarge(Color color) => GoogleFonts.splineSans(
+  static TextStyle bodyLarge(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 16,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.5,
@@ -89,7 +89,7 @@ class MaterialYouTypography {
         height: 1.5,
       );
 
-  static TextStyle bodyMedium(Color color) => GoogleFonts.splineSans(
+  static TextStyle bodyMedium(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.25,
@@ -97,7 +97,7 @@ class MaterialYouTypography {
         height: 1.5,
       );
 
-  static TextStyle bodySmall(Color color) => GoogleFonts.splineSans(
+  static TextStyle bodySmall(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 12,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.4,
@@ -106,7 +106,7 @@ class MaterialYouTypography {
       );
 
   /// Label styles (for buttons, chips)
-  static TextStyle labelLarge(Color color) => GoogleFonts.splineSans(
+  static TextStyle labelLarge(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.1,
@@ -114,7 +114,7 @@ class MaterialYouTypography {
         height: 1.4,
       );
 
-  static TextStyle labelMedium(Color color) => GoogleFonts.splineSans(
+  static TextStyle labelMedium(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.5,
@@ -122,7 +122,7 @@ class MaterialYouTypography {
         height: 1.4,
       );
 
-  static TextStyle labelSmall(Color color) => GoogleFonts.splineSans(
+  static TextStyle labelSmall(Color color) => GoogleFonts.plusJakartaSans(
         fontSize: 11,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.5,

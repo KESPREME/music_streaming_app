@@ -97,7 +97,7 @@ class _GlassDownloadSelectionSheetState
                       children: [
                         Text(
                           'Select Tracks',
-                          style: GoogleFonts.splineSans(
+                          style: GoogleFonts.plusJakartaSans(
                             fontWeight: FontWeight.bold,
                             fontSize: 20,
                             color: colorScheme.onSurface,
@@ -106,7 +106,7 @@ class _GlassDownloadSelectionSheetState
                         if (widget.playlistName != null)
                           Text(
                             'from ${widget.playlistName}',
-                            style: GoogleFonts.splineSans(
+                            style: GoogleFonts.plusJakartaSans(
                               fontSize: 14,
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -120,7 +120,7 @@ class _GlassDownloadSelectionSheetState
                     onPressed: _toggleAll,
                     child: Text(
                       _isAllSelected ? 'Deselect All' : 'Select All',
-                      style: GoogleFonts.splineSans(
+                      style: GoogleFonts.plusJakartaSans(
                         color: colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                       ),
@@ -172,7 +172,7 @@ class _GlassDownloadSelectionSheetState
                     ),
                     title: Text(
                       track.trackName,
-                      style: GoogleFonts.splineSans(
+                      style: GoogleFonts.plusJakartaSans(
                         fontWeight: FontWeight.w500,
                         color: colorScheme.onSurface,
                       ),
@@ -181,7 +181,7 @@ class _GlassDownloadSelectionSheetState
                     ),
                     subtitle: Text(
                       track.artistName,
-                      style: GoogleFonts.splineSans(
+                      style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -219,7 +219,7 @@ class _GlassDownloadSelectionSheetState
                       ),
                       child: Text(
                         'Download ${_selectedIds.length} Tracks',
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),

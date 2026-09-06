@@ -121,7 +121,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             )
           else if (_error != null)
              SliverFillRemaining(
-               child: Center(child: Text(_error!, style: GoogleFonts.splineSans(color: Colors.white54))),
+               child: Center(child: Text(_error!, style: GoogleFonts.plusJakartaSans(color: Colors.white54))),
              )
           else
             _buildTracksList(),
@@ -187,7 +187,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 centerTitle: false,
                 title: Text(
                   widget.playlistName,
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontSize: 16 + (6 * percentage), // 16 -> 22
@@ -256,7 +256,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.all(50),
-          child: Center(child: Text("Empty playlist", style: GoogleFonts.splineSans(color: Colors.white54))),
+          child: Center(child: Text("Empty playlist", style: GoogleFonts.plusJakartaSans(color: Colors.white54))),
         ),
       );
     }

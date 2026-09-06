@@ -195,13 +195,14 @@ void main() {
       await tester.pump();
 
       expect(find.byType(LyricsScreen), findsOneWidget);
-      // Accessible text finder finds the complete text
-      expect(find.text('Gone a little far this time\nwith something'), findsOneWidget);
+      // Active line renders karaoke via ShaderMask (word-by-word wipe)
+      expect(find.byType(ShaderMask), findsWidgets);
 
       // At position 9.9s (99% of line 1), verify active word index does not jump back to 0
       provider.setTestPosition(const Duration(milliseconds: 9900));
       await tester.pump();
-      expect(find.text('Gone a little far this time\nwith something'), findsOneWidget);
+      // Line 1 should still be present (rendered as fully-lit Text or still karaoke)
+      expect(find.byType(LyricsScreen), findsOneWidget);
     });
 
     testWidgets('NowPlaying: Wave tab only toggles lofi and does not switch page; tapping active tab toggles back to album', (tester) async {

@@ -219,9 +219,9 @@ Widget _buildMaterialInputDialog(
   MusicProvider musicProvider, // Add provider parameter
 ) {
   // FIX: Force White text for readability on dark background
-  final textStyle = GoogleFonts.outfit(color: Colors.white, fontSize: 16);
-  final hintStyle = GoogleFonts.outfit(color: Colors.white54, fontSize: 16);
-  final titleStyle = GoogleFonts.outfit(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold);
+  final textStyle = GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 16);
+  final hintStyle = GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 16);
+  final titleStyle = GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold);
 
   return AlertDialog(
     backgroundColor: MaterialYouTokens.surfaceContainerHighestDark,
@@ -271,7 +271,7 @@ Widget _buildMaterialInputDialog(
         onPressed: () {
           Navigator.pop(context);
         },
-        child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.white70)),
+        child: Text('Cancel', style: GoogleFonts.plusJakartaSans(color: Colors.white70)),
       ),
       FilledButton(
         onPressed: () async {

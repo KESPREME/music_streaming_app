@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/canvas_resolution_service.dart';
+import '../services/innertube/innertube_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/glass_options_sheet.dart';
@@ -124,13 +125,11 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
           setState(() => _isLoading = false);
           return;
         }
+        final ua = InnerTubeService.userAgentForStreamUrl(resolved);
         c = VideoPlayerController.networkUrl(
           uri,
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-          httpHeaders: const {
-            'User-Agent':
-                'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)',
-          },
+          httpHeaders: ua != null ? {'User-Agent': ua} : const {},
         );
       }
 
@@ -243,9 +242,12 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
     Color accentColor,
   ) {
     final isLiked = provider.isSongLiked(track.id);
+    final topPadding = widget.isEmbedded
+        ? (MediaQuery.of(context).padding.top + 32.0)
+        : 6.0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+      padding: EdgeInsets.fromLTRB(20, topPadding, 20, 8),
       child: Row(
         children: [
           // Album art thumbnail (tapping returns to normal album view)
@@ -421,6 +423,28 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
                   ),
                 ),
               ),
+
+              // Subtle center loading indicator while loading
+              if (_isLoading)
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.50),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: accentColor,
+                    ),
+                  ),
+                ),
 
               // 4. Loading indicator or Canvas badge
               Positioned(

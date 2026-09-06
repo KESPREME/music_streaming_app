@@ -68,7 +68,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                         titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                         title: Text(
                           'Import Playlists',
-                          style: GoogleFonts.splineSans(
+                          style: GoogleFonts.plusJakartaSans(
                             fontWeight: FontWeight.bold,
                             color: isDark ? Colors.white : Colors.black,
                             fontSize: 20,
@@ -93,7 +93,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                           children: [
                             Text(
                               'Import from URL',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -114,7 +114,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                                   dropdownColor: const Color(0xFF2C2C2C),
                                   value: _selectedService,
                                   isExpanded: true,
-                                  style: GoogleFonts.splineSans(color: Colors.white),
+                                  style: GoogleFonts.plusJakartaSans(color: Colors.white),
                                   icon: const Icon(Icons.expand_more_rounded, color: Colors.white70),
                                   items: _supportedServices.map((service) {
                                     return DropdownMenuItem(
@@ -165,7 +165,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                                 onPressed: _isLoading ? null : _importPlaylistFromUrl,
                                 child: _isLoading 
                                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : Text('Import Playlist', style: GoogleFonts.splineSans(fontWeight: FontWeight.bold, color: Colors.white)),
+                                  : Text('Import Playlist', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: Colors.white)),
                               ),
                             ),
                           ],
@@ -176,7 +176,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
 
                       Text(
                         'Quick Connect',
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                           color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -239,7 +239,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
             const SizedBox(height: 8),
             Text(
               service,
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                 color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 12, 
                 fontWeight: FontWeight.w600

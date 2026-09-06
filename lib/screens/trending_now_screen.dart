@@ -41,9 +41,9 @@ class TrendingNowScreen extends StatelessWidget {
                  SliverFillRemaining(
                   child: Center(
                     child: musicProvider.errorMessage != null && musicProvider.errorMessage!.toLowerCase().contains("trending")
-                    ? Text('Could not load trending tracks', style: GoogleFonts.splineSans(color: Colors.white54))
+                    ? Text('Could not load trending tracks', style: GoogleFonts.plusJakartaSans(color: Colors.white54))
                     : (musicProvider.tracks.isEmpty && !musicProvider.isLoadingLocal)
-                        ? Text('No trending tracks available', style: GoogleFonts.splineSans(color: Colors.white54))
+                        ? Text('No trending tracks available', style: GoogleFonts.plusJakartaSans(color: Colors.white54))
                         : const CircularProgressIndicator(color: Color(0xFFFF1744)),
                   ),
                 )
@@ -104,7 +104,7 @@ class TrendingNowScreen extends StatelessWidget {
                 titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 16),
                 title: Text(
                   'Trending Now',
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                     fontSize: 20 + (8 * percentage),

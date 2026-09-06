@@ -241,6 +241,173 @@ class MusicProvider
     notifyListeners();
   }
 
+  /// Curated pool of verified Top Global & English Hits and Popular Hindi Hits
+  /// used to seed Quick Picks when not logged in (spec: Guest Quality Floor).
+  static final List<Track> _kGuestCuratedHitTracks = [
+    // ── Top Global & English Hits ──
+    Track(
+      id: '4NRXx6U8ABQ',
+      trackName: 'Blinding Lights',
+      artistName: 'The Weeknd',
+      albumName: 'After Hours',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Pop',
+    ),
+    Track(
+      id: 'H5v3kku4y6Q',
+      trackName: 'As It Was',
+      artistName: 'Harry Styles',
+      albumName: "Harry's House",
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Pop',
+    ),
+    Track(
+      id: 'TUVcZfQe-Kw',
+      trackName: 'Levitating',
+      artistName: 'Dua Lipa',
+      albumName: 'Future Nostalgia',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/TUVcZfQe-Kw/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Pop',
+    ),
+    Track(
+      id: 'ApXoWvfEYVU',
+      trackName: 'Sunflower',
+      artistName: 'Post Malone, Swae Lee',
+      albumName: 'Spider-Man: Into the Spider-Verse',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hip-Hop',
+    ),
+    Track(
+      id: 'V1Pl8CzNzCw',
+      trackName: 'Birds of a Feather',
+      artistName: 'Billie Eilish',
+      albumName: 'HIT ME HARD AND SOFT',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/V1Pl8CzNzCw/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Pop',
+    ),
+    Track(
+      id: 'kPhpHvnnn0E',
+      trackName: 'Die With A Smile',
+      artistName: 'Lady Gaga, Bruno Mars',
+      albumName: 'Die With A Smile',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/kPhpHvnnn0E/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Pop',
+    ),
+    Track(
+      id: 'ic8j13piAhQ',
+      trackName: 'Cruel Summer',
+      artistName: 'Taylor Swift',
+      albumName: 'Lover',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/ic8j13piAhQ/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Pop',
+    ),
+    Track(
+      id: '2S24h8LJvpc',
+      trackName: 'Borderline',
+      artistName: 'Tame Impala',
+      albumName: 'The Slow Rush',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/2S24h8LJvpc/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Alternative',
+    ),
+    Track(
+      id: 'dvgZkm1xWPE',
+      trackName: 'Viva La Vida',
+      artistName: 'Coldplay',
+      albumName: 'Viva la Vida',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/dvgZkm1xWPE/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Alternative',
+    ),
+    // ── Top Popular Hindi Hits ──
+    Track(
+      id: 'BddP6PYotfs',
+      trackName: 'Kesariya',
+      artistName: 'Arijit Singh, Pritam, Amitabh Bhattacharya',
+      albumName: 'Brahmastra',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/BddP6PYotfs/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hindi Pop',
+    ),
+    Track(
+      id: 'gljiO88hYrg',
+      trackName: 'Pehle Bhi Main',
+      artistName: 'Vishal Mishra, Raj Shekhar',
+      albumName: 'ANIMAL',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/gljiO88hYrg/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hindi Pop',
+    ),
+    Track(
+      id: 'ElZfdU54Cp8',
+      trackName: 'Apna Bana Le',
+      artistName: 'Arijit Singh, Sachin-Jigar',
+      albumName: 'Bhediya',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/ElZfdU54Cp8/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hindi Pop',
+    ),
+    Track(
+      id: '284Ov7ysmfA',
+      trackName: 'Channa Mereya',
+      artistName: 'Arijit Singh, Pritam',
+      albumName: 'Ae Dil Hai Mushkil',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/284Ov7ysmfA/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hindi Pop',
+    ),
+    Track(
+      id: 'hhuHYI0_q20',
+      trackName: 'Ranjha',
+      artistName: 'Jasleen Royal, B Praak',
+      albumName: 'Shershaah',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/hhuHYI0_q20/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hindi Romantic',
+    ),
+    Track(
+      id: 'VuG7FT9dUJ4',
+      trackName: 'Maan Meri Jaan',
+      artistName: 'King',
+      albumName: 'Champagne Talk',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/VuG7FT9dUJ4/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Hindi Pop',
+    ),
+    Track(
+      id: 'gvyUuxdRdR4',
+      trackName: 'Husn',
+      artistName: 'Anuv Jain',
+      albumName: 'Husn',
+      previewUrl: '',
+      albumArt: 'https://i.ytimg.com/vi/gvyUuxdRdR4/hqdefault.jpg',
+      source: 'youtube',
+      genre: 'Indie Pop',
+    ),
+  ];
+
   /// Generate Quick Picks from the composed feed + local signals +
   /// chart data (Recommendation Engine 2.0). Deterministic; no randomization.
   void _generateQuickPicks(HomeFeed feed) {
@@ -259,9 +426,27 @@ class MusicProvider
             ))
         .toList();
 
+    // When not logged in or during cold-start, seed Quick Picks with verified
+    // top Global & English hits and Popular Hindi hits instead of random regional items.
+    final isGuest = !isLoggedIn ||
+        (_likedSongs.isEmpty &&
+            _recentlyPlayed.isEmpty &&
+            _recentSearchQueries.isEmpty);
+
     // Chart tracks carry their chart position — the only legitimate
     // numeric popularity signal we receive (popularity prior, spec #19).
-    final chartWithRank = _chartRankedTracks();
+    final baseChart = _chartRankedTracks();
+    final List<Track> chartWithRank;
+    if (isGuest) {
+      final seenChartIds = <String>{};
+      chartWithRank = [
+        ..._kGuestCuratedHitTracks,
+        ...baseChart,
+      ].where((t) => seenChartIds.add(t.id)).toList();
+    } else {
+      chartWithRank = baseChart;
+    }
+
     final picks = _quickPicksEngine.generate(
       nativeTracks: nativeTracks,
       chartTracks: chartWithRank,
@@ -1069,6 +1254,11 @@ class MusicProvider
       _isAutoBitrate = p.getBool('isAutoBitrate') ?? true;
       _shuffleEnabled = p.getBool('shuffleEnabled') ?? false;
       _isAutoQueueEnabled = p.getBool('autoQueueEnabled') ?? true;
+      _animatedCanvasEnabled = p.getBool('animated_canvas') ?? true;
+      _canvasOverCellular = p.getBool('canvas_over_cellular') ?? false;
+      _fullBleedArtwork = p.getBool('full_bleed_artwork') ?? true;
+      _syncedLyricsEnabled = p.getBool('synced_lyrics') ?? true;
+      _prioritizeSyllableSync = p.getBool('prioritize_syllable_sync') ?? true;
       final lofiEnabled = p.getBool('lofiEnabled') ?? false;
       if (lofiEnabled && !_lofi.enabled) {
         _lofi.setEnabled(lofiEnabled);
@@ -2201,6 +2391,52 @@ class MusicProvider
   void toggleCanvas() {
     _isCanvasActive = !_isCanvasActive;
     notifyListeners();
+  }
+
+  // --- BitChord Settings Parity ---
+  bool _animatedCanvasEnabled = true;
+  bool get animatedCanvasEnabled => _animatedCanvasEnabled;
+  Future<void> setAnimatedCanvasEnabled(bool value) async {
+    _animatedCanvasEnabled = value;
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('animated_canvas', value);
+  }
+
+  bool _canvasOverCellular = false;
+  bool get canvasOverCellular => _canvasOverCellular;
+  Future<void> setCanvasOverCellular(bool value) async {
+    _canvasOverCellular = value;
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('canvas_over_cellular', value);
+  }
+
+  bool _fullBleedArtwork = true;
+  bool get fullBleedArtwork => _fullBleedArtwork;
+  Future<void> setFullBleedArtwork(bool value) async {
+    _fullBleedArtwork = value;
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('full_bleed_artwork', value);
+  }
+
+  bool _syncedLyricsEnabled = true;
+  bool get syncedLyricsEnabled => _syncedLyricsEnabled;
+  Future<void> setSyncedLyricsEnabled(bool value) async {
+    _syncedLyricsEnabled = value;
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('synced_lyrics', value);
+  }
+
+  bool _prioritizeSyllableSync = true;
+  bool get prioritizeSyllableSync => _prioritizeSyllableSync;
+  Future<void> setPrioritizeSyllableSync(bool value) async {
+    _prioritizeSyllableSync = value;
+    notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('prioritize_syllable_sync', value);
   }
 
   Future<void> seekTo(Duration position) async {
@@ -3646,7 +3882,7 @@ class MusicProvider
       // v2 engine validates + dedupes; NO taste profile involved (spec
       // #48: personal favorites never become Trending).
       final chart = await _innerTubeService.getTrendingTracks(limit: 20);
-      final picked = TrendingEngineV2().generate(
+      final picked = const TrendingEngineV2().generate(
         regionalChart: chart,
         globalChart: const [],
         limit: 20,

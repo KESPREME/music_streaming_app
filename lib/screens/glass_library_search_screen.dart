@@ -153,7 +153,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
                             child: TextField(
                                 controller: _searchController,
                                 focusNode: _focusNode,
-                                style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black),
+                                style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white : Colors.black),
                                 decoration: InputDecoration(
                                     hintText: "Search in Library...",
                                     hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
@@ -196,7 +196,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
                       const SizedBox(height: 16),
                       Text(
                           "Search your playlists and songs",
-                          style: GoogleFonts.splineSans(color: isDark ? Colors.white54 : Colors.black54, fontSize: 16),
+                          style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white54 : Colors.black54, fontSize: 16),
                       ),
                   ],
               ),
@@ -209,7 +209,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
               final query = _recentSearches[index];
               return ListTile(
                   leading: Icon(Icons.history_rounded, color: isDark ? Colors.white54 : Colors.black54),
-                  title: Text(query, style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black)),
+                  title: Text(query, style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white : Colors.black)),
                   onTap: () {
                       _searchController.text = query;
                       _onSearchChanged(query);
@@ -230,7 +230,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
   Widget _buildResults(bool isDark) {
       if (_filteredPlaylists.isEmpty && _filteredTracks.isEmpty) {
           return Center(
-              child: Text("No library results found", style: GoogleFonts.splineSans(color: isDark ? Colors.white54 : Colors.black54)),
+              child: Text("No library results found", style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white54 : Colors.black54)),
           );
       }
       
@@ -239,14 +239,14 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
           physics: const BouncingScrollPhysics(),
           children: [
               if (_filteredPlaylists.isNotEmpty) ...[
-                  Text("Playlists", style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text("Playlists", style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 10),
                   ..._filteredPlaylists.map((playlist) => _buildPlaylistTile(playlist, isDark)),
                   const SizedBox(height: 20),
               ],
               
               if (_filteredTracks.isNotEmpty) ...[
-                  Text("Songs (Recently Played)", style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text("Songs (Recently Played)", style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 10),
                   ..._filteredTracks.map((track) {
                       final musicProvider = Provider.of<MusicProvider>(context, listen: false);
@@ -270,8 +270,8 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
                 ? Image.network(playlist.imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.music_note)))
                 : Container(color: Colors.grey[800], width: 50, height: 50, child: const Icon(Icons.music_note)),
           ),
-          title: Text(playlist.name, style: GoogleFonts.splineSans(color: isDark ? Colors.white : Colors.black)),
-          subtitle: Text("${playlist.tracks.length} tracks", style: GoogleFonts.splineSans(color: isDark ? Colors.white54 : Colors.black54)),
+          title: Text(playlist.name, style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white : Colors.black)),
+          subtitle: Text("${playlist.tracks.length} tracks", style: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white54 : Colors.black54)),
           onTap: () {
              Navigator.push(
                context,

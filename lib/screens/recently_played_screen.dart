@@ -90,7 +90,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                             titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
                             title: Text(
                               'Recently Played',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontWeight: FontWeight.bold,
                                 color: isDark ? Colors.white : Colors.black,
                                 fontSize: 20,
@@ -113,7 +113,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                             const SizedBox(height: 16),
                             Text(
                               'No recently played tracks',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white.withValues(alpha: 0.6), 
                                 fontSize: 18,
                                 fontWeight: FontWeight.w500
@@ -122,7 +122,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                             const SizedBox(height: 8),
                             Text(
                               'Start listening to build your history!',
-                              style: GoogleFonts.splineSans(
+                              style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 14
                               ),

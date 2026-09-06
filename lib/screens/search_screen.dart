@@ -130,7 +130,7 @@ class ArtistSearchTile extends StatelessWidget {
             children: [
               Text(
                 artistName,
-                style: GoogleFonts.splineSans(
+                style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
                   color: isGlass ? Colors.white : colorScheme.onSurface,
@@ -139,7 +139,7 @@ class ArtistSearchTile extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 "Artist",
-                style: GoogleFonts.splineSans(
+                style: GoogleFonts.plusJakartaSans(
                   color: isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -301,11 +301,11 @@ class _SearchScreenState extends State<SearchScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     child: TextField(
                       controller: _searchController,
-                      style: GoogleFonts.splineSans(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
                       cursorColor: Theme.of(context).colorScheme.primary,
                       decoration: InputDecoration(
                         hintText: 'Search songs, artists...',
-                        hintStyle: GoogleFonts.splineSans(color: Colors.white.withValues(alpha: 0.45), fontWeight: FontWeight.w400),
+                        hintStyle: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.45), fontWeight: FontWeight.w400),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -352,8 +352,8 @@ class _SearchScreenState extends State<SearchScreen>
                         ),
                         labelColor: Colors.white,
                         unselectedLabelColor: Colors.white.withValues(alpha: 0.55),
-                        labelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w700, fontSize: 14),
-                        unselectedLabelStyle: GoogleFonts.splineSans(fontWeight: FontWeight.w500, fontSize: 14),
+                        labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 14),
+                        unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500, fontSize: 14),
                         indicatorSize: TabBarIndicatorSize.tab,
                         dividerColor: Colors.transparent,
                         tabs: const [
@@ -532,11 +532,11 @@ class _SearchScreenState extends State<SearchScreen>
               ),
               title: Text(
                 playlist.trackName, // In search results, title is mapped to trackName
-                style: GoogleFonts.splineSans(color: Colors.white, fontWeight: FontWeight.bold),
+                style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
                 'Playlist • ${playlist.artistName}', // Owner/Artist
-                style: GoogleFonts.splineSans(color: Colors.white54),
+                style: GoogleFonts.plusJakartaSans(color: Colors.white54),
               ),
               onTap: () {
                 Navigator.push(
@@ -607,7 +607,7 @@ class SearchTabContent extends StatelessWidget {
                     children: [
                       Text(
                         "Recent Searches",
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 18),
@@ -615,7 +615,7 @@ class SearchTabContent extends StatelessWidget {
                       TextButton(
                         onPressed: onClearHistory,
                         child: Text("Clear All",
-                            style: GoogleFonts.splineSans(
+                            style: GoogleFonts.plusJakartaSans(
                                 color:
                                     Theme.of(context).colorScheme.primary)),
                       ),
@@ -625,7 +625,7 @@ class SearchTabContent extends StatelessWidget {
                         leading: const Icon(Icons.history_rounded,
                             color: Colors.white54),
                         title: Text(query,
-                            style: GoogleFonts.splineSans(
+                            style: GoogleFonts.plusJakartaSans(
                                 color: Colors.white)),
                         onTap: () => onSearchSelected(query),
                         onLongPress: () {
@@ -730,7 +730,7 @@ class _SearchIdleView extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: GoogleFonts.splineSans(
+            style: GoogleFonts.plusJakartaSans(
                 color: Colors.white.withValues(alpha: 0.4), fontSize: 15),
           ),
         ],
@@ -760,13 +760,13 @@ class _SearchEmptyView extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                   color: Colors.white.withValues(alpha: 0.65), fontSize: 15),
             ),
             const SizedBox(height: 4),
             Text(
               'Try a different search.',
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                   color: Colors.white.withValues(alpha: 0.35), fontSize: 13),
             ),
           ],
@@ -796,7 +796,7 @@ class _SearchErrorView extends StatelessWidget {
             Text(
               "Couldn't complete the search",
               textAlign: TextAlign.center,
-              style: GoogleFonts.splineSans(
+              style: GoogleFonts.plusJakartaSans(
                   color: Colors.white.withValues(alpha: 0.65), fontSize: 15),
             ),
             const SizedBox(height: 12),
@@ -804,7 +804,7 @@ class _SearchErrorView extends StatelessWidget {
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text('Try again',
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.w600, fontSize: 14)),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.primary,

@@ -888,7 +888,7 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
                   Expanded(
                     child: Text(
                       playlistName,
-                      style: GoogleFonts.splineSans(
+                      style: GoogleFonts.plusJakartaSans(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                         color: colorScheme.onSurface,
@@ -989,7 +989,7 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
       leading: Icon(icon, color: effectiveColor),
       title: Text(
         label,
-        style: GoogleFonts.splineSans(
+        style: GoogleFonts.plusJakartaSans(
           color: effectiveColor,
           fontWeight: FontWeight.w500,
           fontSize: 16,

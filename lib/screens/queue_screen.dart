@@ -270,9 +270,12 @@ class QueueScreen extends StatelessWidget {
     Color accentColor,
   ) {
     final isLiked = provider.isSongLiked(track.id);
+    final topPadding = isEmbedded
+        ? (MediaQuery.of(context).padding.top + 32.0)
+        : 6.0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+      padding: EdgeInsets.fromLTRB(20, topPadding, 20, 4),
       child: Row(
         children: [
           // Album art thumbnail (tapping returns to normal album view)

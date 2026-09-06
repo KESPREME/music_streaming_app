@@ -49,15 +49,15 @@ void showGlassSnackBar(
   String message, {
   Duration duration = const Duration(milliseconds: 2000),
 }) {
-  ScaffoldMessenger.of(context).showSnackBar(
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
     SnackBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
       behavior: SnackBarBehavior.floating, // Pill style float
-      margin: const EdgeInsets.symmetric(
-        horizontal: 40,
-        vertical: 20,
-      ), // Center-ish float but standard is bottom
+      margin: const EdgeInsets.fromLTRB(40, 20, 40, 88), // Float above bottom bar
       padding: EdgeInsets.zero,
       content: Center(
         // Center content to make it look like a pill rather than full width

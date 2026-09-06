@@ -187,7 +187,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentController>().accent;
-    final baseTextTheme = GoogleFonts.outfitTextTheme(Theme.of(context).textTheme);
+    final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(Theme.of(context).textTheme);
     final textTheme = baseTextTheme.copyWith(
       headlineLarge: baseTextTheme.headlineLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
       headlineMedium: baseTextTheme.headlineMedium?.copyWith(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),

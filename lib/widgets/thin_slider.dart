@@ -1,0 +1,222 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+/// Apple Music & BitChord style capsule slider with no thumb knob.
+///
+/// Features:
+/// - Drawn directly via CustomPainter to eliminate Flutter's default 24px slider track insets.
+/// - Capsule shape (RRect with radius = height / 2).
+/// - Thickens dynamically from [idleHeight] to [activeHeight] with fluid spring physics on touch/drag.
+/// - Starts at x = 0 and ends at x = width so timestamps placed in a Row below it
+///   are 100% pixel-perfect aligned with the track ends.
+/// - Generous invisible touch target ([touchHeight]) supporting both tap-to-seek and dragging.
+class ThinSlider extends StatefulWidget {
+  final double value; // 0.0 to 1.0
+  final ValueChanged<double> onValueChange;
+  final VoidCallback? onValueChangeStart;
+  final VoidCallback? onValueChangeFinished;
+  final double idleHeight;
+  final double activeHeight;
+  final Color activeColor;
+  final Color inactiveColor;
+  final double touchHeight;
+  final String? semanticLabel;
+
+  const ThinSlider({
+    super.key,
+    required this.value,
+    required this.onValueChange,
+    this.onValueChangeStart,
+    this.onValueChangeFinished,
+    this.idleHeight = 6.0,
+    this.activeHeight = 11.0,
+    this.activeColor = const Color(0xFFFFFFFF),
+    this.inactiveColor = const Color(0x38FFFFFF),
+    this.touchHeight = 36.0,
+    this.semanticLabel,
+  });
+
+  @override
+  State<ThinSlider> createState() => _ThinSliderState();
+}
+
+class _ThinSliderState extends State<ThinSlider>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late final Animation<double> _heightAnim;
+  bool _isDragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
+    _heightAnim = Tween<double>(
+      begin: widget.idleHeight,
+      end: widget.activeHeight,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
+  }
+
+  @override
+  void didUpdateWidget(covariant ThinSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.idleHeight != widget.idleHeight ||
+        oldWidget.activeHeight != widget.activeHeight) {
+      _heightAnim = Tween<double>(
+        begin: widget.idleHeight,
+        end: widget.activeHeight,
+      ).animate(CurvedAnimation(
+        parent: _animController,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ));
+    }
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _handlePointerDown(PointerDownEvent event, double totalW) {
+    _isDragging = true;
+    _animController.forward();
+    HapticFeedback.selectionClick();
+    widget.onValueChangeStart?.call();
+    _updatePosition(event.localPosition.dx, totalW);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event, double totalW) {
+    if (_isDragging) {
+      _updatePosition(event.localPosition.dx, totalW);
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_isDragging) {
+      _isDragging = false;
+      _animController.reverse();
+      HapticFeedback.selectionClick();
+      widget.onValueChangeFinished?.call();
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (_isDragging) {
+      _isDragging = false;
+      _animController.reverse();
+      widget.onValueChangeFinished?.call();
+    }
+  }
+
+  void _updatePosition(double localX, double width) {
+    if (width <= 0) return;
+    final double fraction = (localX / width).clamp(0.0, 1.0);
+    widget.onValueChange(fraction);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      slider: true,
+      label: widget.semanticLabel,
+      value: '${(widget.value * 100).round()}%',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final totalW = constraints.maxWidth;
+
+          return Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (event) => _handlePointerDown(event, totalW),
+            onPointerMove: (event) => _handlePointerMove(event, totalW),
+            onPointerUp: _handlePointerUp,
+            onPointerCancel: _handlePointerCancel,
+            child: SizedBox(
+              width: totalW,
+              height: widget.touchHeight,
+              child: AnimatedBuilder(
+                animation: _heightAnim,
+                builder: (context, child) {
+                  return CustomPaint(
+                    size: Size(totalW, widget.touchHeight),
+                    painter: _ThinSliderPainter(
+                      fraction: widget.value.clamp(0.0, 1.0),
+                      trackHeight: _heightAnim.value,
+                      activeColor: widget.activeColor,
+                      inactiveColor: widget.inactiveColor,
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ThinSliderPainter extends CustomPainter {
+  final double fraction;
+  final double trackHeight;
+  final Color activeColor;
+  final Color inactiveColor;
+
+  _ThinSliderPainter({
+    required this.fraction,
+    required this.trackHeight,
+    required this.activeColor,
+    required this.inactiveColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double centerY = size.height / 2.0;
+    final double top = centerY - trackHeight / 2.0;
+    final double radius = trackHeight / 2.0;
+
+    // 1. Inactive full background capsule
+    final inactivePaint = Paint()
+      ..color = inactiveColor
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill;
+
+    final inactiveRRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, top, size.width, trackHeight),
+      Radius.circular(radius),
+    );
+    canvas.drawRRect(inactiveRRect, inactivePaint);
+
+    // 2. Active played progress capsule
+    if (fraction > 0.0) {
+      final double activeWidth =
+          (size.width * fraction).clamp(trackHeight, size.width);
+
+      final activePaint = Paint()
+        ..color = activeColor
+        ..isAntiAlias = true
+        ..style = PaintingStyle.fill;
+
+      final activeRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, top, activeWidth, trackHeight),
+        Radius.circular(radius),
+      );
+      canvas.drawRRect(activeRRect, activePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThinSliderPainter oldDelegate) {
+    return oldDelegate.fraction != fraction ||
+        oldDelegate.trackHeight != trackHeight ||
+        oldDelegate.activeColor != activeColor ||
+        oldDelegate.inactiveColor != inactiveColor;
+  }
+}

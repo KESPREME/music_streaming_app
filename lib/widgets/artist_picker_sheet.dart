@@ -145,7 +145,7 @@ class ArtistPickerSheet extends StatelessWidget {
                   const SizedBox(width: 16),
                   Text(
                     'Select Artist',
-                    style: GoogleFonts.splineSans(
+                    style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
                       color: colorScheme.onSurface,
@@ -187,7 +187,7 @@ class ArtistPickerSheet extends StatelessWidget {
       ),
       title: Text(
         artist,
-        style: GoogleFonts.splineSans(
+        style: GoogleFonts.plusJakartaSans(
           color: colorScheme.onSurface,
           fontWeight: FontWeight.w500,
           fontSize: 16,

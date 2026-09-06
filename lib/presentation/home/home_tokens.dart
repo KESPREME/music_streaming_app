@@ -82,7 +82,7 @@ abstract final class HomeTokens {
   // All styles scale with the system textScaler (spec #61).
 
   /// Page header "Home".
-  static TextStyle homeTitle(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle homeTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 32,
         fontWeight: FontWeight.w700,
         height: 1.1,
@@ -90,7 +90,7 @@ abstract final class HomeTokens {
       );
 
   /// Hero card title (up to 2 lines).
-  static TextStyle heroTitle(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle heroTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 26,
         fontWeight: FontWeight.w700,
         height: 1.15,
@@ -98,7 +98,7 @@ abstract final class HomeTokens {
       );
 
   /// Hero contextual label (Picked for you / eyebrow).
-  static TextStyle heroLabel(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle heroLabel(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 1.1,
@@ -106,14 +106,14 @@ abstract final class HomeTokens {
       );
 
   /// Hero artist/subtitle.
-  static TextStyle heroSubtitle(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle heroSubtitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 15,
         fontWeight: FontWeight.w400,
         color: Colors.white.withValues(alpha: 0.8),
       );
 
   /// Section header title.
-  static TextStyle sectionTitle(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle sectionTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 24,
         fontWeight: FontWeight.w700,
         height: 1.15,
@@ -122,14 +122,14 @@ abstract final class HomeTokens {
 
   /// Section description (secondary, muted).
   static TextStyle sectionDescription(BuildContext context) =>
-      GoogleFonts.outfit(
+      GoogleFonts.plusJakartaSans(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         color: mutedColor(context),
       );
 
   /// Standard card title.
-  static TextStyle cardTitle(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle cardTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 15.5,
         fontWeight: FontWeight.w600,
         height: 1.25,
@@ -137,7 +137,7 @@ abstract final class HomeTokens {
       );
 
   /// Card metadata (artist, muted — never bold).
-  static TextStyle cardMetadata(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle cardMetadata(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 13.5,
         fontWeight: FontWeight.w400,
         height: 1.25,
@@ -145,7 +145,7 @@ abstract final class HomeTokens {
       );
 
   /// Compact list row title.
-  static TextStyle compactTitle(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle compactTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 15,
         fontWeight: FontWeight.w600,
         height: 1.2,
@@ -153,7 +153,7 @@ abstract final class HomeTokens {
       );
 
   /// Compact list row metadata.
-  static TextStyle compactMetadata(BuildContext context) => GoogleFonts.outfit(
+  static TextStyle compactMetadata(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: 13,
         fontWeight: FontWeight.w400,
         color: mutedColor(context),

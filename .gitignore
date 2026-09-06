@@ -33,8 +33,7 @@ migrate_working_dir/
 .pub/
 /build/
 .kiro
-
-# Symbolication related
+# Symbolication related
 app.*.symbols
 
 # Obfuscation related
@@ -44,10 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-
 android/build/
 
 # Third-party reference apps (research only)
 Metrolist-main/
 Muzza-main/
 Muzo/
+BitChord-main/

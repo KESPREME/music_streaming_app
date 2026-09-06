@@ -18,7 +18,7 @@ class AccentSettingsCard extends StatelessWidget {
       children: [
         Text(
           'ACCENT COLOR',
-          style: GoogleFonts.splineSans(
+          style: GoogleFonts.plusJakartaSans(
             color: Colors.white54,
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -64,7 +64,7 @@ class AccentSettingsCard extends StatelessWidget {
                 dense: true,
                 title: Text(
                   'Album-Art Adaptive',
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
@@ -72,7 +72,7 @@ class AccentSettingsCard extends StatelessWidget {
                 ),
                 subtitle: Text(
                   'Accent follows the playing song\'s artwork',
-                  style: GoogleFonts.outfit(
+                  style: GoogleFonts.plusJakartaSans(
                     color: Colors.white54,
                     fontSize: 12,
                   ),
@@ -99,7 +99,7 @@ class AccentSettingsCard extends StatelessWidget {
     final color = await showDialog<Color>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Custom Accent', style: GoogleFonts.outfit()),
+        title: Text('Custom Accent', style: GoogleFonts.plusJakartaSans()),
         content: TextField(
           controller: textController,
           autofocus: true,

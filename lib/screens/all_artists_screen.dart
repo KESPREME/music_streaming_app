@@ -107,7 +107,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                         child: Center(
                           child: Text(
                             'Could not load artists',
-                            style: GoogleFonts.splineSans(color: Colors.white54),
+                            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
                           ),
                         ),
                       );
@@ -117,7 +117,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                         child: Center(
                           child: Text(
                             'No artists found',
-                            style: GoogleFonts.splineSans(color: Colors.white54),
+                            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
                           ),
                         ),
                       );
@@ -180,7 +180,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                 titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 16),
                 title: Text(
                   'Top Artists',
-                  style: GoogleFonts.splineSans(
+                  style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                     fontSize: 20 + (8 * percentage),
@@ -265,7 +265,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                     children: [
                       Text(
                         artistName,
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
                           color: Colors.white,
@@ -274,7 +274,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                       const SizedBox(height: 4),
                       Text(
                         "Artist", // Simple subtitle
-                        style: GoogleFonts.splineSans(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           color: Colors.white54,
                           letterSpacing: 0.5,

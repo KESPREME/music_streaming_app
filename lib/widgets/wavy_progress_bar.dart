@@ -30,7 +30,7 @@ class WavyBarStyle {
 
   /// Material You look - theme-aware labels, softer glow.
   static WavyBarStyle materialYou(BuildContext context) => WavyBarStyle(
-        labelStyleBuilder: (ctx, color) => GoogleFonts.splineSans(
+        labelStyleBuilder: (ctx, color) => GoogleFonts.plusJakartaSans(
           color: Theme.of(ctx).colorScheme.onSurfaceVariant,
           fontSize: 12,
           fontWeight: FontWeight.w600,
