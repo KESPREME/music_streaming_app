@@ -5,6 +5,7 @@ import '../providers/theme_provider.dart'; // Add theme provider
 import '../widgets/mini_player.dart'; // Glass mini player
 import '../widgets/material_you_playback_bar.dart'; // Material You playback bar
 import '../screens/themed_now_playing_screen.dart';
+import '../core/navigation/root_navigator.dart';
 import '../theme/glass_tokens.dart';
 import '../utils/color_utils.dart';
 
@@ -147,48 +148,60 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        child: Opacity(
-                          opacity: miniPlayerOpacity,
-                          child: IgnorePointer(
-                            ignoring: miniPlayerOpacity < 0.1,
-                            child: Material(
-                              // Fix: Material widget to prevent underlining
-                              type: MaterialType.transparency,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  GestureDetector(
-                                    // Pass horizontal gestures to child by NOT claiming them here
-                                    // But Claim Vertical here for panel expansion
-                                    onVerticalDragUpdate:
-                                        _handleVerticalDragUpdate,
-                                    onVerticalDragEnd: _handleVerticalDragEnd,
-                                    child: isGlassTheme
-                                        ? MiniPlayer(
-                                            onExpand: () =>
-                                                _animatePanelTo(1.0),
-                                          )
-                                        : MaterialYouPlaybackBar(
-                                            track: musicProvider.currentTrack!,
-                                            provider: musicProvider,
-                                            accentColor:
-                                                ColorUtils.getVibrantAccent(
-                                              musicProvider.paletteGenerator,
-                                              const Color(
-                                                  0xFF00B4D8), // Light blue accent
-                                            ),
-                                          ),
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: AppRouteObserver.instance.isAtRoot,
+                          builder: (context, isAtRoot, _) {
+                            // In glass theme, LiquidGlassNavBar hosts the docked mini player on MainScreen.
+                            // GlobalMusicOverlay provides the floating fallback on pushed routes without nav bar.
+                            if (isGlassTheme && isAtRoot) {
+                              return const SizedBox.shrink();
+                            }
+
+                            return Opacity(
+                              opacity: miniPlayerOpacity,
+                              child: IgnorePointer(
+                                ignoring: miniPlayerOpacity < 0.1,
+                                child: Material(
+                                  // Fix: Material widget to prevent underlining
+                                  type: MaterialType.transparency,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      GestureDetector(
+                                        // Pass horizontal gestures to child by NOT claiming them here
+                                        // But Claim Vertical here for panel expansion
+                                        onVerticalDragUpdate:
+                                            _handleVerticalDragUpdate,
+                                        onVerticalDragEnd: _handleVerticalDragEnd,
+                                        child: isGlassTheme
+                                            ? MiniPlayer(
+                                                onExpand: () =>
+                                                    _animatePanelTo(1.0),
+                                              )
+                                            : MaterialYouPlaybackBar(
+                                                track: musicProvider.currentTrack!,
+                                                provider: musicProvider,
+                                                accentColor:
+                                                    ColorUtils.getVibrantAccent(
+                                                  musicProvider.paletteGenerator,
+                                                  const Color(
+                                                      0xFF00B4D8), // Light blue accent
+                                                ),
+                                              ),
+                                      ),
+                                      // Keeps the MiniPlayer floating above NavBars
+                                      const SizedBox(
+                                        height: GlassTokens.playerBottomInset,
+                                      ),
+                                    ],
                                   ),
-                                  // Keeps the MiniPlayer floating above NavBars
-                                  const SizedBox(
-                                    height: GlassTokens.playerBottomInset,
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ),
+
 
                       // B. Now Playing Screen (Slides Up)
                       Positioned.fill(

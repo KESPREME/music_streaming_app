@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import 'liquid_glass_nav_bar.dart';
 import 'material_you_nav_bar.dart';
 
 /// Theme-aware navigation bar wrapper.
-/// Glass mode = continuous liquid-glass platter with a jelly-physics
-/// magic-lens indicator and a morphing search pill (liquid_glass_widgets
-/// GlassTabBar.searchable). Material You keeps the classic bar.
+/// Glass mode = continuous liquid-glass platter with minimizable dock on scroll
+/// and morphing search pill. Material You keeps the classic bar.
 class ThemedNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -20,6 +20,10 @@ class ThemedNavBar extends StatelessWidget {
   final ValueChanged<String>? onSearchSubmitted;
   final VoidCallback? onSearchCancel;
 
+  final lgw.GlassTabBarMinimizeController? minimizeController;
+  final VoidCallback? onMinimizedTabTap;
+  final VoidCallback? onExpandPlayer;
+
   const ThemedNavBar({
     super.key,
     required this.currentIndex,
@@ -31,6 +35,9 @@ class ThemedNavBar extends StatelessWidget {
     this.searchFocusNode,
     this.onSearchSubmitted,
     this.onSearchCancel,
+    this.minimizeController,
+    this.onMinimizedTabTap,
+    this.onExpandPlayer,
   });
 
   @override
@@ -43,6 +50,9 @@ class ThemedNavBar extends StatelessWidget {
             onTap: onTap,
             items: items,
             searchMode: searchMode,
+            minimizeController: minimizeController,
+            onMinimizedTabTap: onMinimizedTabTap,
+            onExpandPlayer: onExpandPlayer,
             onSearchToggle: onSearchToggle,
             searchController: searchController,
             searchFocusNode: searchFocusNode,
@@ -60,3 +70,4 @@ class ThemedNavBar extends StatelessWidget {
     );
   }
 }
+

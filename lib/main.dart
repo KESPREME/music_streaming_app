@@ -6,6 +6,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:video_player_win/video_player_win.dart';
 
 import 'core/navigation/root_navigator.dart';
@@ -203,6 +204,7 @@ class _MyAppState extends State<MyApp> {
 
     return MaterialApp(
       navigatorKey: rootNavigatorKey, // Assigned Key
+      navigatorObservers: [AppRouteObserver.instance],
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.build(accent, textTheme: textTheme),
       // Integrate Global Music Overlay here
@@ -264,9 +266,19 @@ class _MainScreenState extends State<MainScreen> {
   bool _searchMode = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
+  late final lgw.GlassTabBarMinimizeController _minimizeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _minimizeController = lgw.GlassTabBarMinimizeController(
+      behavior: lgw.GlassBarMinimizeBehavior.onScrollDown,
+    );
+  }
 
   @override
   void dispose() {
+    _minimizeController.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -274,6 +286,7 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onItemTapped(int index) {
     if (_currentIndex == index && !_searchMode) return;
+    _minimizeController.expand();
     if (_searchMode) _exitSearch();
     final wasExplore = _currentIndex == 1;
     final isExplore = index == 1;
@@ -287,6 +300,7 @@ class _MainScreenState extends State<MainScreen> {
 
   void _enterSearch() {
     HapticFeedback.lightImpact();
+    _minimizeController.expand();
     setState(() => _searchMode = true);
     Future.delayed(const Duration(milliseconds: 180), () {
       if (mounted) _searchFocus.requestFocus();
@@ -298,6 +312,7 @@ class _MainScreenState extends State<MainScreen> {
     _searchFocus.unfocus();
     _searchController.clear();
     Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
+    _minimizeController.expand();
     setState(() => _searchMode = false);
   }
 
@@ -308,6 +323,20 @@ class _MainScreenState extends State<MainScreen> {
     final isPanelOpen = context.select<MusicProvider, bool>(
       (p) => p.isPlayerExpanded,
     );
+    final hasMiniPlayer = context.select<MusicProvider, bool>(
+      (p) => p.currentTrack != null && !p.hideMiniPlayer,
+    );
+
+    // If mini player disappeared (queue cleared, track ended, or hidden),
+    // ensure the bar expands back if it was minimized.
+    if (!hasMiniPlayer && _minimizeController.minimized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _minimizeController.minimized) {
+          _minimizeController.expand();
+        }
+      });
+    }
+
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
@@ -349,51 +378,61 @@ class _MainScreenState extends State<MainScreen> {
       child: Scaffold(
         extendBody: true,
         backgroundColor: Colors.transparent, // Ambient canvas shines through
-        body: Stack(
-          children: [
-            // z-0: ambient album-art canvas (visible where screens are
-            // transparent; opaque screens are migrated in P5).
-            const AmbientBackdrop(),
-            FadeIndexedStack(
-              index: _currentIndex,
-              children: [
-                const ThemedHomeScreen(),
-                ThemedExploreScreen(isActive: _currentIndex == 1 && !_searchMode),
-                const ThemedLibraryScreen(),
-              ],
-            ),
-            // Search overlay (in-place transition). The nav bar's search
-            // pill morphs into the input; the overlay shows only tabs +
-            // results.
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween(
-                    begin: const Offset(0, 0.03),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            final music = context.read<MusicProvider>();
+            final hasMini = music.currentTrack != null && !music.hideMiniPlayer;
+            if (hasMini) {
+              _minimizeController.handleNotification(notification);
+            }
+            return false;
+          },
+          child: Stack(
+            children: [
+              // z-0: ambient album-art canvas (visible where screens are
+              // transparent; opaque screens are migrated in P5).
+              const AmbientBackdrop(),
+              FadeIndexedStack(
+                index: _currentIndex,
+                children: [
+                  const ThemedHomeScreen(),
+                  ThemedExploreScreen(isActive: _currentIndex == 1 && !_searchMode),
+                  const ThemedLibraryScreen(),
+                ],
               ),
-              child: _searchMode
-                  ? Builder(
-                      key: const ValueKey('search_overlay'),
-                      builder: (_) => themeProvider.isMaterialYou
-                          ? const ThemedSearchScreen()
-                          : SearchScreen(
-                              key: const ValueKey('embedded_search'),
-                              embedded: true,
-                              externalController: _searchController,
-                              externalFocusNode: _searchFocus,
-                            ),
-                    )
-                  : const SizedBox.shrink(key: ValueKey('search_gone')),
-            ),
-          ],
+              // Search overlay (in-place transition). The nav bar's search
+              // pill morphs into the input; the overlay shows only tabs +
+              // results.
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 260),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween(
+                      begin: const Offset(0, 0.03),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                ),
+                child: _searchMode
+                    ? Builder(
+                        key: const ValueKey('search_overlay'),
+                        builder: (_) => themeProvider.isMaterialYou
+                            ? const ThemedSearchScreen()
+                            : SearchScreen(
+                                key: const ValueKey('embedded_search'),
+                                embedded: true,
+                                externalController: _searchController,
+                                externalFocusNode: _searchFocus,
+                              ),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('search_gone')),
+              ),
+            ],
+          ),
         ),
         bottomNavigationBar: SafeArea(
           top: false,
@@ -443,6 +482,11 @@ class _MainScreenState extends State<MainScreen> {
                   currentIndex: _currentIndex,
                   onTap: _onItemTapped,
                   searchMode: _searchMode,
+                  minimizeController: hasMiniPlayer ? _minimizeController : null,
+                  onMinimizedTabTap: _minimizeController.expand,
+                  onExpandPlayer: () =>
+                      Provider.of<MusicProvider>(context, listen: false)
+                          .setPlayerExpanded(true),
                   onSearchToggle: (active) {
                     if (active) {
                       _enterSearch();
