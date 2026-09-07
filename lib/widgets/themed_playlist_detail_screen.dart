@@ -5,6 +5,8 @@ import '../models/track.dart';
 import '../screens/playlist_detail_screen.dart';
 import '../screens/material_you_playlist_detail_screen.dart';
 
+import '../screens/album_detail_screen.dart';
+
 class ThemedPlaylistDetailScreen extends StatelessWidget {
   final String playlistId;
   final String playlistName;
@@ -26,23 +28,40 @@ class ThemedPlaylistDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return themeProvider.isMaterialYou
-        ? MaterialYouPlaylistDetailScreen(
-            playlistId: playlistId,
-            playlistName: playlistName,
-            playlistImage: playlistImage,
-            cachedTracks: cachedTracks,
-            searchAlbumByName: searchAlbumByName,
-            artistNameHint: artistNameHint,
-          )
-        : PlaylistDetailScreen(
-            playlistId: playlistId,
-            playlistName: playlistName,
-            playlistImage: playlistImage,
-            cachedTracks: cachedTracks,
-            searchAlbumByName: searchAlbumByName,
-            artistNameHint: artistNameHint,
-          );
+    final isAlbum = searchAlbumByName ||
+        playlistId.startsWith('MPREb_') ||
+        playlistId.startsWith('OLAK');
+
+    if (themeProvider.isMaterialYou) {
+      return MaterialYouPlaylistDetailScreen(
+        playlistId: playlistId,
+        playlistName: playlistName,
+        playlistImage: playlistImage,
+        cachedTracks: cachedTracks,
+        searchAlbumByName: searchAlbumByName,
+        artistNameHint: artistNameHint,
+      );
+    }
+
+    if (isAlbum) {
+      return AlbumDetailScreen(
+        albumId: playlistId,
+        albumName: playlistName,
+        artistName: artistNameHint,
+        albumImage: playlistImage,
+        cachedTracks: cachedTracks,
+        searchByName: searchAlbumByName,
+      );
+    }
+
+    return PlaylistDetailScreen(
+      playlistId: playlistId,
+      playlistName: playlistName,
+      playlistImage: playlistImage,
+      cachedTracks: cachedTracks,
+      searchAlbumByName: searchAlbumByName,
+      artistNameHint: artistNameHint,
+    );
   }
 }
 

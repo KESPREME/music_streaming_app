@@ -617,9 +617,9 @@ class AudioService {
       _subscriptions.add(_audioPlayer.currentIndexStream.listen((index) {
           if (index == null || _isConfiguring) return; // Ignore during configuration
 
-          // DO NOT trigger navigation if player is in a transition/error state
+          // DO NOT trigger navigation if player is stopped/idle
           final pState = _audioPlayer.playerState.processingState;
-          if (pState == ProcessingState.idle || pState == ProcessingState.loading) return;
+          if (pState == ProcessingState.idle) return;
 
           final source = _audioPlayer.audioSource;
           if (source is! ConcatenatingAudioSource) return;

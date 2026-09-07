@@ -185,35 +185,55 @@ class CanvasResolutionService {
       }
     }
 
-    // 3. Fallback: If search candidates failed or returned no stream, attempt direct stream from track.id
-    if (track.id.isNotEmpty && track.id.length >= 11) {
-      try {
-        final directStream = await InnerTubeService.instance
-            .getDirectVideoStreamUrl(track.id, preferredHeight: 360)
-            .timeout(const Duration(seconds: 5));
-        if (directStream != null && directStream.isNotEmpty) {
-          _cache[track.id] = directStream;
-          return directStream;
-        }
-      } catch (e) {
-        debugPrint('CanvasResolutionService: fallback to track.id failed: $e');
-      }
-    }
-
     _cache[track.id] = null;
     return null;
   }
 
+  @visibleForTesting
+  static int scoreCandidateForTest(Track candidate, Track target) =>
+      _scoreCandidate(candidate, target);
+
   /// Evaluates video candidates to ensure genuine official artist/label uploads are preferred,
-  /// heavily penalizing fan lyric videos, remixes, and secondary channels.
+  /// strictly disqualifying any lyric videos, karaoke, remixes, and secondary channels.
   static int _scoreCandidate(Track candidate, Track target) {
     final cTitle = candidate.trackName.toLowerCase();
     final cArtist = candidate.artistName.toLowerCase();
     final tTitle = target.trackName.toLowerCase();
     final tArtist = target.artistName.toLowerCase();
 
-    // CRITICAL: Strict title matching requirement (BitChord CanvasArtwork parity).
-    // A near-miss is a different song by the same artist and must be rejected outright!
+    // 1. ABSOLUTE DISQUALIFICATION: Reject any video with lyric, lyrical, karaoke,
+    // subtitles, visualizer, cover, fan made, reaction, slowed, reverb, etc.
+    const disqualifiedKeywords = [
+      'lyrics',
+      'lyric',
+      'lyrical',
+      'karaoke',
+      'with lyrics',
+      'subtitles',
+      'instrumental',
+      'visualizer',
+      'fan made',
+      'cover',
+      'slowed',
+      'reverb',
+      'reaction',
+      'shorts',
+      'status',
+      'full album',
+      'extended',
+      '8d audio',
+      'bass boosted',
+      'audio only',
+      'official audio', // Still audio track uploads must not be used as video canvas
+    ];
+
+    for (final word in disqualifiedKeywords) {
+      if (cTitle.contains(word) || cArtist.contains(word)) {
+        return 0; // Outright rejection
+      }
+    }
+
+    // 2. Strict title matching requirement (BitChord CanvasArtwork parity).
     final normCTitle = _normalizeForMatch(candidate.trackName);
     final normTTitle = _normalizeForMatch(target.trackName);
     if (normCTitle.isEmpty || normTTitle.isEmpty) return 0;
@@ -222,54 +242,39 @@ class CanvasResolutionService {
         normTTitle.contains(normCTitle);
     if (!titleMatches) return 0;
 
+    // 3. Duration check (if available): Reject extreme outliers
+    if (candidate.duration != null && target.duration != null && target.duration!.inSeconds > 30) {
+      final diff = (candidate.duration!.inSeconds - target.duration!.inSeconds).abs();
+      // Music videos can have intro/outro skits, but should not exceed +100s or be under 25s
+      if (diff > 100 || candidate.duration!.inSeconds < 25) {
+        return 0;
+      }
+    }
+
     int score = 100;
 
-    // Heavy penalties for non-official / secondary / lyric channels
-    const penaltyKeywords = [
-      'lyrics',
-      'lyric',
-      'lyrical',
-      'audio',
-      'visualizer',
-      'karaoke',
-      'cover',
-      'remix',
-      'synthwave',
-      'slowed',
-      'reverb',
-      '8d',
-      'bass boosted',
-      'status',
-      'reaction',
-      'shorts',
-      'fan made',
-      'edit',
-    ];
-
-    for (final word in penaltyKeywords) {
-      if (cTitle.contains(word)) score -= 150;
-      if (cArtist.contains(word)) score -= 200;
+    // 4. Heavy bonus for genuine official music video markers
+    if (cTitle.contains('official music video')) {
+      score += 120;
+    } else if (cTitle.contains('official video')) {
+      score += 90;
+    } else if (cTitle.contains('music video')) {
+      score += 50;
     }
 
-    // Major bonus for official music video markers
-    if (cTitle.contains('official music video') ||
-        cTitle.contains('official video')) {
-      score += 80;
-    } else if (cTitle.contains('official') ||
-        cTitle.contains('music video') ||
-        cTitle.contains('video')) {
-      score += 40;
-    }
-
-    // Bonus for artist match in channel/byline name
+    // 5. Strong bonus for artist match in channel name (primary artist upload)
     final primaryArtist = tArtist.split(',').first.split('&').first.trim();
     if (primaryArtist.isNotEmpty && cArtist.contains(primaryArtist)) {
+      score += 80;
+    }
+
+    // 6. Bonus for verified artist / VEVO / official topic channels
+    if (cArtist.endsWith(' - topic') || cArtist.contains('vevo')) {
       score += 60;
     }
 
-    // Bonus for official label / vevo channels
-    if (cArtist.contains('vevo') ||
-        cArtist.contains('records') ||
+    // 7. Bonus for official label channels
+    if (cArtist.contains('records') ||
         cArtist.contains('entertainment') ||
         cArtist.contains('t-series') ||
         cArtist.contains('sony music') ||
@@ -278,8 +283,12 @@ class CanvasResolutionService {
         cArtist.contains('speed records') ||
         cArtist.contains('tips') ||
         cArtist.contains('warner') ||
-        cArtist.contains('universal')) {
-      score += 40;
+        cArtist.contains('universal') ||
+        cArtist.contains('interscope') ||
+        cArtist.contains('def jam') ||
+        cArtist.contains('atlantic') ||
+        cArtist.contains('columbia')) {
+      score += 45;
     }
 
     return score;

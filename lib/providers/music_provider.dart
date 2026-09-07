@@ -869,6 +869,7 @@ class MusicProvider
   String? get lyricsError => _lyricsError;
   bool get hasSyncedLyrics =>
       _currentLyrics != null && _currentLyrics!.isNotEmpty;
+  String? get lyricsTrackId => _lyricsTrackId;
 
   // Method to fetch lyrics
   Future<void> fetchLyrics({bool forceRefresh = false}) async {
@@ -1182,15 +1183,12 @@ class MusicProvider
       }
 
       // FIX: Detect track completion and advance to next track
-      // ProcessingState.completed with the always-windowed playlist only
-      // fires when a silent padding item finishes — a trailing echo of the
-      // real end. Nav-monitor (dummy skip) is the true advance signal, so
-      // ignore completions while parked on padding; the 2s duplicate guard
-      // below remains as belt-and-braces.
+      // Natural track completion fires ProcessingState.completed. The 2s duplicate
+      // auto-advance guard (_consumeDuplicateAutoAdvance) prevents double-advance
+      // while guaranteeing that completion is never missed.
       if (state.processingState == ProcessingState.completed &&
           _currentTrack != null &&
-          !_isStopping &&
-          !_audioService.isOnPaddingItem) {
+          !_isStopping) {
         if (kDebugMode)
           debugPrint(
               'MusicProvider: Track completed naturally, calling _onTrackComplete');
@@ -1558,6 +1556,10 @@ class MusicProvider
     // 2. Standard Playlist Path
     final list = _getActivePlaylist();
     if (list.isEmpty) {
+      if (_autoplayEnabled && !_suppressAutoplayOnce) {
+        _startAutoplayFromRecommendations();
+        return;
+      }
       stopTrack();
       return;
     }
@@ -1739,6 +1741,13 @@ class MusicProvider
     }
   }
 
+  final Set<String> _autoplayTrackIds = {};
+
+  /// Returns whether a track in the queue was automatically added by autoplay
+  bool isAutoplayTrack(String trackId) => _autoplayTrackIds.contains(trackId);
+
+
+
   /// Automatically populates the queue with the best and related tracks
   /// using InnerTube's official RDAMVM radio mix and BitChord's QueueBuilder algorithm.
   Future<void> _autoFillQueue(Track seedTrack, {int? generation}) async {
@@ -1784,6 +1793,9 @@ class MusicProvider
 
       // Fill queue if empty or append when low
       if (_currentTrack?.id == seedTrack.id) {
+        for (final t in extended) {
+          _autoplayTrackIds.add(t.id);
+        }
         if (_queue.isEmpty) {
           _queue.addAll(extended);
           notifyListeners();
@@ -1792,7 +1804,7 @@ class MusicProvider
             debugPrint(
                 'MusicProvider: Auto-filled queue with ${extended.length} BitChord-curated tracks for ${seedTrack.trackName}');
           }
-        } else if (_queue.length < 3) {
+        } else if (_queue.length < 5) {
           _queue.addAll(extended);
           notifyListeners();
         }
@@ -1890,7 +1902,12 @@ class MusicProvider
       return;
     }
     final list = _getActivePlaylist();
-    if (list.isEmpty) return;
+    if (list.isEmpty) {
+      if (_autoplayEnabled && !_suppressAutoplayOnce) {
+        _startAutoplayFromRecommendations();
+      }
+      return;
+    }
     _updateCurrentIndex();
     if (_currentIndex == -1 && list.isNotEmpty) {
       await _playTrackInternal(list[0]);
@@ -2042,7 +2059,19 @@ class MusicProvider
       _paletteService.clear(); // Reset palette immediately
       _isOfflineTrack = false;
       _updateCurrentIndex();
+
+      // FIX 1: Immediately clear previous lyrics so normal screen preview snippet
+      // never displays stale lyrics from the previous song while the new song loads.
+      _currentLyrics = null;
+      _lyricsTrackId = sanitizedTrack.id;
+      _isLoadingLyrics = true;
+      _lyricsError = null;
       notifyListeners();
+
+      // Start fetching lyrics in PARALLEL early
+      if (!_isOfflineMode) {
+        unawaited(fetchLyrics());
+      }
 
       // Start generating palette in parallel (don't await)
       updatePalette();
@@ -2174,11 +2203,15 @@ class MusicProvider
         unawaited(_enrichCurrentTrackMetadata(_currentTrack!));
       }
 
-      // Auto-fill queue with best and related tracks if queue is empty
+      // Auto-fill queue with best and related tracks if upcoming items are low (BitChord parity)
+      final remainingContextTracks =
+          (_currentPlayingTracks != null && _currentIndex >= 0)
+              ? (_currentPlayingTracks!.length - 1 - _currentIndex)
+              : 0;
+      final totalUpcoming = _queue.length + remainingContextTracks;
       if (_autoplayEnabled &&
-          _queue.isEmpty &&
           !_suppressAutoplayOnce &&
-          (_currentPlayingTracks == null || _currentPlayingTracks!.length <= 1)) {
+          totalUpcoming < 5) {
         unawaited(_autoFillQueue(effectiveTrack, generation: gen));
       }
 
@@ -2271,6 +2304,12 @@ class MusicProvider
     _paletteService.clear();
     _isOfflineTrack = true;
     _updateCurrentIndex();
+
+    // FIX 1: Immediately clear previous lyrics for offline tracks
+    _currentLyrics = null;
+    _lyricsTrackId = track.id;
+    _isLoadingLyrics = false;
+    _lyricsError = null;
     notifyListeners();
 
     // Start palette generation in parallel
@@ -2455,7 +2494,10 @@ class MusicProvider
       p.setBool('autoQueueEnabled', next);
       p.setBool('autoplayEnabled', next);
     });
-    if (next && _queue.isEmpty && _currentTrack != null) {
+    if (!next) {
+      _queue.removeWhere((t) => _autoplayTrackIds.contains(t.id));
+      _autoplayTrackIds.clear();
+    } else if (_currentTrack != null) {
       unawaited(_autoFillQueue(_currentTrack!, generation: _playbackGeneration));
     }
   }
@@ -2759,6 +2801,7 @@ class MusicProvider
   void clearQueue() {
     if (_queue.isEmpty && !_isAutoQueueContext) return;
     _queue.clear();
+    _autoplayTrackIds.clear();
     // v5.2 semantics: clearing during an autoplay (autoqueue) context also
     // empties the upcoming autoqueue — the context shrinks to just the
     // active song, and the player stops after it.
@@ -4468,6 +4511,25 @@ class MusicProvider
 
     // Sort by name or relevance? For now, leave mixed (Recommendation priority order)
     return smartArtists;
+  }
+
+  // --- Smart Album Recommendations ---
+  Future<List<Track>> getSmartLibraryAlbums() async {
+    final Set<String> uniqueAlbumKeys = {};
+    final List<Track> smartAlbums = [];
+
+    // Extract unique albums from Liked Songs, Recently Played, and Local tracks
+    for (final track in [..._likedSongs, ..._recentlyPlayed, ..._localTracks]) {
+      if (track.albumName.isNotEmpty &&
+          !track.albumName.toLowerCase().contains('unknown') &&
+          track.albumArtUrl.isNotEmpty) {
+        final key = '${track.albumName.toLowerCase()}_${track.artistName.toLowerCase()}';
+        if (uniqueAlbumKeys.add(key)) {
+          smartAlbums.add(track);
+        }
+      }
+    }
+    return smartAlbums;
   }
 } // End of MusicProvider class
 

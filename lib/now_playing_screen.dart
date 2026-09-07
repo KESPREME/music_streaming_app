@@ -885,115 +885,123 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     Track track,
     MusicProvider provider,
   ) {
-    String displayText = 'Let it breathe';
-    bool isInstrumental = true;
+    return StreamBuilder<Duration>(
+      stream: provider.positionStream,
+      initialData: provider.position,
+      builder: (context, snapshot) {
+        String displayText = 'Let it breathe';
+        bool isInstrumental = true;
 
-    if (provider.isLoadingLyrics) {
-      final idx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
-      displayText = _lyricsIntroPhrases[idx];
-      isInstrumental = true;
-    } else if (provider.hasSyncedLyrics &&
-        provider.currentLyrics != null &&
-        provider.currentLyrics!.isNotEmpty) {
-      final lyrics = provider.currentLyrics!;
-      final posMs = _draggedPositionSec != null
-          ? _draggedPositionSec!.toInt()
-          : provider.position.inMilliseconds;
-      final idx = LyricsUtils.findCurrentLineIndex(lyrics, posMs);
+        final isMatchingTrack = provider.lyricsTrackId == track.id;
 
-      if (idx >= 0 && idx < lyrics.length) {
-        final line = lyrics[idx];
-        final text = line.text.trim();
-        final firstVocalIdx = lyrics.indexWhere(
-          (e) => e.text.trim().isNotEmpty && !e.isMusicalBreak,
-        );
-        final isBeforeFirstVocal = firstVocalIdx >= 0 &&
-            (idx < firstVocalIdx || posMs < lyrics[firstVocalIdx].timeMs);
+        if (provider.isLoadingLyrics || !isMatchingTrack) {
+          final idx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
+          displayText = _lyricsIntroPhrases[idx];
+          isInstrumental = true;
+        } else if (provider.hasSyncedLyrics &&
+            provider.currentLyrics != null &&
+            provider.currentLyrics!.isNotEmpty) {
+          final lyrics = provider.currentLyrics!;
+          final posMs = _draggedPositionSec != null
+              ? _draggedPositionSec!.toInt()
+              : (snapshot.data?.inMilliseconds ?? provider.position.inMilliseconds);
+          final idx = LyricsUtils.findCurrentLineIndex(lyrics, posMs);
 
-        if (text.isNotEmpty && !line.isMusicalBreak && !isBeforeFirstVocal) {
-          displayText = text;
-          isInstrumental = false;
+          if (idx >= 0 && idx < lyrics.length) {
+            final line = lyrics[idx];
+            final text = line.text.trim();
+            final firstVocalIdx = lyrics.indexWhere(
+              (e) => e.text.trim().isNotEmpty && !e.isMusicalBreak,
+            );
+            final isBeforeFirstVocal = firstVocalIdx >= 0 &&
+                (idx < firstVocalIdx || posMs < lyrics[firstVocalIdx].timeMs);
+
+            if (text.isNotEmpty && !line.isMusicalBreak && !isBeforeFirstVocal) {
+              displayText = text;
+              isInstrumental = false;
+            } else {
+              final pIdx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
+              displayText = _lyricsIntroPhrases[pIdx];
+              isInstrumental = true;
+            }
+          } else {
+            final pIdx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
+            displayText = _lyricsIntroPhrases[pIdx];
+            isInstrumental = true;
+          }
         } else {
-          final pIdx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
-          displayText = _lyricsIntroPhrases[pIdx];
+          final idx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
+          displayText = _lyricsIntroPhrases[idx];
           isInstrumental = true;
         }
-      } else {
-        final pIdx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
-        displayText = _lyricsIntroPhrases[pIdx];
-        isInstrumental = true;
-      }
-    } else {
-      final idx = track.id.hashCode.abs() % _lyricsIntroPhrases.length;
-      displayText = _lyricsIntroPhrases[idx];
-      isInstrumental = true;
-    }
 
-    return Semantics(
-      label: 'Current lyric: $displayText. Tap to open full lyrics.',
-      button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.lightImpact();
-          _navigateToTab(0);
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-          child: Row(
-            children: [
-              if (isInstrumental) ...[
-                Icon(
-                  Icons.music_note_rounded,
-                  size: 16,
-                  color: Colors.white.withValues(alpha: 0.65),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 380),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0.0, 0.28),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
+        return Semantics(
+          label: 'Current lyric: $displayText. Tap to open full lyrics.',
+          button: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _navigateToTab(0);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+              child: Row(
+                children: [
+                  if (isInstrumental) ...[
+                    Icon(
+                      Icons.music_note_rounded,
+                      size: 16,
+                      color: Colors.white.withValues(alpha: 0.65),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 380),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0.0, 0.28),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Text(
+                        displayText,
+                        key: ValueKey<String>('${track.id}:$isInstrumental:$displayText'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: isInstrumental
+                              ? Colors.white.withValues(alpha: 0.60)
+                              : Colors.white.withValues(alpha: 0.95),
+                          fontSize: 14.5,
+                          fontWeight:
+                              isInstrumental ? FontWeight.w500 : FontWeight.w600,
+                          letterSpacing: -0.15,
+                        ),
                       ),
-                    );
-                  },
-                  child: Text(
-                    displayText,
-                    key: ValueKey<String>('$isInstrumental:$displayText'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.plusJakartaSans(
-                      color: isInstrumental
-                          ? Colors.white.withValues(alpha: 0.60)
-                          : Colors.white.withValues(alpha: 0.95),
-                      fontSize: 14.5,
-                      fontWeight:
-                          isInstrumental ? FontWeight.w500 : FontWeight.w600,
-                      letterSpacing: -0.15,
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: Colors.white.withValues(alpha: 0.50),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: Colors.white.withValues(alpha: 0.50),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

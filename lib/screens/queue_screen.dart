@@ -224,12 +224,23 @@ class QueueScreen extends StatelessWidget {
                 HapticFeedback.lightImpact();
                 _showClearDialog(context, musicProvider);
               },
-              child: Text(
-                'Clear',
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    width: 0.5,
+                  ),
+                ),
+                child: Text(
+                  'Clear',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -527,6 +538,9 @@ class QueueScreen extends StatelessWidget {
         final track = queue[index];
         final bool isCurrent = currentTrack?.id == track.id;
         final bool isActuallyPlaying = isCurrent && musicProvider.isPlaying;
+        final bool isAutoplay = musicProvider.isAutoplayTrack(track.id);
+        final bool isFirstAutoplay = isAutoplay &&
+            (index == 0 || !musicProvider.isAutoplayTrack(queue[index - 1].id));
 
         return Dismissible(
           key: ValueKey('${track.id}_${index}_queue'),
@@ -544,110 +558,169 @@ class QueueScreen extends StatelessWidget {
           onDismissed: (_) {
             musicProvider.removeFromQueue(track);
           },
-          child: Container(
-            key: ValueKey('container_${track.id}_$index'),
-            margin: const EdgeInsets.symmetric(vertical: 3),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isCurrent
-                  ? Colors.white.withValues(alpha: 0.10)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: isCurrent
-                  ? Border.all(
-                      color: accentColor.withValues(alpha: 0.4),
-                      width: 1,
-                    )
-                  : null,
-            ),
-            child: Row(
-              children: [
-                // Album Art Thumbnail
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: _buildAlbumArtImage(track),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Equalizer indicator if current track
-                if (isCurrent) ...[
-                  AnimatedEqualizerIcon(
-                    isPlaying: isActuallyPlaying,
-                    color: accentColor,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                ],
-
-                // Title and Artist
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () async {
-                      try {
-                        await musicProvider.playTrack(
-                          track,
-                          setContext: false,
-                          clearQueue: false,
-                        );
-                      } catch (error) {
-                        if (context.mounted) {
-                          showGlassSnackBar(
-                            context,
-                            'Could not play ${track.trackName}',
-                          );
-                        }
-                      }
-                    },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          track.trackName,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: isCurrent ? accentColor : Colors.white,
-                            fontSize: 15,
-                            fontWeight: isCurrent
-                                ? FontWeight.bold
-                                : FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isFirstAutoplay)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          track.artistName,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white.withValues(alpha: 0.60),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w400,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Icon(
+                          Icons.all_inclusive_rounded,
+                          size: 14,
+                          color: accentColor,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Autoplay',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '• Similar tracks',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white.withValues(alpha: 0.50),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              Container(
+                key: ValueKey('container_${track.id}_$index'),
+                margin: const EdgeInsets.symmetric(vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isCurrent
+                      ? Colors.white.withValues(alpha: 0.10)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isCurrent
+                      ? Border.all(
+                          color: accentColor.withValues(alpha: 0.4),
+                          width: 1,
+                        )
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    // Album Art Thumbnail
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: _buildAlbumArtImage(track),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
 
-                // Drag Handle (Image 4: =)
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Icon(
-                      Icons.drag_handle_rounded,
-                      color: Colors.white.withValues(alpha: 0.40),
-                      size: 22,
+                    // Equalizer indicator if current track
+                    if (isCurrent) ...[
+                      AnimatedEqualizerIcon(
+                        isPlaying: isActuallyPlaying,
+                        color: accentColor,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+
+                    // Title and Artist
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          try {
+                            await musicProvider.playTrack(
+                              track,
+                              setContext: false,
+                              clearQueue: false,
+                            );
+                          } catch (error) {
+                            if (context.mounted) {
+                              showGlassSnackBar(
+                                context,
+                                'Could not play ${track.trackName}',
+                              );
+                            }
+                          }
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              track.trackName,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: isCurrent ? accentColor : Colors.white,
+                                fontSize: 15,
+                                fontWeight: isCurrent
+                                    ? FontWeight.bold
+                                    : FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                if (isAutoplay) ...[
+                                  Icon(
+                                    Icons.all_inclusive_rounded,
+                                    size: 12,
+                                    color: accentColor.withValues(alpha: 0.8),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    track.artistName,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: Colors.white.withValues(alpha: 0.60),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+
+                    // Drag Handle (Image 4: =)
+                    ReorderableDragStartListener(
+                      index: index,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.drag_handle_rounded,
+                          color: Colors.white.withValues(alpha: 0.40),
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },

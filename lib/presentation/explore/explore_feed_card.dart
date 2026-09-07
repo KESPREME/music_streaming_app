@@ -85,9 +85,9 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
       return;
     }
 
-    // Dwell debounce: only resolve canvas if user dwells on this card for >= 1200ms.
-    // This stops rapid swipes from firing multiple YouTube video searches and 400KB downloads!
-    _canvasDebounceTimer = Timer(const Duration(milliseconds: 1200), () {
+    // Dwell debounce: only resolve canvas if user dwells on this card for >= 650ms.
+    // This stops rapid swipes from firing multiple video searches while loading promptly.
+    _canvasDebounceTimer = Timer(const Duration(milliseconds: 650), () {
       if (!mounted || !_isVisuallyActive || widget.item.track.id != track.id) return;
       CanvasResolutionService.instance.resolveCanvas(track).then((url) {
         if (mounted &&
