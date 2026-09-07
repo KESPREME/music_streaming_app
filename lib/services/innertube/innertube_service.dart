@@ -8,6 +8,7 @@ import '../../models/discover_models.dart';
 import '../potoken/po_token_webview.dart';
 import '../../models/album.dart';
 import '../metadata/track_metadata_enricher.dart';
+import '../../models/bitchord_page_models.dart';
 
 /// YouTube client types for different use cases
 enum YouTubeClientType {
@@ -1353,6 +1354,451 @@ class InnerTubeService {
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: Artist details error: $e');
       return {'tracks': <Track>[], 'albums': <Album>[], 'singles': <Album>[]};
+    }
+  }
+
+  /// Get full BitChord Artist Page Data with hero portrait, stats, bio, and carousels
+  Future<ArtistDetailData> getArtistPageData(String browseId) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: Getting full artist page data for $browseId');
+      }
+
+      final body = jsonEncode({
+        'context': _buildContext(),
+        'browseId': browseId,
+      });
+
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: body,
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Artist browse failed: ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body);
+
+      // 1. Header parsing (musicImmersiveHeaderRenderer or musicVisualHeaderRenderer)
+      final header = data['header'];
+      String artistName = 'Artist';
+      String heroImageUrl = '';
+      String? subscriberCountText;
+      String? monthlyListenerCount;
+
+      if (header != null) {
+        final immersive = header['musicImmersiveHeaderRenderer'];
+        final visual = header['musicVisualHeaderRenderer'];
+        final activeHeader = immersive ?? visual;
+
+        if (activeHeader != null) {
+          final titleRuns = activeHeader['title']?['runs'] as List?;
+          if (titleRuns != null && titleRuns.isNotEmpty) {
+            artistName = titleRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+          }
+
+          // Hero Image
+          final thumbMap = immersive?['thumbnail'] ?? visual?['foregroundThumbnail'] ?? visual?['thumbnail'];
+          final thumbs = thumbMap?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
+          if (thumbs != null && thumbs.isNotEmpty) {
+            heroImageUrl = thumbs.last['url']?.toString() ?? '';
+            if (heroImageUrl.contains('lh3.googleusercontent.com')) {
+              heroImageUrl = heroImageUrl.replaceAll(RegExp(r'=w\d+-h\d+'), '=w1200-h800');
+            }
+          }
+
+          // Subscriber Count
+          final subBtn2 = immersive?['subscriptionButton2']?['subscribeButtonRenderer'];
+          final subBtn1 = immersive?['subscriptionButton']?['subscribeButtonRenderer'];
+          final subRuns = (subBtn2?['subscriberCountWithSubscribeText']?['runs'] ??
+              subBtn1?['longSubscriberCountText']?['runs'] ??
+              subBtn1?['shortSubscriberCountText']?['runs']) as List?;
+          if (subRuns != null && subRuns.isNotEmpty) {
+            final raw = subRuns.first['text']?.toString() ?? '';
+            subscriberCountText = raw.contains('subscribers') ? raw : '$raw subscribers';
+          }
+
+          // Monthly Listeners
+          final listenerRuns = immersive?['monthlyListenerCount']?['runs'] as List?;
+          if (listenerRuns != null && listenerRuns.isNotEmpty) {
+            final raw = listenerRuns.first['text']?.toString() ?? '';
+            monthlyListenerCount = raw.contains('listeners') ? raw : '$raw monthly listeners';
+          }
+        }
+      }
+
+      // 2. Editorial Description ("About the artist")
+      String? description;
+      final descShelves = _collectRenderers(data, 'musicDescriptionShelfRenderer');
+      if (descShelves.isNotEmpty) {
+        final descRuns = descShelves.first['description']?['runs'] as List?;
+        if (descRuns != null && descRuns.isNotEmpty) {
+          description = descRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+      }
+      if (description == null && header != null) {
+        final hdrDesc = header['musicImmersiveHeaderRenderer']?['description']?['runs'] as List?;
+        if (hdrDesc != null && hdrDesc.isNotEmpty) {
+          description = hdrDesc.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+      }
+
+      // 3. Top Songs
+      final topSongs = <Track>[];
+      final shelfRenderers = _collectRenderers(data, 'musicShelfRenderer');
+      if (shelfRenderers.isNotEmpty) {
+        final contents = shelfRenderers.first['contents'] as List?;
+        if (contents != null) {
+          for (final item in contents) {
+            final renderer = item['musicResponsiveListItemRenderer'];
+            if (renderer != null) {
+              final track = _parseTrackFromRenderer(renderer);
+              if (track != null) topSongs.add(track);
+            }
+          }
+        }
+      }
+
+      // 4. Horizontal Shelves & Carousels
+      final shelves = <DetailShelf>[];
+      final carouselRenderers = _collectRenderers(data, 'musicCarouselShelfRenderer');
+      for (final carousel in carouselRenderers) {
+        final carouselHeader = carousel['header']?['musicCarouselShelfBasicHeaderRenderer'];
+        final titleRuns = carouselHeader?['title']?['runs'] as List?;
+        final shelfTitle = titleRuns?.map((r) => r['text']?.toString() ?? '').join('').trim() ?? '';
+        if (shelfTitle.isEmpty || RegExp(r'\bvideos?\b', caseSensitive: false).hasMatch(shelfTitle)) {
+          continue;
+        }
+
+        final contents = carousel['contents'] as List?;
+        if (contents == null || contents.isEmpty) continue;
+
+        final shelfItems = <DetailShelfItem>[];
+        for (final item in contents) {
+          final renderer = item['musicTwoRowItemRenderer'];
+          if (renderer == null) continue;
+
+          final browseId = renderer['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+          if (browseId == null || browseId.isEmpty) continue;
+
+          final itemTitle = (renderer['title']?['runs'] as List?)
+                  ?.map((r) => r['text']?.toString() ?? '')
+                  .join('')
+                  .trim() ??
+              '';
+          final subRuns = renderer['subtitle']?['runs'] as List?;
+          final itemSubtitle = subRuns
+                  ?.map((r) => r['text']?.toString() ?? '')
+                  .where((s) => s.trim().isNotEmpty && s.trim() != '•')
+                  .join(' • ') ??
+              '';
+
+          final thumbs = renderer['thumbnailRenderer']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
+          String itemImage = thumbs?.last['url']?.toString() ?? '';
+          if (itemImage.contains('lh3.googleusercontent.com')) {
+            itemImage = itemImage.replaceAll(RegExp(r'=w\d+-h\d+'), '=w500-h500');
+          }
+
+          String itemType = 'album';
+          final lowerShelf = shelfTitle.toLowerCase();
+          if (lowerShelf.contains('album')) {
+            itemType = 'album';
+          } else if (lowerShelf.contains('single') || lowerShelf.contains('ep')) {
+            itemType = 'single';
+          } else if (lowerShelf.contains('feature') || lowerShelf.contains('playlist')) {
+            itemType = 'playlist';
+          } else if (lowerShelf.contains('fan') || lowerShelf.contains('like') || lowerShelf.contains('artist')) {
+            itemType = 'artist';
+          }
+
+          shelfItems.add(DetailShelfItem(
+            title: itemTitle,
+            subtitle: itemSubtitle,
+            browseId: browseId,
+            imageUrl: itemImage,
+            type: itemType,
+          ));
+        }
+
+        if (shelfItems.isNotEmpty) {
+          shelves.add(DetailShelf(title: shelfTitle, items: shelfItems));
+        }
+      }
+
+      return ArtistDetailData(
+        name: artistName,
+        heroImageUrl: heroImageUrl,
+        subscriberCountText: subscriberCountText,
+        monthlyListenerCount: monthlyListenerCount,
+        description: description,
+        topSongs: topSongs,
+        shelves: shelves,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('InnerTubeService: getArtistPageData error: $e');
+      return const ArtistDetailData(
+        name: 'Artist',
+        heroImageUrl: '',
+      );
+    }
+  }
+
+  /// Get full BitChord Album Page Data with title, artist, year, track count, cover, and editorial blurb
+  Future<AlbumDetailData> getAlbumPageData(String browseId) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: Getting full album page data for $browseId');
+      }
+
+      final body = jsonEncode({
+        'context': _buildContext(),
+        'browseId': browseId,
+      });
+
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: body,
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Album browse failed: ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body);
+
+      // 1. Header parsing (musicResponsiveHeaderRenderer or musicDetailHeaderRenderer)
+      final headerRenderers = [
+        ..._collectRenderers(data, 'musicResponsiveHeaderRenderer'),
+        ..._collectRenderers(data, 'musicDetailHeaderRenderer'),
+      ];
+
+      String title = 'Album';
+      String artistName = '';
+      String? artistBrowseId;
+      String? year;
+      int? trackCount;
+      String coverUrl = '';
+
+      if (headerRenderers.isNotEmpty) {
+        final header = headerRenderers.first;
+        final titleRuns = header['title']?['runs'] as List?;
+        if (titleRuns != null && titleRuns.isNotEmpty) {
+          title = titleRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+
+        final straplineRuns = header['straplineTextOne']?['runs'] as List?;
+        if (straplineRuns != null && straplineRuns.isNotEmpty) {
+          artistName = straplineRuns.first['text']?.toString() ?? '';
+          artistBrowseId = straplineRuns.first['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+        }
+
+        final subtitleRuns = header['subtitle']?['runs'] as List?;
+        if (artistName.isEmpty && subtitleRuns != null && subtitleRuns.isNotEmpty) {
+          for (final run in subtitleRuns) {
+            final text = run['text']?.toString() ?? '';
+            final bId = run['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+            if (bId != null && bId.startsWith('UC')) {
+              artistName = text;
+              artistBrowseId = bId;
+              break;
+            }
+          }
+          if (artistName.isEmpty) artistName = subtitleRuns.first['text']?.toString() ?? '';
+        }
+
+        final allRuns = [
+          if (subtitleRuns != null) ...subtitleRuns,
+          if (header['secondSubtitle']?['runs'] != null) ...header['secondSubtitle']['runs'] as List,
+        ];
+        for (final run in allRuns) {
+          final text = run['text']?.toString() ?? '';
+          final match = RegExp(r'\b(19\d\d|20\d\d)\b').firstMatch(text);
+          if (match != null) {
+            year = match.group(1);
+            break;
+          }
+        }
+
+        final thumbs = _collectRenderers(header, 'musicThumbnailRenderer').firstOrNull?['thumbnail']?['thumbnails'] as List?;
+        if (thumbs != null && thumbs.isNotEmpty) {
+          coverUrl = thumbs.last['url']?.toString() ?? '';
+          if (coverUrl.contains('lh3.googleusercontent.com')) {
+            coverUrl = coverUrl.replaceAll(RegExp(r'=w\d+-h\d+'), '=w800-h800');
+          }
+        }
+      }
+
+      // 2. Editorial Description ("About the album")
+      String? description;
+      final descShelves = _collectRenderers(data, 'musicDescriptionShelfRenderer');
+      if (descShelves.isNotEmpty) {
+        final descRuns = descShelves.first['description']?['runs'] as List?;
+        if (descRuns != null && descRuns.isNotEmpty) {
+          description = descRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+      }
+      if (description == null && headerRenderers.isNotEmpty) {
+        final descRuns = headerRenderers.first['description']?['runs'] as List?;
+        if (descRuns != null && descRuns.isNotEmpty) {
+          description = descRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+      }
+
+      // 3. Tracks
+      final tracks = <Track>[];
+      final itemRenderers = _collectRenderers(data, 'musicResponsiveListItemRenderer');
+      final seenIds = <String>{};
+      for (final renderer in itemRenderers) {
+        final track = _parseTrackFromRenderer(renderer);
+        if (track != null && seenIds.add(track.id)) {
+          tracks.add(track);
+        }
+      }
+
+      trackCount = tracks.length;
+
+      return AlbumDetailData(
+        title: title,
+        artistName: artistName,
+        artistBrowseId: artistBrowseId,
+        year: year,
+        trackCount: trackCount,
+        coverUrl: coverUrl,
+        description: description,
+        tracks: tracks,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('InnerTubeService: getAlbumPageData error: $e');
+      return const AlbumDetailData(
+        title: 'Album',
+        artistName: '',
+        coverUrl: '',
+      );
+    }
+  }
+
+  /// Get full BitChord Playlist Page Data with title, curator, views, collage/cover, and tracks
+  Future<PlaylistDetailData> getPlaylistPageData(String browseId) async {
+    try {
+      final String resolvedBrowseId;
+      if (browseId.startsWith('VL')) {
+        resolvedBrowseId = browseId;
+      } else if (browseId.startsWith('PL') || browseId.startsWith('RDCLAK')) {
+        resolvedBrowseId = 'VL$browseId';
+      } else {
+        resolvedBrowseId = browseId;
+      }
+
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: Getting full playlist page data for $resolvedBrowseId');
+      }
+
+      final body = jsonEncode({
+        'context': _buildContext(),
+        'browseId': resolvedBrowseId,
+      });
+
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/browse?prettyPrint=false'),
+        headers: _buildHeaders(),
+        body: body,
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Playlist browse failed: ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body);
+
+      // 1. Header parsing
+      final headerRenderers = [
+        ..._collectRenderers(data, 'musicResponsiveHeaderRenderer'),
+        ..._collectRenderers(data, 'musicDetailHeaderRenderer'),
+      ];
+
+      String title = 'Playlist';
+      String curatorName = 'YouTube Music';
+      String? viewsText;
+      String coverUrl = '';
+      String? description;
+
+      if (headerRenderers.isNotEmpty) {
+        final header = headerRenderers.first;
+        final titleRuns = header['title']?['runs'] as List?;
+        if (titleRuns != null && titleRuns.isNotEmpty) {
+          title = titleRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+
+        final straplineRuns = header['straplineTextOne']?['runs'] as List?;
+        if (straplineRuns != null && straplineRuns.isNotEmpty) {
+          curatorName = straplineRuns.first['text']?.toString() ?? 'YouTube Music';
+        }
+
+        final subtitleRuns = header['subtitle']?['runs'] as List?;
+        if (subtitleRuns != null && subtitleRuns.isNotEmpty) {
+          for (final run in subtitleRuns) {
+            final text = run['text']?.toString() ?? '';
+            if (RegExp(r'\b\d+(?:\.\d+)?[KM]?\s+views\b', caseSensitive: false).hasMatch(text)) {
+              viewsText = text;
+              break;
+            }
+          }
+        }
+
+        final thumbs = _collectRenderers(header, 'musicThumbnailRenderer').firstOrNull?['thumbnail']?['thumbnails'] as List?;
+        if (thumbs != null && thumbs.isNotEmpty) {
+          coverUrl = thumbs.last['url']?.toString() ?? '';
+        }
+
+        final descRuns = header['description']?['runs'] as List?;
+        if (descRuns != null && descRuns.isNotEmpty) {
+          description = descRuns.map((r) => r['text']?.toString() ?? '').join('').trim();
+        }
+      }
+
+      // 2. Tracks from playlist shelf
+      final tracks = <Track>[];
+      final itemRenderers = _collectRenderers(data, 'musicResponsiveListItemRenderer');
+      final seenIds = <String>{};
+      for (final renderer in itemRenderers) {
+        final track = _parseTrackFromRenderer(renderer);
+        if (track != null && seenIds.add(track.id)) {
+          tracks.add(track);
+        }
+      }
+
+      // 3. Collage thumbnails (if playlist has multiple tracks)
+      List<String>? collageThumbnails;
+      final uniqueArtworks = tracks
+          .map((t) => t.albumArt)
+          .where((art) => art.isNotEmpty)
+          .toSet()
+          .take(4)
+          .toList();
+      if (uniqueArtworks.length >= 4) {
+        collageThumbnails = uniqueArtworks;
+      }
+
+      return PlaylistDetailData(
+        title: title,
+        curatorName: curatorName,
+        viewsText: viewsText,
+        trackCount: tracks.length,
+        coverUrl: coverUrl,
+        collageThumbnails: collageThumbnails,
+        description: description,
+        tracks: tracks,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('InnerTubeService: getPlaylistPageData error: $e');
+      return const PlaylistDetailData(
+        title: 'Playlist',
+        curatorName: 'YouTube Music',
+        coverUrl: '',
+      );
     }
   }
 

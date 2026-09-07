@@ -55,13 +55,25 @@ class ColorUtils {
   }
 
   /// Returns a vibrant accent color derived from a palette.
-  static Color getVibrantAccent(PaletteGenerator? palette, Color defaultColor) {
+  static Color getVibrantAccent(PaletteGenerator? palette, [Color defaultColor = const Color(0xFFE94560)]) {
     if (palette == null) return defaultColor;
     
     final vibrant = boostColor(palette.vibrantColor?.color, saturation: 0.2);
     final dominant = palette.dominantColor?.color;
     
     return vibrant ?? boostColor(dominant, saturation: 0.3) ?? defaultColor;
+  }
+
+  /// Returns deep background wash color for BitChord artwork backdrops
+  static Color getBackgroundWash(PaletteGenerator? palette, [Color defaultColor = const Color(0xFF0D0B14)]) {
+    if (palette == null) return defaultColor;
+    return palette.darkMutedColor?.color ?? palette.darkVibrantColor?.color ?? defaultColor;
+  }
+
+  /// Returns dominant wash tint for BitChord ambient radial gradients
+  static Color getDominantWash(PaletteGenerator? palette, [Color defaultColor = const Color(0xFFE94560)]) {
+    if (palette == null) return defaultColor;
+    return palette.dominantColor?.color ?? palette.vibrantColor?.color ?? defaultColor;
   }
 }
 

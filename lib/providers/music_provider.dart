@@ -28,6 +28,7 @@ import '../models/track.dart';
 import '../models/playlist.dart'; // Ensure this has fromJson, toJson, and copyWith methods
 import '../models/artist.dart'; // Import new model
 import '../models/album.dart'; // Import new model
+import '../models/bitchord_page_models.dart';
 // import '../models/friend_listening.dart'; // Uncomment if FriendListening model and FirestoreService are used
 
 // Your Project Service Imports
@@ -1968,6 +1969,13 @@ class MusicProvider
   }
 
   // --- Core Playback Methods ---
+  /// Plays a list of tracks starting from [initialIndex] (BitChord detail screen parity).
+  Future<void> playTrackList(List<Track> tracks, {int initialIndex = 0}) async {
+    if (tracks.isEmpty) return;
+    final index = initialIndex.clamp(0, tracks.length - 1);
+    await playTrack(tracks[index], playlistTracks: tracks);
+  }
+
   Future<void> playTrack(
     Track track, {
     String? playlistId,
@@ -4198,7 +4206,19 @@ class MusicProvider
     }
   }
 
-  // --- Artist & Playlist Details ---
+  // --- Artist & Playlist Details (BitChord parity) ---
+  Future<ArtistDetailData> fetchArtistPageData(String browseId) async {
+    return _innerTubeService.getArtistPageData(browseId);
+  }
+
+  Future<AlbumDetailData> fetchAlbumPageData(String browseId) async {
+    return _innerTubeService.getAlbumPageData(browseId);
+  }
+
+  Future<PlaylistDetailData> fetchPlaylistPageData(String browseId) async {
+    return _innerTubeService.getPlaylistPageData(browseId);
+  }
+
   Future<Map<String, dynamic>> fetchArtistDetails(String browseId) async {
     return _innerTubeService.getArtistDetails(browseId);
   }

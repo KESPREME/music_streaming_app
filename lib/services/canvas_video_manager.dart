@@ -28,6 +28,22 @@ class CanvasVideoManager {
 
   VideoPlayerController? get currentController => _controller;
   bool get isRendered => isRenderedNotifier.value;
+  bool get hasActiveController =>
+      _controller != null && _controller!.value.isInitialized;
+
+  Widget buildVideoPlayer({BoxFit fit = BoxFit.cover}) {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return const SizedBox.shrink();
+    return FittedBox(
+      fit: fit,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: c.value.size.width,
+        height: c.value.size.height,
+        child: VideoPlayer(c),
+      ),
+    );
+  }
 
   bool get _isTesting =>
       WidgetsBinding.instance.runtimeType.toString().contains('Test');

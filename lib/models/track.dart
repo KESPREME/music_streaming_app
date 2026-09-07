@@ -34,6 +34,20 @@ class Track {
   /// Alias for albumArtUrl (InnerTube compatibility)
   String get albumArt => albumArtUrl;
 
+  /// Alias for trackName
+  String get title => trackName;
+
+  /// Alias for artistName
+  String get artist => artistName;
+
+  /// Formatted duration string mm:ss
+  String get durationText {
+    if (duration == null) return '';
+    final minutes = duration!.inMinutes;
+    final seconds = (duration!.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   factory Track.fromJson(Map<String, dynamic> json) {
     return Track(
       id: json['id'] ??

@@ -43,4 +43,7 @@ class ImageQualityUtils {
 
     return cleanUrl;
   }
+
+  /// Alias for getHighResArtwork
+  static String getHighQualityUrl(String? url) => getHighResArtwork(url);
 }
