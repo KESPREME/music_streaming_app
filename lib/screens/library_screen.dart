@@ -812,7 +812,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     width: 50,
                     height: 50,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => const Icon(Icons.music_note),
+                    errorBuilder: (_, __, ___) => const Icon(Icons.music_note, color: Colors.white54),
                   ),
                 ),
                 title: Text(

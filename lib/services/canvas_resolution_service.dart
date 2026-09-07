@@ -198,7 +198,6 @@ class CanvasResolutionService {
   static int _scoreCandidate(Track candidate, Track target) {
     final cTitle = candidate.trackName.toLowerCase();
     final cArtist = candidate.artistName.toLowerCase();
-    final tTitle = target.trackName.toLowerCase();
     final tArtist = target.artistName.toLowerCase();
 
     // 1. ABSOLUTE DISQUALIFICATION: Reject any video with lyric, lyrical, karaoke,

@@ -9,7 +9,6 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../utils/color_utils.dart';
 import '../utils/image_quality_utils.dart';
-import '../widgets/track_tile.dart';
 import '../widgets/global_music_overlay.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/animated_equalizer_icon.dart';
@@ -142,7 +141,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     if (mins < 60) return '$mins min';
     final hrs = mins ~/ 60;
     final remMins = mins % 60;
-    return '${hrs} hr ${remMins} min';
+    return '$hrs hr $remMins min';
   }
 
   @override

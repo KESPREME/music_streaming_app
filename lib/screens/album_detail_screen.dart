@@ -13,7 +13,6 @@ import '../widgets/global_music_overlay.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/glass_snackbar.dart';
-import '../widgets/liquid_play_button.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 
 /// Ordering for the track list on an album page (BitChord parity).
@@ -62,7 +61,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  AlbumSongSort _currentSort = AlbumSongSort.defaultOrder;
+  final AlbumSongSort _currentSort = AlbumSongSort.defaultOrder;
 
   @override
   void initState() {
@@ -169,7 +168,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     } else {
       final hrs = mins ~/ 60;
       final remMins = mins % 60;
-      return '${hrs} hr ${remMins} min';
+      return '$hrs hr $remMins min';
     }
   }
 
