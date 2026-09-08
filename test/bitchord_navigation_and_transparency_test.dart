@@ -109,7 +109,7 @@ void main() {
       );
 
       expect(find.byType(MergeBand), findsOneWidget);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(RepaintBoundary), findsWidgets);
     });
 
     testWidgets('BitchordSliverAppBar has forceMaterialTransparency and transparent background', (tester) async {

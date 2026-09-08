@@ -279,22 +279,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 ),
 
                 // Bottom fade settling onto the wash (BitChord DetailScreen.kt parity)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: artHeight * 0.48,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: const [0.0, 0.55, 1.0],
-                        colors: [
-                          Colors.transparent,
-                          washColor.withValues(alpha: 0.35),
-                          washColor.withValues(alpha: 0.88),
-                        ],
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: const [0.50, 0.75, 1.0],
+                          colors: [
+                            Colors.transparent,
+                            washColor.withValues(alpha: 0.38),
+                            washColor.withValues(alpha: 0.90),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -314,6 +312,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
+            cacheExtent: 600.0,
             slivers: [
               // Scroll-linked Frosted SliverAppBar (BitChord parity)
               BitchordSliverAppBar(
@@ -524,13 +523,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         final track = displayedTracks[index];
                         final isPlayingThis = track.isSameTrackAs(musicProvider.currentTrack);
 
-                        return BitchordSwipeableTrackRow(
-                          track: track,
-                          palette: artPalette,
-                          child: Material(
-                            color: isPlayingThis
-                                ? accentColor.withValues(alpha: 0.12)
-                                : Colors.transparent,
+                        return RepaintBoundary(
+                          child: BitchordSwipeableTrackRow(
+                            track: track,
+                            palette: artPalette,
+                            child: Material(
+                              color: isPlayingThis
+                                  ? accentColor.withValues(alpha: 0.12)
+                                  : Colors.transparent,
                             child: InkWell(
                               onTap: () {
                                 final startIndex = _tracks.indexOf(track);
@@ -653,9 +653,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               ),
                             ),
                           ),
-                        );
-                      },
-                      childCount: displayedTracks.length,
+                        ),
+                      );
+                    },
+                    childCount: displayedTracks.length,
+                      addRepaintBoundaries: true,
+                      addAutomaticKeepAlives: false,
                     ),
                   ),
                 ),

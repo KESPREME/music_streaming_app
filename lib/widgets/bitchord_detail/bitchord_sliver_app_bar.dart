@@ -70,22 +70,36 @@ class BitchordSliverAppBar extends StatelessWidget {
       actions: actions,
       flexibleSpace: fadeProgress <= 0.001
           ? const SizedBox.expand()
-          : ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: blurSigma,
-                  sigmaY: blurSigma,
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: backgroundColor.withValues(alpha: 0.72 * fadeProgress),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        backgroundColor.withValues(alpha: 0.45 * fadeProgress),
-                        Colors.transparent,
-                      ],
+          : RepaintBoundary(
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: blurSigma,
+                    sigmaY: blurSigma,
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: const [
+                          0.0, 0.09, 0.18, 0.27, 0.36, 0.45, 0.55, 0.64, 0.73, 0.82, 0.91, 1.0,
+                        ],
+                        colors: [
+                          backgroundColor.withValues(alpha: 0.82 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.76 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.69 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.61 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.52 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.42 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.31 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.21 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.12 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.05 * fadeProgress),
+                          backgroundColor.withValues(alpha: 0.01 * fadeProgress),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),

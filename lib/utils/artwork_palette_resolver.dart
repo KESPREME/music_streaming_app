@@ -125,14 +125,44 @@ class ArtworkPaletteResolver {
         }
       }
 
-      // 3. Edge color: fallback to darkMuted, muted, darkVibrant, or dominant
-      final edgeColor = paletteGen.darkMutedColor?.color ??
-          paletteGen.mutedColor?.color ??
-          paletteGen.darkVibrantColor?.color ??
-          dominantSwatch.color;
-
       final dominantColor = dominantSwatch.color;
       final vibrantColor = vibrantSwatch.color;
+
+      // 3. Bottom edge color (BitChord bottomEdgeColor parity):
+      // Calculate the arithmetic mean of the bottom 18% band of the artwork.
+      // A blur wide enough to lose the picture leaves the mean of what it sampled,
+      // so the page wash must match what the blur actually produced at the bottom edge.
+      Color edgeColor = dominantColor;
+      try {
+        final edgeGen = await PaletteGenerator.fromImageProvider(
+          imageProvider,
+          size: const Size(128, 128),
+          region: const Rect.fromLTWH(0, 104, 128, 24), // Bottom 18% (128 * 0.18 ≈ 23)
+          maximumColorCount: 8,
+        ).timeout(const Duration(milliseconds: 1500));
+
+        if (edgeGen.paletteColors.isNotEmpty) {
+          double totalWeight = 0;
+          double r = 0, g = 0, b = 0;
+          for (final pc in edgeGen.paletteColors) {
+            final w = pc.population.toDouble();
+            r += pc.color.r * 255.0 * w;
+            g += pc.color.g * 255.0 * w;
+            b += pc.color.b * 255.0 * w;
+            totalWeight += w;
+          }
+          if (totalWeight > 0) {
+            edgeColor = Color.fromARGB(
+              255,
+              (r / totalWeight).round().clamp(0, 255),
+              (g / totalWeight).round().clamp(0, 255),
+              (b / totalWeight).round().clamp(0, 255),
+            );
+          }
+        }
+      } catch (_) {
+        edgeColor = dominantColor;
+      }
 
       final palette = fromColors(
         dominantColor,

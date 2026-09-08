@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/widgets/bitchord_detail/artwork_wash.dart';
 import 'package:music_streaming_app/widgets/bitchord_detail/bitchord_sliver_app_bar.dart';
+import 'package:music_streaming_app/widgets/bitchord_detail/merge_band.dart';
 import 'package:music_streaming_app/utils/artwork_palette_resolver.dart';
 
 void main() {
@@ -59,7 +60,7 @@ void main() {
       expect(find.byType(BackdropFilter), findsNothing);
     });
 
-    testWidgets('BitchordSliverAppBar applies dark tinted frosted glass when scrolled past threshold', (tester) async {
+    testWidgets('BitchordSliverAppBar applies progressive eased gradient when scrolled past threshold', (tester) async {
       const bgColor = Color(0xFF101416);
       await tester.pumpWidget(
         MaterialApp(
@@ -86,7 +87,7 @@ void main() {
       // BackdropFilter must be present
       expect(find.byType(BackdropFilter), findsOneWidget);
 
-      // Container inside BackdropFilter must have tinted background to prevent white milky haze
+      // Container inside BackdropFilter must have progressive eased scrim gradient
       final container = tester.widget<Container>(
         find.descendant(
           of: find.byType(BackdropFilter),
@@ -94,7 +95,32 @@ void main() {
         ),
       );
       final decoration = container.decoration as BoxDecoration;
-      expect(decoration.color, bgColor.withValues(alpha: 0.72));
+      expect(decoration.gradient, isA<LinearGradient>());
+      final gradient = decoration.gradient as LinearGradient;
+      expect(gradient.colors.first, bgColor.withValues(alpha: 0.82));
+      expect(gradient.colors.last, Colors.transparent);
+    });
+
+    testWidgets('MergeBand renders eased gradient join without ShaderMask or BackdropFilter', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                MergeBand(
+                  washColor: Color(0xFF1C272B),
+                  artHeight: 300,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(MergeBand), findsOneWidget);
+      // Must NOT use ShaderMask or BackdropFilter (which caused horizontal line seam & 20fps stutter)
+      expect(find.byType(ShaderMask), findsNothing);
+      expect(find.byType(BackdropFilter), findsNothing);
     });
   });
 

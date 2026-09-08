@@ -294,22 +294,20 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 ),
 
                 // Bottom fade settling smoothly onto the wash (BitChord DetailScreen.kt parity)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: artHeight * 0.48,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: const [0.0, 0.55, 1.0],
-                        colors: [
-                          Colors.transparent,
-                          washColor.withValues(alpha: 0.35),
-                          washColor.withValues(alpha: 0.88),
-                        ],
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: const [0.50, 0.75, 1.0],
+                          colors: [
+                            Colors.transparent,
+                            washColor.withValues(alpha: 0.38),
+                            washColor.withValues(alpha: 0.90),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -329,6 +327,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
+            cacheExtent: 600.0,
             slivers: [
               // Scroll-linked Frosted SliverAppBar (BitChord parity)
               BitchordSliverAppBar(

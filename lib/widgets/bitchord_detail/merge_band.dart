@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 /// One pane of glass laid across the join between the top artwork and the page wash.
@@ -46,25 +45,19 @@ class MergeBand extends StatelessWidget {
       right: 0,
       height: height,
       child: IgnorePointer(
-        child: ShaderMask(
-          blendMode: BlendMode.dstIn,
-          shaderCallback: (bounds) {
-            return const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              stops: [0.0, 0.5, 1.0],
-              colors: [
-                Colors.transparent,
-                Colors.black,
-                Colors.transparent,
-              ],
-            ).createShader(bounds);
-          },
-          child: ClipRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-              child: Container(
-                color: washColor.withValues(alpha: 0.18),
+        child: RepaintBoundary(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.0, 0.35, 0.65, 1.0],
+                colors: [
+                  Colors.transparent,
+                  washColor.withValues(alpha: 0.18),
+                  washColor.withValues(alpha: 0.55),
+                  Colors.transparent,
+                ],
               ),
             ),
           ),
