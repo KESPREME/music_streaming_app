@@ -144,8 +144,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           String? newHero = pageData.heroImageUrl.isNotEmpty
               ? pageData.heroImageUrl
               : (_resolvedArtistImage ?? pageData.topSongs.firstOrNull?.albumArtUrl ?? widget.artistImage);
-          if (newHero != null && newHero.isNotEmpty && newHero != widget.artistImage) {
-            _resolvePalette(newHero);
+          if (newHero != null && newHero.isNotEmpty) {
+            if (_artworkPalette == null || _artworkPalette == ArtworkPalette.defaultDark || newHero != widget.artistImage) {
+              _resolvePalette(newHero);
+            }
           }
           setState(() {
             if (pageData.name.isNotEmpty && pageData.name != 'Artist') {
@@ -301,13 +303,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          stops: const [0.40, 0.65, 0.85, 0.96, 1.0],
+                          stops: const [0.55, 1.0],
                           colors: [
                             Colors.transparent,
-                            washColor.withValues(alpha: 0.30),
-                            washColor.withValues(alpha: 0.75),
-                            washColor,
-                            washColor,
+                            washColor.withValues(alpha: 0.88),
                           ],
                         ),
                       ),

@@ -39,29 +39,10 @@ class MergeBand extends StatelessWidget {
   }
 
   Widget _buildBand(double computedTop) {
-    return Positioned(
-      top: computedTop,
-      left: 0,
-      right: 0,
-      height: height,
-      child: IgnorePointer(
-        child: RepaintBoundary(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: const [0.0, 0.5, 1.0],
-                colors: [
-                  Colors.transparent,
-                  washColor.withValues(alpha: 0.15),
-                  washColor.withValues(alpha: 0.45),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    // BitChord DetailScreen.kt parity: when dynamic blur is reduced or running without
+    // a hardware Haze shader, MergeBand does not draw an opaque colored overlay.
+    // ArtworkWash and the artwork container's bottom gradient handle the merge cleanly,
+    // avoiding any abrupt horizontal seam cuts across the play button or action row.
+    return const SizedBox.shrink();
   }
 }

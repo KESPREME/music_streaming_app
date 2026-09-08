@@ -65,6 +65,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     _resolvedCurator = widget.artistNameHint ?? 'YouTube Music';
     _resolvedImageUrl = widget.playlistImage;
 
+    final initialImg = widget.playlistImage ??
+        (widget.cachedTracks != null && widget.cachedTracks!.isNotEmpty
+            ? widget.cachedTracks!.first.albumArtUrl
+            : null);
+    _artworkPalette = ArtworkPaletteResolver.getCached(initialImg);
+    if (_artworkPalette == null && initialImg != null && initialImg.isNotEmpty) {
+      _resolvePalette(initialImg);
+    }
+
     if (widget.cachedTracks != null && widget.cachedTracks!.isNotEmpty) {
       _tracks = widget.cachedTracks!;
       _isLoading = false;
@@ -81,6 +90,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     super.dispose();
   }
 
+  void _resolvePalette(String imageUrl) {
+    ArtworkPaletteResolver.resolve(imageUrl).then((p) {
+      if (mounted) {
+        setState(() {
+          _artworkPalette = p;
+        });
+      }
+    });
+  }
+
   void _extractCollage() {
     if (_tracks.length >= 4 && _collageThumbnails == null) {
       final thumbs = _tracks
@@ -91,6 +110,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           .toList();
       if (thumbs.length >= 4) {
         _collageThumbnails = thumbs;
+      }
+    }
+    final artUrl = _resolvedImageUrl ??
+        (_collageThumbnails?.firstOrNull) ??
+        (_tracks.isNotEmpty ? _tracks.first.albumArtUrl : null);
+    if (artUrl != null && artUrl.isNotEmpty) {
+      if (_artworkPalette == null || _artworkPalette == ArtworkPalette.defaultDark) {
+        _resolvePalette(artUrl);
       }
     }
   }
@@ -109,7 +136,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 ? pageData.curatorName
                 : widget.artistNameHint ?? 'YouTube Music';
             _resolvedViews = pageData.viewsText;
-            if (pageData.coverUrl.isNotEmpty) _resolvedImageUrl = pageData.coverUrl;
+            if (pageData.coverUrl.isNotEmpty) {
+              _resolvedImageUrl = pageData.coverUrl;
+              _resolvePalette(pageData.coverUrl);
+            }
             _collageThumbnails = pageData.collageThumbnails;
             _resolvedDescription = pageData.description;
             _isLoading = false;
@@ -286,13 +316,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          stops: const [0.40, 0.65, 0.85, 0.96, 1.0],
+                          stops: const [0.55, 1.0],
                           colors: [
                             Colors.transparent,
-                            washColor.withValues(alpha: 0.30),
-                            washColor.withValues(alpha: 0.75),
-                            washColor,
-                            washColor,
+                            washColor.withValues(alpha: 0.88),
                           ],
                         ),
                       ),

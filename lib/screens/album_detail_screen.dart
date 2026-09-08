@@ -178,8 +178,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) {
       _resolvedImageUrl = _tracks.first.albumArtUrl;
     }
-    if (_artworkPalette == null && _resolvedImageUrl != null && _resolvedImageUrl!.isNotEmpty) {
-      _resolvePalette(_resolvedImageUrl!);
+    final artUrl = _resolvedImageUrl ?? (_tracks.isNotEmpty ? _tracks.first.albumArtUrl : null);
+    if (artUrl != null && artUrl.isNotEmpty) {
+      if (_artworkPalette == null || _artworkPalette == ArtworkPalette.defaultDark) {
+        _resolvePalette(artUrl);
+      }
     }
     final firstTrack = _tracks.first;
     if (firstTrack.albumName.isNotEmpty && _resolvedYear == null) {
@@ -203,7 +206,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             if (pageData.artistName.isNotEmpty) _resolvedArtist = pageData.artistName;
             if (pageData.artistBrowseId != null) _resolvedArtistId = pageData.artistBrowseId;
             if (pageData.year != null) _resolvedYear = pageData.year;
-            if (pageData.coverUrl.isNotEmpty) _resolvedImageUrl = pageData.coverUrl;
+            if (pageData.coverUrl.isNotEmpty) {
+              _resolvedImageUrl = pageData.coverUrl;
+              _resolvePalette(pageData.coverUrl);
+            }
             if (pageData.description != null && pageData.description!.isNotEmpty) {
               _resolvedDescription = pageData.description;
             }
@@ -388,13 +394,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          stops: const [0.40, 0.65, 0.85, 0.96, 1.0],
+                          stops: const [0.55, 1.0],
                           colors: [
                             Colors.transparent,
-                            washColor.withValues(alpha: 0.30),
-                            washColor.withValues(alpha: 0.75),
-                            washColor,
-                            washColor,
+                            washColor.withValues(alpha: 0.88),
                           ],
                         ),
                       ),

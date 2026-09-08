@@ -138,5 +138,35 @@ void main() {
       expect(palette.accent, isNotNull);
       expect(palette.background.computeLuminance(), lessThan(0.06));
     });
+
+    test('ArtworkPaletteResolver.fromColors preserves sleek charcoal for monochrome art', () {
+      // Greyscale / monochrome photo (e.g. B&W artist portrait like Tame Impala)
+      const monoGrey = Color(0xFF404040);
+      final palette = ArtworkPaletteResolver.fromColors(
+        monoGrey,
+        vibrantColor: monoGrey,
+        edgeColor: monoGrey,
+        dark: true,
+      );
+      final hsl = HSLColor.fromColor(palette.background);
+      // Saturation must stay 0.0 (sleek charcoal) instead of being forced into muddy reddish-brown
+      expect(hsl.saturation, equals(0.0));
+      expect(hsl.lightness, closeTo(0.13, 0.01));
+    });
+
+    test('ArtworkPaletteResolver.fromColors extracts rich warm tones for terracotta/sand art', () {
+      // Warm terracotta/sand (e.g. The Slow Rush)
+      const terracotta = Color(0xFFB8452B);
+      const sandEdge = Color(0xFFD49B6A);
+      final palette = ArtworkPaletteResolver.fromColors(
+        terracotta,
+        vibrantColor: terracotta,
+        edgeColor: sandEdge,
+        dark: true,
+      );
+      final hsl = HSLColor.fromColor(palette.background);
+      expect(hsl.saturation, greaterThan(0.19));
+      expect(hsl.lightness, closeTo(0.13, 0.01));
+    });
   });
 }

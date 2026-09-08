@@ -93,10 +93,13 @@ class ArtworkPaletteResolver {
 
     try {
       final imageProvider = CachedNetworkImageProvider(imageUrl);
+      // BitChord ArtworkPalette.kt parity: clear filters so near-red/orange/skin/sand tones
+      // (e.g. The Slow Rush) and monochrome black/white sleeves are not discarded.
       final paletteGen = await PaletteGenerator.fromImageProvider(
         imageProvider,
         size: const Size(128, 128),
         maximumColorCount: 24,
+        filters: const [],
       ).timeout(const Duration(seconds: 4));
 
       final colors = paletteGen.paletteColors;
@@ -130,8 +133,7 @@ class ArtworkPaletteResolver {
 
       // 3. Bottom edge color (BitChord bottomEdgeColor parity):
       // Calculate the arithmetic mean of the bottom 18% band of the artwork.
-      // A blur wide enough to lose the picture leaves the mean of what it sampled,
-      // so the page wash must match what the blur actually produced at the bottom edge.
+      // With filters: const [], desert sand, warm earth, or monochrome edges are never rejected.
       Color edgeColor = dominantColor;
       try {
         final edgeGen = await PaletteGenerator.fromImageProvider(
@@ -139,7 +141,8 @@ class ArtworkPaletteResolver {
           size: const Size(128, 128),
           region: const Rect.fromLTWH(0, 104, 128, 24), // Bottom 18% (128 * 0.18 ≈ 23)
           maximumColorCount: 8,
-        ).timeout(const Duration(milliseconds: 1500));
+          filters: const [],
+        ).timeout(const Duration(milliseconds: 2500));
 
         if (edgeGen.paletteColors.isNotEmpty) {
           double totalWeight = 0;
@@ -190,21 +193,28 @@ class ArtworkPaletteResolver {
   }) {
     final effectiveVibrant = vibrantColor ?? dominantColor;
     final effectiveEdge = edgeColor ?? dominantColor;
+
+    final domHsl = HSLColor.fromColor(dominantColor);
+    final isDomMono = domHsl.saturation < 0.05;
+
+    final edgeHsl = HSLColor.fromColor(effectiveEdge);
+    final isEdgeMono = edgeHsl.saturation < 0.05;
+
     return dark
         ? ArtworkPalette(
             background: _withHsl(
               dominantColor,
-              saturation: (s) => s.clamp(0.20, 0.62),
+              saturation: (s) => isDomMono ? 0.0 : s.clamp(0.20, 0.62),
               lightness: (_) => 0.13,
             ),
             wash: _withHsl(
               effectiveEdge,
-              saturation: (s) => s.clamp(0.18, 0.58),
+              saturation: (s) => isEdgeMono ? 0.0 : s.clamp(0.18, 0.58),
               lightness: (l) => l.clamp(0.14, 0.24),
             ),
             elevated: _withHsl(
               dominantColor,
-              saturation: (s) => s.clamp(0.20, 0.62),
+              saturation: (s) => isDomMono ? 0.0 : s.clamp(0.20, 0.62),
               lightness: (_) => 0.22,
             ),
             accent: _withHsl(
@@ -219,17 +229,17 @@ class ArtworkPaletteResolver {
         : ArtworkPalette(
             background: _withHsl(
               dominantColor,
-              saturation: (s) => s.clamp(0.14, 0.50),
+              saturation: (s) => isDomMono ? 0.0 : s.clamp(0.14, 0.50),
               lightness: (_) => 0.91,
             ),
             wash: _withHsl(
               effectiveEdge,
-              saturation: (s) => s.clamp(0.12, 0.46),
+              saturation: (s) => isEdgeMono ? 0.0 : s.clamp(0.12, 0.46),
               lightness: (l) => l.clamp(0.78, 0.90),
             ),
             elevated: _withHsl(
               dominantColor,
-              saturation: (s) => s.clamp(0.14, 0.50),
+              saturation: (s) => isDomMono ? 0.0 : s.clamp(0.14, 0.50),
               lightness: (_) => 0.83,
             ),
             accent: _withHsl(
