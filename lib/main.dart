@@ -337,16 +337,11 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _pushDetailFromSearch(Widget screen) {
-    setState(() => _searchSuspended = true);
-    _tabState.value = (index: _currentIndex, searchMode: false);
-    final route = MaterialPageRoute(builder: (_) => screen);
-    mainNavigatorKey.currentState?.push(route).then((_) {
-      if (mounted) {
-        setState(() => _searchSuspended = false);
-        _tabState.value = (index: _currentIndex, searchMode: _searchMode);
-        _searchFocus.unfocus();
-      }
-    });
+    _searchFocus.unfocus();
+    final nav = rootNavigatorKey.currentState ??
+        mainNavigatorKey.currentState ??
+        Navigator.of(context, rootNavigator: true);
+    nav.push(MaterialPageRoute(builder: (_) => screen));
   }
 
   @override

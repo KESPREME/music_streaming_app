@@ -10,6 +10,7 @@ import '../theme/material_you_typography.dart';
 import '../theme/material_you_tokens.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
+import '../core/navigation/root_navigator.dart';
 
 /// Material You Search Screen - COMPLETELY DIFFERENT from glassmorphism
 /// Features:
@@ -410,8 +411,10 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
         if (widget.onPushDetail != null) {
           widget.onPushDetail!(screen);
         } else {
-          Navigator.push(
-            context,
+          final nav = rootNavigatorKey.currentState ??
+              mainNavigatorKey.currentState ??
+              Navigator.of(context, rootNavigator: true);
+          nav.push(
             MaterialPageRoute(builder: (_) => screen),
           );
         }
@@ -436,8 +439,10 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
         if (widget.onPushDetail != null) {
           widget.onPushDetail!(screen);
         } else {
-          Navigator.push(
-            context,
+          final nav = rootNavigatorKey.currentState ??
+              mainNavigatorKey.currentState ??
+              Navigator.of(context, rootNavigator: true);
+          nav.push(
             MaterialPageRoute(builder: (_) => screen),
           );
         }

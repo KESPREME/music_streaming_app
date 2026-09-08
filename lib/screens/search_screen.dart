@@ -11,6 +11,7 @@ import '../widgets/track_tile.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
+import '../core/navigation/root_navigator.dart';
 
 class ArtistSearchTile extends StatelessWidget {
   final String artistName;
@@ -475,8 +476,10 @@ class _SearchScreenState extends State<SearchScreen>
                  if (widget.onPushDetail != null) {
                    widget.onPushDetail!(screen);
                  } else {
-                   Navigator.push(
-                     context,
+                   final nav = rootNavigatorKey.currentState ??
+                       mainNavigatorKey.currentState ??
+                       Navigator.of(context, rootNavigator: true);
+                   nav.push(
                      MaterialPageRoute(builder: (_) => screen),
                    );
                  }
@@ -553,8 +556,10 @@ class _SearchScreenState extends State<SearchScreen>
                 if (widget.onPushDetail != null) {
                   widget.onPushDetail!(screen);
                 } else {
-                  Navigator.push(
-                    context,
+                  final nav = rootNavigatorKey.currentState ??
+                      mainNavigatorKey.currentState ??
+                      Navigator.of(context, rootNavigator: true);
+                  nav.push(
                     MaterialPageRoute(builder: (_) => screen),
                   );
                 }

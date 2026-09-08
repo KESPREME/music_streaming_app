@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -48,8 +47,6 @@ class BitchordSliverAppBar extends StatelessWidget {
     final threshold = (artHeight - kToolbarHeight - topPadding).clamp(0.0, double.infinity);
     final fadeProgress = ((currentOffset - threshold) / 50.0).clamp(0.0, 1.0);
 
-    final blurSigma = 20.0 * fadeProgress;
-
     return SliverAppBar(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
@@ -71,36 +68,28 @@ class BitchordSliverAppBar extends StatelessWidget {
       flexibleSpace: fadeProgress <= 0.001
           ? const SizedBox.expand()
           : RepaintBoundary(
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: blurSigma,
-                    sigmaY: blurSigma,
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: const [
-                          0.0, 0.09, 0.18, 0.27, 0.36, 0.45, 0.55, 0.64, 0.73, 0.82, 0.91, 1.0,
-                        ],
-                        colors: [
-                          backgroundColor.withValues(alpha: 0.82 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.76 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.69 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.61 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.52 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.42 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.31 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.21 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.12 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.05 * fadeProgress),
-                          backgroundColor.withValues(alpha: 0.01 * fadeProgress),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [
+                      0.0, 0.09, 0.18, 0.27, 0.36, 0.45, 0.55, 0.64, 0.73, 0.82, 0.91, 1.0,
+                    ],
+                    colors: [
+                      backgroundColor.withValues(alpha: 0.42 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.38 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.34 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.29 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.23 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.18 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.13 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.08 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.04 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.02 * fadeProgress),
+                      backgroundColor.withValues(alpha: 0.005 * fadeProgress),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),

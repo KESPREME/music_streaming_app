@@ -10,6 +10,8 @@ import 'package:music_streaming_app/widgets/bitchord_detail/bitchord_sliver_app_
 import 'package:music_streaming_app/widgets/bitchord_detail/merge_band.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/utils/artwork_palette_resolver.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
+import 'package:music_streaming_app/widgets/liquid_glass_nav_bar.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -133,6 +135,38 @@ void main() {
       final sliverAppBar = tester.widget<SliverAppBar>(find.byType(SliverAppBar));
       expect(sliverAppBar.forceMaterialTransparency, isTrue);
       expect(sliverAppBar.backgroundColor, equals(Colors.transparent));
+    });
+  });
+
+  group('BitChord Search Bar Nav & Target Navigation Tests', () {
+    testWidgets('LiquidGlassNavBar in searchMode renders cancelIcon with Icons.search_rounded', (tester) async {
+      final searchController = TextEditingController();
+      final focusNode = FocusNode();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            bottomNavigationBar: LiquidGlassNavBar(
+              currentIndex: 0,
+              onTap: (_) {},
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+                BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'Explore'),
+                BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
+              ],
+              searchMode: true,
+              searchController: searchController,
+              searchFocusNode: focusNode,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final glassTabBar = tester.widget<lgw.GlassTabBar>(find.byType(lgw.GlassTabBar));
+      expect(glassTabBar.searchConfig?.cancelIcon, isA<Icon>());
+      final icon = glassTabBar.searchConfig!.cancelIcon as Icon;
+      expect(icon.icon, equals(Icons.search_rounded));
     });
   });
 }

@@ -136,6 +136,8 @@ class LiquidGlassNavBar extends StatelessWidget {
               controller: searchController,
               focusNode: searchFocusNode,
               searchIcon: const Icon(Icons.search_rounded, size: 22),
+              cancelIcon: const Icon(Icons.search_rounded, size: 22, color: Colors.white),
+              cancelIconSize: 22,
               onSearchToggle: (active) => onSearchToggle?.call(active),
               onSubmitted: (query) {
                 searchFocusNode?.unfocus();

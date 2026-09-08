@@ -51,12 +51,11 @@ class MergeBand extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                stops: const [0.0, 0.35, 0.65, 1.0],
+                stops: const [0.0, 0.5, 1.0],
                 colors: [
                   Colors.transparent,
-                  washColor.withValues(alpha: 0.18),
-                  washColor.withValues(alpha: 0.55),
-                  Colors.transparent,
+                  washColor.withValues(alpha: 0.15),
+                  washColor.withValues(alpha: 0.45),
                 ],
               ),
             ),

@@ -84,20 +84,17 @@ void main() {
       final opacityWidget = tester.widget<Opacity>(find.byType(Opacity));
       expect(opacityWidget.opacity, 1.0);
 
-      // BackdropFilter must be present
-      expect(find.byType(BackdropFilter), findsOneWidget);
-
-      // Container inside BackdropFilter must have progressive eased scrim gradient
+      // Container inside RepaintBoundary must have progressive eased scrim gradient (BitChord SCRIM_PEAK = 0.42)
       final container = tester.widget<Container>(
         find.descendant(
-          of: find.byType(BackdropFilter),
+          of: find.byType(RepaintBoundary),
           matching: find.byType(Container),
         ),
       );
       final decoration = container.decoration as BoxDecoration;
       expect(decoration.gradient, isA<LinearGradient>());
       final gradient = decoration.gradient as LinearGradient;
-      expect(gradient.colors.first, bgColor.withValues(alpha: 0.82));
+      expect(gradient.colors.first, bgColor.withValues(alpha: 0.42));
       expect(gradient.colors.last, Colors.transparent);
     });
 

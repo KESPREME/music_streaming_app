@@ -651,7 +651,8 @@ class GlassOptionsSheet extends StatelessWidget {
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
     final primaryArtist = ArtistPickerSheet.getPrimaryArtist(track.artistName);
-    final nav = mainNavigatorKey.currentState ??
+    final nav = rootNavigatorKey.currentState ??
+        mainNavigatorKey.currentState ??
         Navigator.of(context, rootNavigator: true);
     nav.push(
       MaterialPageRoute(
@@ -676,7 +677,8 @@ class GlassOptionsSheet extends StatelessWidget {
     provider.setHideMiniPlayer(false);
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
-    final nav = mainNavigatorKey.currentState ??
+    final nav = rootNavigatorKey.currentState ??
+        mainNavigatorKey.currentState ??
         Navigator.of(context, rootNavigator: true);
     nav.push(
       MaterialPageRoute(
