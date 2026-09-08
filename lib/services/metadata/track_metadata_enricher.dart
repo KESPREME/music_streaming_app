@@ -25,6 +25,7 @@ class TrackMetadataEnricher {
     caseSensitive: false,
   );
   static final RegExp _yearRegex = RegExp(r'^(19|20)\d{2}$');
+  static final RegExp _explicitTitleRegex = RegExp(r'\s*[\(\[]\s*explicit\s*[\)\]]', caseSensitive: false);
 
   /// Sanitizes title, artist, and album components and returns clean values.
   static ({String title, String artist, String album}) sanitize({
@@ -32,7 +33,7 @@ class TrackMetadataEnricher {
     required String artist,
     required String album,
   }) {
-    var cleanTitle = title.trim();
+    var cleanTitle = title.replaceAll(_explicitTitleRegex, '').trim();
     var cleanArtist = artist.trim();
     var cleanAlbum = album.trim();
 
@@ -137,6 +138,9 @@ class TrackMetadataEnricher {
 
   /// Sanitizes a [Track] instance and returns an updated copy.
   static Track sanitizeTrack(Track track) {
+    final hasExplicitTag = track.trackName.contains(_explicitTitleRegex);
+    final isExplicit = track.isExplicit || hasExplicitTag;
+
     final cleaned = sanitize(
       title: track.trackName,
       artist: track.artistName,
@@ -145,7 +149,8 @@ class TrackMetadataEnricher {
 
     if (cleaned.title == track.trackName &&
         cleaned.artist == track.artistName &&
-        cleaned.album == track.albumName) {
+        cleaned.album == track.albumName &&
+        isExplicit == track.isExplicit) {
       return track;
     }
 
@@ -153,6 +158,7 @@ class TrackMetadataEnricher {
       trackName: cleaned.title,
       artistName: cleaned.artist,
       albumName: cleaned.album,
+      isExplicit: isExplicit,
     );
   }
 

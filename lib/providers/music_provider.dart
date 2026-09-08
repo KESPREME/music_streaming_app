@@ -865,11 +865,14 @@ class MusicProvider
   String? _lyricsTrackId; // To verify if cached lyrics belong to current track
 
   // Getters
-  List<LyricsEntry>? get currentLyrics => _currentLyrics;
+  List<LyricsEntry>? get currentLyrics =>
+      (_currentTrack != null && _lyricsTrackId == _currentTrack!.id)
+          ? _currentLyrics
+          : null;
   bool get isLoadingLyrics => _isLoadingLyrics;
   String? get lyricsError => _lyricsError;
   bool get hasSyncedLyrics =>
-      _currentLyrics != null && _currentLyrics!.isNotEmpty;
+      currentLyrics != null && currentLyrics!.isNotEmpty;
   String? get lyricsTrackId => _lyricsTrackId;
 
   // Method to fetch lyrics
@@ -1187,9 +1190,16 @@ class MusicProvider
       // Natural track completion fires ProcessingState.completed. The 2s duplicate
       // auto-advance guard (_consumeDuplicateAutoAdvance) prevents double-advance
       // while guaranteeing that completion is never missed.
+      // Guard with hasPlayedMeaningfully to prevent premature skips on app cold start
+      // or audio source preparation where state briefly reports completed.
+      final hasPlayedMeaningfully = _duration > const Duration(seconds: 2) &&
+          _position > const Duration(seconds: 1) &&
+          (_position >= _duration - const Duration(seconds: 3));
+
       if (state.processingState == ProcessingState.completed &&
           _currentTrack != null &&
-          !_isStopping) {
+          !_isStopping &&
+          hasPlayedMeaningfully) {
         if (kDebugMode)
           debugPrint(
               'MusicProvider: Track completed naturally, calling _onTrackComplete');
@@ -2495,6 +2505,14 @@ class MusicProvider
 
   // --- Autoplay & Canvas ---
   void toggleAutoplay() {
+    // If autoplay is already enabled but queue is empty, a tap should force-fill
+    // the queue immediately (BitChord 1-tap UX parity) instead of turning off.
+    if (_autoplayEnabled && _queue.isEmpty && _currentTrack != null) {
+      unawaited(_autoFillQueue(_currentTrack!, generation: _playbackGeneration));
+      notifyListeners();
+      return;
+    }
+
     final next = !_autoplayEnabled;
     _autoplayEnabled = next;
     notifyListeners();
@@ -4143,6 +4161,7 @@ class MusicProvider
 
     _beginSearchSession(query);
     final gen = _searchGeneration;
+    _playlistSearchResults = [];
     try {
       final playlists =
           await _innerTubeService.searchPlaylists(query, limit: 20);
@@ -4160,18 +4179,20 @@ class MusicProvider
   Future<void> fetchArtistTracks(String artistName,
       {bool forceRefresh = false}) async {
     final k = 'artist_$artistName';
+    _beginSearchSession(artistName);
+    final gen = _searchGeneration;
+
     if (!forceRefresh && _cachedTracks.containsKey(k)) {
       _artistTracks = _cachedTracks[k]!;
-      notifyListeners();
+      _finishSearchSession(gen, hasResults: _artistTracks.isNotEmpty);
       return;
     }
     if (_isOfflineMode) {
       _errorMessage = "Offline: No artist tracks.";
-      notifyListeners();
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
       return;
     }
-    _beginSearchSession(artistName);
-    final gen = _searchGeneration;
+    _artistTracks = [];
     try {
       if (kDebugMode) {
         debugPrint(

@@ -14,6 +14,15 @@ class AboutSection extends StatefulWidget {
     required this.accentColor,
   });
 
+  static String cleanText(String raw) {
+    return raw
+        .replaceAll(RegExp(r'https?://[^\s)]+'), '')
+        .replaceAll(RegExp(r'\s*\(from Wikipedia.*?\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*From Wikipedia.*$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+  }
+
   @override
   State<AboutSection> createState() => _AboutSectionState();
 }
@@ -23,7 +32,8 @@ class _AboutSectionState extends State<AboutSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.text.trim().isEmpty) return const SizedBox.shrink();
+    final cleaned = AboutSection.cleanText(widget.text);
+    if (cleaned.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
@@ -44,7 +54,7 @@ class _AboutSectionState extends State<AboutSection> {
             crossFadeState:
                 _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             firstChild: Text(
-              widget.text,
+              cleaned,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.plusJakartaSans(
@@ -55,7 +65,7 @@ class _AboutSectionState extends State<AboutSection> {
               ),
             ),
             secondChild: Text(
-              widget.text,
+              cleaned,
               style: GoogleFonts.plusJakartaSans(
                 color: Colors.white.withValues(alpha: 0.78),
                 fontSize: 14.5,

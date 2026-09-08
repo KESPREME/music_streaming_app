@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../utils/artwork_palette_resolver.dart';
+
 /// Tactile squish-on-press wrapper for BitChord action buttons
 class _SquishButton extends StatefulWidget {
   final Widget child;
@@ -43,17 +45,23 @@ class _SquishButtonState extends State<_SquishButton> {
 class PlayPill extends StatelessWidget {
   final VoidCallback onPlay;
   final Color? accentColor;
+  final ArtworkPalette? palette;
   final double horizontalPadding;
 
   const PlayPill({
     super.key,
     required this.onPlay,
     this.accentColor,
+    this.palette,
     this.horizontalPadding = 28.0,
   });
 
   @override
   Widget build(BuildContext context) {
+    final fill = palette != null
+        ? Color.alphaBlend(palette!.elevated.withValues(alpha: 0.32), const Color(0xFF23201E))
+        : const Color(0xFF23201E);
+
     return _SquishButton(
       onTap: onPlay,
       child: Container(
@@ -61,9 +69,9 @@ class PlayPill extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(25),
-          color: Colors.white.withValues(alpha: 0.14),
+          color: fill,
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18),
+            color: Colors.white.withValues(alpha: 0.08),
             width: 0.5,
           ),
           boxShadow: [
@@ -78,7 +86,7 @@ class PlayPill extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.play_arrow_rounded,
               color: Colors.white,
               size: 24,
@@ -107,6 +115,7 @@ class CircleIconButton extends StatelessWidget {
   final double size;
   final Color? iconColor;
   final Color? backgroundColor;
+  final ArtworkPalette? palette;
 
   const CircleIconButton({
     super.key,
@@ -115,10 +124,16 @@ class CircleIconButton extends StatelessWidget {
     this.size = 50.0,
     this.iconColor,
     this.backgroundColor,
+    this.palette,
   });
 
   @override
   Widget build(BuildContext context) {
+    final fill = backgroundColor ??
+        (palette != null
+            ? Color.alphaBlend(palette!.elevated.withValues(alpha: 0.32), const Color(0xFF23201E))
+            : const Color(0xFF23201E));
+
     return _SquishButton(
       onTap: onTap,
       child: Container(
@@ -126,9 +141,9 @@ class CircleIconButton extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: backgroundColor ?? Colors.white.withValues(alpha: 0.14),
+          color: fill,
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.18),
+            color: Colors.white.withValues(alpha: 0.08),
             width: 0.5,
           ),
           boxShadow: [
@@ -159,6 +174,7 @@ class BitchordActionBar extends StatelessWidget {
   final VoidCallback? onMore;
   final bool searching;
   final Color? accentColor;
+  final ArtworkPalette? palette;
 
   const BitchordActionBar({
     super.key,
@@ -168,6 +184,7 @@ class BitchordActionBar extends StatelessWidget {
     this.onMore,
     this.searching = false,
     this.accentColor,
+    this.palette,
   });
 
   @override
@@ -175,6 +192,7 @@ class BitchordActionBar extends StatelessWidget {
     final hasSearchAndMore = onSearch != null && onMore != null;
     final circleSize = hasSearchAndMore ? 46.0 : 50.0;
     final pillPadding = hasSearchAndMore ? 20.0 : 28.0;
+    final effectiveAccent = palette?.accent ?? accentColor ?? Colors.white;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -184,20 +202,26 @@ class BitchordActionBar extends StatelessWidget {
           CircleIconButton(
             icon: Icons.shuffle_rounded,
             size: circleSize,
+            palette: palette,
             onTap: onShuffle,
           ),
           const SizedBox(width: 10),
           PlayPill(
             onPlay: onPlay,
-            accentColor: accentColor,
+            accentColor: effectiveAccent,
+            palette: palette,
             horizontalPadding: pillPadding,
           ),
           if (onSearch != null) ...[
             const SizedBox(width: 10),
             CircleIconButton(
-              icon: searching ? Icons.close_rounded : Icons.search_rounded,
+              icon: Icons.search_rounded,
               size: circleSize,
-              iconColor: searching ? accentColor ?? Colors.white : Colors.white,
+              palette: palette,
+              iconColor: searching ? effectiveAccent : Colors.white,
+              backgroundColor: searching
+                  ? effectiveAccent.withValues(alpha: 0.25)
+                  : null,
               onTap: onSearch!,
             ),
           ],
@@ -206,6 +230,7 @@ class BitchordActionBar extends StatelessWidget {
             CircleIconButton(
               icon: Icons.more_horiz_rounded,
               size: circleSize,
+              palette: palette,
               onTap: onMore!,
             ),
           ],

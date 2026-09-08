@@ -1,20 +1,23 @@
-import 'dart:ui';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../services/canvas_video_manager.dart';
-import '../utils/color_utils.dart';
+import '../services/canvas_resolution_service.dart';
+import '../services/innertube/innertube_service.dart';
+import '../utils/artwork_palette_resolver.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/themed_artist_detail_screen.dart';
+import '../widgets/artist_picker_sheet.dart';
 
 /// Sleeve aspect ratio matching BitChord's SLEEVE_RATIO in DetailScreen.kt
 const double _kSleeveRatio = 0.92;
@@ -53,6 +56,9 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   String? _resolvedImageUrl;
   String? _resolvedDescription;
 
+  // Video canvas controller (BitChord album canvas parity)
+  VideoPlayerController? _albumVideoController;
+
   // In-album search
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
@@ -60,7 +66,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   // Scroll tracking for MergeBand & Canvas
   final ScrollController _scrollController = ScrollController();
-  double _scrollOffset = 0.0;
+  ArtworkPalette? _artworkPalette;
 
   @override
   void initState() {
@@ -68,28 +74,100 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     _resolvedArtist = widget.artistName;
     _resolvedImageUrl = widget.albumImage;
 
-    _scrollController.addListener(() {
-      if (mounted) {
+    final initialImg = widget.albumImage ?? (widget.cachedTracks != null && widget.cachedTracks!.isNotEmpty ? widget.cachedTracks!.first.albumArtUrl : null);
+    _artworkPalette = ArtworkPaletteResolver.getCached(initialImg);
+    if (_artworkPalette == null && initialImg != null && initialImg.isNotEmpty) {
+      _resolvePalette(initialImg);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.cachedTracks != null && widget.cachedTracks!.isNotEmpty) {
         setState(() {
-          _scrollOffset = _scrollController.offset;
+          _tracks = widget.cachedTracks!;
+          _isLoading = false;
         });
+        _extractMetadata();
+        _loadAlbumCanvas();
+      } else {
+        _loadAlbumDetails();
       }
     });
-
-    if (widget.cachedTracks != null && widget.cachedTracks!.isNotEmpty) {
-      _tracks = widget.cachedTracks!;
-      _isLoading = false;
-      _extractMetadata();
-    } else {
-      _loadAlbumDetails();
-    }
   }
 
   @override
   void dispose() {
+    _albumVideoController?.dispose();
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _resolvePalette(String imageUrl) {
+    ArtworkPaletteResolver.resolve(imageUrl).then((p) {
+      if (mounted) {
+        setState(() {
+          _artworkPalette = p;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadAlbumCanvas() async {
+    if (widget.albumName.isEmpty) return;
+    final album = widget.albumName;
+    final artist = _resolvedArtist ?? widget.artistName ?? '';
+    try {
+      final videoUrl = await CanvasResolutionService.instance.resolveAlbumCanvas(
+        album,
+        artist,
+      );
+      if (!mounted || videoUrl == null || videoUrl.isEmpty) return;
+
+      final isLocal = videoUrl.startsWith('/') ||
+          videoUrl.startsWith('file://') ||
+          (videoUrl.length > 2 && videoUrl[1] == ':');
+      final VideoPlayerController c;
+      if (isLocal) {
+        final filePath = videoUrl.replaceFirst('file://', '');
+        c = VideoPlayerController.file(
+          File(filePath),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      } else {
+        final uri = Uri.tryParse(videoUrl);
+        if (uri == null) return;
+        final ua = InnerTubeService.userAgentForStreamUrl(videoUrl);
+        c = VideoPlayerController.networkUrl(
+          uri,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          httpHeaders: ua != null ? {'User-Agent': ua} : const {},
+        );
+      }
+
+      await c.initialize();
+      if (!mounted) {
+        await c.dispose();
+        return;
+      }
+      await c.setVolume(0.0);
+      await c.setLooping(true);
+      await c.play();
+
+      final old = _albumVideoController;
+      if (mounted) {
+        setState(() {
+          _albumVideoController = c;
+        });
+      } else {
+        await c.dispose();
+      }
+      if (old != null) {
+        await old.dispose();
+      }
+    } catch (e) {
+      debugPrint('AlbumDetailScreen: album canvas initialization failed: $e');
+    }
   }
 
   void _extractMetadata() {
@@ -100,11 +178,15 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     if (_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) {
       _resolvedImageUrl = _tracks.first.albumArtUrl;
     }
+    if (_artworkPalette == null && _resolvedImageUrl != null && _resolvedImageUrl!.isNotEmpty) {
+      _resolvePalette(_resolvedImageUrl!);
+    }
     final firstTrack = _tracks.first;
     if (firstTrack.albumName.isNotEmpty && _resolvedYear == null) {
       final match = RegExp(r'\b(19\d\d|20\d\d)\b').firstMatch(firstTrack.albumName);
       if (match != null) _resolvedYear = match.group(0);
     }
+    _loadAlbumCanvas();
   }
 
   Future<void> _loadAlbumDetails() async {
@@ -167,12 +249,30 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     }
   }
 
+  static String _normalize(String input) {
+    return input
+        .toLowerCase()
+        .replaceAll(RegExp(r"['’]"), '')
+        .replaceAll('ã', 'a')
+        .replaceAll('á', 'a')
+        .replaceAll('à', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('õ', 'o')
+        .replaceAll('ô', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ç', 'c');
+  }
+
   List<Track> _getFilteredTracks() {
-    if (_searchQuery.trim().isEmpty) return _tracks;
-    final q = _searchQuery.toLowerCase();
+    final query = _searchQuery.trim();
+    if (query.isEmpty) return _tracks;
+    final q = _normalize(query);
     return _tracks.where((t) =>
-        t.trackName.toLowerCase().contains(q) ||
-        t.artistName.toLowerCase().contains(q)).toList();
+        _normalize(t.trackName).contains(q) ||
+        _normalize(t.artistName).contains(q)).toList();
   }
 
   String _formatTotalDuration() {
@@ -196,13 +296,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context);
-    final palette = musicProvider.paletteGenerator;
-    final accentColor = ColorUtils.getVibrantAccent(
-      palette,
-      const Color(0xFFFF5252), // Vibrant coral fallback matching Tems screenshot
-    );
-    final darkBg = ColorUtils.getBackgroundWash(palette);
-    final washColor = ColorUtils.getDominantWash(palette);
+    final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
+    final darkBg = artPalette.background;
+    final washColor = artPalette.wash;
+    final accentColor = artPalette.accent;
+    final elevatedColor = artPalette.elevated;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final artHeight = screenWidth / _kSleeveRatio;
@@ -213,7 +311,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final metadataLine = 'ALBUM • $yearText • ${_tracks.length} TRACKS';
 
     return Scaffold(
-      backgroundColor: darkBg,
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           // 1. Layer 1: PageBackground with ArtworkWash
@@ -221,16 +319,24 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             backgroundColor: darkBg,
             washColor: washColor,
             accentColor: accentColor,
-            elevatedColor: Colors.white.withValues(alpha: 0.14),
+            elevatedColor: elevatedColor,
             washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
+            imageUrl: _resolvedImageUrl ?? widget.albumImage,
           ),
 
-          // 2. Layer 2: Full-bleed Immersive Artwork at top with scroll offset
-          Positioned(
-            top: -_scrollOffset.clamp(0.0, artHeight * 1.5),
-            left: 0,
-            right: 0,
-            height: artHeight,
+          // 2. Layer 2: Full-bleed Immersive Artwork with isolated parallax render offset
+          AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, child) {
+              final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+              return Positioned(
+                top: -offset.clamp(0.0, artHeight * 1.5),
+                left: 0,
+                right: 0,
+                height: artHeight,
+                child: child!,
+              );
+            },
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -242,23 +348,31 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
                   ),
 
-                // Optional Video Canvas if active
-                if (_tracks.isNotEmpty && CanvasVideoManager.instance.hasActiveController)
-                  CanvasVideoManager.instance.buildVideoPlayer(fit: BoxFit.cover),
+                // Looping Video Canvas (Only for authentic album motion covers)
+                if (_albumVideoController != null && _albumVideoController!.value.isInitialized)
+                  FittedBox(
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      width: _albumVideoController!.value.size.width,
+                      height: _albumVideoController!.value.size.height,
+                      child: VideoPlayer(_albumVideoController!),
+                    ),
+                  ),
 
-                // Top shadow under navigation bar
+                // Top shade under the glass bar (BitChord DetailScreen.kt parity)
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: 120,
+                  height: artHeight * 0.28,
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          darkBg.withValues(alpha: 0.70),
+                          darkBg.withValues(alpha: 0.55),
                           Colors.transparent,
                         ],
                       ),
@@ -266,7 +380,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                 ),
 
-                // Bottom fade settling onto the wash
+                // Bottom fade settling seamlessly onto the wash (BitChord DetailScreen.kt parity)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -277,8 +391,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
+                        stops: const [0.0, 0.55, 1.0],
                         colors: [
                           Colors.transparent,
+                          washColor.withValues(alpha: 0.35),
                           washColor.withValues(alpha: 0.88),
                         ],
                       ),
@@ -289,63 +405,62 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             ),
           ),
 
-          // 3. Layer 3: MergeBand Glass Blur across the join
+          // 2.5 Layer 2.5: MergeBand across the artwork join (BitChord parity)
           MergeBand(
-            topOffset: (artHeight - 160.0 - _scrollOffset).clamp(-320.0, double.infinity),
-            height: 320.0,
+            scrollController: _scrollController,
+            artHeight: artHeight,
             washColor: washColor,
           ),
 
-          // 4. Layer 4: Scrollable content (Titles, Pills, Bio, Tracklist)
+          // 3. Layer 3: Scrollable content (Titles, Pills, Bio, Tracklist)
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Clear SliverAppBar with circular buttons
-              SliverAppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                pinned: true,
-                leading: Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.5),
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
+              // Scroll-linked Frosted SliverAppBar (BitChord parity)
+              BitchordSliverAppBar(
+                title: widget.albumName,
+                scrollController: _scrollController,
+                artHeight: artHeight,
+                backgroundColor: darkBg,
                 actions: [
+                  IconButton(
+                    icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      GlassPlaylistOptionsSheet.show(
+                        context,
+                        playlistName: widget.albumName,
+                        playlistImage: _resolvedImageUrl,
+                        tracks: _tracks,
+                      );
+                    },
+                  ),
                   Container(
-                    margin: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+                    margin: const EdgeInsets.only(right: 14),
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.5),
+                      color: const Color(0xFF23201E),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.5,
+                      ),
                     ),
-                    child: IconButton(
-                      icon: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        GlassPlaylistOptionsSheet.show(
-                          context,
-                          playlistName: widget.albumName,
-                          playlistImage: _resolvedImageUrl,
-                          tracks: _tracks,
-                        );
-                      },
+                    child: const Center(
+                      child: Icon(Icons.person_rounded, color: Colors.white70, size: 20),
                     ),
                   ),
                 ],
               ),
 
               if (_isLoading)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: CircularProgressIndicator(color: Colors.white70),
+                SliverToBoxAdapter(
+                  child: BitchordTracklistSkeleton(
+                    baseColor: accentColor,
+                    itemCount: 8,
+                    hasLeadingThumb: false,
                   ),
                 )
               else if (_error != null && _tracks.isEmpty)
@@ -407,16 +522,23 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       if (_resolvedArtist != null && _resolvedArtist!.isNotEmpty)
                         GestureDetector(
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ThemedArtistDetailScreen(
-                                  artistId: _resolvedArtistId ?? 'artist_${widget.albumName}',
-                                  artistName: _resolvedArtist!,
-                                  artistImage: _resolvedImageUrl,
+                            if (ArtistPickerSheet.hasMultipleArtists(_resolvedArtist!)) {
+                              ArtistPickerSheet.showIfNeeded(
+                                context,
+                                musicProvider,
+                                _resolvedArtist!,
+                              );
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ThemedArtistDetailScreen(
+                                    artistId: _resolvedArtistId ?? 'artist_${widget.albumName}',
+                                    artistName: _resolvedArtist!,
+                                    artistImage: _resolvedImageUrl,
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -453,6 +575,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
                       // Action Pills: [ 🔀 ]  [ ▶ Play ]  [ 🔍 ]  [ ••• ]
                       BitchordActionBar(
+                        palette: artPalette,
                         onPlay: () {
                           if (_tracks.isNotEmpty) {
                             musicProvider.playTrackList(_tracks, initialIndex: 0);
@@ -524,99 +647,108 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       (context, index) {
                         final track = displayedTracks[index];
                         final originalTrackNumber = _tracks.indexOf(track) + 1;
-                        final isPlayingThis = musicProvider.currentTrack?.id == track.id;
+                        final isPlayingThis = track.isSameTrackAs(musicProvider.currentTrack);
 
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              final startIndex = _tracks.indexOf(track);
-                              musicProvider.playTrackList(
-                                _tracks,
-                                initialIndex: startIndex >= 0 ? startIndex : 0,
-                              );
-                            },
-                            splashColor: Colors.white.withValues(alpha: 0.08),
-                            highlightColor: Colors.white.withValues(alpha: 0.04),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-                              child: Row(
-                                children: [
-                                  // Track Number or Animated Equalizer
-                                  SizedBox(
-                                    width: 30,
-                                    child: isPlayingThis && musicProvider.isPlaying
-                                        ? AnimatedEqualizerIcon(
-                                            isPlaying: true,
-                                            color: accentColor,
-                                            size: 18,
-                                          )
-                                        : Text(
-                                            '$originalTrackNumber',
+                        return BitchordSwipeableTrackRow(
+                          track: track,
+                          palette: artPalette,
+                          child: Material(
+                            color: isPlayingThis
+                                ? accentColor.withValues(alpha: 0.12)
+                                : Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                final startIndex = _tracks.indexOf(track);
+                                musicProvider.playTrackList(
+                                  _tracks,
+                                  initialIndex: startIndex >= 0 ? startIndex : 0,
+                                );
+                              },
+                              splashColor: Colors.white.withValues(alpha: 0.08),
+                              highlightColor: Colors.white.withValues(alpha: 0.04),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                                child: Row(
+                                  children: [
+                                    // Track Number or Animated Equalizer
+                                    SizedBox(
+                                      width: 30,
+                                      child: isPlayingThis && musicProvider.isPlaying
+                                          ? AnimatedEqualizerIcon(
+                                              isPlaying: true,
+                                              color: accentColor,
+                                              size: 18,
+                                            )
+                                          : isPlayingThis
+                                              ? Icon(
+                                                  Icons.play_arrow_rounded,
+                                                  color: accentColor,
+                                                  size: 20,
+                                                )
+                                              : Text(
+                                                  '$originalTrackNumber',
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    color: Colors.white.withValues(alpha: 0.45),
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                    ),
+                                    const SizedBox(width: 8),
+
+                                    // Track Title & Artist
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              if (track.isExplicit) ...[
+                                                const BitchordExplicitBadge(),
+                                                const SizedBox(width: 6),
+                                              ],
+                                              Expanded(
+                                                child: Text(
+                                                  track.trackName,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    color: isPlayingThis ? accentColor : Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            track.artistName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: GoogleFonts.plusJakartaSans(
-                                              color: isPlayingThis
-                                                  ? accentColor
-                                                  : Colors.white.withValues(alpha: 0.45),
-                                              fontSize: 16,
-                                              fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w500,
+                                              color: Colors.white.withValues(alpha: 0.55),
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w400,
                                             ),
                                           ),
-                                  ),
-                                  const SizedBox(width: 8),
-
-                                  // Track Title & Artist
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          track.trackName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: GoogleFonts.plusJakartaSans(
-                                            color: isPlayingThis ? accentColor : Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          track.artistName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: GoogleFonts.plusJakartaSans(
-                                            color: Colors.white.withValues(alpha: 0.55),
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // Duration ("2:17")
-                                  if (track.durationText.isNotEmpty)
-                                    Text(
-                                      track.durationText,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        color: Colors.white.withValues(alpha: 0.5),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w400,
+                                        ],
                                       ),
                                     ),
 
-                                  // More Vertical Dots ⋮
-                                  IconButton(
-                                    icon: Icon(
-                                      Icons.more_vert_rounded,
-                                      color: Colors.white.withValues(alpha: 0.5),
-                                      size: 20,
+                                    // More Vertical Dots ⋮
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.more_vert_rounded,
+                                        color: Colors.white.withValues(alpha: 0.5),
+                                        size: 20,
+                                      ),
+                                      onPressed: () {
+                                        ThemedOptionsSheet.show(context, track: track);
+                                      },
                                     ),
-                                    onPressed: () {
-                                      ThemedOptionsSheet.show(context, track: track);
-                                    },
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -650,7 +782,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                             fontSize: 12,
                           ),
                         ),
-                        const SizedBox(height: 100), // Bottom clearance for mini player
+                        const SizedBox(height: 100), // Bottom clearance for mini player & nav bar
                       ],
                     ),
                   ),

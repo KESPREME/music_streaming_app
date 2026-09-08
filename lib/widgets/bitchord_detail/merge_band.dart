@@ -7,23 +7,41 @@ import 'package:flutter/material.dart';
 /// so color from the sleeve carries down past where the sleeve ends, and page wash
 /// carries up into it, erasing any harsh edge line (BitChord DetailScreen.kt parity).
 class MergeBand extends StatelessWidget {
-  final double topOffset;
+  final double? topOffset;
+  final ScrollController? scrollController;
+  final double? artHeight;
   final double height;
   final double sigma;
   final Color washColor;
 
   const MergeBand({
     super.key,
-    required this.topOffset,
+    this.topOffset,
+    this.scrollController,
+    this.artHeight,
     this.height = 320.0,
-    this.sigma = 40.0,
+    this.sigma = 50.0,
     required this.washColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (scrollController != null && artHeight != null) {
+      return AnimatedBuilder(
+        animation: scrollController!,
+        builder: (context, _) {
+          final offset = scrollController!.hasClients ? scrollController!.offset : 0.0;
+          final dynamicTop = -offset.clamp(0.0, artHeight! * 1.5) + artHeight! - (height / 2.0);
+          return _buildBand(dynamicTop);
+        },
+      );
+    }
+    return _buildBand(topOffset ?? 0.0);
+  }
+
+  Widget _buildBand(double computedTop) {
     return Positioned(
-      top: topOffset,
+      top: computedTop,
       left: 0,
       right: 0,
       height: height,

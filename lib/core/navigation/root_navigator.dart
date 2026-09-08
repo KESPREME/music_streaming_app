@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 /// equalizer, detail screens) push above the global overlay stack.
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
+/// Main navigator key — hosts detail screens (Artist, Album, Playlist)
+/// inside MainScreen so that ThemedNavBar and the mini-player pill remain
+/// permanently visible and synchronized with scroll minimization.
+final GlobalKey<NavigatorState> mainNavigatorKey = GlobalKey<NavigatorState>();
+
 /// Route observer that tracks whether the navigator is currently at the root route.
 class AppRouteObserver extends NavigatorObserver {
   static final AppRouteObserver instance = AppRouteObserver._();

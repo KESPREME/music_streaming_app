@@ -166,6 +166,7 @@ class SearchScreen extends StatefulWidget {
     this.externalController,
     this.externalFocusNode,
     this.initialQuery,
+    this.onPushDetail,
   });
 
   /// Embedded mode: lives inside MainScreen's search overlay; the input
@@ -177,6 +178,9 @@ class SearchScreen extends StatefulWidget {
 
   /// Pre-filled query (deep links: minemusic://search?q=...).
   final String? initialQuery;
+
+  /// Pushes detail screens (Artist, Playlist, Album) in-place hosted by MainScreen
+  final void Function(Widget screen)? onPushDetail;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -262,7 +266,7 @@ class _SearchScreenState extends State<SearchScreen>
     if (_tabController.index == 0) {
         musicProvider.searchTracks(query, forceRefresh: forceRefresh);
     } else if (_tabController.index == 1) {
-        musicProvider.fetchArtistTracks(query);
+        musicProvider.fetchArtistTracks(query, forceRefresh: forceRefresh);
     } else if (_tabController.index == 2) {
         musicProvider.searchPlaylists(query);
     }
@@ -356,6 +360,11 @@ class _SearchScreenState extends State<SearchScreen>
                         unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500, fontSize: 14),
                         indicatorSize: TabBarIndicatorSize.tab,
                         dividerColor: Colors.transparent,
+                        onTap: (index) {
+                          if (_searchQuery.trim().isNotEmpty) {
+                            _performSearch(_searchQuery);
+                          }
+                        },
                         tabs: const [
                           Tab(text: 'Tracks'),
                           Tab(text: 'Artists'),
@@ -418,13 +427,11 @@ class _SearchScreenState extends State<SearchScreen>
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
         if (provider.searchPhase == SearchPhase.loading &&
-            query.trim().isNotEmpty &&
-            provider.activeSearchQuery == query) {
+            query.trim().isNotEmpty) {
           return const _SearchLoadingView();
         }
 
-        if (provider.searchPhase == SearchPhase.error &&
-            provider.activeSearchQuery == query) {
+        if (provider.searchPhase == SearchPhase.error) {
           return _SearchErrorView(
             message: provider.errorMessage ?? 'Search failed.',
             onRetry: () => _performSearch(query, forceRefresh: true),
@@ -460,18 +467,19 @@ class _SearchScreenState extends State<SearchScreen>
               artistName: artistName, 
               artistImageUrl: artistTrack.albumArtUrl,
               onTap: () {
-                 // Use robust navigation
-                 provider.navigateToArtistObject(artistTrack);
-                 Navigator.push(
-                   context,
-                   MaterialPageRoute(
-                     builder: (_) => ThemedArtistDetailScreen(
-                       artistId: artistTrack.id,
-                       artistName: artistName,
-                       artistImage: artistTrack.albumArtUrl,
-                     ),
-                   ),
+                 final screen = ThemedArtistDetailScreen(
+                   artistId: artistTrack.id,
+                   artistName: artistName,
+                   artistImage: artistTrack.albumArtUrl,
                  );
+                 if (widget.onPushDetail != null) {
+                   widget.onPushDetail!(screen);
+                 } else {
+                   Navigator.push(
+                     context,
+                     MaterialPageRoute(builder: (_) => screen),
+                   );
+                 }
               }
             );
           },
@@ -484,13 +492,11 @@ class _SearchScreenState extends State<SearchScreen>
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
         if (provider.searchPhase == SearchPhase.loading &&
-            query.trim().isNotEmpty &&
-            provider.activeSearchQuery == query) {
+            query.trim().isNotEmpty) {
           return const _SearchLoadingView();
         }
 
-        if (provider.searchPhase == SearchPhase.error &&
-            provider.activeSearchQuery == query) {
+        if (provider.searchPhase == SearchPhase.error) {
           return _SearchErrorView(
             message: provider.errorMessage ?? 'Search failed.',
             onRetry: () => _performSearch(query, forceRefresh: true),
@@ -539,16 +545,19 @@ class _SearchScreenState extends State<SearchScreen>
                 style: GoogleFonts.plusJakartaSans(color: Colors.white54),
               ),
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ThemedPlaylistDetailScreen(
-                      playlistId: playlist.id,
-                      playlistName: playlist.trackName,
-                      playlistImage: playlist.albumArtUrl,
-                    ),
-                  ),
+                final screen = ThemedPlaylistDetailScreen(
+                  playlistId: playlist.id,
+                  playlistName: playlist.trackName,
+                  playlistImage: playlist.albumArtUrl,
                 );
+                if (widget.onPushDetail != null) {
+                  widget.onPushDetail!(screen);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => screen),
+                  );
+                }
               },
             );
           },
@@ -661,7 +670,7 @@ class SearchTabContent extends StatelessWidget {
                 ],
               );
             }
-            return _SearchIdleView(
+            return const _SearchIdleView(
               icon: Icons.search_rounded,
               message: 'Search for tracks, artists, or albums.',
             );

@@ -27,6 +27,7 @@ import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/themed_trending_now_screen.dart';
+import '../core/navigation/root_navigator.dart';
 
 /// Home: a curated listening environment.
 ///
@@ -324,7 +325,7 @@ DateTime _lastHomePushAt = DateTime.fromMillisecondsSinceEpoch(0);
 void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
   final now = DateTime.now();
   final sinceLast = now.difference(_lastHomePushAt);
-  if (sinceLast < const Duration(milliseconds: 600)) {
+  if (sinceLast < const Duration(milliseconds: 250)) {
     if (kDebugMode) {
       debugPrint('HOME_NAV debounced (${sinceLast.inMilliseconds}ms since '
           'last push) — double-tap swallowed');
@@ -333,7 +334,7 @@ void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
   }
   _lastHomePushAt = now;
   try {
-    final navigator = Navigator.of(context);
+    final navigator = mainNavigatorKey.currentState ?? Navigator.of(context);
     final pushed = navigator.push(MaterialPageRoute(builder: builder));
     if (kDebugMode) {
       debugPrint('HOME_NAV pushed route');
@@ -568,19 +569,14 @@ class _ArtistShelf extends StatelessWidget {
                       return;
                     }
                     HapticFeedback.selectionClick();
-                    final provider = context.read<MusicProvider>();
-                    provider.navigateToArtistById(browseId).then((_) {
-                      final artist = provider.currentArtistDetails;
-                      if (artist == null || !context.mounted) return;
-                      _pushGuarded(
-                        context,
-                        (_) => ThemedArtistDetailScreen(
-                          artistId: artist.id,
-                          artistName: artist.name,
-                          artistImage: artist.imageUrl,
-                        ),
-                      );
-                    });
+                    _pushGuarded(
+                      context,
+                      (_) => ThemedArtistDetailScreen(
+                        artistId: browseId,
+                        artistName: item.title,
+                        artistImage: item.artworkUrl,
+                      ),
+                    );
                   },
                 ),
               );

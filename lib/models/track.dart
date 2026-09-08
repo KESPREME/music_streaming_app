@@ -6,18 +6,21 @@ class Track {
   final String trackName;
   final String artistName;
   final String albumName;
+  final String? albumId; // Album browse ID (e.g. MPREb_... or OLAK_...)
   final String previewUrl; // File Path for local, YT URL, Spotify Preview URL
   final String albumArtUrl; // URL or empty (local art needs separate handling)
   final String source; // 'youtube', 'spotify', 'local'
   final Duration? duration; // Added duration
   final int? _durationMs; // Duration in milliseconds (from InnerTube)
   final String? genre; // Mood/genre tag when the source gave evidence
+  final bool isExplicit; // BitChord explicit badge [E]
 
   Track({
     required this.id,
     required this.trackName,
     required this.artistName,
     required this.albumName,
+    this.albumId,
     required this.previewUrl,
     String? albumArtUrl,
     String? albumArt, // Alias for albumArtUrl (InnerTube uses this)
@@ -25,6 +28,7 @@ class Track {
     this.duration,
     int? durationMs,
     this.genre,
+    this.isExplicit = false,
   })  : albumArtUrl = albumArtUrl ?? albumArt ?? '',
         _durationMs = durationMs;
 
@@ -55,12 +59,15 @@ class Track {
       trackName: json['trackName'] ?? 'Unknown Track',
       artistName: json['artistName'] ?? 'Unknown Artist',
       albumName: json['albumName'] ?? 'Unknown Album',
+      albumId: json['albumId'] as String?,
       previewUrl: json['previewUrl'] ?? '',
       albumArtUrl: json['albumArtUrl'] ?? '',
       source: json['source'] ?? 'unknown', // Default to 'unknown' if missing
       duration: json['duration'] != null
           ? Duration(milliseconds: json['duration'])
           : null, // Added
+      genre: json['genre'] as String?,
+      isExplicit: json['isExplicit'] as bool? ?? false,
     );
   }
 
@@ -70,10 +77,13 @@ class Track {
       'trackName': trackName,
       'artistName': artistName,
       'albumName': albumName,
+      'albumId': albumId,
       'previewUrl': previewUrl,
       'albumArtUrl': albumArtUrl,
       'source': source,
       'duration': duration?.inMilliseconds, // Added
+      'genre': genre,
+      'isExplicit': isExplicit,
     };
   }
 
@@ -83,24 +93,28 @@ class Track {
     String? trackName,
     String? artistName,
     String? albumName,
+    String? albumId,
     String? previewUrl,
     String? albumArtUrl,
     String? source,
     Duration? duration,
     int? durationMs,
     String? genre,
+    bool? isExplicit,
   }) {
     return Track(
       id: id ?? this.id,
       trackName: trackName ?? this.trackName,
       artistName: artistName ?? this.artistName,
       albumName: albumName ?? this.albumName,
+      albumId: albumId ?? this.albumId,
       previewUrl: previewUrl ?? this.previewUrl,
       albumArtUrl: albumArtUrl ?? this.albumArtUrl,
       source: source ?? this.source,
       duration: duration ?? this.duration,
       durationMs: durationMs ?? _durationMs,
       genre: genre ?? this.genre,
+      isExplicit: isExplicit ?? this.isExplicit,
     );
   }
 
@@ -132,4 +146,28 @@ class Track {
       albumArtUrl.hashCode ^
       source.hashCode ^
       duration.hashCode; // Added duration
+
+  /// BitChord parity (Song.isSameTrackAs): determines if two tracks represent
+  /// the same song, comparing by ID or normalized title & artist so that
+  /// YouTube album releases, audio tracks, and video singles match accurately.
+  bool isSameTrackAs(Track? other) {
+    if (other == null) return false;
+    if (id.isNotEmpty && other.id.isNotEmpty && id == other.id) return true;
+
+    String norm(String s) => s
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s*[\(\[\{].*?[\)\]\}]'), '') // remove (feat. ...), [Remastered], etc.
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final t1 = norm(trackName);
+    final t2 = norm(other.trackName);
+    if (t1.isEmpty || t2.isEmpty || t1 != t2) return false;
+
+    final a1 = norm(artistName);
+    final a2 = norm(other.artistName);
+    if (a1.isEmpty || a2.isEmpty) return true;
+    return a1 == a2 || a1.contains(a2) || a2.contains(a1);
+  }
 }

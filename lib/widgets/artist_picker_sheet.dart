@@ -5,7 +5,7 @@ import '../providers/music_provider.dart';
 import '../theme/glass_tokens.dart';
 import 'glass_surface.dart';
 import '../widgets/themed_artist_detail_screen.dart';
-import 'glass_snackbar.dart';
+import '../core/navigation/root_navigator.dart';
 
 /// A glassmorphic bottom sheet that allows users to select from multiple artists
 class ArtistPickerSheet extends StatelessWidget {
@@ -18,6 +18,22 @@ class ArtistPickerSheet extends StatelessWidget {
     required this.artists,
     required this.parentContext,
   });
+
+  static final RegExp _primaryArtistSeparator = RegExp(
+    r'\s*,\s*|\s+&\s+|\s+＆\s+|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+',
+    caseSensitive: false,
+  );
+
+  /// Returns the first credited artist for services/catalogs that do not handle joint credits well.
+  /// Preserves artists like "AC/DC" intact while extracting "The Weeknd" from "The Weeknd, Anitta".
+  static String getPrimaryArtist(String artistString) {
+    if (artistString.trim().isEmpty) return artistString;
+    final parts = artistString.split(_primaryArtistSeparator);
+    if (parts.isNotEmpty && parts.first.trim().isNotEmpty) {
+      return parts.first.trim();
+    }
+    return artistString.trim();
+  }
 
   /// Parses an artist string and returns a list of individual artists
   static List<String> parseArtists(String artistString) {
@@ -90,24 +106,20 @@ class ArtistPickerSheet extends StatelessWidget {
     MusicProvider provider,
     String artistName,
   ) async {
-    showGlassSnackBar(
-      context,
-      'Loading $artistName...',
-      duration: const Duration(milliseconds: 500),
-    );
-    await provider.navigateToArtist(artistName);
-    if (context.mounted && provider.currentArtistDetails != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ThemedArtistDetailScreen(
-            artistId: provider.currentArtistDetails!.id,
-            artistName: provider.currentArtistDetails!.name,
-            artistImage: provider.currentArtistDetails!.imageUrl,
-          ),
+    provider.setHideMiniPlayer(false);
+    provider.setPlayerExpanded(false);
+    provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    final nav = mainNavigatorKey.currentState ??
+        Navigator.of(context, rootNavigator: true);
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => ThemedArtistDetailScreen(
+          artistId: 'artist_$artistName',
+          artistName: artistName,
+          searchByName: true,
         ),
-      );
-    }
+      ),
+    );
   }
 
   @override

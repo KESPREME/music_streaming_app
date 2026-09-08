@@ -1,18 +1,16 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../models/bitchord_page_models.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../utils/color_utils.dart';
+import '../services/innertube/innertube_service.dart';
+import '../utils/artwork_palette_resolver.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
-import '../widgets/themed_options_sheet.dart';
 
 /// Aspect ratio for artist hero photography matching BitChord ARTIST_PHOTO_RATIO in DetailScreen.kt
 const double _kArtistPhotoRatio = 0.95;
@@ -50,9 +48,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   List<Track> _topSongs = [];
   List<DetailShelf> _shelves = [];
 
-  // Scroll tracking for MergeBand
+  // Isolated scroll controller for 120 FPS sliver interpolation
   final ScrollController _scrollController = ScrollController();
-  double _scrollOffset = 0.0;
+  ArtworkPalette? _artworkPalette;
 
   @override
   void initState() {
@@ -60,16 +58,13 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     _resolvedArtistName = widget.artistName;
     _resolvedArtistImage = widget.artistImage;
 
-    _scrollController.addListener(() {
-      if (mounted) {
-        setState(() {
-          _scrollOffset = _scrollController.offset;
-        });
-      }
-    });
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        final initialImg = widget.artistImage;
+        _artworkPalette = ArtworkPaletteResolver.getCached(initialImg);
+        if (_artworkPalette == null && initialImg != null && initialImg.isNotEmpty) {
+          _resolvePalette(initialImg);
+        }
         _fetchDetails();
       }
     });
@@ -79,6 +74,16 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _resolvePalette(String imageUrl) {
+    ArtworkPaletteResolver.resolve(imageUrl).then((p) {
+      if (mounted) {
+        setState(() {
+          _artworkPalette = p;
+        });
+      }
+    });
   }
 
   Future<void> _fetchDetails() async {
@@ -91,14 +96,14 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           widget.artistId.isEmpty ||
           widget.artistId.startsWith('artist_') ||
           !widget.artistId.contains('UC')) {
-        await provider
-            .fetchArtistTracks(widget.artistName)
+        final results = await InnerTubeService()
+            .searchArtists(widget.artistName, limit: 5)
             .timeout(const Duration(seconds: 10));
 
-        final results = provider.artistTracks;
         if (results.isNotEmpty) {
           final exactMatch = results.firstWhere(
-            (track) => track.artistName.toLowerCase() == widget.artistName.toLowerCase(),
+            (track) => track.artistName.toLowerCase() == widget.artistName.toLowerCase() ||
+                track.trackName.toLowerCase() == widget.artistName.toLowerCase(),
             orElse: () => results.first,
           );
           artistIdToFetch = exactMatch.id;
@@ -206,19 +211,16 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context);
-    final palette = musicProvider.paletteGenerator;
-    final accentColor = ColorUtils.getVibrantAccent(
-      palette,
-      const Color(0xFFFF7043), // Warm coral/orange fallback matching Tems
-    );
-    final darkBg = ColorUtils.getBackgroundWash(palette);
-    final washColor = ColorUtils.getDominantWash(palette);
+    final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
+    final darkBg = artPalette.background;
+    final washColor = artPalette.wash;
+    final accentColor = artPalette.accent;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final artHeight = screenWidth / _kArtistPhotoRatio;
 
     return Scaffold(
-      backgroundColor: darkBg,
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           // 1. Layer 1: PageBackground with ArtworkWash
@@ -226,16 +228,24 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             backgroundColor: darkBg,
             washColor: washColor,
             accentColor: accentColor,
-            elevatedColor: Colors.white.withValues(alpha: 0.14),
+            elevatedColor: artPalette.elevated,
             washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
+            imageUrl: _resolvedArtistImage ?? widget.artistImage,
           ),
 
-          // 2. Layer 2: Full-bleed Hero Photography at top with scroll offset (Screenshot 8)
-          Positioned(
-            top: -_scrollOffset.clamp(0.0, artHeight * 1.5),
-            left: 0,
-            right: 0,
-            height: artHeight,
+          // 2. Layer 2: Full-bleed Hero Photography with isolated parallax render offset (BitChord 120 FPS parity)
+          AnimatedBuilder(
+            animation: _scrollController,
+            builder: (context, child) {
+              final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+              return Positioned(
+                top: -offset.clamp(0.0, artHeight * 1.5),
+                left: 0,
+                right: 0,
+                height: artHeight,
+                child: child!,
+              );
+            },
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -247,19 +257,19 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
                   ),
 
-                // Top shadow under navigation bar
+                // Top shade under the glass bar (BitChord DetailScreen.kt parity)
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: 120,
+                  height: artHeight * 0.28,
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          darkBg.withValues(alpha: 0.70),
+                          darkBg.withValues(alpha: 0.55),
                           Colors.transparent,
                         ],
                       ),
@@ -267,19 +277,21 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                   ),
                 ),
 
-                // Bottom fade settling onto the wash
+                // Bottom fade settling smoothly onto the wash (BitChord DetailScreen.kt parity)
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  height: artHeight * 0.45,
+                  height: artHeight * 0.48,
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
+                        stops: const [0.0, 0.55, 1.0],
                         colors: [
                           Colors.transparent,
+                          washColor.withValues(alpha: 0.35),
                           washColor.withValues(alpha: 0.88),
                         ],
                       ),
@@ -290,57 +302,50 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             ),
           ),
 
-          // 3. Layer 3: MergeBand Glass Blur across the join
+          // 2.5 Layer 2.5: MergeBand across the artwork join (BitChord parity)
           MergeBand(
-            topOffset: (artHeight - 160.0 - _scrollOffset).clamp(-320.0, double.infinity),
-            height: 320.0,
+            scrollController: _scrollController,
+            artHeight: artHeight,
             washColor: washColor,
           ),
 
-          // 4. Layer 4: Scrollable content
+          // 3. Layer 3: Scrollable content
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Clear SliverAppBar with circular back and account/more buttons
-              SliverAppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                pinned: true,
-                leading: Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.5),
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
+              // Scroll-linked Frosted SliverAppBar (BitChord parity)
+              BitchordSliverAppBar(
+                title: _resolvedArtistName,
+                scrollController: _scrollController,
+                artHeight: artHeight,
+                backgroundColor: darkBg,
                 actions: [
                   Container(
-                    margin: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+                    margin: const EdgeInsets.only(right: 14),
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.5),
+                      color: const Color(0xFF23201E),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 0.5,
+                      ),
                     ),
-                    child: IconButton(
-                      icon: const Icon(Icons.person_rounded, color: Colors.white, size: 20),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                      },
+                    child: const Center(
+                      child: Icon(Icons.person_rounded, color: Colors.white70, size: 20),
                     ),
                   ),
                 ],
               ),
 
               if (_isLoading)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: CircularProgressIndicator(color: Colors.white70),
+                SliverToBoxAdapter(
+                  child: BitchordTracklistSkeleton(
+                    baseColor: accentColor,
+                    itemCount: 8,
+                    hasLeadingThumb: true,
                   ),
                 )
               else if (_error != null && _topSongs.isEmpty && _shelves.isEmpty)
@@ -359,7 +364,12 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                               _isLoading = true;
                               _error = null;
                             });
-                            _fetchDetails();
+                            final initialImg = widget.artistImage;
+    _artworkPalette = ArtworkPaletteResolver.getCached(initialImg);
+    if (_artworkPalette == null && initialImg != null && initialImg.isNotEmpty) {
+      _resolvePalette(initialImg);
+    }
+    _fetchDetails();
                           },
                           child: const Text('Try Again'),
                         ),
@@ -400,6 +410,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                   child: ArtistStatsRow(
                     subscriberCountText: _subscriberCountText,
                     monthlyListenerCount: _monthlyListenerCount,
+                    palette: artPalette,
                   ),
                 ),
 
@@ -413,6 +424,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         children: [
                           CircleIconButton(
                             icon: Icons.shuffle_rounded,
+                            palette: artPalette,
                             onTap: () {
                               final shuffled = List<Track>.from(_topSongs)..shuffle();
                               musicProvider.playTrackList(shuffled, initialIndex: 0);
@@ -424,6 +436,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                               musicProvider.playTrackList(_topSongs, initialIndex: 0);
                             },
                             accentColor: accentColor,
+                            palette: artPalette,
                           ),
                         ],
                       ),
@@ -451,6 +464,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                       currentTrack: musicProvider.currentTrack,
                       isPlaying: musicProvider.isPlaying,
                       accentColor: accentColor,
+                      palette: artPalette,
                     ),
                   ),
 
@@ -465,7 +479,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                   ),
 
                 const SliverToBoxAdapter(
-                  child: SizedBox(height: 120), // Bottom clearance for mini player
+                  child: SizedBox(height: 100), // Bottom clearance for mini player & nav bar
                 ),
               ],
             ],

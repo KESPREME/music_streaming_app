@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/track.dart';
+import '../../utils/artwork_palette_resolver.dart';
+import '../animated_equalizer_icon.dart';
 import '../themed_options_sheet.dart';
+import 'bitchord_explicit_badge.dart';
 
 /// Multi-column horizontal pager grid for artist Top Songs matching BitChord and Screenshot 7.
 ///
@@ -15,6 +18,7 @@ class TopSongsPagerGrid extends StatelessWidget {
   final Track? currentTrack;
   final bool isPlaying;
   final Color accentColor;
+  final ArtworkPalette? palette;
 
   const TopSongsPagerGrid({
     super.key,
@@ -23,6 +27,7 @@ class TopSongsPagerGrid extends StatelessWidget {
     this.currentTrack,
     this.isPlaying = false,
     required this.accentColor,
+    this.palette,
   });
 
   @override
@@ -68,10 +73,16 @@ class TopSongsPagerGrid extends StatelessWidget {
                 child: Column(
                   children: column.map((song) {
                     final songIndex = top.indexOf(song);
-                    final isCurrent = currentTrack?.id == song.id;
+                    final isCurrent = song.isSameTrackAs(currentTrack);
 
-                    return SizedBox(
+                    return Container(
                       height: 60,
+                      decoration: BoxDecoration(
+                        color: isCurrent
+                            ? accentColor.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: InkWell(
                         onTap: () => onSongTap(top, songIndex),
                         onLongPress: () {
@@ -88,17 +99,41 @@ class TopSongsPagerGrid extends StatelessWidget {
                               // 48x48 Squircle artwork thumbnail
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Container(
+                                child: SizedBox(
                                   width: 48,
                                   height: 48,
-                                  color: Colors.white.withValues(alpha: 0.08),
-                                  child: CachedNetworkImage(
-                                    imageUrl: song.albumArt,
-                                    fit: BoxFit.cover,
-                                    errorWidget: (_, __, ___) => const Icon(
-                                      Icons.music_note_rounded,
-                                      color: Colors.white38,
-                                    ),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      CachedNetworkImage(
+                                        imageUrl: song.albumArt,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, __, ___) => Container(
+                                          color: Colors.white.withValues(alpha: 0.08),
+                                          child: const Icon(
+                                            Icons.music_note_rounded,
+                                            color: Colors.white38,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isCurrent)
+                                        Container(
+                                          color: Colors.black.withValues(alpha: 0.45),
+                                          child: Center(
+                                            child: isPlaying
+                                                ? AnimatedEqualizerIcon(
+                                                    isPlaying: true,
+                                                    color: accentColor,
+                                                    size: 18,
+                                                  )
+                                                : Icon(
+                                                    Icons.play_arrow_rounded,
+                                                    color: accentColor,
+                                                    size: 20,
+                                                  ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -109,15 +144,25 @@ class TopSongsPagerGrid extends StatelessWidget {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      song.trackName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        color: isCurrent ? accentColor : Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    Row(
+                                      children: [
+                                        if (song.isExplicit) ...[
+                                          const BitchordExplicitBadge(),
+                                          const SizedBox(width: 5),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            song.trackName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: GoogleFonts.plusJakartaSans(
+                                              color: isCurrent ? accentColor : Colors.white,
+                                              fontSize: 15,
+                                              fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 2),
                                     Text(

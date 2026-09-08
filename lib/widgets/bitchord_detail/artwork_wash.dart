@@ -1,17 +1,22 @@
 import 'dart:ui' as ui;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../utils/image_quality_utils.dart';
 
-/// Renders BitChord's signature ArtworkWash backdrop.
+/// Ambient backdrop matching NowPlayingScreen and BitChord ArtworkMeshBackdrop.
 ///
-/// Built from a vertical gradient and two soft organic radial mesh blobs
-/// placed just below the artwork edge, creating an ambient color wash that
-/// prevents any visible boundary between the artwork and the page background.
+/// When [imageUrl] is provided, renders the full-bleed scaled blurred cover art base
+/// (sigma 55), dual radiant radial color mesh layers driven by [accentColor], and a
+/// smooth dark gradient settling into [backgroundColor].
+///
+/// Falls back to the vertical gradient wash when [imageUrl] is null or empty.
 class ArtworkWash extends StatelessWidget {
   final Color backgroundColor;
   final Color washColor;
   final Color accentColor;
   final Color elevatedColor;
   final double washFraction;
+  final String? imageUrl;
 
   const ArtworkWash({
     super.key,
@@ -20,10 +25,91 @@ class ArtworkWash extends StatelessWidget {
     required this.accentColor,
     required this.elevatedColor,
     this.washFraction = 0.62,
+    this.imageUrl,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (imageUrl != null && imageUrl!.trim().isNotEmpty) {
+      final highQualityUrl = ImageQualityUtils.getHighQualityUrl(imageUrl!.trim());
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // 0. Base solid dark foundation
+          ColoredBox(color: backgroundColor),
+
+          // 1. Blurred Cover Artwork Base (matching NowPlayingScreen lines 275-298)
+          RepaintBoundary(
+            child: ClipRect(
+              child: Transform.scale(
+                scale: 1.6,
+                alignment: Alignment.topCenter,
+                child: ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(
+                    sigmaX: 55,
+                    sigmaY: 55,
+                  ),
+                  child: SizedBox.expand(
+                    child: CachedNetworkImage(
+                      imageUrl: highQualityUrl,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black45),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 2. Dual Radiant Color Mesh Layers (matching BitChord ArtworkWash and NowPlayingScreen)
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.0, -0.25),
+                radius: 1.25,
+                colors: [
+                  accentColor.withValues(alpha: 0.46),
+                  accentColor.withValues(alpha: 0.18),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.52, 1.0],
+              ),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.45, 0.65),
+                radius: 1.15,
+                colors: [
+                  elevatedColor.withValues(alpha: 0.32),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 1.0],
+              ),
+            ),
+          ),
+
+          // 3. Gentle ambient vertical gradient settling smoothly into backgroundColor
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.04),
+                  Colors.black.withValues(alpha: 0.14),
+                  backgroundColor.withValues(alpha: 0.55),
+                  backgroundColor.withValues(alpha: 0.92),
+                ],
+                stops: const [0.0, 0.40, 0.75, 1.0],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return CustomPaint(
       size: Size.infinite,
       painter: _ArtworkWashPainter(

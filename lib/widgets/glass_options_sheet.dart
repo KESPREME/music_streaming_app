@@ -6,11 +6,13 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
-import '../screens/playlist_detail_screen.dart'; // Unified for Album View
+import 'themed_album_detail_screen.dart';
+import 'themed_artist_detail_screen.dart';
 import '../theme/glass_tokens.dart';
 import 'glass_surface.dart';
 import 'playlist_selection_dialog.dart';
 import 'glass_snackbar.dart';
+import '../core/navigation/root_navigator.dart';
 import 'artist_picker_sheet.dart'; // Multi-artist selection
 import 'glass_download_selection_sheet.dart';
 import '../presentation/explore/explore_top_pill.dart';
@@ -19,6 +21,7 @@ import '../utils/image_quality_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class GlassOptionsSheet extends StatelessWidget {
+  final BuildContext? parentContext;
   final Track track;
   final String? playlistId;
   final bool isInQueueContext;
@@ -29,6 +32,7 @@ class GlassOptionsSheet extends StatelessWidget {
 
   const GlassOptionsSheet({
     super.key,
+    this.parentContext,
     required this.track,
     this.playlistId,
     this.isInQueueContext = false,
@@ -75,7 +79,8 @@ class GlassOptionsSheet extends StatelessWidget {
           reverseCurve: Curves.easeInCubic,
           duration: Duration(milliseconds: 320),
         ),
-        builder: (context) => GlassOptionsSheet(
+        builder: (_) => GlassOptionsSheet(
+          parentContext: context,
           track: track,
           playlistId: playlistId,
           isInQueueContext: isInQueueContext,
@@ -342,13 +347,13 @@ class GlassOptionsSheet extends StatelessWidget {
                             icon: Icons.album_outlined,
                             label: 'Go to album',
                             fallbackLabel: 'Go to Album',
-                            onTap: () async {
+                            onTap: () {
+                              final targetCtx = parentContext ?? context;
                               Navigator.pop(context);
-                              await _navigateToAlbum(
-                                context,
+                              _navigateToAlbum(
+                                targetCtx,
                                 provider,
-                                track.albumName,
-                                track.artistName,
+                                track,
                               );
                             },
                           ),
@@ -360,13 +365,23 @@ class GlassOptionsSheet extends StatelessWidget {
                             context,
                             icon: Icons.person_outline_rounded,
                             label: 'Go to artist',
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await ArtistPickerSheet.showIfNeeded(
-                                context,
-                                provider,
-                                track.artistName,
-                              );
+                            onTap: () {
+                              final targetCtx = parentContext ?? context;
+                              if (ArtistPickerSheet.hasMultipleArtists(track.artistName)) {
+                                Navigator.pop(context);
+                                ArtistPickerSheet.showIfNeeded(
+                                  targetCtx,
+                                  provider,
+                                  track.artistName,
+                                );
+                              } else {
+                                Navigator.pop(context);
+                                _navigateToArtist(
+                                  targetCtx,
+                                  provider,
+                                  track.artistName,
+                                );
+                              }
                             },
                           ),
 
@@ -627,34 +642,51 @@ class GlassOptionsSheet extends StatelessWidget {
     );
   }
 
-  Future<void> _navigateToAlbum(
+  void _navigateToAlbum(
     BuildContext context,
     MusicProvider provider,
-    String albumName,
-    String artistName,
-  ) async {
-    showGlassSnackBar(
-      context,
-      'Loading album...',
-      duration: const Duration(milliseconds: 500),
-    );
-    await provider.navigateToAlbum(albumName, artistName);
-    if (context.mounted && provider.currentAlbumDetails != null) {
-      // FIX: Ensure mini player is visible when going to details screen
-      provider.setHideMiniPlayer(false);
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PlaylistDetailScreen(
-            playlistId: provider.currentAlbumDetails!.id,
-            playlistName: provider.currentAlbumDetails!.name,
-            playlistImage: provider.currentAlbumDetails!.imageUrl,
-            cachedTracks: provider.currentAlbumDetails!.tracks,
-          ),
+    Track track,
+  ) {
+    provider.setHideMiniPlayer(false);
+    provider.setPlayerExpanded(false);
+    provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    final primaryArtist = ArtistPickerSheet.getPrimaryArtist(track.artistName);
+    final nav = mainNavigatorKey.currentState ??
+        Navigator.of(context, rootNavigator: true);
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => ThemedAlbumDetailScreen(
+          albumId: track.albumId?.isNotEmpty == true
+              ? track.albumId!
+              : 'album_${track.albumName}',
+          albumName: track.albumName,
+          artistName: primaryArtist,
+          albumImage: track.albumArtUrl,
+          searchByName: true,
         ),
-      );
-    }
+      ),
+    );
+  }
+
+  void _navigateToArtist(
+    BuildContext context,
+    MusicProvider provider,
+    String artistName,
+  ) {
+    provider.setHideMiniPlayer(false);
+    provider.setPlayerExpanded(false);
+    provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    final nav = mainNavigatorKey.currentState ??
+        Navigator.of(context, rootNavigator: true);
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => ThemedArtistDetailScreen(
+          artistId: 'artist_$artistName',
+          artistName: artistName,
+          searchByName: true,
+        ),
+      ),
+    );
   }
 
   void _showSleepTimerSheet(BuildContext context, MusicProvider provider) {

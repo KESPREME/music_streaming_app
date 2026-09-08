@@ -804,4 +804,143 @@ class CanvasResolutionService {
     final tall = link('motionDetailTall') ?? link('motionTallVideo3x4');
     return square ?? raw ?? tall;
   }
+
+  final Map<String, String?> _albumCache = {};
+
+  /// Resolves an animated cover video for an album release (BitChord CanvasRepository.canvasForAlbum parity).
+  Future<String?> resolveAlbumCanvas(
+    String albumName,
+    String artistName,
+  ) async {
+    final cleanAlbum = albumName.trim();
+    final cleanArtist = artistName.trim();
+    if (cleanAlbum.isEmpty) return null;
+
+    final key = '$cleanAlbum|$cleanArtist'.toLowerCase();
+    if (_albumCache.containsKey(key)) {
+      return _albumCache[key];
+    }
+
+    final isTesting =
+        WidgetsBinding.instance.runtimeType.toString().contains('Test');
+    if (isTesting) return null;
+
+    // 1. Tidal Video Cover for Album (Square 1280x1280 looping MP4)
+    try {
+      final tidal = await _resolveTidalAlbum(cleanAlbum, cleanArtist);
+      if (tidal != null && tidal.isNotEmpty) {
+        _albumCache[key] = tidal;
+        return tidal;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('CanvasResolutionService: Tidal album canvas failed: $e');
+    }
+
+    // 2. Apple Music Editorial Video for Album (BitChord AppleMusicCanvas.searchAlbum)
+    try {
+      final apple = await _resolveAppleMusicAlbum(cleanAlbum, cleanArtist);
+      if (apple != null && apple.isNotEmpty) {
+        _albumCache[key] = apple;
+        return apple;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('CanvasResolutionService: Apple Music album canvas failed: $e');
+    }
+
+    _albumCache[key] = null;
+    return null;
+  }
+
+  Future<String?> _resolveTidalAlbum(String albumName, String artistName) async {
+    final query = cleanSearchQuery('$albumName $artistName');
+    final url = Uri.parse(
+      'https://api.tidal.com/v1/search?query=${Uri.encodeComponent(query)}&limit=10&types=ALBUMS&countryCode=US',
+    );
+    final response = await http.get(url, headers: {
+      'X-Tidal-Token': _tidalEmbedToken,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    }).timeout(const Duration(seconds: 4));
+
+    if (response.statusCode != 200) return null;
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final albumsObj = json['albums'] as Map<String, dynamic>?;
+    final items = albumsObj?['items'] as List<dynamic>?;
+    if (items == null || items.isEmpty) return null;
+
+    final normAlbum = _normalizeForMatch(albumName);
+    for (final item in items) {
+      if (item is! Map<String, dynamic>) continue;
+      final title = item['title'] as String? ?? '';
+      final normTitle = _normalizeForMatch(title);
+      if (normTitle.isEmpty) continue;
+      if (normTitle != normAlbum &&
+          !normTitle.contains(normAlbum) &&
+          !normAlbum.contains(normTitle)) {
+        continue;
+      }
+
+      final videoCover = item['videoCover'] as String?;
+      if (videoCover != null && videoCover.isNotEmpty) {
+        return 'https://resources.tidal.com/videos/${videoCover.replaceAll('-', '/')}/1280x1280.mp4';
+      }
+    }
+    return null;
+  }
+
+  Future<String?> _resolveAppleMusicAlbum(String albumName, String artistName) async {
+    final token = await _getAppleToken();
+    if (token == null) return null;
+
+    final term = albumName.toLowerCase().contains(artistName.toLowerCase())
+        ? albumName
+        : '$artistName $albumName';
+    final searchUrl = Uri.parse(
+      'https://amp-api.music.apple.com/v1/catalog/us/search?term=${Uri.encodeComponent(term.trim())}&types=albums&limit=10&extend=editorialVideo',
+    );
+
+    final res = await http.get(searchUrl, headers: {
+      'Authorization': 'Bearer $token',
+      'Origin': 'https://music.apple.com',
+      'Referer': 'https://music.apple.com/',
+      'User-Agent': _canvasUa,
+    }).timeout(const Duration(seconds: 4));
+
+    if (res.statusCode == 401) {
+      _appleRejectedTokens.add(token);
+      _appleToken = null;
+      return null;
+    }
+    if (res.statusCode != 200) return null;
+
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    final albums = json['results']?['albums']?['data'] as List<dynamic>?;
+    if (albums == null || albums.isEmpty) return null;
+
+    final normAlbum = _normalizeForMatch(albumName);
+    for (final record in albums) {
+      if (record is! Map<String, dynamic>) continue;
+      final attrs = record['attributes'] as Map<String, dynamic>?;
+      if (attrs == null) continue;
+
+      final name = attrs['name'] as String? ?? '';
+      final normName = _normalizeForMatch(name);
+      if (normName.isEmpty) continue;
+      if (normName != normAlbum &&
+          !normName.contains(normAlbum) &&
+          !normAlbum.contains(normName)) {
+        continue;
+      }
+
+      final video = attrs['editorialVideo'] as Map<String, dynamic>?;
+      if (video != null) {
+        final url = _extractMotionUrl(video);
+        if (url != null && url.isNotEmpty) return url;
+      }
+    }
+    return null;
+  }
+
+  static String cleanSearchQuery(String raw) {
+    return raw.replaceAll(RegExp(r'[^\w\s]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
 }

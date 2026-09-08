@@ -344,81 +344,107 @@ class InnerTubeService {
     final tracks = <Track>[];
 
     try {
-      // Navigate to the music shelf renderer
-      final tabs = data['contents']?['tabbedSearchResultsRenderer']?['tabs'];
-      if (tabs == null || tabs.isEmpty) return tracks;
+      // 1. Try structured section hierarchy first
+      List? contents;
+      final tabs = data['contents']?['tabbedSearchResultsRenderer']?['tabs'] as List?;
+      if (tabs != null && tabs.isNotEmpty) {
+        contents = tabs[0]?['tabRenderer']?['content']
+            ?['sectionListRenderer']?['contents'] as List?;
+      }
+      contents ??= data['contents']?['sectionListRenderer']?['contents'] as List?;
 
-      final contents = tabs[0]?['tabRenderer']?['content']
-          ?['sectionListRenderer']?['contents'];
-      if (contents == null) return tracks;
+      if (contents != null) {
+        for (final section in contents) {
+          // Check standard MusicShelfRenderer
+          final shelfContents = section['musicShelfRenderer']?['contents'] as List?;
+          if (shelfContents != null) {
+            for (final item in shelfContents) {
+              if (tracks.length >= limit) break;
 
-      for (final section in contents) {
-        // 1. Check for standard MusicShelfRenderer (List)
-        final shelfContents = section['musicShelfRenderer']?['contents'];
-        if (shelfContents != null) {
-          for (final item in shelfContents) {
-            if (tracks.length >= limit) break;
-
-            // Try responsive list item
-            if (item['musicResponsiveListItemRenderer'] != null) {
-              final track = _parseTrackFromRenderer(
-                  item['musicResponsiveListItemRenderer'],
-                  allowBrowseIds: allowBrowseIds);
-              if (track != null) tracks.add(track);
-            }
-            // Try multi-row item (sometimes used)
-            else if (item['musicTwoRowItemRenderer'] != null) {
-              final track = _parseTrackFromTwoRowRenderer(
-                  item['musicTwoRowItemRenderer'],
-                  allowBrowseIds: allowBrowseIds);
-              if (track != null) tracks.add(track);
+              if (item['musicResponsiveListItemRenderer'] != null) {
+                final track = _parseTrackFromRenderer(
+                    item['musicResponsiveListItemRenderer'],
+                    allowBrowseIds: allowBrowseIds);
+                if (track != null && !tracks.any((t) => t.id == track.id)) {
+                  tracks.add(track);
+                }
+              } else if (item['musicTwoRowItemRenderer'] != null) {
+                final track = _parseTrackFromTwoRowRenderer(
+                    item['musicTwoRowItemRenderer'],
+                    allowBrowseIds: allowBrowseIds);
+                if (track != null && !tracks.any((t) => t.id == track.id)) {
+                  tracks.add(track);
+                }
+              }
             }
           }
-        }
 
-        // 2. Check for MusicCardShelfRenderer (Top Result / Artist Card)
-        final cardShelf = section['musicCardShelfRenderer'];
-        if (cardShelf != null && tracks.length < limit) {
-          final title = cardShelf['title']?['runs']?[0]?['text'];
-          final subtitle = cardShelf['subtitle']?['runs']?[0]?['text'];
-          final videoId = cardShelf['onTap']?['watchEndpoint']?['videoId'] ??
-              cardShelf['buttons']?[0]?['buttonRenderer']?['command']
-                  ?['watchEndpoint']?['videoId'];
-          // Thumbnail
-          final thumbnails = cardShelf['thumbnail']?['musicThumbnailRenderer']
-              ?['thumbnail']?['thumbnails'] as List?;
-          String? thumbnail = (thumbnails != null && thumbnails.isNotEmpty)
-              ? thumbnails.last['url']
-              : null;
+          // Check MusicCardShelfRenderer (Top Result / Hero Card - BitChord parseCardShelf parity)
+          final cardShelf = section['musicCardShelfRenderer'];
+          if (cardShelf != null && tracks.length < limit) {
+            final titleRuns = cardShelf['title']?['runs'] as List?;
+            final title = titleRuns != null && titleRuns.isNotEmpty
+                ? titleRuns.map((r) => r['text']?.toString() ?? '').join('')
+                : cardShelf['title']?['runs']?[0]?['text']?.toString();
+            final subtitleRuns = cardShelf['subtitle']?['runs'] as List?;
+            final subtitle = subtitleRuns != null && subtitleRuns.isNotEmpty
+                ? subtitleRuns.map((r) => r['text']?.toString() ?? '').join('')
+                : cardShelf['subtitle']?['runs']?[0]?['text']?.toString();
 
-          if (videoId != null || title != null) {
-            // Create a synthesized track for the card (Artist/Top Result)
-            // For Artist mode, the "videoId" might be a browseId, which generic Track doesn't fully support as ID?
-            // But searchArtists returns Track objects. If videoId is null, we might need a browseId logic.
-            // However, our Track model expects ID.
-            // Usually Top Result for Song has ID. Top Result for Artist has navigationEndpoint -> browseId.
-            // If we are searching Artists, we might want to skip if no ID, OR use browseId as ID.
-            // Let's rely on standard parsing for now, or minimal ID generation.
-            // For now, if videoId is missing, we skip, as playback requires videoId.
-            // UNLESS it's an Artist search where we just want metadata?
-            // The UI likely tries to play it or open artist page.
-            // Let's handle the Card carefully.
+            String? videoId = cardShelf['onTap']?['watchEndpoint']?['videoId']?.toString() ??
+                cardShelf['buttons']?[0]?['buttonRenderer']?['command']
+                    ?['watchEndpoint']?['videoId']?.toString();
 
-            if (videoId != null) {
-              tracks.add(Track(
+            // When searching for artists or playlists, the hero card contains a browseId
+            // (e.g. UC... for artist, VL.../PL... for playlist) rather than a watchEndpoint videoId.
+            if (videoId == null && allowBrowseIds) {
+              videoId = cardShelf['onTap']?['browseEndpoint']?['browseId']?.toString() ??
+                  cardShelf['buttons']?[0]?['buttonRenderer']?['command']
+                      ?['browseEndpoint']?['browseId']?.toString();
+            }
+
+            final thumbnails = cardShelf['thumbnail']?['musicThumbnailRenderer']
+                ?['thumbnail']?['thumbnails'] as List?;
+            final thumbnail = (thumbnails != null && thumbnails.isNotEmpty)
+                ? thumbnails.last['url']?.toString()
+                : null;
+
+            if (videoId != null && !tracks.any((t) => t.id == videoId)) {
+              if (allowBrowseIds ||
+                  (!videoId.startsWith('UC') &&
+                      !videoId.startsWith('VL') &&
+                      !videoId.startsWith('PL') &&
+                      !videoId.startsWith('OLAK') &&
+                      !videoId.startsWith('MPREb'))) {
+                tracks.insert(0, Track(
                   id: videoId,
                   trackName: title ?? 'Unknown',
                   artistName: subtitle ?? '',
                   albumName: '',
-                  previewUrl: '', // Added missing required parameter
+                  previewUrl: '',
                   albumArt: thumbnail ?? '',
                   source: 'youtube',
-                  durationMs: 0));
+                  durationMs: 0,
+                ));
+              }
             }
           }
-        }
 
-        if (tracks.length >= limit) break;
+          if (tracks.length >= limit) break;
+        }
+      }
+
+      // 2. Resilient fallback: if structured walk yielded no results,
+      // recursively collect all musicResponsiveListItemRenderers (BitChord parser parity)
+      if (tracks.isEmpty) {
+        final listRenderers = _collectRenderers(data, 'musicResponsiveListItemRenderer');
+        for (final renderer in listRenderers) {
+          if (tracks.length >= limit) break;
+          final track = _parseTrackFromRenderer(renderer, allowBrowseIds: allowBrowseIds);
+          if (track != null && !tracks.any((t) => t.id == track.id)) {
+            tracks.add(track);
+          }
+        }
       }
     } catch (e) {
       if (kDebugMode) {
@@ -535,6 +561,32 @@ class InnerTubeService {
         }
       }
 
+      // Check for explicit badge [E] (BitChord parity)
+      bool isExplicit = false;
+      final badgeList = [
+        if (renderer['badges'] is List) ...renderer['badges'] as List,
+        if (renderer['subtitleBadges'] is List) ...renderer['subtitleBadges'] as List,
+      ];
+      for (final b in badgeList) {
+        if (b is Map<String, dynamic>) {
+          final inline = b['musicInlineBadgeRenderer'];
+          if (inline is Map<String, dynamic>) {
+            final iconType = inline['icon']?['iconType']?.toString();
+            if (iconType == 'MUSIC_EXPLICIT_BADGE') {
+              isExplicit = true;
+              break;
+            }
+            final label = inline['accessibilityData']?['accessibilityData']?['label']
+                ?.toString()
+                .toLowerCase();
+            if (label != null && label.contains('explicit')) {
+              isExplicit = true;
+              break;
+            }
+          }
+        }
+      }
+
       final rawTrack = Track(
         id: videoId,
         trackName: title,
@@ -544,6 +596,7 @@ class InnerTubeService {
         previewUrl: '', // Will be fetched when playing
         source: 'youtube',
         durationMs: durationMs,
+        isExplicit: isExplicit,
       );
 
       return TrackMetadataEnricher.sanitizeTrack(rawTrack);
@@ -1447,9 +1500,11 @@ class InnerTubeService {
 
       // 3. Top Songs
       final topSongs = <Track>[];
+      String? moreSongsBrowseId;
       final shelfRenderers = _collectRenderers(data, 'musicShelfRenderer');
       if (shelfRenderers.isNotEmpty) {
-        final contents = shelfRenderers.first['contents'] as List?;
+        final firstShelf = shelfRenderers.first;
+        final contents = firstShelf['contents'] as List?;
         if (contents != null) {
           for (final item in contents) {
             final renderer = item['musicResponsiveListItemRenderer'];
@@ -1458,6 +1513,26 @@ class InnerTubeService {
               if (track != null) topSongs.add(track);
             }
           }
+        }
+
+        // BitChord YtMusicRepository.artistPage parity:
+        // Landing page only lists ~5 songs, so linked "Top songs" playlist is fetched
+        final titleRuns = firstShelf['title']?['runs'] as List?;
+        if (titleRuns != null && titleRuns.isNotEmpty) {
+          moreSongsBrowseId = titleRuns.first['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+        }
+        moreSongsBrowseId ??= firstShelf['bottomEndpoint']?['browseEndpoint']?['browseId']?.toString();
+      }
+
+      if (moreSongsBrowseId != null && moreSongsBrowseId.isNotEmpty) {
+        try {
+          final fullSongs = await getPlaylistDetails(moreSongsBrowseId);
+          if (fullSongs.isNotEmpty) {
+            topSongs.clear();
+            topSongs.addAll(fullSongs);
+          }
+        } catch (e) {
+          if (kDebugMode) debugPrint('InnerTubeService: getArtistPageData moreSongs fetch error: $e');
         }
       }
 

@@ -153,7 +153,9 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                           builder: (context, isAtRoot, _) {
                             // In glass theme, LiquidGlassNavBar hosts the docked mini player on MainScreen.
                             // GlobalMusicOverlay provides the floating fallback on pushed routes without nav bar.
-                            if (isGlassTheme && isAtRoot) {
+                            if ((isGlassTheme && isAtRoot) ||
+                                musicProvider.hideMiniPlayer ||
+                                miniPlayerOpacity <= 0.001) {
                               return const SizedBox.shrink();
                             }
 

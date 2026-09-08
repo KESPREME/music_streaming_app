@@ -75,9 +75,9 @@ class _ShelfCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
+        final nav = Navigator.of(context);
         if (isArtist) {
-          Navigator.push(
-            context,
+          nav.push(
             MaterialPageRoute(
               builder: (_) => ThemedArtistDetailScreen(
                 artistId: item.browseId,
@@ -87,8 +87,7 @@ class _ShelfCard extends StatelessWidget {
             ),
           );
         } else if (item.type == 'playlist') {
-          Navigator.push(
-            context,
+          nav.push(
             MaterialPageRoute(
               builder: (_) => ThemedPlaylistDetailScreen(
                 playlistId: item.browseId,
@@ -100,8 +99,7 @@ class _ShelfCard extends StatelessWidget {
           );
         } else {
           // Album or Single
-          Navigator.push(
-            context,
+          nav.push(
             MaterialPageRoute(
               builder: (_) => ThemedAlbumDetailScreen(
                 albumId: item.browseId,

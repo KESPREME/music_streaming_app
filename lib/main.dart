@@ -264,13 +264,16 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   bool _searchMode = false;
+  bool _searchSuspended = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
   late final lgw.GlassTabBarMinimizeController _minimizeController;
+  late final ValueNotifier<({int index, bool searchMode})> _tabState;
 
   @override
   void initState() {
     super.initState();
+    _tabState = ValueNotifier((index: 0, searchMode: false));
     _minimizeController = lgw.GlassTabBarMinimizeController(
       behavior: lgw.GlassBarMinimizeBehavior.onScrollDown,
     );
@@ -278,6 +281,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    _tabState.dispose();
     _minimizeController.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
@@ -285,12 +289,20 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onItemTapped(int index) {
-    if (_currentIndex == index && !_searchMode) return;
+    final mainNav = mainNavigatorKey.currentState;
+    if (mainNav != null && mainNav.canPop()) {
+      mainNav.popUntil((route) => route.isFirst);
+    }
+    if (_currentIndex == index && !_searchMode && !_searchSuspended) return;
     _minimizeController.expand();
-    if (_searchMode) _exitSearch();
+    if (_searchMode || _searchSuspended) {
+      _searchSuspended = false;
+      _exitSearch();
+    }
     final wasExplore = _currentIndex == 1;
     final isExplore = index == 1;
     setState(() => _currentIndex = index);
+    _tabState.value = (index: index, searchMode: false);
     if (isExplore) {
       context.read<MusicProvider>().setHideMiniPlayer(true);
     } else if (wasExplore) {
@@ -301,7 +313,11 @@ class _MainScreenState extends State<MainScreen> {
   void _enterSearch() {
     HapticFeedback.lightImpact();
     _minimizeController.expand();
-    setState(() => _searchMode = true);
+    setState(() {
+      _searchMode = true;
+      _searchSuspended = false;
+    });
+    _tabState.value = (index: _currentIndex, searchMode: true);
     Future.delayed(const Duration(milliseconds: 180), () {
       if (mounted) _searchFocus.requestFocus();
     });
@@ -313,7 +329,24 @@ class _MainScreenState extends State<MainScreen> {
     _searchController.clear();
     Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
     _minimizeController.expand();
-    setState(() => _searchMode = false);
+    setState(() {
+      _searchMode = false;
+      _searchSuspended = false;
+    });
+    _tabState.value = (index: _currentIndex, searchMode: false);
+  }
+
+  void _pushDetailFromSearch(Widget screen) {
+    setState(() => _searchSuspended = true);
+    _tabState.value = (index: _currentIndex, searchMode: false);
+    final route = MaterialPageRoute(builder: (_) => screen);
+    mainNavigatorKey.currentState?.push(route).then((_) {
+      if (mounted) {
+        setState(() => _searchSuspended = false);
+        _tabState.value = (index: _currentIndex, searchMode: _searchMode);
+        _searchFocus.unfocus();
+      }
+    });
   }
 
   @override
@@ -353,8 +386,12 @@ class _MainScreenState extends State<MainScreen> {
       });
     }
 
+    final mainNav = mainNavigatorKey.currentState;
+    final canPopInner = mainNav != null && mainNav.canPop();
+    final showSearchOverlay = _searchMode && !_searchSuspended;
+
     return PopScope(
-      canPop: (_currentIndex == 0 && !_searchMode && !isPanelOpen),
+      canPop: (_currentIndex == 0 && !_searchMode && !isPanelOpen && !canPopInner),
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
@@ -364,13 +401,19 @@ class _MainScreenState extends State<MainScreen> {
            return;
         }
 
-        // Priority 2: Exit search
+        // Priority 2: Pop nested detail screen route
+        if (canPopInner) {
+           mainNav.pop();
+           return;
+        }
+
+        // Priority 3: Exit search
         if (_searchMode) {
            _exitSearch();
            return;
         }
 
-        // Priority 3: Go to Home Tab if not there
+        // Priority 4: Go to Home Tab if not there
         if (_currentIndex != 0) {
            _onItemTapped(0);
         }
@@ -392,13 +435,26 @@ class _MainScreenState extends State<MainScreen> {
               // z-0: ambient album-art canvas (visible where screens are
               // transparent; opaque screens are migrated in P5).
               const AmbientBackdrop(),
-              FadeIndexedStack(
-                index: _currentIndex,
-                children: [
-                  const ThemedHomeScreen(),
-                  ThemedExploreScreen(isActive: _currentIndex == 1 && !_searchMode),
-                  const ThemedLibraryScreen(),
-                ],
+              Navigator(
+                key: mainNavigatorKey,
+                onGenerateRoute: (settings) {
+                  return MaterialPageRoute(
+                    settings: settings,
+                    builder: (_) => ValueListenableBuilder<({int index, bool searchMode})>(
+                      valueListenable: _tabState,
+                      builder: (context, state, _) {
+                        return FadeIndexedStack(
+                          index: state.index,
+                          children: [
+                            const ThemedHomeScreen(),
+                            ThemedExploreScreen(isActive: state.index == 1 && !state.searchMode),
+                            const ThemedLibraryScreen(),
+                          ],
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
               // Search overlay (in-place transition). The nav bar's search
               // pill morphs into the input; the overlay shows only tabs +
@@ -417,16 +473,17 @@ class _MainScreenState extends State<MainScreen> {
                     child: child,
                   ),
                 ),
-                child: _searchMode
+                child: showSearchOverlay
                     ? Builder(
                         key: const ValueKey('search_overlay'),
                         builder: (_) => themeProvider.isMaterialYou
-                            ? const ThemedSearchScreen()
+                            ? ThemedSearchScreen(onPushDetail: _pushDetailFromSearch)
                             : SearchScreen(
                                 key: const ValueKey('embedded_search'),
                                 embedded: true,
                                 externalController: _searchController,
                                 externalFocusNode: _searchFocus,
+                                onPushDetail: _pushDetailFromSearch,
                               ),
                       )
                     : const SizedBox.shrink(key: ValueKey('search_gone')),
@@ -459,7 +516,7 @@ class _MainScreenState extends State<MainScreen> {
                         scale: animation,
                         child: FadeTransition(opacity: animation, child: child),
                       ),
-                      child: _searchMode
+                      child: showSearchOverlay
                           ? GlassCircleButton(
                               key: const ValueKey('home_circle'),
                               icon: Icons.home_outlined,
@@ -481,7 +538,7 @@ class _MainScreenState extends State<MainScreen> {
               : ThemedNavBar(
                   currentIndex: _currentIndex,
                   onTap: _onItemTapped,
-                  searchMode: _searchMode,
+                  searchMode: showSearchOverlay,
                   minimizeController: hasMiniPlayer ? _minimizeController : null,
                   onMinimizedTabTap: _minimizeController.expand,
                   onExpandPlayer: () =>
@@ -499,6 +556,8 @@ class _MainScreenState extends State<MainScreen> {
                   onSearchSubmitted: (query) {
                     _searchFocus.unfocus();
                     if (query.trim().isEmpty) return;
+                    final mp = Provider.of<MusicProvider>(context, listen: false);
+                    mp.searchTracks(query, forceRefresh: true);
                   },
                   onSearchCancel: () {
                     _exitSearch();

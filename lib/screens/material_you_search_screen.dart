@@ -20,7 +20,8 @@ import '../widgets/themed_playlist_detail_screen.dart';
 /// - Circular artist images
 /// - 3-dot menus
 class MaterialYouSearchScreen extends StatefulWidget {
-  const MaterialYouSearchScreen({super.key});
+  final void Function(Widget screen)? onPushDetail;
+  const MaterialYouSearchScreen({super.key, this.onPushDetail});
 
   @override
   State<MaterialYouSearchScreen> createState() => _MaterialYouSearchScreenState();
@@ -83,7 +84,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
         musicProvider.searchTracks(query, forceRefresh: forceRefresh);
         break;
       case "Artists":
-        musicProvider.fetchArtistTracks(query);
+        musicProvider.fetchArtistTracks(query, forceRefresh: forceRefresh);
         break;
       case "Albums":
         // TODO: Implement album search
@@ -131,7 +132,7 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
       child: Material(
         elevation: 2,
         surfaceTintColor: Colors.transparent, // FIX: No white tint
-        color: colorScheme.surfaceContainerHighest ?? colorScheme.surfaceContainerHighest,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(28), // Highly rounded
         child: TextField(
           controller: _searchController,
@@ -401,16 +402,19 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
       subtitle: 'Artist',
       isCircle: true,
       onTap: () {
-        provider.navigateToArtistObject(artistTrack);
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ThemedArtistDetailScreen(
-              artistId: artistTrack.id,
-              artistName: artistName,
-            ),
-          ),
+        final screen = ThemedArtistDetailScreen(
+          artistId: artistTrack.id,
+          artistName: artistName,
+          artistImage: artistImageUrl,
         );
+        if (widget.onPushDetail != null) {
+          widget.onPushDetail!(screen);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => screen),
+          );
+        }
       },
       trailing: Icon(
         Icons.chevron_right_rounded,
@@ -425,15 +429,18 @@ class _MaterialYouSearchScreenState extends State<MaterialYouSearchScreen> {
       title: playlist.trackName,
       subtitle: 'Playlist',
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ThemedPlaylistDetailScreen(
-              playlistId: playlist.id,
-              playlistName: playlist.trackName,
-            ),
-          ),
+        final screen = ThemedPlaylistDetailScreen(
+          playlistId: playlist.id,
+          playlistName: playlist.trackName,
         );
+        if (widget.onPushDetail != null) {
+          widget.onPushDetail!(screen);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => screen),
+          );
+        }
       },
       trailing: Icon(
         Icons.chevron_right_rounded,
