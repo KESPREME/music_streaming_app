@@ -109,6 +109,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           artistIdToFetch = exactMatch.id;
           if (_resolvedArtistImage == null || _resolvedArtistImage!.isEmpty) {
             _resolvedArtistImage = exactMatch.albumArtUrl;
+            if (_resolvedArtistImage != null && _resolvedArtistImage!.isNotEmpty) {
+              _resolvePalette(_resolvedArtistImage!);
+            }
           }
         } else {
           if (mounted) {
@@ -138,12 +141,18 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
       if (pageData.topSongs.isNotEmpty || pageData.shelves.isNotEmpty) {
         if (mounted) {
+          String? newHero = pageData.heroImageUrl.isNotEmpty
+              ? pageData.heroImageUrl
+              : (_resolvedArtistImage ?? pageData.topSongs.firstOrNull?.albumArtUrl ?? widget.artistImage);
+          if (newHero != null && newHero.isNotEmpty && newHero != widget.artistImage) {
+            _resolvePalette(newHero);
+          }
           setState(() {
             if (pageData.name.isNotEmpty && pageData.name != 'Artist') {
               _resolvedArtistName = pageData.name;
             }
-            if (pageData.heroImageUrl.isNotEmpty) {
-              _resolvedArtistImage = pageData.heroImageUrl;
+            if (newHero != null && newHero.isNotEmpty) {
+              _resolvedArtistImage = newHero;
             }
             _subscriberCountText = pageData.subscriberCountText;
             _monthlyListenerCount = pageData.monthlyListenerCount;
@@ -192,7 +201,14 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       }
 
       if (mounted) {
+        String? fallbackImg = _resolvedArtistImage ?? tracks.firstOrNull?.albumArtUrl ?? fallbackShelves.firstOrNull?.items.firstOrNull?.imageUrl;
+        if (fallbackImg != null && fallbackImg.isNotEmpty) {
+          _resolvePalette(fallbackImg);
+        }
         setState(() {
+          if (fallbackImg != null && fallbackImg.isNotEmpty) {
+            _resolvedArtistImage = fallbackImg;
+          }
           _topSongs = tracks;
           _shelves = fallbackShelves;
           _isLoading = false;

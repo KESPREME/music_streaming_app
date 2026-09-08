@@ -15,10 +15,6 @@ import 'package:flutter/material.dart'
 // Flutter Packages
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:palette_generator/palette_generator.dart';
-// import 'package:device_info_plus/device_info_plus.dart'; // Commented out: Unused
-import 'package:dio/dio.dart'; // Used by NetworkService for downloads
-import 'package:path_provider/path_provider.dart';
-// import 'package:permission_handler/permission_handler.dart'; // Commented out: Unused
 import 'package:shared_preferences/shared_preferences.dart';
 // For network diagnostics
 import 'package:collection/collection.dart'; // For firstWhereOrNull
@@ -72,7 +68,7 @@ import '../utils/network_config.dart';
 // Your Project Model Imports (Music Source)
 // Your Project Model Imports (Music Source)
 import '../models/music_source.dart'; // Music source enum
-import 'package:palette_generator/palette_generator.dart'; // Dynamic colors
+
 
 // Enums
 // RepeatMode now lives in providers/playback/playback_state.dart (re-exported above).
@@ -606,6 +602,7 @@ class MusicProvider
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isOfflineTrack = false;
+  bool _hasPlayedCurrentTrack = false;
   bool _shuffleEnabled = false;
 
   /// Infinite autoplay: when a context ends or queue is empty, keep playing related tracks.
@@ -1125,6 +1122,9 @@ class MusicProvider
 
       if (_position != pos) {
         _position = pos;
+        if (pos > const Duration(seconds: 2)) {
+          _hasPlayedCurrentTrack = true;
+        }
         // THROTTLE: Only notify at most every 1000ms to save battery/UI
         final now = DateTime.now();
         if (_lastPositionNotify == null ||
@@ -1164,6 +1164,9 @@ class MusicProvider
 
       if (_isPlaying != playing) {
         _isPlaying = playing;
+        if (playing) {
+          _hasPlayedCurrentTrack = true;
+        }
 
         if (!playing && _currentTrack != null) {
           if (kDebugMode)
@@ -1190,11 +1193,11 @@ class MusicProvider
       // Natural track completion fires ProcessingState.completed. The 2s duplicate
       // auto-advance guard (_consumeDuplicateAutoAdvance) prevents double-advance
       // while guaranteeing that completion is never missed.
-      // Guard with hasPlayedMeaningfully to prevent premature skips on app cold start
-      // or audio source preparation where state briefly reports completed.
-      final hasPlayedMeaningfully = _duration > const Duration(seconds: 2) &&
-          _position > const Duration(seconds: 1) &&
-          (_position >= _duration - const Duration(seconds: 3));
+      // We check _hasPlayedCurrentTrack so that if ExoPlayer resets position to 0:00
+      // upon completion, playback advance is never missed or stuck at 0:00.
+      final hasPlayedMeaningfully = _hasPlayedCurrentTrack ||
+          (_duration > const Duration(seconds: 2) && _position > const Duration(seconds: 1)) ||
+          (_duration > Duration.zero && _position >= _duration - const Duration(seconds: 3));
 
       if (state.processingState == ProcessingState.completed &&
           _currentTrack != null &&
@@ -1203,6 +1206,7 @@ class MusicProvider
         if (kDebugMode)
           debugPrint(
               'MusicProvider: Track completed naturally, calling _onTrackComplete');
+        _hasPlayedCurrentTrack = false;
         _onTrackComplete();
       }
     }, onError: (e) {
@@ -1748,7 +1752,20 @@ class MusicProvider
       await _playTrackInternal(nextTrack, setContext: false, clearQueue: false);
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: Autoplay error: $e');
-      stopTrack();
+      final localPool = [
+        ..._quickPicks,
+        ..._recommendedTracks,
+        ..._trendingTracks,
+        ..._recentlyPlayed,
+      ].where(_isPlayableAutoplayCandidate).toList();
+      if (localPool.isNotEmpty && gen == _playbackGeneration) {
+        final fallbackNext = localPool.first;
+        _isAutoQueueContext = true;
+        _setPlaybackContext(localPool, clearQueue: false);
+        await _playTrackInternal(fallbackNext, setContext: false, clearQueue: false);
+      } else {
+        stopTrack();
+      }
     }
   }
 
@@ -1885,13 +1902,13 @@ class MusicProvider
     try {
       if (offline) {
         await playOfflineTrack(track,
-            setContext: setContext, clearQueue: setContext ? clearQueue : true);
+            setContext: setContext, clearQueue: setContext ? clearQueue : false);
       } else {
         await playTrack(track,
             playlistTracks: _currentPlayingTracks,
             playlistId: _currentPlaylistId,
             setContext: setContext,
-            clearQueue: setContext ? clearQueue : true);
+            clearQueue: setContext ? clearQueue : false);
       }
     } catch (e) {
       debugPrint("Error in _playTrackInternal: $e");

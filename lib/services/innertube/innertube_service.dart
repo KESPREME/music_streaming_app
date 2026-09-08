@@ -2234,7 +2234,7 @@ class InnerTubeService {
   Future<List<Track>> getRadioTracks(String videoId, {int limit = 15}) async {
     try {
       final body = jsonEncode({
-        'context': _buildContext(),
+        'context': _buildContext(clientType: YouTubeClientType.webRemix),
         'videoId': videoId,
         'playlistId': 'RDAMVM$videoId',
         'isAudioOnly': true,
@@ -2242,7 +2242,7 @@ class InnerTubeService {
 
       final response = await _httpClient.post(
         Uri.parse('$_apiUrl/next?prettyPrint=false'),
-        headers: _buildHeaders(),
+        headers: _buildHeaders(clientType: YouTubeClientType.webRemix),
         body: body,
       );
 
@@ -2265,7 +2265,7 @@ class InnerTubeService {
   Future<Track?> fetchTrackLinks(String videoId) async {
     try {
       final body = jsonEncode({
-        'context': _buildContext(),
+        'context': _buildContext(clientType: YouTubeClientType.webRemix),
         'videoId': videoId,
         'playlistId': 'RDAMVM$videoId',
         'isAudioOnly': true,
@@ -2273,7 +2273,7 @@ class InnerTubeService {
 
       final response = await _httpClient.post(
         Uri.parse('$_apiUrl/next?prettyPrint=false'),
-        headers: _buildHeaders(),
+        headers: _buildHeaders(clientType: YouTubeClientType.webRemix),
         body: body,
       );
 

@@ -78,11 +78,12 @@ class BitchordSliverAppBar extends StatelessWidget {
                 ),
                 child: Container(
                   decoration: BoxDecoration(
+                    color: backgroundColor.withValues(alpha: 0.72 * fadeProgress),
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.28 * fadeProgress),
+                        backgroundColor.withValues(alpha: 0.45 * fadeProgress),
                         Colors.transparent,
                       ],
                     ),

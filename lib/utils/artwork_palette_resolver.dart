@@ -125,8 +125,9 @@ class ArtworkPaletteResolver {
         }
       }
 
-      // 3. Edge color: fallback to darkMuted or dominant
+      // 3. Edge color: fallback to darkMuted, muted, darkVibrant, or dominant
       final edgeColor = paletteGen.darkMutedColor?.color ??
+          paletteGen.mutedColor?.color ??
           paletteGen.darkVibrantColor?.color ??
           dominantSwatch.color;
 
