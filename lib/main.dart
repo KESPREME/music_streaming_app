@@ -338,10 +338,17 @@ class _MainScreenState extends State<MainScreen> {
 
   void _pushDetailFromSearch(Widget screen) {
     _searchFocus.unfocus();
-    final nav = rootNavigatorKey.currentState ??
-        mainNavigatorKey.currentState ??
-        Navigator.of(context, rootNavigator: true);
-    nav.push(MaterialPageRoute(builder: (_) => screen));
+    setState(() {
+      _searchSuspended = true;
+    });
+    final nav = mainNavigatorKey.currentState ?? Navigator.of(context);
+    nav.push(MaterialPageRoute(builder: (_) => screen)).then((_) {
+      if (mounted) {
+        setState(() {
+          _searchSuspended = false;
+        });
+      }
+    });
   }
 
   @override

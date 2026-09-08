@@ -109,9 +109,9 @@ class ArtistPickerSheet extends StatelessWidget {
     provider.setHideMiniPlayer(false);
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
-    final nav = rootNavigatorKey.currentState ??
-        mainNavigatorKey.currentState ??
-        Navigator.of(context, rootNavigator: true);
+    final nav = mainNavigatorKey.currentState ??
+        rootNavigatorKey.currentState ??
+        Navigator.of(context);
     nav.push(
       MaterialPageRoute(
         builder: (_) => ThemedArtistDetailScreen(

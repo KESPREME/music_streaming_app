@@ -18,6 +18,7 @@ import '../widgets/themed_options_sheet.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/artist_picker_sheet.dart';
+import '../core/navigation/root_navigator.dart';
 
 /// Sleeve aspect ratio matching BitChord's SLEEVE_RATIO in DetailScreen.kt
 const double _kSleeveRatio = 0.92;
@@ -394,10 +395,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          stops: const [0.55, 1.0],
+                          stops: const [0.40, 0.65, 0.85, 1.0],
                           colors: [
                             Colors.transparent,
-                            washColor.withValues(alpha: 0.88),
+                            washColor.withValues(alpha: 0.35),
+                            washColor.withValues(alpha: 0.75),
+                            washColor,
                           ],
                         ),
                       ),
@@ -492,127 +495,133 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                 )
               else ...[
-                // Spacer matching artHeight + HEADER_DROP so text sits cleanly below the picture
+                // ReleaseHeader: unified box of height artHeight + HEADER_DROP with content
+                // pinned to bottomCenter (BitChord DetailScreen.kt lines 604-615 parity)
                 SliverToBoxAdapter(
                   child: SizedBox(
-                    height: (artHeight - kToolbarHeight - MediaQuery.of(context).padding.top) + _kHeaderDrop,
-                  ),
-                ),
-
-                // Album Header (Title, Accent Artist, Uppercase Metadata, Action Bar)
-                SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      // Album Title
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                        child: Text(
-                          widget.albumName,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                            height: 1.15,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Artist Credit in Accent Color
-                      if (_resolvedArtist != null && _resolvedArtist!.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            if (ArtistPickerSheet.hasMultipleArtists(_resolvedArtist!)) {
-                              ArtistPickerSheet.showIfNeeded(
-                                context,
-                                musicProvider,
-                                _resolvedArtist!,
-                              );
-                            } else {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ThemedArtistDetailScreen(
-                                    artistId: _resolvedArtistId ?? 'artist_${widget.albumName}',
-                                    artistName: _resolvedArtist!,
-                                    artistImage: _resolvedImageUrl,
-                                  ),
+                    height: (artHeight + _kHeaderDrop - kToolbarHeight - MediaQuery.of(context).padding.top)
+                        .clamp(240.0, double.infinity),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 14.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Album Title
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                              child: Text(
+                                widget.albumName,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                  height: 1.15,
                                 ),
-                              );
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                            child: Text(
-                              _resolvedArtist!,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.plusJakartaSans(
-                                color: accentColor,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                          ),
-                        ),
-                      const SizedBox(height: 8),
+                            const SizedBox(height: 6),
 
-                      // Metadata (ALBUM • 2024 • 18 TRACKS)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                        child: Text(
-                          metadataLine,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.8,
-                          ),
+                            // Artist Credit in Accent Color
+                            if (_resolvedArtist != null && _resolvedArtist!.isNotEmpty)
+                              GestureDetector(
+                                onTap: () {
+                                  if (ArtistPickerSheet.hasMultipleArtists(_resolvedArtist!)) {
+                                    ArtistPickerSheet.showIfNeeded(
+                                      context,
+                                      musicProvider,
+                                      _resolvedArtist!,
+                                    );
+                                  } else {
+                                    final nav = mainNavigatorKey.currentState ??
+                                        Navigator.of(context);
+                                    nav.push(
+                                      MaterialPageRoute(
+                                        builder: (_) => ThemedArtistDetailScreen(
+                                          artistId: _resolvedArtistId ?? 'artist_${widget.albumName}',
+                                          artistName: _resolvedArtist!,
+                                          artistImage: _resolvedImageUrl,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                  child: Text(
+                                    _resolvedArtist!,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: accentColor,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+
+                            // Metadata (ALBUM • 2024 • 18 TRACKS)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                              child: Text(
+                                metadataLine,
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+
+                            // Action Pills: [ 🔀 ]  [ ▶ Play ]  [ 🔍 ]  [ ••• ]
+                            BitchordActionBar(
+                              palette: artPalette,
+                              onPlay: () {
+                                if (_tracks.isNotEmpty) {
+                                  musicProvider.playTrackList(_tracks, initialIndex: 0);
+                                }
+                              },
+                              onShuffle: () {
+                                if (_tracks.isNotEmpty) {
+                                  final shuffled = List<Track>.from(_tracks)..shuffle();
+                                  musicProvider.playTrackList(shuffled, initialIndex: 0);
+                                }
+                              },
+                              searching: _isSearching,
+                              onSearch: () {
+                                setState(() {
+                                  _isSearching = !_isSearching;
+                                  if (!_isSearching) {
+                                    _searchQuery = '';
+                                    _searchController.clear();
+                                  }
+                                });
+                              },
+                              onMore: () {
+                                GlassPlaylistOptionsSheet.show(
+                                  context,
+                                  playlistName: widget.albumName,
+                                  playlistImage: _resolvedImageUrl,
+                                  tracks: _tracks,
+                                );
+                              },
+                              accentColor: accentColor,
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 18),
-
-                      // Action Pills: [ 🔀 ]  [ ▶ Play ]  [ 🔍 ]  [ ••• ]
-                      BitchordActionBar(
-                        palette: artPalette,
-                        onPlay: () {
-                          if (_tracks.isNotEmpty) {
-                            musicProvider.playTrackList(_tracks, initialIndex: 0);
-                          }
-                        },
-                        onShuffle: () {
-                          if (_tracks.isNotEmpty) {
-                            final shuffled = List<Track>.from(_tracks)..shuffle();
-                            musicProvider.playTrackList(shuffled, initialIndex: 0);
-                          }
-                        },
-                        searching: _isSearching,
-                        onSearch: () {
-                          setState(() {
-                            _isSearching = !_isSearching;
-                            if (!_isSearching) {
-                              _searchQuery = '';
-                              _searchController.clear();
-                            }
-                          });
-                        },
-                        onMore: () {
-                          GlassPlaylistOptionsSheet.show(
-                            context,
-                            playlistName: widget.albumName,
-                            playlistImage: _resolvedImageUrl,
-                            tracks: _tracks,
-                          );
-                        },
-                        accentColor: accentColor,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+                    ),
                   ),
                 ),
 

@@ -303,10 +303,12 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          stops: const [0.55, 1.0],
+                          stops: const [0.40, 0.65, 0.85, 1.0],
                           colors: [
                             Colors.transparent,
-                            washColor.withValues(alpha: 0.88),
+                            washColor.withValues(alpha: 0.35),
+                            washColor.withValues(alpha: 0.75),
+                            washColor,
                           ],
                         ),
                       ),
@@ -394,32 +396,33 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                   ),
                 )
               else ...[
-                // Spacer matching artHeight + HEADER_DROP
+                // ArtistHeader: matches artHeight + HEADER_DROP and pins artist name to bottomCenter
+                // (BitChord DetailScreen.kt lines 870-887 parity)
                 SliverToBoxAdapter(
                   child: SizedBox(
-                    height: (artHeight - kToolbarHeight - MediaQuery.of(context).padding.top) + _kHeaderDrop,
-                  ),
-                ),
-
-                // Artist Name (Screenshot 8: Large centered bold text)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Text(
-                      _resolvedArtistName,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                    height: (artHeight + _kHeaderDrop - kToolbarHeight - MediaQuery.of(context).padding.top)
+                        .clamp(180.0, double.infinity),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 24.0, right: 24.0, top: 14.0, bottom: 7.0),
+                        child: Text(
+                          _resolvedArtistName,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 34,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
                 // Subscriber & Monthly Listener Stat Chips (Screenshot 8)
                 SliverToBoxAdapter(

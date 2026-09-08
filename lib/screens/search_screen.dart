@@ -476,9 +476,9 @@ class _SearchScreenState extends State<SearchScreen>
                  if (widget.onPushDetail != null) {
                    widget.onPushDetail!(screen);
                  } else {
-                   final nav = rootNavigatorKey.currentState ??
-                       mainNavigatorKey.currentState ??
-                       Navigator.of(context, rootNavigator: true);
+                   final nav = mainNavigatorKey.currentState ??
+                       rootNavigatorKey.currentState ??
+                       Navigator.of(context);
                    nav.push(
                      MaterialPageRoute(builder: (_) => screen),
                    );
@@ -556,9 +556,9 @@ class _SearchScreenState extends State<SearchScreen>
                 if (widget.onPushDetail != null) {
                   widget.onPushDetail!(screen);
                 } else {
-                  final nav = rootNavigatorKey.currentState ??
-                      mainNavigatorKey.currentState ??
-                      Navigator.of(context, rootNavigator: true);
+                  final nav = mainNavigatorKey.currentState ??
+                      rootNavigatorKey.currentState ??
+                      Navigator.of(context);
                   nav.push(
                     MaterialPageRoute(builder: (_) => screen),
                   );

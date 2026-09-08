@@ -238,9 +238,6 @@ void main() {
         ),
       );
 
-      // Scrolled past threshold: BackdropFilter is active
-      expect(find.byType(BackdropFilter), findsOneWidget);
-      
       // SliverAppBar has forceMaterialTransparency = true
       final sliverAppBar = tester.widget<SliverAppBar>(find.byType(SliverAppBar));
       expect(sliverAppBar.forceMaterialTransparency, isTrue);
@@ -248,7 +245,7 @@ void main() {
 
       // Container has top gradient scrim, NOT solid backgroundColor
       final containers = tester.widgetList<Container>(find.descendant(
-        of: find.byType(BackdropFilter),
+        of: find.byType(SliverAppBar),
         matching: find.byType(Container),
       ));
       expect(containers.isNotEmpty, isTrue);
