@@ -77,6 +77,12 @@ import '../models/music_source.dart'; // Music source enum
 /// result kinds (tracks/artists/playlists).
 enum SearchPhase { idle, loading, results, empty, error }
 
+/// Which result kind the current search session belongs to. Tabs render
+/// loading/error only when the session kind matches their own — otherwise a
+/// track search would flash spinners on the Artists tab (BitChord parity: one
+/// session, kind-tagged).
+enum SearchKind { songs, videos, albums, artists, playlists }
+
 // Helper function for list comparison (can be moved to a utils file)
 bool listEquals<T>(List<T>? a, List<T>? b) {
   if (a == null) return b == null;
@@ -564,14 +570,33 @@ class MusicProvider
   String _activeSearchQuery = '';
   String get activeSearchQuery => _activeSearchQuery;
 
+  /// Kind of the current session (see [SearchKind]). Reset to songs on clear.
+  SearchKind _activeSearchKind = SearchKind.songs;
+  SearchKind get activeSearchKind => _activeSearchKind;
+
+  /// Typeahead suggestions for the active query (BitChord suggest parity).
+  /// Empty until fetched; failures stay empty and the UI echoes typed text.
+  List<String> _searchSuggestions = const [];
+  List<String> get searchSuggestions => _searchSuggestions;
+
+  /// Video/album result lists for the Videos/Albums filter chips.
+  List<Track> _videoSearchResults = [];
+  List<Track> get videoSearchResults =>
+      List.unmodifiable(_videoSearchResults);
+  List<Track> _albumSearchResults = [];
+  List<Track> get albumSearchResults =>
+      List.unmodifiable(_albumSearchResults);
+
   /// Bumped per search session; completions from superseded sessions are
   /// discarded so an older response can never overwrite a newer query.
   int _searchGeneration = 0;
 
-  void _beginSearchSession(String query) {
+  void _beginSearchSession(String query, {SearchKind kind = SearchKind.songs}) {
     _searchGeneration++;
     _searchPhase = SearchPhase.loading;
     _activeSearchQuery = query;
+    _activeSearchKind = kind;
+    if (kind != SearchKind.songs) _searchSuggestions = const [];
     notifyListeners();
   }
 
@@ -593,6 +618,8 @@ class MusicProvider
     _searchGeneration++;
     _searchPhase = SearchPhase.idle;
     _activeSearchQuery = '';
+    _activeSearchKind = SearchKind.songs;
+    _searchSuggestions = const [];
   }
 
   // Getters
@@ -4077,8 +4104,11 @@ class MusicProvider
     _rememberSearchQuery(query);
     // Search using the appropriate service based on current music source
     if (_isOfflineMode && !_networkService.isConnected) {
+      _beginSearchSession(query, kind: SearchKind.songs);
+      final gen = _searchGeneration;
       _errorMessage = "Offline: Cannot perform search.";
-      notifyListeners();
+      _searchedTracks = [];
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
       return []; // Return empty list in offline mode
     }
 
@@ -4091,14 +4121,15 @@ class MusicProvider
 
     // Open the session BEFORE the cache check so even a synchronous cache
     // hit invalidates any still-in-flight older request.
-    _beginSearchSession(query);
+    _beginSearchSession(query, kind: SearchKind.songs);
     final gen = _searchGeneration;
+    final cacheKey = query.trim().toLowerCase();
 
     // Check Search Cache for speed
-    if (!forceRefresh && _searchCache.containsKey(query)) {
+    if (!forceRefresh && _searchCache.containsKey(cacheKey)) {
       if (kDebugMode)
         debugPrint('MusicProvider: Search Cache HIT for "$query"');
-      _searchedTracks = _searchCache[query]!;
+      _searchedTracks = _searchCache[cacheKey]!;
       _finishSearchSession(gen, hasResults: _searchedTracks.isNotEmpty);
       return _searchedTracks;
     }
@@ -4122,12 +4153,14 @@ class MusicProvider
       }).toList();
 
       List<Track> onlineResults = [];
+      bool onlineFailed = false;
 
       if (_currentMusicSource != MusicSource.local && !_isOfflineMode) {
         // Use InnerTube/YouTube Music API if allowed
         try {
           onlineResults = await _innerTubeService.searchSongs(query, limit: 50);
         } catch (e) {
+          onlineFailed = true;
           if (kDebugMode) debugPrint("Online search failed: $e");
         }
       }
@@ -4135,14 +4168,25 @@ class MusicProvider
       // Stale guard: a newer query superseded this request.
       if (!_isCurrentSearchSession(gen)) return _searchedTracks;
 
+      // Online failed with nothing local to show: honest error, not a
+      // fake empty result (BitChord Error(no_results/network) parity).
+      if (onlineFailed && localResults.isEmpty) {
+        _errorMessage = 'Search failed for "$query". Check your connection.';
+        _searchedTracks = [];
+        _addToRetryQueue(_RetryOperation('Search tracks: $query',
+            () => searchTracks(query, forceRefresh: true)));
+        _finishSearchSession(gen, hasResults: false, error: _errorMessage);
+        return [];
+      }
+
       // Combine results (Local first)
       _searchedTracks = [...localResults, ...onlineResults];
 
       // Update Search Cache (limit size to 10 entries)
-      if (_searchCache.length > 10) {
+      if (_searchCache.length >= 10) {
         _searchCache.remove(_searchCache.keys.first);
       }
-      _searchCache[query] = _searchedTracks;
+      _searchCache[cacheKey] = _searchedTracks;
 
       if (kDebugMode) {
         debugPrint(
@@ -4172,11 +4216,15 @@ class MusicProvider
     }
 
     if (_isOfflineMode) {
-      // Could search local playlists if implemented
+      _beginSearchSession(query, kind: SearchKind.playlists);
+      final gen = _searchGeneration;
+      _errorMessage = "Offline: Cannot search playlists.";
+      _playlistSearchResults = [];
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
       return;
     }
 
-    _beginSearchSession(query);
+    _beginSearchSession(query, kind: SearchKind.playlists);
     final gen = _searchGeneration;
     _playlistSearchResults = [];
     try {
@@ -4196,7 +4244,7 @@ class MusicProvider
   Future<void> fetchArtistTracks(String artistName,
       {bool forceRefresh = false}) async {
     final k = 'artist_$artistName';
-    _beginSearchSession(artistName);
+    _beginSearchSession(artistName, kind: SearchKind.artists);
     final gen = _searchGeneration;
 
     if (!forceRefresh && _cachedTracks.containsKey(k)) {
@@ -4241,6 +4289,135 @@ class MusicProvider
       _addToRetryQueue(_RetryOperation('Fetch artist: $artistName',
           () => fetchArtistTracks(artistName, forceRefresh: true)));
       _finishSearchSession(gen, hasResults: false, error: _errorMessage);
+    }
+  }
+
+  /// Videos filter chip (BitChord SearchFilter.VIDEOS parity).
+  Future<void> searchVideos(String query) async {
+    if (query.trim().isEmpty) {
+      _videoSearchResults = [];
+      _resetSearchSession();
+      notifyListeners();
+      return;
+    }
+    if (_isOfflineMode || _currentMusicSource == MusicSource.local) {
+      _beginSearchSession(query, kind: SearchKind.videos);
+      final gen = _searchGeneration;
+      _errorMessage = "Offline: Cannot search videos.";
+      _videoSearchResults = [];
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
+      return;
+    }
+    _beginSearchSession(query, kind: SearchKind.videos);
+    final gen = _searchGeneration;
+    _videoSearchResults = [];
+    try {
+      final videos =
+          await _innerTubeService.searchVideos(query, limit: 25, strict: true);
+      if (!_isCurrentSearchSession(gen)) return;
+      _videoSearchResults = videos;
+      _finishSearchSession(gen, hasResults: videos.isNotEmpty);
+    } catch (e) {
+      if (!_isCurrentSearchSession(gen)) return;
+      debugPrint("Video Search Error: $e");
+      _videoSearchResults = [];
+      _finishSearchSession(gen, hasResults: false, error: e.toString());
+    }
+  }
+
+  /// Albums filter chip (BitChord SearchFilter.ALBUMS parity). Result ids are
+  /// browse ids (MPREb/OLAK) preserved by the parser for detail navigation.
+  Future<void> searchAlbums(String query) async {
+    if (query.trim().isEmpty) {
+      _albumSearchResults = [];
+      _resetSearchSession();
+      notifyListeners();
+      return;
+    }
+    if (_isOfflineMode || _currentMusicSource == MusicSource.local) {
+      _beginSearchSession(query, kind: SearchKind.albums);
+      final gen = _searchGeneration;
+      _errorMessage = "Offline: Cannot search albums.";
+      _albumSearchResults = [];
+      _finishSearchSession(gen, hasResults: false, error: _errorMessage);
+      return;
+    }
+    _beginSearchSession(query, kind: SearchKind.albums);
+    final gen = _searchGeneration;
+    _albumSearchResults = [];
+    try {
+      final albums =
+          await _innerTubeService.searchAlbums(query, limit: 25);
+      if (!_isCurrentSearchSession(gen)) return;
+      _albumSearchResults = albums;
+      _finishSearchSession(gen, hasResults: albums.isNotEmpty);
+    } catch (e) {
+      if (!_isCurrentSearchSession(gen)) return;
+      debugPrint("Album Search Error: $e");
+      _albumSearchResults = [];
+      _finishSearchSession(gen, hasResults: false, error: e.toString());
+    }
+  }
+
+  /// Typeahead suggestions for [query] (BitChord 180ms suggest parity).
+  /// Cheap endpoint; failures stay empty — the UI echoes typed text instead.
+  Future<void> fetchSearchSuggestions(String query) async {
+    final trimmed = query.trim();
+    final gen = _searchGeneration;
+    if (trimmed.isEmpty || _isOfflineMode) {
+      if (_isCurrentSearchSession(gen)) {
+        _searchSuggestions = const [];
+        notifyListeners();
+      }
+      return;
+    }
+    try {
+      final out =
+          await _innerTubeService.getSearchSuggestions(trimmed, limit: 8);
+      if (!_isCurrentSearchSession(gen)) return;
+      _searchSuggestions = out;
+      notifyListeners();
+    } catch (_) {
+      if (!_isCurrentSearchSession(gen)) return;
+      _searchSuggestions = const [];
+      notifyListeners();
+    }
+  }
+
+  /// Re-runs the active kind for [query] (default: current session query).
+  /// Used by explicit commits (keyboard submit, nav-pill submit) so the
+  /// submit honors the visible filter instead of always forcing tracks.
+  Future<void> resubmitActiveSearch([String? query]) {
+    final q = (query ?? _activeSearchQuery).trim();
+    if (q.isEmpty) return Future.value();
+    switch (_activeSearchKind) {
+      case SearchKind.songs:
+        return searchTracks(q, forceRefresh: true);
+      case SearchKind.videos:
+        return searchVideos(q);
+      case SearchKind.albums:
+        return searchAlbums(q);
+      case SearchKind.artists:
+        return fetchArtistTracks(q, forceRefresh: true);
+      case SearchKind.playlists:
+        return searchPlaylists(q);
+    }
+  }
+
+  /// Explicit commit entry point: dispatches [query] to [kind].
+  Future<void> commitSearch(String query, SearchKind kind,
+      {bool forceRefresh = false}) {
+    switch (kind) {
+      case SearchKind.songs:
+        return searchTracks(query, forceRefresh: forceRefresh);
+      case SearchKind.videos:
+        return searchVideos(query);
+      case SearchKind.albums:
+        return searchAlbums(query);
+      case SearchKind.artists:
+        return fetchArtistTracks(query, forceRefresh: forceRefresh);
+      case SearchKind.playlists:
+        return searchPlaylists(query);
     }
   }
 
@@ -4356,6 +4533,9 @@ class MusicProvider
     _searchedTracks.clear();
     _artistTracks.clear();
     _playlistSearchResults.clear();
+    _videoSearchResults.clear();
+    _albumSearchResults.clear();
+    _searchSuggestions = const [];
     _resetSearchSession();
     notifyListeners();
   }

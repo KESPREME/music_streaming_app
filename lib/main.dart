@@ -559,7 +559,8 @@ class _MainScreenState extends State<MainScreen> {
                     _searchFocus.unfocus();
                     if (query.trim().isEmpty) return;
                     final mp = Provider.of<MusicProvider>(context, listen: false);
-                    mp.searchTracks(query, forceRefresh: true);
+                    // Honors the visible filter chip instead of forcing tracks.
+                    mp.resubmitActiveSearch(query);
                   },
                   onSearchCancel: () {
                     _exitSearch();

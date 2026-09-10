@@ -324,7 +324,12 @@ class InnerTubeService {
   }
 
   /// Search for official music videos on YouTube Music (OMV / UGC)
-  Future<List<Track>> searchVideos(String query, {int limit = 10}) async {
+  ///
+  /// [strict] rethrows network errors so callers can surface an error state.
+  /// Default false preserves the historic lenient contract relied upon by
+  /// background callers (e.g. canvas resolution falls back silently).
+  Future<List<Track>> searchVideos(String query,
+      {int limit = 10, bool strict = false}) async {
     try {
       if (kDebugMode) {
         debugPrint('InnerTubeService: Searching videos for "$query"');
@@ -333,6 +338,68 @@ class InnerTubeService {
           query, 'EgWKAQIQAWoKEAkQBRAKEAMQBA%3D%3D', limit);
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: searchVideos error: $e');
+      if (strict) rethrow;
+      return const [];
+    }
+  }
+
+  /// Search for albums on YouTube Music (BitChord SearchFilter.ALBUMS parity).
+  Future<List<Track>> searchAlbums(String query, {int limit = 20}) async {
+    return _searchWithParams(
+        query, 'EgWKAQJYAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_ALBUM
+  }
+
+  /// Typeahead suggestions for [input] (BitChord get_search_suggestions parity).
+  ///
+  /// Unfiltered by design — a suggestion is a query, the active filter applies
+  /// after commit. Never throws: failures yield an empty list and the caller
+  /// falls back to echoing the raw typed text.
+  Future<List<String>> getSearchSuggestions(String input,
+      {int limit = 8}) async {
+    try {
+      final trimmed = input.trim();
+      if (trimmed.isEmpty) return const [];
+      final body = jsonEncode({
+        'context': _buildContext(clientType: YouTubeClientType.webRemix),
+        'input': trimmed,
+      });
+      final response = await _httpClient.post(
+        Uri.parse('$_apiUrl/get_search_suggestions?prettyPrint=false'),
+        headers: _buildHeaders(clientType: YouTubeClientType.webRemix),
+        body: body,
+      );
+      if (response.statusCode != 200) return const [];
+      final data = jsonDecode(response.body);
+      _captureVisitorData(data);
+      final out = <String>[];
+      for (final renderer
+          in _collectRenderers(data, 'searchSuggestionRenderer')) {
+        if (out.length >= limit) break;
+        final map = renderer as Map<String, dynamic>?;
+        if (map == null) continue;
+        // Skip entity rows (artist/album cards with thumbnails) — text only.
+        final endpoint = map['navigationEndpoint']?['searchEndpoint'];
+        final query = endpoint?['query']?.toString();
+        String text = (query ?? '').trim();
+        if (text.isEmpty) {
+          final runs = map['suggestion']?['runs'] as List?;
+          if (runs != null) {
+            text = runs
+                .map((r) => r['text']?.toString() ?? '')
+                .join('')
+                .trim();
+          }
+        }
+        if (text.isNotEmpty &&
+            !out.any((s) => s.toLowerCase() == text.toLowerCase())) {
+          out.add(text);
+        }
+      }
+      return out;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('InnerTubeService: getSearchSuggestions error: $e');
+      }
       return const [];
     }
   }

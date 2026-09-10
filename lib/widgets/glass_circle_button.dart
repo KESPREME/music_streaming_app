@@ -10,15 +10,17 @@ import 'glass_surface.dart';
 class GlassCircleButton extends StatelessWidget {
   const GlassCircleButton({
     super.key,
-    required this.icon,
+    this.icon,
+    this.child,
     required this.onTap,
     this.size = 54,
     this.iconSize = 24,
     this.glow = false,
     this.semanticLabel,
-  });
+  }) : assert(icon != null || child != null, 'Either icon or child must be provided');
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? child;
   final VoidCallback onTap;
   final double size;
   final double iconSize;
@@ -41,11 +43,16 @@ class GlassCircleButton extends StatelessWidget {
           child: SizedBox(
             width: size,
             height: size,
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: iconSize,
-              semanticLabel: semanticLabel,
+            child: Center(
+              child: child ??
+                  (icon != null
+                      ? Icon(
+                          icon,
+                          color: iconColor,
+                          size: iconSize,
+                          semanticLabel: semanticLabel,
+                        )
+                      : const SizedBox.shrink()),
             ),
           ),
         ),

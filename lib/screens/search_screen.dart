@@ -1,4 +1,4 @@
-import 'dart:async'; 
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,12 +6,16 @@ import 'package:provider/provider.dart';
 import '../services/search_history_store.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
-import '../theme/glass_tokens.dart';
-import '../widgets/track_tile.dart';
-import '../widgets/glass_surface.dart';
+import '../models/track.dart';
+import '../utils/color_utils.dart';
+import '../widgets/search_result_row.dart';
+import '../widgets/search_glass_pills.dart';
+import '../widgets/glass_circle_button.dart';
+import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../core/navigation/root_navigator.dart';
+import 'album_detail_screen.dart';
 
 class ArtistSearchTile extends StatelessWidget {
   final String artistName;
@@ -29,7 +33,7 @@ class ArtistSearchTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       child: themeProvider.isGlassmorphism
@@ -172,7 +176,7 @@ class SearchScreen extends StatefulWidget {
 
   /// Embedded mode: lives inside MainScreen's search overlay; the input
   /// field lives in the nav pill (bound to [externalController]) so this
-  /// screen renders only tabs + results.
+  /// screen renders only scope + chips + results.
   final bool embedded;
   final TextEditingController? externalController;
   final FocusNode? externalFocusNode;
@@ -189,18 +193,33 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen>
     with SingleTickerProviderStateMixin {
+  static const _tabs = ['Songs', 'Videos', 'Albums', 'Artists', 'Playlists'];
+
   late TabController _tabController;
   late final TextEditingController _searchController =
       widget.externalController ?? TextEditingController();
+  late final FocusNode _dockFocusNode = FocusNode();
   String _searchQuery = "";
   Timer? _debounce;
+  SearchScope _scope = SearchScope.mineMusic;
+
+  /// Scroll-linked header chrome (0 at rest → 1 settled): drives the scrim
+  /// behind the fixed pills. Quantized to avoid a setState per pixel.
+  double _headerScrim = 0.0;
+
+  /// Fixed header heights: segmented (62) + chips (48). Lenses never scroll
+  /// (easy lenses detach from scrolling transforms), content slides under.
+  static const double _kHeaderFull = 110.0;
+  static const double _kHeaderSlim = 62.0;
   final List<String> _recentSearches = [];
   final SearchHistoryStore _historyStore = SearchHistoryStore();
+
+  SearchKind get _activeKind => SearchKind.values[_tabController.index];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: _tabs.length, vsync: this);
     _tabController.addListener(_onTabChanged);
     _searchController.addListener(_onSearchChanged);
     _loadHistory();
@@ -208,18 +227,19 @@ class _SearchScreenState extends State<SearchScreen>
     if (initial != null && initial.isNotEmpty) {
       _searchController.text = initial;
       _searchQuery = initial;
-      _addToHistory(initial);
-      _performSearch(initial);
+      _commitSearch(initial);
     }
   }
 
-  /// Switching result kind re-runs the active query for that kind so the
-  /// tab always reflects the current query (per-kind caches make this
-  /// cheap — cache hits resolve synchronously in the provider).
+  /// Switching filter re-runs the active query for that kind so the tab
+  /// always reflects the current query (per-kind caches make this cheap —
+  /// cache hits resolve synchronously in the provider).
   void _onTabChanged() {
     if (_tabController.indexIsChanging) return;
-    if (_searchQuery.trim().isNotEmpty) {
+    if (_searchQuery.trim().isNotEmpty && _scope == SearchScope.mineMusic) {
       _performSearch(_searchQuery);
+    } else {
+      setState(() {});
     }
   }
 
@@ -236,6 +256,7 @@ class _SearchScreenState extends State<SearchScreen>
     _tabController.dispose();
     _searchController.removeListener(_onSearchChanged);
     if (widget.externalController == null) _searchController.dispose();
+    _dockFocusNode.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -243,33 +264,76 @@ class _SearchScreenState extends State<SearchScreen>
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-       if (mounted) {
-        final newQuery = _searchController.text;
-        // FIX: Always trigger search if text is not empty
-        // Use forceRefresh when searching same query again (user wants fresh results)
-        final bool isSameQuery = newQuery == _searchQuery;
-        setState(() {
-          _searchQuery = newQuery;
-        });
-        if (_searchQuery.isNotEmpty) {
-           _addToHistory(_searchQuery);
-           _performSearch(_searchQuery, forceRefresh: isSameQuery);
-        } else {
-           Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
-        }
+      if (!mounted) return;
+      final newQuery = _searchController.text;
+      // Same text (e.g. external controller echo): nothing to do.
+      if (newQuery == _searchQuery) return;
+      setState(() => _searchQuery = newQuery);
+      if (newQuery.trim().isNotEmpty) {
+        // Typing only searches — history records on explicit commit
+        // (submit / suggestion / history tap), BitChord record-on-commit parity.
+        _performSearch(newQuery);
+      } else {
+        Provider.of<MusicProvider>(context, listen: false)
+            .clearSearchResults();
       }
     });
   }
 
   void _performSearch(String query, {bool forceRefresh = false}) {
-    if (query.trim().isEmpty) return;
+    if (query.trim().isEmpty || _scope != SearchScope.mineMusic) return;
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    if (_tabController.index == 0) {
-        musicProvider.searchTracks(query, forceRefresh: forceRefresh);
-    } else if (_tabController.index == 1) {
-        musicProvider.fetchArtistTracks(query, forceRefresh: forceRefresh);
-    } else if (_tabController.index == 2) {
-        musicProvider.searchPlaylists(query);
+    musicProvider.commitSearch(
+      query,
+      _activeKind,
+      forceRefresh: forceRefresh,
+    );
+    // Typeahead alongside (cheap endpoint; fail-silent).
+    musicProvider.fetchSearchSuggestions(query);
+  }
+
+  /// Explicit commit: keyboard submit, suggestion/history tap, retry.
+  /// Records history and honors the visible filter chip.
+  void _commitSearch(String query, {bool forceRefresh = false}) {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    _debounce?.cancel();
+    if (_searchQuery != q) setState(() => _searchQuery = q);
+    if (_searchController.text != q) _searchController.text = q;
+    _addToHistory(q);
+    _performSearch(q, forceRefresh: forceRefresh);
+  }
+
+  void _pushDetail(Widget screen) {
+    if (widget.onPushDetail != null) {
+      widget.onPushDetail!(screen);
+      return;
+    }
+    final nav = mainNavigatorKey.currentState ??
+        rootNavigatorKey.currentState ??
+        Navigator.of(context);
+    nav.push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  void _openAlbumResult(Track album) {
+    final id = album.id;
+    if (id.startsWith('MPREb_') || id.startsWith('OLAK')) {
+      _pushDetail(AlbumDetailScreen(
+        albumId: id,
+        albumName: album.trackName,
+        artistName: album.artistName,
+        albumImage: album.albumArtUrl,
+      ));
+    } else if (id.startsWith('VL') ||
+        id.startsWith('PL') ||
+        id.startsWith('RDCLAK')) {
+      _pushDetail(ThemedPlaylistDetailScreen(
+        playlistId: id,
+        playlistName: album.trackName,
+        playlistImage: album.albumArtUrl,
+      ));
+    } else {
+      ThemedOptionsSheet.show(context, track: album);
     }
   }
 
@@ -282,129 +346,252 @@ class _SearchScreenState extends State<SearchScreen>
       // and its text collides with search results.
       backgroundColor: const Color(0xFF0A0A0C),
       body: SafeArea(
-          child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) => [
-              SliverAppBar(
-                backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                floating: true,
-                pinned: true,
-                toolbarHeight: widget.embedded ? 8 : 90,
-                // Grounded dark scrim (no BackdropFilter: solid backdrop
-                // makes blur invisible work for the GPU).
-                flexibleSpace: Container(
-                  color: Colors.black.withValues(alpha: 0.6),
-                ),
-                title: widget.embedded
-                    ? null
-                    : Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: GlassSurface(
-                    tier: GlassTier.floating,
-                    borderRadius: GlassTokens.radiusButton,
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: TextField(
-                      controller: _searchController,
-                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
-                      cursorColor: Theme.of(context).colorScheme.primary,
-                      decoration: InputDecoration(
-                        hintText: 'Search songs, artists...',
-                        hintStyle: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.45), fontWeight: FontWeight.w400),
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 22),
-                        prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, color: Colors.white54, size: 20),
-                                onPressed: () => _searchController.clear(),
-                              )
-                            : null,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 8.0),
-                      ),
-                      onSubmitted: (query) {
-                        _debounce?.cancel();
-                        if (query != _searchQuery) {
-                           setState(() => _searchQuery = query);
-                        }
-                        if (query.isNotEmpty) {
-                          _addToHistory(query);
-                          _performSearch(query);
-                        }
-                      },
-                      textInputAction: TextInputAction.search,
-                    ),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            if (n is ScrollUpdateNotification) {
+              // Dismiss keyboard on list drag.
+              if (n.dragDetails != null) {
+                FocusManager.instance.primaryFocus?.unfocus();
+              }
+              // Scroll-linked chrome: vertical lists only (chips scroller
+              // is horizontal and must not drive the scrim).
+              if (n.metrics.axis == Axis.vertical) {
+                final t =
+                    (n.metrics.pixels / 90).clamp(0.0, 1.0);
+                final q = (t * 20).round() / 20;
+                if (q != _headerScrim) {
+                  setState(() => _headerScrim = q);
+                }
+              }
+            }
+            return false;
+          },
+          child: Stack(
+          children: [
+            // Scroll body sits below the fixed header; rows slide under it.
+            AnimatedPadding(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(
+                top: _scope == SearchScope.mineMusic
+                    ? _kHeaderFull
+                    : _kHeaderSlim,
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween(
+                      begin: const Offset(0, 0.02),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
                   ),
                 ),
-                bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(50),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: GlassSurface(
-                      tier: GlassTier.card,
-                      borderRadius: 25,
-                      padding: EdgeInsets.zero,
-                      child: TabBar(
+                child: _scope == SearchScope.mineMusic
+                    ? TabBarView(
+                        key: const ValueKey('muzo_results'),
                         controller: _tabController,
-                        indicator: BoxDecoration(
-                          gradient: GlassTokens.inkBloom(Theme.of(context).colorScheme.primary, strength: 0.18),
-                          color: Colors.white.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(25),
-                          border: Border.all(color: GlassTokens.borderInteractiveSelected(Theme.of(context).colorScheme.primary), width: 0.8),
-                        ),
-                        labelColor: Colors.white,
-                        unselectedLabelColor: Colors.white.withValues(alpha: 0.55),
-                        labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 14),
-                        unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500, fontSize: 14),
-                        indicatorSize: TabBarIndicatorSize.tab,
-                        dividerColor: Colors.transparent,
-                        onTap: (index) {
-                          if (_searchQuery.trim().isNotEmpty) {
-                            _performSearch(_searchQuery);
-                          }
-                        },
-                        tabs: const [
-                          Tab(text: 'Tracks'),
-                          Tab(text: 'Artists'),
-                          Tab(text: 'Playlists'),
+                        children: [
+                          SearchTabContent(
+                            recentSearches: _recentSearches,
+                            onSearchSelected: (query) =>
+                                _commitSearch(query),
+                            onClearHistory: () {
+                              setState(() => _recentSearches.clear());
+                              _historyStore.clear();
+                            },
+                            onRemoveHistoryItem: (query) {
+                              setState(
+                                  () => _recentSearches.remove(query));
+                              _historyStore.remove(query);
+                            },
+                            onRetry: () => _commitSearch(_searchQuery,
+                                forceRefresh: true),
+                            onSuggestionSelected: (query) =>
+                                _commitSearch(query),
+                          ),
+                          _buildVideosTab(context, _searchQuery),
+                          _buildAlbumsTab(context, _searchQuery),
+                          _buildArtistsTab(context, _searchQuery),
+                          _buildPlaylistsTab(context, _searchQuery),
                         ],
+                      )
+                    : _LibraryScopeBody(
+                        key: const ValueKey('library_results'),
+                        query: _searchQuery,
+                        onPushDetail: _pushDetail,
+                      ),
+              ),
+            ),
+            // Fixed glass header: lenses never scroll (easy lenses detach
+            // from scrolling transforms), rows slide underneath instead.
+            // Scroll-linked scrim fades in behind the pills like TopFadeBlur.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: RepaintBoundary(
+                child: Stack(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      height: (_scope == SearchScope.mineMusic
+                              ? _kHeaderFull
+                              : _kHeaderSlim) +
+                          28,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: const [0.0, 0.55, 1.0],
+                          colors: [
+                            Colors.black.withValues(
+                                alpha: 0.6 * _headerScrim),
+                            Colors.black.withValues(
+                                alpha: 0.28 * _headerScrim),
+                            Colors.transparent,
+                          ],
+                        ),
                       ),
                     ),
+                    Consumer<MusicProvider>(
+                      builder: (context, p, _) {
+                        final accent =
+                            ColorUtils.getVibrantAccent(
+                                p.paletteGenerator, muzoMauve);
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SearchScopeSegmented(
+                              scope: _scope,
+                              accent: accent,
+                              onChanged: (scope) {
+                                if (scope == _scope) return;
+                                setState(() => _scope = scope);
+                              },
+                            ),
+                            if (_scope == SearchScope.mineMusic)
+                              AnimatedBuilder(
+                                animation: _tabController,
+                                builder: (context, _) =>
+                                    SearchFilterChips(
+                                  labels: _tabs,
+                                  index: _tabController.index,
+                                  accent: accent,
+                                  onSelected: (index) {
+                                    _tabController.animateTo(
+                                      index,
+                                      duration: const Duration(
+                                          milliseconds: 260),
+                                      curve: Curves.easeOutCubic,
+                                    );
+                                    if (_searchQuery.trim().isNotEmpty) {
+                                      _performSearch(_searchQuery);
+                                    } else {
+                                      setState(() {});
+                                    }
+                                  },
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Floating glass search dock (standalone route only — embedded
+            // mode types in the nav pill; the mini player owns this edge).
+            if (!widget.embedded)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom:
+                    12 + MediaQuery.viewInsetsOf(context).bottom,
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    children: [
+                      GlassCircleButton(
+                        icon: Icons.home_outlined,
+                        semanticLabel: 'Close search',
+                        onTap: () {
+                          _searchController.clear();
+                          _dockFocusNode.unfocus();
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: SearchDockShell(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6),
+                            child: TextField(
+                              controller: _searchController,
+                              focusNode: _dockFocusNode,
+                              style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500),
+                              cursorColor: Theme.of(context)
+                                  .colorScheme
+                                  .primary,
+                              decoration: InputDecoration(
+                                hintText: 'Search songs, artists...',
+                                hintStyle:
+                                    GoogleFonts.plusJakartaSans(
+                                        color: Colors.white.withValues(
+                                            alpha: 0.45),
+                                        fontWeight: FontWeight.w400),
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                prefixIcon: const Icon(
+                                    Icons.search_outlined,
+                                    color: Colors.white54,
+                                    size: 22),
+                                prefixIconConstraints:
+                                    const BoxConstraints(
+                                        minWidth: 44,
+                                        minHeight: 44),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(
+                                            Icons.clear_rounded,
+                                            color: Colors.white54,
+                                            size: 20),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                        },
+                                      )
+                                    : null,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(
+                                        vertical: 14.0,
+                                        horizontal: 8.0),
+                              ),
+                              onSubmitted: _commitSearch,
+                              textInputAction: TextInputAction.search,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                SearchTabContent(
-                  recentSearches: _recentSearches,
-                  onSearchSelected: (query) {
-                        _searchController.text = query;
-                        setState(() => _searchQuery = query);
-                        _performSearch(query);
-                      },
-                      onClearHistory: () {
-                         setState(() {
-                           _recentSearches.clear();
-                         });
-                         _historyStore.clear();
-                      },
-                      onRemoveHistoryItem: (query) {
-                        setState(() {
-                          _recentSearches.remove(query);
-                        });
-                        _historyStore.remove(query);
-                      },
-                      onRetry: () => _performSearch(_searchQuery),
-                    ),
-                    _buildArtistsTab(context, _searchQuery),
-                    _buildPlaylistsTab(context, _searchQuery),
-                  ],
-                ),
+          ],
+        ),
           ),
       ),
     );
@@ -422,20 +609,129 @@ class _SearchScreenState extends State<SearchScreen>
     _historyStore.add(query);
   }
 
+  bool _showsLoading(MusicProvider p, SearchKind kind, String query) =>
+      p.searchPhase == SearchPhase.loading &&
+      p.activeSearchKind == kind &&
+      query.trim().isNotEmpty;
 
+  bool _showsError(MusicProvider p, SearchKind kind) =>
+      p.searchPhase == SearchPhase.error &&
+      p.activeSearchKind == kind;
+
+  Widget _buildVideosTab(BuildContext context, String query) {
+    return Consumer<MusicProvider>(
+      builder: (context, provider, child) {
+        final videos = provider.videoSearchResults;
+        if (_showsLoading(provider, SearchKind.videos, query)) {
+          return _SuggestionOrSpinner(
+            query: query,
+            onSuggestionSelected: (q) => _commitSearch(q),
+          );
+        }
+        if (_showsError(provider, SearchKind.videos)) {
+          return _SearchErrorView(
+            message: provider.errorMessage ?? 'Search failed.',
+            onRetry: () => _commitSearch(query, forceRefresh: true),
+          );
+        }
+        if (query.trim().isEmpty && videos.isEmpty) {
+          return const _SearchIdleView(
+            icon: Icons.play_circle_outline_rounded,
+            message: 'Search for music videos',
+          );
+        }
+        if (videos.isEmpty && query.trim().isNotEmpty) {
+          return _SearchEmptyView(message: 'No videos found for "$query"');
+        }
+        return ListView.builder(
+          key: ValueKey('videos:$query'),
+          padding: EdgeInsets.fromLTRB(
+              0, 8, 0, widget.embedded ? 100 : 170),
+          physics: const BouncingScrollPhysics(),
+          itemCount: videos.length,
+          itemBuilder: (context, index) {
+            final video = videos[index];
+            final isPlaying =
+                video.isSameTrackAs(provider.currentTrack) &&
+                    provider.isPlaying;
+            return SearchResultRow.staged(
+              key: ValueKey(video.id),
+              index: index,
+              track: video,
+              isPlaying: isPlaying,
+              onTap: () => provider.playTrack(video,
+                  playlistTracks: videos),
+              onMore: () =>
+                  ThemedOptionsSheet.show(context, track: video),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildAlbumsTab(BuildContext context, String query) {
+    return Consumer<MusicProvider>(
+      builder: (context, provider, child) {
+        final albums = provider.albumSearchResults;
+        if (_showsLoading(provider, SearchKind.albums, query)) {
+          return _SuggestionOrSpinner(
+            query: query,
+            onSuggestionSelected: (q) => _commitSearch(q),
+          );
+        }
+        if (_showsError(provider, SearchKind.albums)) {
+          return _SearchErrorView(
+            message: provider.errorMessage ?? 'Search failed.',
+            onRetry: () => _commitSearch(query, forceRefresh: true),
+          );
+        }
+        if (query.trim().isEmpty && albums.isEmpty) {
+          return const _SearchIdleView(
+            icon: Icons.album_outlined,
+            message: 'Search for albums',
+          );
+        }
+        if (albums.isEmpty && query.trim().isNotEmpty) {
+          return _SearchEmptyView(message: 'No albums found for "$query"');
+        }
+        return ListView.builder(
+          key: ValueKey('albums:$query'),
+          padding: EdgeInsets.fromLTRB(
+              0, 8, 0, widget.embedded ? 100 : 170),
+          physics: const BouncingScrollPhysics(),
+          itemCount: albums.length,
+          itemBuilder: (context, index) {
+            final album = albums[index];
+            return SearchResultRow.staged(
+              key: ValueKey(album.id),
+              index: index,
+              track: album,
+              subtitle: album.artistName.isNotEmpty
+                  ? 'Album • ${album.artistName}'
+                  : 'Album',
+              onTap: () => _openAlbumResult(album),
+            );
+          },
+        );
+      },
+    );
+  }
 
   Widget _buildArtistsTab(BuildContext context, String query) {
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
-        if (provider.searchPhase == SearchPhase.loading &&
-            query.trim().isNotEmpty) {
-          return const _SearchLoadingView();
+        if (_showsLoading(provider, SearchKind.artists, query)) {
+          return _SuggestionOrSpinner(
+            query: query,
+            onSuggestionSelected: (q) => _commitSearch(q),
+          );
         }
 
-        if (provider.searchPhase == SearchPhase.error) {
+        if (_showsError(provider, SearchKind.artists)) {
           return _SearchErrorView(
             message: provider.errorMessage ?? 'Search failed.',
-            onRetry: () => _performSearch(query, forceRefresh: true),
+            onRetry: () => _commitSearch(query, forceRefresh: true),
           );
         }
 
@@ -457,7 +753,9 @@ class _SearchScreenState extends State<SearchScreen>
         final artists = provider.artistTracks;
 
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 10, bottom: 100),
+          key: ValueKey('artists:$query'),
+          padding: EdgeInsets.only(
+              top: 10, bottom: widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
           itemCount: artists.length,
           itemBuilder: (context, index) {
@@ -465,24 +763,15 @@ class _SearchScreenState extends State<SearchScreen>
             final artistName = artistTrack.trackName; // Correct Name
 
             return ArtistSearchTile(
-              artistName: artistName, 
+              artistName: artistName,
               artistImageUrl: artistTrack.albumArtUrl,
               onTap: () {
-                 final screen = ThemedArtistDetailScreen(
-                   artistId: artistTrack.id,
-                   artistName: artistName,
-                   artistImage: artistTrack.albumArtUrl,
-                 );
-                 if (widget.onPushDetail != null) {
-                   widget.onPushDetail!(screen);
-                 } else {
-                   final nav = mainNavigatorKey.currentState ??
-                       rootNavigatorKey.currentState ??
-                       Navigator.of(context);
-                   nav.push(
-                     MaterialPageRoute(builder: (_) => screen),
-                   );
-                 }
+                final screen = ThemedArtistDetailScreen(
+                  artistId: artistTrack.id,
+                  artistName: artistName,
+                  artistImage: artistTrack.albumArtUrl,
+                );
+                _pushDetail(screen);
               }
             );
           },
@@ -494,15 +783,17 @@ class _SearchScreenState extends State<SearchScreen>
   Widget _buildPlaylistsTab(BuildContext context, String query) {
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
-        if (provider.searchPhase == SearchPhase.loading &&
-            query.trim().isNotEmpty) {
-          return const _SearchLoadingView();
+        if (_showsLoading(provider, SearchKind.playlists, query)) {
+          return _SuggestionOrSpinner(
+            query: query,
+            onSuggestionSelected: (q) => _commitSearch(q),
+          );
         }
 
-        if (provider.searchPhase == SearchPhase.error) {
+        if (_showsError(provider, SearchKind.playlists)) {
           return _SearchErrorView(
             message: provider.errorMessage ?? 'Search failed.',
-            onRetry: () => _performSearch(query, forceRefresh: true),
+            onRetry: () => _commitSearch(query, forceRefresh: true),
           );
         }
 
@@ -518,51 +809,24 @@ class _SearchScreenState extends State<SearchScreen>
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 10, bottom: 100),
+          key: ValueKey('playlists:$query'),
+          padding: EdgeInsets.fromLTRB(
+              0, 8, 0, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
           itemCount: provider.playlistSearchResults.length,
           itemBuilder: (context, index) {
             final playlist = provider.playlistSearchResults[index];
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  playlist.albumArtUrl,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_,__,___) => Container(
-                    width: 56, height: 56, 
-                    color: Colors.grey[900], 
-                    child: const Icon(Icons.music_note, color: Colors.white24)
-                  ),
-                ),
-              ),
-              title: Text(
-                playlist.trackName, // In search results, title is mapped to trackName
-                style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(
-                'Playlist • ${playlist.artistName}', // Owner/Artist
-                style: GoogleFonts.plusJakartaSans(color: Colors.white54),
-              ),
+            return SearchResultRow.staged(
+              key: ValueKey(playlist.id),
+              index: index,
+              track: playlist,
+              subtitle: 'Playlist • ${playlist.artistName}',
               onTap: () {
-                final screen = ThemedPlaylistDetailScreen(
+                _pushDetail(ThemedPlaylistDetailScreen(
                   playlistId: playlist.id,
                   playlistName: playlist.trackName,
                   playlistImage: playlist.albumArtUrl,
-                );
-                if (widget.onPushDetail != null) {
-                  widget.onPushDetail!(screen);
-                } else {
-                  final nav = mainNavigatorKey.currentState ??
-                      rootNavigatorKey.currentState ??
-                      Navigator.of(context);
-                  nav.push(
-                    MaterialPageRoute(builder: (_) => screen),
-                  );
-                }
+                ));
               },
             );
           },
@@ -572,6 +836,154 @@ class _SearchScreenState extends State<SearchScreen>
   }
 }
 
+/// On-device library scope: local tracks + user playlists, same row language.
+class _LibraryScopeBody extends StatelessWidget {
+  final String query;
+  final void Function(Widget screen) onPushDetail;
+
+  const _LibraryScopeBody(
+      {super.key, required this.query, required this.onPushDetail});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<MusicProvider>(
+      builder: (context, provider, child) {
+        final q = query.trim().toLowerCase();
+        if (q.isEmpty) {
+          return const _SearchIdleView(
+            icon: Icons.library_music_outlined,
+            message: 'Search your downloads and playlists',
+          );
+        }
+        final tracks = provider.localTracks
+            .where((t) =>
+                t.trackName.toLowerCase().contains(q) ||
+                t.artistName.toLowerCase().contains(q) ||
+                t.albumName.toLowerCase().contains(q))
+            .toList();
+        final playlists = provider.userPlaylists
+            .where((p) => p.name.toLowerCase().contains(q))
+            .toList();
+        if (tracks.isEmpty && playlists.isEmpty) {
+          return _SearchEmptyView(
+              message: 'Nothing in your library for "$query"');
+        }
+        return ListView.builder(
+          key: ValueKey('library:$q'),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+          physics: const BouncingScrollPhysics(),
+          itemCount: tracks.length + playlists.length,
+          itemBuilder: (context, index) {
+            if (index < playlists.length) {
+              final playlist = playlists[index];
+              return SearchResultRow.staged(
+                key: ValueKey('lib-pl:${playlist.id}'),
+                index: index,
+                track: Track(
+                  id: playlist.id,
+                  trackName: playlist.name,
+                  artistName: '',
+                  albumName: '',
+                  previewUrl: '',
+                  albumArt: playlist.imageUrl,
+                  source: 'local',
+                  durationMs: 0,
+                ),
+                subtitle: 'Playlist • ${playlist.tracks.length} tracks',
+                onTap: () => onPushDetail(ThemedPlaylistDetailScreen(
+                  playlistId: playlist.id,
+                  playlistName: playlist.name,
+                  playlistImage: playlist.imageUrl,
+                  cachedTracks: playlist.tracks,
+                )),
+              );
+            }
+            final track = tracks[index - playlists.length];
+            final isPlaying =
+                track.isSameTrackAs(provider.currentTrack) &&
+                    provider.isPlaying;
+            return SearchResultRow.staged(
+              key: ValueKey('lib-tr:${track.id}'),
+              index: index,
+              track: track,
+              isPlaying: isPlaying,
+              onTap: () =>
+                  provider.playTrack(track, playlistTracks: tracks),
+              onMore: () =>
+                  ThemedOptionsSheet.show(context, track: track),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Loading state with typeahead: suggestion rows when available (BitChord
+/// suggest parity — first row echoes the typed query), spinner otherwise.
+class _SuggestionOrSpinner extends StatelessWidget {
+  final String query;
+  final ValueChanged<String> onSuggestionSelected;
+
+  const _SuggestionOrSpinner(
+      {required this.query, required this.onSuggestionSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<MusicProvider>(
+      builder: (context, provider, child) {
+        final suggestions = provider.searchSuggestions;
+        if (suggestions.isEmpty) return const _SearchLoadingView();
+        final trimmed = query.trim();
+        return ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 100),
+          physics: const BouncingScrollPhysics(),
+          itemCount: suggestions.length + 1,
+          itemBuilder: (context, index) {
+            final term = index == 0 ? trimmed : suggestions[index - 1];
+            final isTypedRow = index == 0;
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => onSuggestionSelected(term),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0, vertical: 12.0),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isTypedRow
+                            ? Icons.search_outlined
+                            : Icons.north_west_rounded,
+                        color: Colors.white.withValues(alpha: 0.45),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          isTypedRow ? 'Search "$term"' : term,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 15,
+                            fontWeight: isTypedRow
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
 
 class SearchTabContent extends StatelessWidget {
   final List<String> recentSearches;
@@ -579,6 +991,7 @@ class SearchTabContent extends StatelessWidget {
   final VoidCallback onClearHistory;
   final Function(String) onRemoveHistoryItem;
   final VoidCallback onRetry;
+  final ValueChanged<String> onSuggestionSelected;
 
   const SearchTabContent({
     super.key,
@@ -587,6 +1000,7 @@ class SearchTabContent extends StatelessWidget {
     required this.onClearHistory,
     required this.onRemoveHistoryItem,
     required this.onRetry,
+    required this.onSuggestionSelected,
   });
 
   @override
@@ -595,112 +1009,133 @@ class SearchTabContent extends StatelessWidget {
       builder: (context, musicProvider, child) {
         final searchResults = musicProvider.searchedTracks;
         final phase = musicProvider.searchPhase;
+        final kindMatches =
+            musicProvider.activeSearchKind == SearchKind.songs;
         final activeQuery = musicProvider.activeSearchQuery;
 
-        switch (phase) {
-          case SearchPhase.loading:
-            return const _SearchLoadingView();
-
-          case SearchPhase.error:
-            return _SearchErrorView(
-              message: musicProvider.errorMessage ?? "Couldn't complete the search.",
-              onRetry: onRetry,
-            );
-
-          case SearchPhase.empty:
-            return _SearchEmptyView(message: 'No results for "$activeQuery"');
-
-          case SearchPhase.idle:
-            // Show history if available; otherwise the quiet discovery hint.
-            if (recentSearches.isNotEmpty) {
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Recent Searches",
-                        style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18),
-                      ),
-                      TextButton(
-                        onPressed: onClearHistory,
-                        child: Text("Clear All",
-                            style: GoogleFonts.plusJakartaSans(
-                                color:
-                                    Theme.of(context).colorScheme.primary)),
-                      ),
-                    ],
-                  ),
-                  ...recentSearches.map((query) => ListTile(
-                        leading: const Icon(Icons.history_rounded,
-                            color: Colors.white54),
-                        title: Text(query,
-                            style: GoogleFonts.plusJakartaSans(
-                                color: Colors.white)),
-                        onTap: () => onSearchSelected(query),
-                        onLongPress: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              backgroundColor: const Color(0xFF1E1E1E),
-                              title: const Text("Remove from history?",
-                                  style: TextStyle(color: Colors.white)),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text("Cancel",
-                                      style:
-                                          TextStyle(color: Colors.grey)),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    onRemoveHistoryItem(query);
-                                    Navigator.pop(context);
-                                  },
-                                  child: Text("Remove",
-                                      style: TextStyle(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary)),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      )),
-                ],
-              );
-            }
+        // A session for another kind (e.g. user flipped chips mid-flight):
+        // show this kind's cached results, never another kind's spinner.
+        if (phase == SearchPhase.loading && !kindMatches) {
+          if (searchResults.isEmpty) {
             return const _SearchIdleView(
               icon: Icons.search_rounded,
               message: 'Search for tracks, artists, or albums.',
             );
+          }
+        } else {
+          switch (phase) {
+            case SearchPhase.loading:
+              return _SuggestionOrSpinner(
+                query: activeQuery,
+                onSuggestionSelected: onSuggestionSelected,
+              );
 
-          case SearchPhase.results:
-            return ListView.builder(
-              padding: EdgeInsets.fromLTRB(0, 8, 0, 100 + MediaQuery.viewInsetsOf(context).bottom),
-              itemExtent: 72.0,
-              itemCount: searchResults.length,
-              itemBuilder: (context, index) {
-                final track = searchResults[index];
-                final isPlaying = musicProvider.currentTrack?.id == track.id &&
-                    musicProvider.isPlaying;
-
-                return TrackTile(
-                  key: ValueKey(track.id),
-                  track: track,
-                  isPlaying: isPlaying,
-                  onTap: () {
-                    musicProvider.playTrack(track, playlistTracks: searchResults);
-                  },
+            case SearchPhase.error:
+              if (kindMatches) {
+                return _SearchErrorView(
+                  message: musicProvider.errorMessage ??
+                      "Couldn't complete the search.",
+                  onRetry: onRetry,
                 );
-              },
-            );
+              }
+              break;
+
+            case SearchPhase.empty:
+              if (kindMatches) {
+                return _SearchEmptyView(
+                    message: 'No results for "$activeQuery"');
+              }
+              break;
+
+            case SearchPhase.idle:
+              break;
+
+            case SearchPhase.results:
+              break;
+          }
         }
+
+        if (searchResults.isNotEmpty) {
+          return ListView.builder(
+            key: ValueKey('songs:$activeQuery'),
+            padding: EdgeInsets.fromLTRB(
+                0,
+                8,
+                0,
+                100 + MediaQuery.viewInsetsOf(context).bottom),
+            physics: const BouncingScrollPhysics(),
+            itemCount: searchResults.length,
+            itemBuilder: (context, index) {
+              final track = searchResults[index];
+              final isPlaying = musicProvider.currentTrack?.id == track.id &&
+                  musicProvider.isPlaying;
+
+              return SearchResultRow.staged(
+                key: ValueKey(track.id),
+                index: index,
+                track: track,
+                isPlaying: isPlaying,
+                onTap: () {
+                  musicProvider.playTrack(track,
+                      playlistTracks: searchResults);
+                },
+                onMore: () =>
+                    ThemedOptionsSheet.show(context, track: track),
+              );
+            },
+          );
+        }
+
+        // Idle: history if available; otherwise the quiet discovery hint.
+        if (recentSearches.isNotEmpty) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Recent Searches",
+                    style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18),
+                  ),
+                  TextButton(
+                    onPressed: onClearHistory,
+                    child: Text("Clear All",
+                        style: GoogleFonts.plusJakartaSans(
+                            color:
+                                Theme.of(context).colorScheme.primary)),
+                  ),
+                ],
+              ),
+              ...recentSearches.map((query) => ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.history_rounded,
+                        color: Colors.white54, size: 20),
+                    minLeadingWidth: 28,
+                    title: Text(query,
+                        style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w500)),
+                    onTap: () => onSearchSelected(query),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close_rounded,
+                          size: 18, color: Colors.white30),
+                      splashRadius: 18,
+                      onPressed: () => onRemoveHistoryItem(query),
+                    ),
+                  )),
+            ],
+          );
+        }
+        return const _SearchIdleView(
+          icon: Icons.search_rounded,
+          message: 'Search for tracks, artists, or albums.',
+        );
       },
     );
   }
