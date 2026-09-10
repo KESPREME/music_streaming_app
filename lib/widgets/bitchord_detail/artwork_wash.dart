@@ -1,13 +1,18 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
+import 'artwork_seam_fade.dart';
+
 /// Ambient backdrop matching NowPlayingScreen and BitChord ArtworkMeshBackdrop.
 ///
-/// When [imageUrl] is provided, renders the full-bleed scaled blurred cover art base
-/// (sigma 55), dual radiant radial color mesh layers driven by [accentColor], and a
-/// smooth dark gradient settling into [backgroundColor].
+/// BitChord `ArtworkWash` parity (`ArtworkBackdrop.kt` lines 126-163):
+/// - Holds [wash] flat across the artwork zone AND [seamOverhang] past the
+///   seam, so the veil hands over to identical color (no C0 step).
+/// - Ramps wash -> background with a smoothstep-sampled curve (no slope kink
+///   at any stop — the eye finds kinks, not colors).
+/// - Mesh blobs sit below the overhang so nothing tints the handoff zone.
 ///
-/// Falls back to the vertical gradient wash when [imageUrl] is null or empty.
+/// Gradient-only: never spawns blurred images (light covers wash out).
 class ArtworkWash extends StatelessWidget {
   final Color backgroundColor;
   final Color washColor;
@@ -15,6 +20,9 @@ class ArtworkWash extends StatelessWidget {
   final Color elevatedColor;
   final double washFraction;
   final String? imageUrl;
+
+  /// Flat-wash hold past the seam in logical px (see [kSeamOverhang]).
+  final double seamOverhang;
 
   const ArtworkWash({
     super.key,
@@ -24,6 +32,7 @@ class ArtworkWash extends StatelessWidget {
     required this.elevatedColor,
     this.washFraction = 0.62,
     this.imageUrl,
+    this.seamOverhang = kSeamOverhang,
   });
 
   @override
@@ -36,9 +45,15 @@ class ArtworkWash extends StatelessWidget {
         accentColor: accentColor,
         elevatedColor: elevatedColor,
         washFraction: washFraction,
+        seamOverhang: seamOverhang,
       ),
     );
   }
+}
+
+double _smoothstep(double t) {
+  final x = t.clamp(0.0, 1.0);
+  return x * x * (3.0 - 2.0 * x);
 }
 
 class _ArtworkWashPainter extends CustomPainter {
@@ -47,6 +62,7 @@ class _ArtworkWashPainter extends CustomPainter {
   final Color accentColor;
   final Color elevatedColor;
   final double washFraction;
+  final double seamOverhang;
 
   _ArtworkWashPainter({
     required this.backgroundColor,
@@ -54,48 +70,53 @@ class _ArtworkWashPainter extends CustomPainter {
     required this.accentColor,
     required this.elevatedColor,
     required this.washFraction,
+    required this.seamOverhang,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (size.height <= 0 || size.width <= 0) return;
     final rect = Offset.zero & size;
 
-    // 1. Vertical base gradient: wash -> background
-    final stop1 = washFraction.clamp(0.0, 1.0);
-    final stop2 = ui.lerpDouble(stop1, 1.0, 0.35)!;
-    final stop3 = ui.lerpDouble(stop1, 1.0, 0.70)!;
+    // Flat wash through the seam + overhang, then smoothstep ramp to background.
+    final seam = washFraction.clamp(0.0, 1.0);
+    final holdStop = (seam + seamOverhang / size.height).clamp(0.0, 1.0);
+
+    const rampSamples = 6;
+    final stops = <double>[0.0, seam, holdStop];
+    final colors = <Color>[washColor, washColor, washColor];
+    for (var i = 1; i <= rampSamples; i++) {
+      final u = i / rampSamples;
+      stops.add(ui.lerpDouble(holdStop, 1.0, u)!);
+      // Match legacy mid distribution (0.12 / 0.55 lean) with flat slopes both ends.
+      colors.add(Color.lerp(washColor, backgroundColor, _smoothstep(u))!);
+    }
 
     final baseGradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      stops: [0.0, stop1, stop2, stop3, 1.0],
-      colors: [
-        washColor,
-        washColor,
-        Color.lerp(washColor, backgroundColor, 0.12)!,
-        Color.lerp(washColor, backgroundColor, 0.55)!,
-        backgroundColor,
-      ],
+      stops: stops,
+      colors: colors,
     );
 
     final basePaint = Paint()..shader = baseGradient.createShader(rect);
     canvas.drawRect(rect, basePaint);
 
-    // 2. Mesh Blob 1: Left accent blob under artwork foot
+    // Mesh blobs below the handoff zone: widest part of the mesh sits under
+    // the seam, never a horizon line across it (BitChord parity).
     _drawBlob(
       canvas: canvas,
       size: size,
       color: accentColor.withValues(alpha: 0.13),
-      at: Offset(0.12, washFraction + 0.08),
+      at: Offset(0.12, holdStop + 0.10),
       radiusFraction: 0.80,
     );
 
-    // 3. Mesh Blob 2: Right elevated blob further down
     _drawBlob(
       canvas: canvas,
       size: size,
       color: elevatedColor.withValues(alpha: 0.30),
-      at: Offset(0.96, washFraction + 0.30),
+      at: Offset(0.96, holdStop + 0.32),
       radiusFraction: 0.95,
     );
   }
@@ -132,6 +153,7 @@ class _ArtworkWashPainter extends CustomPainter {
         oldDelegate.washColor != washColor ||
         oldDelegate.accentColor != accentColor ||
         oldDelegate.elevatedColor != elevatedColor ||
-        oldDelegate.washFraction != washFraction;
+        oldDelegate.washFraction != washFraction ||
+        oldDelegate.seamOverhang != seamOverhang;
   }
 }

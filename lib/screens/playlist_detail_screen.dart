@@ -308,24 +308,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   ),
                 ),
 
-                // Bottom fade settling onto the wash (BitChord DetailScreen.kt parity)
+                // Eased foot fade settling onto the wash (BitChord PageBackground
+                // parity); the MergeBand veil covers the seam the rest of the way.
                 Positioned.fill(
                   child: RepaintBoundary(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          stops: const [0.40, 0.65, 0.85, 1.0],
-                          colors: [
-                            Colors.transparent,
-                            washColor.withValues(alpha: 0.35),
-                            washColor.withValues(alpha: 0.75),
-                            washColor,
-                          ],
-                        ),
-                      ),
-                    ),
+                    child: ArtworkFootFade(washColor: washColor),
                   ),
                 ),
               ],

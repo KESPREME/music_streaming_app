@@ -1,4 +1,5 @@
 export 'artwork_wash.dart';
+export 'artwork_seam_fade.dart';
 export 'merge_band.dart';
 export 'bitchord_action_bar.dart';
 export 'about_section.dart';
