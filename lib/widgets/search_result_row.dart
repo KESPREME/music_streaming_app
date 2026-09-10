@@ -19,6 +19,7 @@ class SearchResultRow extends StatelessWidget {
   final String? subtitle;
   final bool isPlaying;
   final bool circleArt;
+  final bool isVideo;
   final VoidCallback? onTap;
   final VoidCallback? onMore;
 
@@ -31,6 +32,7 @@ class SearchResultRow extends StatelessWidget {
     this.subtitle,
     this.isPlaying = false,
     this.circleArt = false,
+    this.isVideo = false,
     this.onTap,
     this.onMore,
     this.entranceDelay = Duration.zero,
@@ -45,10 +47,10 @@ class SearchResultRow extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding:
-              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 9.0),
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Row(
             children: [
-              _Artwork(track: track, circleArt: circleArt),
+              _Artwork(track: track, circleArt: circleArt, isVideo: isVideo),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -137,6 +139,7 @@ class SearchResultRow extends StatelessWidget {
     String? subtitle,
     bool isPlaying = false,
     bool circleArt = false,
+    bool isVideo = false,
     VoidCallback? onTap,
     VoidCallback? onMore,
     required int index,
@@ -148,6 +151,7 @@ class SearchResultRow extends StatelessWidget {
         subtitle: subtitle,
         isPlaying: isPlaying,
         circleArt: circleArt,
+        isVideo: isVideo,
         onTap: onTap,
         onMore: onMore,
       );
@@ -160,6 +164,7 @@ class SearchResultRow extends StatelessWidget {
         subtitle: subtitle,
         isPlaying: isPlaying,
         circleArt: circleArt,
+        isVideo: isVideo,
         onTap: onTap,
         onMore: onMore,
         entranceDelay: const Duration(milliseconds: 1),
@@ -179,40 +184,47 @@ class SearchResultRow extends StatelessWidget {
 class _Artwork extends StatelessWidget {
   final Track track;
   final bool circleArt;
+  final bool isVideo;
 
-  const _Artwork({required this.track, required this.circleArt});
+  const _Artwork({
+    required this.track,
+    required this.circleArt,
+    this.isVideo = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const size = 64.0;
+    final double width = isVideo ? 104.0 : 64.0;
+    final double height = isVideo ? 58.0 : 64.0;
     final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-    final cache = (size * pixelRatio).round();
+    final cacheW = (width * pixelRatio).round();
+    final cacheH = (height * pixelRatio).round();
     final image = track.albumArtUrl.isNotEmpty
         ? Image.network(
             track.albumArtUrl,
-            width: size,
-            height: size,
-            cacheWidth: cache,
-            cacheHeight: cache,
+            width: width,
+            height: height,
+            cacheWidth: cacheW,
+            cacheHeight: cacheH,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _fallback(),
+            errorBuilder: (_, __, ___) => _fallback(width: width, height: height),
             loadingBuilder: (context, child, progress) =>
-                progress == null ? child : _fallback(loading: true),
+                progress == null ? child : _fallback(width: width, height: height, loading: true),
           )
-        : _fallback();
+        : _fallback(width: width, height: height);
     if (circleArt) {
-      return ClipOval(child: SizedBox(width: size, height: size, child: image));
+      return ClipOval(child: SizedBox(width: width, height: height, child: image));
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(width: size, height: size, child: image),
+      borderRadius: BorderRadius.circular(isVideo ? 10 : 12),
+      child: SizedBox(width: width, height: height, child: image),
     );
   }
 
-  Widget _fallback({bool loading = false}) {
+  Widget _fallback({required double width, required double height, bool loading = false}) {
     return Container(
-      width: 64,
-      height: 64,
+      width: width,
+      height: height,
       color: const Color(0xFF1C1C1E),
       child: loading
           ? const Center(
@@ -222,10 +234,10 @@ class _Artwork extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             )
-          : const Icon(
-              Icons.music_note_rounded,
+          : Icon(
+              isVideo ? Icons.play_arrow_rounded : Icons.music_note_rounded,
               color: Colors.white24,
-              size: 28,
+              size: isVideo ? 26 : 28,
             ),
     );
   }

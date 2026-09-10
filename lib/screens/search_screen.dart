@@ -10,6 +10,7 @@ import '../models/track.dart';
 import '../utils/color_utils.dart';
 import '../widgets/search_result_row.dart';
 import '../widgets/search_glass_pills.dart';
+import '../widgets/search_grid_cards.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_artist_detail_screen.dart';
@@ -658,6 +659,7 @@ class _SearchScreenState extends State<SearchScreen>
               key: ValueKey(video.id),
               index: index,
               track: video,
+              isVideo: true,
               isPlaying: isPlaying,
               onTap: () => provider.playTrack(video,
                   playlistTracks: videos),
@@ -695,20 +697,26 @@ class _SearchScreenState extends State<SearchScreen>
         if (albums.isEmpty && query.trim().isNotEmpty) {
           return _SearchEmptyView(message: 'No albums found for "$query"');
         }
-        return ListView.builder(
+        return GridView.builder(
           key: ValueKey('albums:$query'),
           padding: EdgeInsets.fromLTRB(
-              0, 8, 0, widget.embedded ? 100 : 170),
+              16, 12, 16, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.77,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 18,
+          ),
           itemCount: albums.length,
           itemBuilder: (context, index) {
             final album = albums[index];
-            return SearchResultRow.staged(
+            return SearchMediaGridCard(
               key: ValueKey(album.id),
               index: index,
               track: album,
               subtitle: album.artistName.isNotEmpty
-                  ? 'Album • ${album.artistName}'
+                  ? album.artistName
                   : 'Album',
               onTap: () => _openAlbumResult(album),
             );
@@ -746,25 +754,33 @@ class _SearchScreenState extends State<SearchScreen>
           return _SearchEmptyView(message: 'No artists found for "$query"');
         }
 
-        // Fix: Do not group by artistName. The results are already unique Artist objects.
         // In Artist Search Results:
         // track.trackName = Artist Name (e.g. "The Weeknd")
         // track.artistName = Subtitle/Description (e.g. "Artist • 269M...")
         final artists = provider.artistTracks;
 
-        return ListView.builder(
+        return GridView.builder(
           key: ValueKey('artists:$query'),
-          padding: EdgeInsets.only(
-              top: 10, bottom: widget.embedded ? 100 : 170),
+          padding: EdgeInsets.fromLTRB(
+              16, 14, 16, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.77,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 20,
+          ),
           itemCount: artists.length,
           itemBuilder: (context, index) {
             final artistTrack = artists[index];
-            final artistName = artistTrack.trackName; // Correct Name
+            final artistName = artistTrack.trackName;
 
-            return ArtistSearchTile(
+            return SearchArtistGridCard(
+              key: ValueKey(artistTrack.id),
+              index: index,
               artistName: artistName,
               artistImageUrl: artistTrack.albumArtUrl,
+              subtitle: 'Artist',
               onTap: () {
                 final screen = ThemedArtistDetailScreen(
                   artistId: artistTrack.id,
@@ -772,7 +788,7 @@ class _SearchScreenState extends State<SearchScreen>
                   artistImage: artistTrack.albumArtUrl,
                 );
                 _pushDetail(screen);
-              }
+              },
             );
           },
         );
@@ -808,19 +824,25 @@ class _SearchScreenState extends State<SearchScreen>
           return _SearchEmptyView(message: 'No playlists found for "$query"');
         }
 
-        return ListView.builder(
+        return GridView.builder(
           key: ValueKey('playlists:$query'),
           padding: EdgeInsets.fromLTRB(
-              0, 8, 0, widget.embedded ? 100 : 170),
+              16, 12, 16, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.77,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 18,
+          ),
           itemCount: provider.playlistSearchResults.length,
           itemBuilder: (context, index) {
             final playlist = provider.playlistSearchResults[index];
-            return SearchResultRow.staged(
+            return SearchMediaGridCard(
               key: ValueKey(playlist.id),
               index: index,
               track: playlist,
-              subtitle: 'Playlist • ${playlist.artistName}',
+              subtitle: 'Playlist',
               onTap: () {
                 _pushDetail(ThemedPlaylistDetailScreen(
                   playlistId: playlist.id,
