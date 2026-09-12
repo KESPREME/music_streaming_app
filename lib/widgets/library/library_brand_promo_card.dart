@@ -1,14 +1,17 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
+
+import '../stagger_in.dart';
 
 /// Full-width Promotional Brand Card matching the Mine Music reference design.
 ///
-/// Refined composition:
-/// - Visually merges the liquid glass orb into the card's obsidian material surface
-///   rather than appearing like a separate badge.
+/// Upgraded with `liquid_glass_easy` primitives:
+/// - Outer shell is a soft-flexing obsidian LiquidGlassLens with squircle curvature and contact shadow.
+/// - The right emblem is an interactive living LiquidGlassLens sphere with soft-body liquid physics.
 /// - Left typography remains dominant: Eyebrow + "Listen\nyour way."
-/// - Suspended 3D Mine Music mark inside the refractive sphere with restrained reflection.
+/// - 3D Mine Music mark suspended inside the refractive liquid glass sphere.
 class LibraryBrandPromoCard extends StatelessWidget {
   const LibraryBrandPromoCard({
     super.key,
@@ -21,83 +24,106 @@ class LibraryBrandPromoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 10),
-      child: Container(
-        height: 116,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0C0D11), // Deep obsidian
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
-            width: 0.6,
+      child: SquishOnPress(
+        onTap: () {
+          HapticFeedback.lightImpact();
+        },
+        child: SizedBox(
+          height: 116,
+          child: LiquidGlassLens(
+            touch: const LiquidGlassTouch(
+              flex: LiquidGlassFlex.subtle(),
+            ),
+            style: LiquidGlassStyle(
+              shape: LiquidGlassShape.squircle(
+                cornerRadius: 20,
+                borderWidth: 0.8,
+                lightColor: Colors.white.withValues(alpha: 0.28),
+                lightIntensity: 0.85,
+                lightDirection: 135,
+                borderType: const OpticalBorder(
+                  borderSaturation: 1.3,
+                  ambientIntensity: 0.8,
+                  borderSolidity: 0.05,
+                  lightSpread: 1.0,
+                ),
+              ),
+              appearance: const LiquidGlassAppearance(
+                color: Color(0xE00C0D11), // Deep obsidian liquid glass
+                blur: LiquidGlassBlur(sigmaX: 8, sigmaY: 8),
+                saturation: 1.08,
+                shadow: LiquidGlassShadow(
+                  blur: 6.0,
+                  opacity: 0.35,
+                ),
+              ),
+              refraction: const LiquidGlassRefraction(
+                distortion: 0.06,
+                distortionWidth: 20,
+                refractionType: OpticalRefraction(),
+              ),
+            ),
+            child: Stack(
+              children: [
+                // 1. Fluid liquid wave merging the card surface toward the orb
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _RefinedPromoCausticPainter(),
+                  ),
+                ),
+                // 2. Embedded Living 3D Liquid Glass Orb on the right with soft-body touch
+                const Positioned(
+                  right: 12,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _EmbeddedBrandGlassOrb(size: 92),
+                  ),
+                ),
+                // 3. Dominant Editorial Typography on the left
+                Positioned(
+                  left: 20,
+                  top: 0,
+                  bottom: 0,
+                  right: 120, // Keep clean clearance from the orb
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'YOUR MUSIC.\nYOUR WORLD.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                          color: const Color(0xFF7E8492),
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Listen\nyour way.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.6,
+                          height: 1.08,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.40),
-              blurRadius: 16,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            // 1. Fluid liquid wave merging the card surface toward the orb
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _RefinedPromoCausticPainter(),
-              ),
-            ),
-            // 2. Embedded 3D Liquid Glass Orb on the right
-            const Positioned(
-              right: 12,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: _EmbeddedBrandGlassOrb(size: 92),
-              ),
-            ),
-            // 3. Dominant Editorial Typography on the left
-            Positioned(
-              left: 20,
-              top: 0,
-              bottom: 0,
-              right: 120, // Keep clean clearance from the orb
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'YOUR MUSIC.\nYOUR WORLD.',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                      color: const Color(0xFF7E8492),
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Listen\nyour way.',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.6,
-                      height: 1.08,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );
   }
 }
 
-/// 3D Liquid Glass Orb visually embedded into the promo card.
+/// 3D Liquid Glass Orb visually embedded into the promo card with soft-body liquid physics.
 class _EmbeddedBrandGlassOrb extends StatelessWidget {
   const _EmbeddedBrandGlassOrb({required this.size});
 
@@ -108,99 +134,55 @@ class _EmbeddedBrandGlassOrb extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Glass Sphere Custom Painter
-          CustomPaint(
-            size: Size(size, size),
-            painter: _EmbeddedOrbPainter(),
+      child: LiquidGlassLens(
+        touch: const LiquidGlassTouch(
+          flex: LiquidGlassFlex.pronounced(),
+        ),
+        style: LiquidGlassStyle(
+          shape: LiquidGlassShape.roundedRectangle(
+            cornerRadius: size / 2,
+            borderWidth: 1.4,
+            lightColor: const Color(0xFFFFE0A2), // Warm caustic rim
+            lightIntensity: 1.25,
+            lightDirection: 135,
+            borderType: const OpticalBorder(
+              borderSaturation: 1.6,
+              ambientIntensity: 1.15,
+              borderSolidity: 0.15,
+              lightSpread: 1.15,
+            ),
           ),
-          // Suspended 3D Mine Music Ribbon Mark
-          Image.asset(
-            'assets/images/mine_music_mark.png',
-            width: size * 0.50,
-            fit: BoxFit.contain,
+          appearance: const LiquidGlassAppearance(
+            color: Color(0x10FFFFFF),
+            blur: LiquidGlassBlur(sigmaX: 7, sigmaY: 7),
+            saturation: 1.15,
+            shadow: LiquidGlassShadow(
+              blur: 5.0,
+              opacity: 0.35,
+            ),
           ),
-        ],
+          refraction: const LiquidGlassRefraction(
+            distortion: 0.12,
+            distortionWidth: 22,
+            refractionType: OpticalRefraction(),
+          ),
+        ),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            HapticFeedback.lightImpact();
+          },
+          child: Center(
+            child: Image.asset(
+              'assets/images/mine_music_mark.png',
+              width: size * 0.50,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
       ),
     );
   }
-}
-
-class _EmbeddedOrbPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-
-    // 1. Dark smoky glass volume with subtle transmission
-    final bodyPaint = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(-0.25, -0.28),
-        radius: 1.0,
-        colors: [
-          Colors.white.withValues(alpha: 0.10),
-          const Color(0xFF19202B).withValues(alpha: 0.30),
-          const Color(0xFF07090D).withValues(alpha: 0.80),
-        ],
-        stops: const [0.0, 0.45, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawCircle(center, radius, bodyPaint);
-
-    // 2. Partial Specular Rim Highlight (Asymmetric top-right caustic arc)
-    final rimRect = Rect.fromCircle(center: center, radius: radius);
-    final rimPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4
-      ..shader = SweepGradient(
-        startAngle: 0.0,
-        endAngle: math.pi * 2,
-        colors: [
-          Colors.white.withValues(alpha: 0.85),
-          const Color(0xFFFFDF9E).withValues(alpha: 0.90), // Warm caustic peak
-          Colors.white.withValues(alpha: 0.35),
-          Colors.transparent,
-          Colors.transparent,
-          Colors.white.withValues(alpha: 0.20),
-          Colors.white.withValues(alpha: 0.85),
-        ],
-        stops: const [0.0, 0.12, 0.26, 0.42, 0.80, 0.92, 1.0],
-        transform: const GradientRotation(-math.pi / 3.5),
-      ).createShader(rimRect);
-
-    // Draw localized arc from top-left around to bottom-right
-    canvas.drawArc(
-      rimRect,
-      -math.pi * 0.7,
-      math.pi * 1.1,
-      false,
-      rimPaint,
-    );
-
-    // 3. Subtle inner refraction curve
-    final innerHighlightPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.7
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Colors.white.withValues(alpha: 0.30),
-          Colors.transparent,
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius * 0.88),
-      -math.pi * 0.80,
-      math.pi * 0.50,
-      false,
-      innerHighlightPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _RefinedPromoCausticPainter extends CustomPainter {
