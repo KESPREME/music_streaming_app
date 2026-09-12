@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../stagger_in.dart';
 
 /// 2-Column Action Card matching the Mine Music reference design.
 ///
-/// Upgraded with `liquid_glass_easy` primitives:
-/// - Living obsidian liquid glass surface (`LiquidGlassLens` + `LiquidGlassTouch`).
-/// - Soft-body touch deformation on press and pull (`LiquidGlassFlex.subtle()`).
-/// - `OpticalBorder` rim lighting with background-tinted specular reflection.
-/// - Integrated contact shadow hugging the rim with `LiquidGlassShadow`.
-/// - Broad, soft volumetric light transmission in the lower-right.
-/// - Crisp typography hierarchy with zero RenderFlex overflow.
+/// Refined liquid material system:
+/// - Deep obsidian foundation (`#0C0D11`) with subtle internal luminance.
+/// - Broad, soft volumetric light transmission in the lower-right (simulating
+///   light moving through smoked liquid glass, without vector strokes).
+/// - Restrained squircle badge and quiet chevron affordance.
+/// - Crisp typography hierarchy (compact title, quiet metadata).
+/// - Apple-grade tactile `SquishOnPress` micro-interaction.
 class LibraryActionCard extends StatelessWidget {
   const LibraryActionCard({
     super.key,
@@ -32,47 +31,31 @@ class LibraryActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: '$title, $subtitle',
-      child: LiquidGlassLens(
-        touch: const LiquidGlassTouch(
-          flex: LiquidGlassFlex.subtle(),
-        ),
-        style: LiquidGlassStyle(
-          shape: LiquidGlassShape.squircle(
-            cornerRadius: 20,
-            borderWidth: 0.8,
-            lightColor: Colors.white.withValues(alpha: 0.35),
-            lightIntensity: 0.85,
-            lightDirection: 135,
-            borderType: const OpticalBorder(
-              borderSaturation: 1.3,
-              ambientIntensity: 0.8,
-              borderSolidity: 0.05,
-              lightSpread: 1.0,
+    return SquishOnPress(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Semantics(
+        button: true,
+        label: '$title, $subtitle',
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0C0D11), // Deep obsidian
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08), // Restrained hairline
+              width: 0.6,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-          appearance: const LiquidGlassAppearance(
-            color: Color(0xE80C0D11), // Deep obsidian glass
-            blur: LiquidGlassBlur(sigmaX: 7, sigmaY: 7),
-            saturation: 1.08,
-            shadow: LiquidGlassShadow(
-              blur: 5.0,
-              opacity: 0.35,
-            ),
-          ),
-          refraction: const LiquidGlassRefraction(
-            distortion: 0.06,
-            distortionWidth: 18,
-            refractionType: OpticalRefraction(),
-          ),
-        ),
-        child: SquishOnPress(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            onTap();
-          },
           child: Stack(
             children: [
               // 1. Broad Volumetric Caustic Transmission (Liquid light through glass)
@@ -199,8 +182,8 @@ class LibraryActionCard extends StatelessWidget {
   }
 }
 
-/// Custom painter for soft, organic volumetric light transmission in the lower-right quadrant.
-/// Uses minimal GPU-friendly draw operations without diagonal stripes or continuous animation.
+/// Custom painter for soft, organic volumetric light transmission and fluid wave in the card.
+/// Matches the crystalline liquid caustics from the approved design reference (`media_1789192390759.png`).
 class _RefinedCardCausticPainter extends CustomPainter {
   const _RefinedCardCausticPainter({required this.color});
 
@@ -215,26 +198,26 @@ class _RefinedCardCausticPainter extends CustomPainter {
     final poolPaint = Paint()
       ..shader = RadialGradient(
         center: const Alignment(0.85, 0.85),
-        radius: 0.95,
+        radius: 1.0,
         colors: [
-          color.withValues(alpha: 0.12),
-          color.withValues(alpha: 0.04),
+          color.withValues(alpha: 0.16),
+          color.withValues(alpha: 0.05),
           Colors.transparent,
         ],
         stops: const [0.0, 0.50, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), poolPaint);
 
-    // 2. Organic curved refraction wave (smooth curve, no diagonal vector lines)
+    // 2. Organic curved refraction wave (smooth curve matching reference liquid flow)
     final wavePath = Path()
-      ..moveTo(w * 0.38, h)
+      ..moveTo(w * 0.28, h)
       ..cubicTo(
-        w * 0.58,
-        h * 0.76,
-        w * 0.72,
-        h * 0.50,
+        w * 0.50,
+        h * 0.74,
+        w * 0.68,
+        h * 0.44,
         w,
-        h * 0.45,
+        h * 0.38,
       )
       ..lineTo(w, h)
       ..close();
@@ -245,15 +228,43 @@ class _RefinedCardCausticPainter extends CustomPainter {
         begin: Alignment.bottomLeft,
         end: Alignment.topRight,
         colors: [
-          color.withValues(alpha: 0.12),
-          color.withValues(alpha: 0.05),
+          color.withValues(alpha: 0.16),
+          color.withValues(alpha: 0.06),
           Colors.transparent,
         ],
-        stops: const [0.0, 0.40, 1.0],
+        stops: const [0.0, 0.45, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawPath(wavePath, wavePaint);
 
-    // 3. Subtle specular top-edge glint simulating physical glass thickness
+    // 3. Luminous crystalline crest highlight along the top edge of the wave
+    final crestPath = Path()
+      ..moveTo(w * 0.28, h)
+      ..cubicTo(
+        w * 0.50,
+        h * 0.74,
+        w * 0.68,
+        h * 0.44,
+        w,
+        h * 0.38,
+      );
+
+    final crestPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..shader = LinearGradient(
+        begin: Alignment.bottomLeft,
+        end: Alignment.topRight,
+        colors: [
+          Colors.transparent,
+          color.withValues(alpha: 0.38),
+          Colors.white.withValues(alpha: 0.28),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.40, 0.75, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, w, h));
+    canvas.drawPath(crestPath, crestPaint);
+
+    // 4. Subtle specular top-edge glint simulating physical glass thickness
     final specularPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8
@@ -261,8 +272,8 @@ class _RefinedCardCausticPainter extends CustomPainter {
         begin: Alignment.topLeft,
         end: Alignment.topRight,
         colors: [
-          Colors.white.withValues(alpha: 0.12),
-          Colors.white.withValues(alpha: 0.03),
+          Colors.white.withValues(alpha: 0.14),
+          Colors.white.withValues(alpha: 0.04),
           Colors.transparent,
         ],
         stops: const [0.0, 0.35, 1.0],

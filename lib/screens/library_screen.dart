@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -88,10 +87,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         backgroundColor: Colors.transparent, // AMOLED ambient canvas shines through
         body: SafeArea(
           bottom: false,
-          child: LiquidGlassBatch(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
               // 1. Top App Bar: Understated 3D Brand Mark + Dual Glass Action Buttons
               SliverToBoxAdapter(
                 child: LibraryHeader(
@@ -177,9 +175,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // ALL TAB: 2-Column Action Cards Grid + Promotional Brand Card
