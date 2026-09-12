@@ -11,20 +11,25 @@ import 'package:google_fonts/google_fonts.dart';
 /// - Subordinate cursive script *"Music lives here."* softly discovered in the glass depth.
 /// - Dominant editorial typography: Eyebrow + Two-line Display Title ("Your\nLibrary").
 class LibraryHeroArtwork extends StatelessWidget {
-  const LibraryHeroArtwork({super.key});
+  const LibraryHeroArtwork({
+    super.key,
+    this.horizontalPadding = 20.0,
+  });
+
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: SizedBox(
-        height: 112,
+        height: 108,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             // 1. Atmospheric liquid glass depth on the right (positioned behind header actions)
             Positioned(
-              top: -32,
-              right: -18,
+              top: -34,
+              right: -16,
               width: 190,
               height: 190,
               child: CustomPaint(
@@ -33,14 +38,14 @@ class LibraryHeroArtwork extends StatelessWidget {
             ),
             // 2. Subordinate cursive script "Music lives here."
             Positioned(
-              top: 32,
+              top: 30,
               right: 28,
               child: Transform.rotate(
                 angle: -7 * math.pi / 180,
                 child: Text(
                   'Music\nlives\nhere.',
                   style: GoogleFonts.caveat(
-                    color: const Color(0x35D6C8B4), // Restrained whisper
+                    color: const Color(0x38D6C8B4), // Restrained whisper
                     fontSize: 16,
                     height: 1.05,
                     fontStyle: FontStyle.italic,
@@ -51,7 +56,7 @@ class LibraryHeroArtwork extends StatelessWidget {
             ),
             // 3. Editorial Typography on the left (Leading hierarchy)
             Positioned(
-              left: 20,
+              left: horizontalPadding,
               bottom: 2,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,19 +67,19 @@ class LibraryHeroArtwork extends StatelessWidget {
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w700,
-                      letterSpacing: 1.5,
+                      letterSpacing: 1.4,
                       color: const Color(0xFF7E8492),
-                      height: 1.3,
+                      height: 1.25,
                     ),
                   ),
                   const SizedBox(height: 5),
                   RichText(
                     text: TextSpan(
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 34,
+                        fontSize: 33,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1.0,
-                        height: 1.0,
+                        height: 0.98,
                       ),
                       children: const [
                         TextSpan(
@@ -99,33 +104,33 @@ class LibraryHeroArtwork extends StatelessWidget {
 }
 
 /// Custom painter rendering a physical liquid-glass form with soft optical transmission
-/// and an asymmetric caustic rim highlight (no continuous hard vector circle).
+/// and an asymmetric caustic rim highlight (subtle yet clearly perceptible).
 class _RefinedHeroGlassOrbPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width * 0.52, size.height * 0.52);
     final radius = size.width * 0.44;
 
-    // 1. Soft atmospheric back-glow (subtle cool slate-blue dispersion)
+    // 1. Soft atmospheric back-glow (cool slate-blue dispersion)
     final glowPaint = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF28384E).withValues(alpha: 0.10),
-          const Color(0xFF141C28).withValues(alpha: 0.04),
+          const Color(0xFF2E4059).withValues(alpha: 0.16),
+          const Color(0xFF16202E).withValues(alpha: 0.05),
           Colors.transparent,
         ],
         stops: const [0.0, 0.55, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: radius * 1.3));
     canvas.drawCircle(center, radius * 1.3, glowPaint);
 
-    // 2. Liquid glass volume (very soft transmission, no dark opaque center)
+    // 2. Liquid glass volume (soft transmission, dark glass barely catching ambient light)
     final bodyPaint = Paint()
       ..shader = RadialGradient(
         center: const Alignment(-0.2, -0.2),
         radius: 1.0,
         colors: [
-          Colors.white.withValues(alpha: 0.04),
-          const Color(0xFF182230).withValues(alpha: 0.06),
+          Colors.white.withValues(alpha: 0.06),
+          const Color(0xFF1E2A3A).withValues(alpha: 0.08),
           Colors.transparent,
         ],
         stops: const [0.0, 0.5, 1.0],
@@ -133,19 +138,46 @@ class _RefinedHeroGlassOrbPainter extends CustomPainter {
     canvas.drawCircle(center, radius, bodyPaint);
 
     // 3. Asymmetric Specular Rim Arc (Upper-right quadrant only, fading smoothly)
-    // Avoids completing the full circle and leaves the left/bottom open to void.
     final rimRect = Rect.fromCircle(center: center, radius: radius);
-    final arcPaint = Paint()
+
+    // Soft bloom behind rim
+    final bloomPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
+      ..strokeWidth = 3.5
       ..shader = SweepGradient(
         startAngle: 0.0,
         endAngle: math.pi * 2,
         colors: [
           Colors.transparent,
-          const Color(0xFFFFDF9E).withValues(alpha: 0.70), // Warm caustic peak
-          Colors.white.withValues(alpha: 0.65),
-          Colors.white.withValues(alpha: 0.15),
+          const Color(0xFFFFDF9E).withValues(alpha: 0.20),
+          Colors.white.withValues(alpha: 0.18),
+          Colors.transparent,
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.12, 0.24, 0.42, 1.0],
+        transform: const GradientRotation(-math.pi / 2.8),
+      ).createShader(rimRect);
+
+    canvas.drawArc(
+      rimRect,
+      -math.pi * 0.45,
+      math.pi * 0.75,
+      false,
+      bloomPaint,
+    );
+
+    // Sharp specular core
+    final arcPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..shader = SweepGradient(
+        startAngle: 0.0,
+        endAngle: math.pi * 2,
+        colors: [
+          Colors.transparent,
+          const Color(0xFFFFE0A2).withValues(alpha: 0.75), // Warm caustic peak
+          Colors.white.withValues(alpha: 0.70),
+          Colors.white.withValues(alpha: 0.18),
           Colors.transparent,
           Colors.transparent,
         ],
@@ -165,12 +197,12 @@ class _RefinedHeroGlassOrbPainter extends CustomPainter {
     // 4. Subtle secondary inner caustic glint
     final innerArcPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.6
+      ..strokeWidth = 0.7
       ..shader = LinearGradient(
         begin: Alignment.topRight,
         end: Alignment.bottomLeft,
         colors: [
-          Colors.white.withValues(alpha: 0.25),
+          Colors.white.withValues(alpha: 0.30),
           Colors.transparent,
         ],
       ).createShader(rimRect);

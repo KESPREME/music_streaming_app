@@ -29,12 +29,14 @@ class LibraryFilterBar extends StatelessWidget {
     required this.onCategorySelected,
     required this.currentSort,
     required this.onSortChanged,
+    this.horizontalPadding = 20.0,
   });
 
   final String selectedCategory;
   final ValueChanged<String> onCategorySelected;
   final LibrarySortOption currentSort;
   final ValueChanged<LibrarySortOption> onSortChanged;
+  final double horizontalPadding;
 
   static const List<String> categories = [
     'All',
@@ -60,21 +62,21 @@ class LibraryFilterBar extends StatelessWidget {
               children: [
                 Center(
                   child: Container(
-                    width: 38,
+                    width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
+                      color: Colors.white.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 Text(
                   'Sort by',
                   style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white,
-                    fontSize: 17,
+                    fontSize: 18,
                     fontWeight: FontWeight.w700,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -125,7 +127,7 @@ class LibraryFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 5, horizontalPadding, 5),
       child: Row(
         children: [
           // Segmented Liquid Glass Capsule

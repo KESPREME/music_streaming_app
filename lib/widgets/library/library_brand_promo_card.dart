@@ -10,18 +10,23 @@ import 'package:google_fonts/google_fonts.dart';
 /// - Left typography remains dominant: Eyebrow + "Listen\nyour way."
 /// - Suspended 3D Mine Music mark inside the refractive sphere with restrained reflection.
 class LibraryBrandPromoCard extends StatelessWidget {
-  const LibraryBrandPromoCard({super.key});
+  const LibraryBrandPromoCard({
+    super.key,
+    this.horizontalPadding = 20.0,
+  });
+
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 10),
       child: Container(
-        height: 120,
+        height: 116,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: const Color(0xFF0C0D11), // Deep obsidian
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.08),
             width: 0.6,

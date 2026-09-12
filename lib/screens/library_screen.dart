@@ -68,6 +68,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+
+    // Single owner for horizontal screen margins across all major sections
+    final horizontalGutter = (screenWidth * 0.045).clamp(16.0, 24.0);
+    final columnGap = (screenWidth * 0.030).clamp(12.0, 16.0);
+
+    // Derived card geometry: wide + compact, bounded to prevent vertical cramping on narrow devices
+    final contentWidth = screenWidth - (2 * horizontalGutter);
+    final cardWidth = (contentWidth - columnGap) / 2;
+    final childAspectRatio = cardWidth <= 165
+        ? 1.52
+        : (cardWidth <= 240 ? 1.58 : 1.65);
+
     return PlayerAwarePopScope(
       child: Scaffold(
         extendBodyBehindAppBar: true,
@@ -80,6 +93,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               // 1. Top App Bar: Understated 3D Brand Mark + Dual Glass Action Buttons
               SliverToBoxAdapter(
                 child: LibraryHeader(
+                  horizontalPadding: horizontalGutter,
                   onCreatePlaylist: () => _showCreatePlaylistDialog(context),
                   onSearchTap: () {
                     Navigator.push(
@@ -92,14 +106,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               ),
 
-              // 2. Hero Section: Tightened Footprint, Dominant Editorial Title & Atmospheric Liquid Depth
               const SliverToBoxAdapter(
-                child: LibraryHeroArtwork(),
+                child: SizedBox(height: 6),
+              ),
+
+              // 2. Hero Section: Tightened Footprint, Dominant Editorial Title & Atmospheric Liquid Depth
+              SliverToBoxAdapter(
+                child: LibraryHeroArtwork(
+                  horizontalPadding: horizontalGutter,
+                ),
+              ),
+
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 8),
               ),
 
               // 3. Filter Segmented Capsule & Companion Sort Button
               SliverToBoxAdapter(
                 child: LibraryFilterBar(
+                  horizontalPadding: horizontalGutter,
                   selectedCategory: _selectedFilter,
                   onCategorySelected: (category) {
                     setState(() => _selectedFilter = category);
@@ -112,12 +137,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
 
               const SliverToBoxAdapter(
-                child: SizedBox(height: 4),
+                child: SizedBox(height: 8),
               ),
 
               // 4. Tab Content (All / Playlists / Artists / Albums)
               if (_selectedFilter == 'All')
-                ..._buildAllTabSlivers(context)
+                ..._buildAllTabSlivers(
+                  context,
+                  horizontalGutter,
+                  columnGap,
+                  childAspectRatio,
+                )
               else if (_selectedFilter == 'Playlists')
                 _buildPlaylistsContent(context)
               else if (_selectedFilter == 'Artists')
@@ -135,8 +165,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     final bottomInset = MediaQuery.of(context).padding.bottom;
                     // Clearance derived from actual player & nav tokens
                     final baseClearance = hasTrack
-                        ? (GlassTokens.playerBottomInset + GlassTokens.playerPillHeight + 28.0)
-                        : (GlassTokens.playerBottomInset + 20.0);
+                        ? (GlassTokens.playerBottomInset + GlassTokens.playerPillHeight + 20.0)
+                        : (GlassTokens.playerBottomInset + 14.0);
                     return SizedBox(height: baseClearance + bottomInset);
                   },
                 ),
@@ -152,17 +182,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
   // ALL TAB: 2-Column Action Cards Grid + Promotional Brand Card
   // ---------------------------------------------------------------------------
 
-  List<Widget> _buildAllTabSlivers(BuildContext context) {
+  List<Widget> _buildAllTabSlivers(
+    BuildContext context,
+    double horizontalGutter,
+    double columnGap,
+    double childAspectRatio,
+  ) {
     return [
       // 2-Column Grid (6 Cards)
       SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: EdgeInsets.symmetric(horizontal: horizontalGutter),
         sliver: SliverGrid(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            childAspectRatio: 1.22,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+            childAspectRatio: childAspectRatio,
+            crossAxisSpacing: columnGap,
+            mainAxisSpacing: columnGap,
           ),
           delegate: SliverChildListDelegate.fixed([
             // 1. Liked Songs (Calibrated Coral Crimson)
@@ -293,15 +328,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
 
-      const SliverToBoxAdapter(
-        child: SizedBox(height: 12),
+      SliverToBoxAdapter(
+        child: SizedBox(height: columnGap),
       ),
 
       // Promotional Brand Identity Card: "Listen your way."
-      const SliverToBoxAdapter(
+      SliverToBoxAdapter(
         child: StaggerIn(
           index: 6,
-          child: LibraryBrandPromoCard(),
+          child: LibraryBrandPromoCard(
+            horizontalPadding: horizontalGutter,
+          ),
         ),
       ),
     ];

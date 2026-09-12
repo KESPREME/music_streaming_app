@@ -16,15 +16,17 @@ class LibraryHeader extends StatelessWidget {
     super.key,
     required this.onCreatePlaylist,
     required this.onSearchTap,
+    this.horizontalPadding = 20.0,
   });
 
   final VoidCallback onCreatePlaylist;
   final VoidCallback onSearchTap;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 16, 4),
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 4),
       child: Row(
         children: [
           // Mine Music Brand Lockup (Restrained optical weight)
@@ -73,11 +75,11 @@ class LibraryHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          // Action Buttons: + and Search (Clearly foregrounded)
+          // Action Buttons: + and Search (Clearly foregrounded, accessible 44px)
           GlassCircleButton(
             icon: Icons.add_rounded,
-            size: 40,
-            iconSize: 21,
+            size: 44,
+            iconSize: 22,
             onTap: () {
               HapticFeedback.lightImpact();
               onCreatePlaylist();
@@ -87,8 +89,8 @@ class LibraryHeader extends StatelessWidget {
           const SizedBox(width: 8),
           GlassCircleButton(
             icon: Icons.search_rounded,
-            size: 40,
-            iconSize: 19,
+            size: 44,
+            iconSize: 20,
             onTap: () {
               HapticFeedback.lightImpact();
               onSearchTap();
