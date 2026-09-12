@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,10 +9,9 @@ import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/global_music_overlay.dart';
-import '../widgets/track_tile.dart';
 import '../widgets/glass_surface.dart';
-import '../widgets/glass_circle_button.dart';
 import '../widgets/stagger_in.dart';
+import '../theme/glass_tokens.dart';
 import '../widgets/themed_liked_songs_screen.dart';
 import '../widgets/themed_recently_played_screen.dart';
 import '../widgets/themed_user_playlist_screen.dart';
@@ -25,6 +23,21 @@ import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_album_detail_screen.dart';
 import 'glass_library_search_screen.dart';
 
+import '../widgets/library/library_header.dart';
+import '../widgets/library/library_hero_artwork.dart';
+import '../widgets/library/library_filter_bar.dart';
+import '../widgets/library/library_action_card.dart';
+import '../widgets/library/library_brand_promo_card.dart';
+
+/// Mine Music — Library Screen.
+///
+/// Refined visual presentation:
+/// - AMOLED black foundation with restrained, calm optical weight.
+/// - Apple-level liquid glass material (subtle transmission, soft internal light).
+/// - Tight, intentional hero footprint with dominant editorial typography.
+/// - Calibrated semantic card accents (crimson, calm azure, honey amber, emerald, violet, slate ice).
+/// - Dynamic layout-aware content clearance preventing overlap with persistent bottom navigation.
+/// - Granular Provider rebuild isolation.
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -33,15 +46,8 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
-  final List<String> _filterChips = const [
-    "All",
-    "Playlists",
-    "Artists",
-    "Albums",
-    "Songs",
-    "Downloaded",
-  ];
-  String _selectedFilter = "All";
+  String _selectedFilter = 'All';
+  LibrarySortOption _currentSort = LibrarySortOption.recentlyAdded;
 
   Future<List<dynamic>>? _smartArtistsFuture;
   Future<List<Track>>? _smartAlbumsFuture;
@@ -60,255 +66,81 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
-  Widget _buildLiquidLibraryCard({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required Widget screen,
-  }) {
-    return SquishOnPress(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              color.withValues(alpha: 0.14),
-              Colors.white.withValues(alpha: 0.05),
-              Colors.white.withValues(alpha: 0.02),
-            ],
-            stops: const [0.0, 0.45, 1.0],
-          ),
-          border: Border.all(
-            color: color.withValues(alpha: 0.22),
-            width: 1.0,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.12),
-              blurRadius: 18,
-              spreadRadius: -4,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Glass pod with icon
-            Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: color.withValues(alpha: 0.32), width: 0.8),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.20),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const Spacer(),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-                letterSpacing: -0.2,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
-                color: Colors.white.withValues(alpha: 0.55),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final musicProvider = Provider.of<MusicProvider>(context);
-    final accent = theme.colorScheme.primary;
-
     return PlayerAwarePopScope(
       child: Scaffold(
         extendBodyBehindAppBar: true,
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.transparent, // AMOLED ambient canvas shines through
         body: SafeArea(
+          bottom: false,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Liquid Glass App Bar
-              SliverAppBar(
-                surfaceTintColor: Colors.transparent,
-                backgroundColor: Colors.transparent,
-                pinned: true,
-                elevation: 0,
-                expandedHeight: 110,
-                flexibleSpace: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final double percentage = ((constraints.maxHeight - kToolbarHeight) / (110 - kToolbarHeight)).clamp(0.0, 1.0);
-                    final double blur = (1 - percentage) * 16;
-                    final double overlayOpacity = (1 - percentage) * 0.50;
-
-                    return ClipRRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                        child: FlexibleSpaceBar(
-                          titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-                          title: Text(
-                            'Your Library',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              fontSize: 20 + (10 * percentage),
-                              letterSpacing: -0.6,
-                            ),
-                          ),
-                          background: Container(color: Colors.black.withValues(alpha: overlayOpacity)),
-                        ),
+              // 1. Top App Bar: Understated 3D Brand Mark + Dual Glass Action Buttons
+              SliverToBoxAdapter(
+                child: LibraryHeader(
+                  onCreatePlaylist: () => _showCreatePlaylistDialog(context),
+                  onSearchTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const GlassLibrarySearchScreen(),
                       ),
                     );
                   },
                 ),
-                actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: GlassCircleButton(
-                      icon: Icons.add_rounded,
-                      size: 42,
-                      iconSize: 22,
-                      onTap: () => _showCreatePlaylistDialog(context),
-                      semanticLabel: 'Create playlist',
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: GlassCircleButton(
-                      icon: Icons.search_rounded,
-                      size: 42,
-                      iconSize: 20,
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const GlassLibrarySearchScreen()));
-                      },
-                      semanticLabel: 'Search library',
-                    ),
-                  ),
-                ],
               ),
 
-              // Fluid animated sliding filter pill switcher
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 56,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: _filterChips.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final label = _filterChips[index];
-                      final isSelected = _selectedFilter == label;
+              // 2. Hero Section: Tightened Footprint, Dominant Editorial Title & Atmospheric Liquid Depth
+              const SliverToBoxAdapter(
+                child: LibraryHeroArtwork(),
+              ),
 
-                      return GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _selectedFilter = label);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(22),
-                            gradient: isSelected
-                                ? RadialGradient(
-                                    center: Alignment.center,
-                                    radius: 2.2,
-                                    colors: [
-                                      accent.withValues(alpha: 0.32),
-                                      accent.withValues(alpha: 0.14),
-                                      Colors.white.withValues(alpha: 0.08),
-                                    ],
-                                  )
-                                : null,
-                            color: isSelected ? null : Colors.white.withValues(alpha: 0.06),
-                            border: Border.all(
-                              color: isSelected ? accent.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.10),
-                              width: isSelected ? 1.0 : 0.75,
-                            ),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: accent.withValues(alpha: 0.25),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 2),
-                                    )
-                                  ]
-                                : null,
-                          ),
-                          child: Text(
-                            label,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.70),
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              fontSize: 13.5,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+              // 3. Filter Segmented Capsule & Companion Sort Button
+              SliverToBoxAdapter(
+                child: LibraryFilterBar(
+                  selectedCategory: _selectedFilter,
+                  onCategorySelected: (category) {
+                    setState(() => _selectedFilter = category);
+                  },
+                  currentSort: _currentSort,
+                  onSortChanged: (sort) {
+                    setState(() => _currentSort = sort);
+                  },
                 ),
               ),
 
-              // Filtered Content
-              if (_selectedFilter == "All")
-                _buildMainLibraryList(context, musicProvider)
-              else if (_selectedFilter == "Playlists")
-                _buildPlaylistsContent(context, musicProvider)
-              else if (_selectedFilter == "Artists")
-                _buildArtistsContent(context)
-              else if (_selectedFilter == "Albums")
-                _buildAlbumsContent(context)
-              else if (_selectedFilter == "Songs")
-                _buildSongsContent(context, musicProvider)
-              else if (_selectedFilter == "Downloaded")
-                _buildDownloadedContent(context, musicProvider),
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 4),
+              ),
 
-              const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
+              // 4. Tab Content (All / Playlists / Artists / Albums)
+              if (_selectedFilter == 'All')
+                ..._buildAllTabSlivers(context)
+              else if (_selectedFilter == 'Playlists')
+                _buildPlaylistsContent(context)
+              else if (_selectedFilter == 'Artists')
+                _buildArtistsContent(context)
+              else if (_selectedFilter == 'Albums')
+                _buildAlbumsContent(context),
+
+              // 5. Dynamic Scroll Clearance for Docked Mini-Player & Bottom Navigation
+              SliverToBoxAdapter(
+                child: Builder(
+                  builder: (context) {
+                    final hasTrack = context.select<MusicProvider, bool>(
+                      (p) => p.currentTrack != null && !p.hideMiniPlayer,
+                    );
+                    final bottomInset = MediaQuery.of(context).padding.bottom;
+                    // Clearance derived from actual player & nav tokens
+                    final baseClearance = hasTrack
+                        ? (GlassTokens.playerBottomInset + GlassTokens.playerPillHeight + 28.0)
+                        : (GlassTokens.playerBottomInset + 20.0);
+                    return SizedBox(height: baseClearance + bottomInset);
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -316,86 +148,186 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  Widget _buildMainLibraryList(BuildContext context, MusicProvider musicProvider) {
-    final likedCount = musicProvider.likedSongs.length;
-    final playlistCount = musicProvider.userPlaylists.length;
-    final recentsCount = musicProvider.recentlyPlayed.length;
-    final localCount = musicProvider.localTracks.length;
+  // ---------------------------------------------------------------------------
+  // ALL TAB: 2-Column Action Cards Grid + Promotional Brand Card
+  // ---------------------------------------------------------------------------
 
-    final List<Map<String, dynamic>> libraryItems = [
-      {
-        'title': 'Liked Songs',
-        'icon': Icons.favorite_rounded,
-        'color': const Color(0xFFFF4D6A),
-        'screen': const ThemedLikedSongsScreen(),
-        'subtitle': likedCount == 1 ? '1 song' : '$likedCount songs',
-      },
-      {
-        'title': 'Your Playlists',
-        'icon': Icons.queue_music_rounded,
-        'color': const Color(0xFF2EC4FF),
-        'screen': const ThemedUserPlaylistScreen(),
-        'subtitle': playlistCount == 1 ? '1 playlist' : '$playlistCount playlists',
-      },
-      {
-        'title': 'Recently Played',
-        'icon': Icons.history_rounded,
-        'color': const Color(0xFFFF9F1C),
-        'screen': const ThemedRecentlyPlayedScreen(),
-        'subtitle': recentsCount == 1 ? '1 song' : '$recentsCount songs',
-      },
-      {
-        'title': 'Downloaded',
-        'icon': Icons.download_done_rounded,
-        'color': const Color(0xFF2ECC71),
-        'screen': const ThemedDownloadedSongsScreen(),
-        'subtitle': 'Offline music',
-      },
-      {
-        'title': 'Local Files',
-        'icon': Icons.folder_open_rounded,
-        'color': const Color(0xFFB388FF),
-        'screen': const ThemedLocalMusicScreen(),
-        'subtitle': localCount == 1 ? '1 track' : '$localCount tracks',
-      },
-      {
-        'title': 'Import Playlists',
-        'icon': Icons.playlist_add_check_rounded,
-        'color': const Color(0xFF00E5FF),
-        'screen': const ThemedPlaylistImportScreen(),
-        'subtitle': 'Spotify & YouTube',
-      },
-    ];
-
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 1.20,
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 14,
-        ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => StaggerIn(
-            index: index,
-            child: _buildLiquidLibraryCard(
-              context: context,
-              title: libraryItems[index]['title'],
-              subtitle: libraryItems[index]['subtitle'],
-              icon: libraryItems[index]['icon'],
-              color: libraryItems[index]['color'],
-              screen: libraryItems[index]['screen'],
-            ),
+  List<Widget> _buildAllTabSlivers(BuildContext context) {
+    return [
+      // 2-Column Grid (6 Cards)
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 1.22,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
           ),
-          childCount: libraryItems.length,
+          delegate: SliverChildListDelegate.fixed([
+            // 1. Liked Songs (Calibrated Coral Crimson)
+            Builder(
+              builder: (context) {
+                final likedCount = context.select<MusicProvider, int>(
+                  (p) => p.likedSongs.length,
+                );
+                return StaggerIn(
+                  index: 0,
+                  child: LibraryActionCard(
+                    title: 'Liked Songs',
+                    subtitle: likedCount == 1 ? '1 song' : '$likedCount songs',
+                    icon: Icons.favorite_rounded,
+                    color: const Color(0xFFE24362), // Restrained coral crimson
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ThemedLikedSongsScreen(),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // 2. Your Playlists (Calibrated Calm Azure)
+            Builder(
+              builder: (context) {
+                final playlistCount = context.select<MusicProvider, int>(
+                  (p) => p.userPlaylists.length,
+                );
+                return StaggerIn(
+                  index: 1,
+                  child: LibraryActionCard(
+                    title: 'Your Playlists',
+                    subtitle: playlistCount == 1 ? '1 playlist' : '$playlistCount playlists',
+                    icon: Icons.queue_music_rounded,
+                    color: const Color(0xFF2575DC), // Calm azure
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ThemedUserPlaylistScreen(),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // 3. Recently Played (Calibrated Honey Amber)
+            Builder(
+              builder: (context) {
+                final recentsCount = context.select<MusicProvider, int>(
+                  (p) => p.recentlyPlayed.length,
+                );
+                return StaggerIn(
+                  index: 2,
+                  child: LibraryActionCard(
+                    title: 'Recently Played',
+                    subtitle: recentsCount == 1 ? '1 song' : '$recentsCount songs',
+                    icon: Icons.history_rounded,
+                    color: const Color(0xFFD68524), // Warm honey amber
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ThemedRecentlyPlayedScreen(),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // 4. Downloaded (Calibrated Subdued Emerald)
+            StaggerIn(
+              index: 3,
+              child: LibraryActionCard(
+                title: 'Downloaded',
+                subtitle: 'Offline music',
+                icon: Icons.download_rounded,
+                color: const Color(0xFF2EA858), // Subdued emerald
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ThemedDownloadedSongsScreen(),
+                  ),
+                ),
+              ),
+            ),
+            // 5. Local Files (Calibrated Amethyst Violet)
+            Builder(
+              builder: (context) {
+                final localCount = context.select<MusicProvider, int>(
+                  (p) => p.localTracks.length,
+                );
+                return StaggerIn(
+                  index: 4,
+                  child: LibraryActionCard(
+                    title: 'Local Files',
+                    subtitle: localCount == 1 ? '1 track' : '$localCount tracks',
+                    icon: Icons.folder_rounded,
+                    color: const Color(0xFF9348CE), // Deep amethyst violet
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ThemedLocalMusicScreen(),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // 6. Import Playlists (Calibrated Muted Slate Ice)
+            StaggerIn(
+              index: 5,
+              child: LibraryActionCard(
+                title: 'Import Playlists',
+                subtitle: 'Spotify & YouTube',
+                icon: Icons.ios_share_rounded,
+                color: const Color(0xFF3896BE), // Muted slate ice
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ThemedPlaylistImportScreen(),
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
       ),
-    );
+
+      const SliverToBoxAdapter(
+        child: SizedBox(height: 12),
+      ),
+
+      // Promotional Brand Identity Card: "Listen your way."
+      const SliverToBoxAdapter(
+        child: StaggerIn(
+          index: 6,
+          child: LibraryBrandPromoCard(),
+        ),
+      ),
+    ];
   }
 
-  Widget _buildPlaylistsContent(BuildContext context, MusicProvider musicProvider) {
-    final playlists = musicProvider.userPlaylists;
+  // ---------------------------------------------------------------------------
+  // PLAYLISTS TAB
+  // ---------------------------------------------------------------------------
+
+  Widget _buildPlaylistsContent(BuildContext context) {
+    final rawPlaylists = context.select<MusicProvider, List<Playlist>>(
+      (p) => p.userPlaylists,
+    );
+
+    final playlists = List<Playlist>.from(rawPlaylists);
+    switch (_currentSort) {
+      case LibrarySortOption.alphabetical:
+        playlists.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case LibrarySortOption.trackCount:
+        playlists.sort((a, b) => b.tracks.length.compareTo(a.tracks.length));
+        break;
+      case LibrarySortOption.recentlyAdded:
+        break;
+    }
+
     if (playlists.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -403,10 +335,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.queue_music_rounded, size: 54, color: Colors.white.withValues(alpha: 0.3)),
+              Icon(
+                Icons.queue_music_rounded,
+                size: 54,
+                color: Colors.white.withValues(alpha: 0.3),
+              ),
               const SizedBox(height: 12),
-              Text("No playlists yet", style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 16)),
-              const SizedBox(height: 8),
+              Text(
+                'No playlists yet',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white54,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
               TextButton.icon(
                 onPressed: () => _showCreatePlaylistDialog(context),
                 icon: const Icon(Icons.add_rounded),
@@ -417,12 +360,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       );
     }
+
     return SliverPadding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          childAspectRatio: 0.78,
+          childAspectRatio: 0.82,
           crossAxisSpacing: 14,
           mainAxisSpacing: 14,
         ),
@@ -455,14 +399,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
       },
       onLongPress: () => _showPlaylistOptions(context, playlist),
       child: Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          color: const Color(0xFF0C0D11),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 0.6,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 10,
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
@@ -472,27 +420,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
           children: [
             Expanded(
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: playlist.imageUrl.isNotEmpty
                     ? CachedNetworkImage(
                         imageUrl: ImageQualityUtils.getHighResArtwork(playlist.imageUrl),
                         fit: BoxFit.cover,
                         width: double.infinity,
                         errorWidget: (_, __, ___) => Container(
-                          color: Colors.grey[900],
-                          child: const Icon(Icons.music_note, color: Colors.white54),
+                          color: Colors.white.withValues(alpha: 0.04),
+                          child: const Icon(Icons.music_note_rounded, color: Colors.white38),
                         ),
                       )
                     : Container(
-                        color: Colors.white.withValues(alpha: 0.06),
+                        color: Colors.white.withValues(alpha: 0.04),
                         child: const Center(
-                          child: Icon(Icons.queue_music_rounded, color: Colors.white38, size: 40),
+                          child: Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
                         ),
                       ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -510,8 +458,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   Text(
                     '${playlist.tracks.length} tracks',
                     style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withValues(alpha: 0.50),
+                      color: Colors.white.withValues(alpha: 0.45),
                       fontSize: 12,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ],
@@ -523,28 +472,48 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // ARTISTS TAB
+  // ---------------------------------------------------------------------------
+
   Widget _buildArtistsContent(BuildContext context) {
     return FutureBuilder<List<dynamic>>(
       future: _smartArtistsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SliverFillRemaining(
-            child: Center(child: CircularProgressIndicator(color: Colors.white)),
-          );
-        }
-        final artists = snapshot.data ?? [];
-        if (artists.isEmpty) {
-          return SliverFillRemaining(
             child: Center(
-              child: Text(
-                "No artists found in library",
-                style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white70,
               ),
             ),
           );
         }
+        final rawArtists = snapshot.data ?? [];
+        if (rawArtists.isEmpty) {
+          return SliverFillRemaining(
+            child: Center(
+              child: Text(
+                'No artists found in library',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white54,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final artists = List<dynamic>.from(rawArtists);
+        if (_currentSort == LibrarySortOption.alphabetical) {
+          artists.sort((a, b) => (a.artistName as String)
+              .toLowerCase()
+              .compareTo((b.artistName as String).toLowerCase()));
+        }
+
         return SliverPadding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
@@ -567,7 +536,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => ThemedArtistDetailScreen(
-                            artistId: "",
+                            artistId: '',
                             artistName: name,
                             artistImage: imageUrl,
                             searchByName: true,
@@ -576,14 +545,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: const Color(0xFF0C0D11),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          width: 0.6,
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.25),
+                            color: Colors.black.withValues(alpha: 0.35),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -595,15 +567,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1.5),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                width: 1.2,
+                              ),
                             ),
                             child: CircleAvatar(
                               radius: 42,
-                              backgroundImage: NetworkImage(ImageQualityUtils.getHighResArtwork(imageUrl)),
+                              backgroundImage: NetworkImage(
+                                ImageQualityUtils.getHighResArtwork(imageUrl),
+                              ),
                               backgroundColor: Colors.white10,
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 12),
                           Text(
                             name,
                             style: GoogleFonts.plusJakartaSans(
@@ -629,32 +606,50 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // ALBUMS TAB
+  // ---------------------------------------------------------------------------
+
   Widget _buildAlbumsContent(BuildContext context) {
     return FutureBuilder<List<Track>>(
       future: _smartAlbumsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SliverFillRemaining(
-            child: Center(child: CircularProgressIndicator(color: Colors.white)),
-          );
-        }
-        final albums = snapshot.data ?? [];
-        if (albums.isEmpty) {
-          return SliverFillRemaining(
             child: Center(
-              child: Text(
-                "No albums found in library",
-                style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white70,
               ),
             ),
           );
         }
+        final rawAlbums = snapshot.data ?? [];
+        if (rawAlbums.isEmpty) {
+          return SliverFillRemaining(
+            child: Center(
+              child: Text(
+                'No albums found in library',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white54,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final albums = List<Track>.from(rawAlbums);
+        if (_currentSort == LibrarySortOption.alphabetical) {
+          albums.sort((a, b) => a.albumName.toLowerCase().compareTo(b.albumName.toLowerCase()));
+        }
+
         return SliverPadding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.78,
+              childAspectRatio: 0.82,
               mainAxisSpacing: 14,
               crossAxisSpacing: 14,
             ),
@@ -670,7 +665,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => ThemedAlbumDetailScreen(
-                            albumId: "",
+                            albumId: '',
                             albumName: track.albumName,
                             artistName: track.artistName,
                             albumImage: track.albumArtUrl,
@@ -680,13 +675,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       );
                     },
                     child: Container(
+                      clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        color: const Color(0xFF0C0D11),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          width: 0.6,
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
+                            color: Colors.black.withValues(alpha: 0.35),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -697,20 +696,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         children: [
                           Expanded(
                             child: ClipRRect(
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(20),
+                              ),
                               child: CachedNetworkImage(
                                 imageUrl: ImageQualityUtils.getHighResArtwork(track.albumArtUrl),
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 errorWidget: (_, __, ___) => Container(
-                                  color: Colors.grey[900],
+                                  color: Colors.white.withValues(alpha: 0.04),
                                   child: const Icon(Icons.album_rounded, color: Colors.white30),
                                 ),
                               ),
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -728,8 +729,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 Text(
                                   track.artistName,
                                   style: GoogleFonts.plusJakartaSans(
-                                    color: Colors.white.withValues(alpha: 0.50),
+                                    color: Colors.white.withValues(alpha: 0.45),
                                     fontSize: 12,
+                                    fontWeight: FontWeight.w400,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -751,98 +753,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  Widget _buildSongsContent(BuildContext context, MusicProvider musicProvider) {
-    final tracks = musicProvider.recentlyPlayed;
-    if (tracks.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: Text(
-            "No recently played songs",
-            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
-          ),
-        ),
-      );
-    }
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final track = tracks[index];
-          final isPlaying = musicProvider.currentTrack?.id == track.id && musicProvider.isPlaying;
-          return TrackTile(
-            track: track,
-            isPlaying: isPlaying,
-            isRecentlyPlayedContext: true,
-            onTap: () => musicProvider.playTrack(track, playlistTracks: tracks),
-          );
-        },
-        childCount: tracks.length,
-      ),
-    );
-  }
-
-  Widget _buildDownloadedContent(BuildContext context, MusicProvider musicProvider) {
-    return FutureBuilder<List<Track>>(
-      future: musicProvider.getDownloadedTracks(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
-        }
-        final tracks = snapshot.data!;
-        if (tracks.isEmpty) {
-          return SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Text(
-                "No downloaded songs",
-                style: GoogleFonts.plusJakartaSans(color: Colors.white54),
-              ),
-            ),
-          );
-        }
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final track = tracks[index];
-              return ListTile(
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    track.albumArtUrl,
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.music_note, color: Colors.white54),
-                  ),
-                ),
-                title: Text(
-                  track.trackName,
-                  style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  track.artistName,
-                  style: GoogleFonts.plusJakartaSans(color: Colors.white54),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => musicProvider.playOfflineTrack(track, contextList: tracks),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.white38),
-                  onPressed: () async {
-                    await musicProvider.deleteDownloadedTrack(track.id);
-                    if (mounted) setState(() {});
-                  },
-                ),
-              );
-            },
-            childCount: tracks.length,
-          ),
-        );
-      },
-    );
-  }
+  // ---------------------------------------------------------------------------
+  // PLAYLIST MANAGEMENT & CONTEXT DIALOGS (Zero Regressions)
+  // ---------------------------------------------------------------------------
 
   void _showCreatePlaylistDialog(BuildContext context) {
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
@@ -851,11 +764,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: const Color(0xFF16181F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Text(
           'Create Playlist',
-          style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w800),
+          style: GoogleFonts.plusJakartaSans(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         content: TextField(
           controller: nameController,
@@ -866,8 +782,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
             labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             hintText: 'My Awesome Mix',
             hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent.withValues(alpha: 0.5))),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: accent.withValues(alpha: 0.5)),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: accent),
+            ),
           ),
           textCapitalization: TextCapitalization.words,
           onSubmitted: (v) {
@@ -880,7 +800,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+            ),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -934,11 +857,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 ListTile(
                   leading: const Icon(Icons.edit_rounded, color: Colors.white),
-                  title: Text('Rename', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600)),
+                  title: Text(
+                    'Rename',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _showRenamePlaylistDialog(context, playlist);
@@ -946,7 +882,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.delete_rounded, color: Colors.redAccent),
-                  title: Text('Delete', style: GoogleFonts.plusJakartaSans(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                  title: Text(
+                    'Delete',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _showDeleteConfirmation(context, playlist);
@@ -966,9 +908,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Rename Playlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        backgroundColor: const Color(0xFF16181F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text(
+          'Rename Playlist',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
         content: TextField(
           controller: c,
           autofocus: true,
@@ -1004,8 +949,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: const Color(0xFF16181F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: const Text('Delete Playlist', style: TextStyle(color: Colors.white)),
         content: Text('Delete "${playlist.name}"?', style: const TextStyle(color: Colors.white70)),
         actions: [
