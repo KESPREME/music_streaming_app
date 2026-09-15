@@ -56,6 +56,8 @@ dependency_overrides: {}
 
 flutter:
   uses-material-design: true
+  shaders:
+    - shaders/liquid_orb.frag
   assets:
     - assets/images/
     - assets/po_token.html
