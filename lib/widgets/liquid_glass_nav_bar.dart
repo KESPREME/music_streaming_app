@@ -60,6 +60,15 @@ class LiquidGlassNavBar extends StatelessWidget {
     final targetAccent = ColorUtils.getVibrantAccent(palette, scheme.primary);
     final hasTrack = musicProvider?.currentTrack != null;
     final hideMiniPlayer = musicProvider?.hideMiniPlayer ?? false;
+    // Deliberately NOT gated on isPlayerExpanded, even though the accessory is
+    // fully covered once the player is open.
+    //
+    // Tempting, and wrong: the flag flips at the halfway point of the opening
+    // flight, so gating on it reconfigures the glass bar - re-measuring it,
+    // re-laying the tabs out and re-running its blur - in the middle of the
+    // transition. Trading a permanently-visible widget for a relayout of the
+    // most expensive widget in the app at the worst possible moment is a bad
+    // bargain. Left alone.
     final bottomAccessoryEnabled = hasTrack && !hideMiniPlayer;
 
     return TweenAnimationBuilder<Color?>(
