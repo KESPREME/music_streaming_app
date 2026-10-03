@@ -1,6 +1,9 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
+import '../core/perf_trace.dart';
 import '../providers/theme_provider.dart'; // Add theme provider
 import '../widgets/mini_player.dart'; // Glass mini player
 import '../widgets/material_you_playback_bar.dart'; // Material You playback bar
@@ -21,6 +24,31 @@ class GlobalMusicOverlay extends StatefulWidget {
 class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     with SingleTickerProviderStateMixin {
   late AnimationController _panelController;
+
+  /// Scale of the player card when it is fully collapsed into the mini pill.
+  ///
+  /// Not 0: at zero the card has no height and the growth reads as a fade from
+  /// nothing. ~0.3 puts the collapsed card at roughly the height of the pill
+  /// region while still travelling a long way, which is the motion the
+  /// reference actually has.
+  static const double _kPanelMinScale = 0.30;
+
+  /// How far above the screen bottom the collapsed card sits, so its bottom edge
+  /// lands on the mini pill instead of the screen edge.
+  ///
+  /// Measured on device: the pill's bottom edge sits ~81dp up (nav bar height
+  /// plus the pill's own inset), with the pill ~36dp tall.
+  static const double _kPanelPillInset = 81;
+
+  /// Corner radius of the card at the collapsed end. Full bleed at the open end.
+  static const double _kPanelStartRadius = 28;
+
+  /// Pill <-> player duration.
+  ///
+  /// Measured off the reference at ~290ms. The old 400ms felt slow precisely
+  /// because it was: the card spent the extra time parked at rest instead of
+  /// travelling.
+  static const Duration _kPanelDuration = Duration(milliseconds: 290);
 
   // Height of the phone screen
   double get screenHeight => MediaQuery.of(context).size.height;
@@ -58,8 +86,9 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     super.initState();
     _panelController = AnimationController(
         vsync: this,
-        // FIX: Changed from 0ms to 300ms for smooth panel animations
-        duration: const Duration(milliseconds: 300),
+        // Matches [_kPanelDuration]; [_animatePanelTo] is what actually drives
+        // it, this is only here so the controller is never left at its default.
+        duration: _kPanelDuration,
         lowerBound: 0.0,
         upperBound: 1.0,
         value: 0.0);
@@ -158,9 +187,17 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   }
 
   void _animatePanelTo(double target) {
-    _panelController.animateTo(target,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic);
+    final label = target > 0.5 ? 'pill-to-player' : 'player-to-pill';
+    PerfTrace.mark(label);
+    // Curves.linear for the geometry, deliberately. The reference's edge
+    // trajectory measured as constant-velocity: no acceleration ramp, no
+    // overshoot, no settle. easeOutCubic here read as a slow start, and
+    // easeInOut read as a hang followed by a lurch. The easing that does exist
+    // lives on the opacity, above, where it belongs.
+    _panelController
+        .animateTo(target,
+            duration: _kPanelDuration, curve: Curves.linear)
+        .then((_) => PerfTrace.summary(label));
     // Provider update happens in listener
   }
 
@@ -186,11 +223,25 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                 animation: _panelController,
                 builder: (context, child) {
                   final value = _panelController.value;
-                  final panelOffset = screenHeight * (1.0 - value);
+                  // Geometry follows the reference: the card grows out of the
+                  // mini pill about its BOTTOM edge, so the bottom stays put and
+                  // the top edge does the travelling. A slide moves every pixel
+                  // equally, which is why the old version never read as "one
+                  // card expanding" no matter how the curve was tuned.
+                  final panelScale =
+                      lerpDouble(_kPanelMinScale, 1.0, value)!;
+                  final panelInset =
+                      lerpDouble(_kPanelPillInset, 0.0, value)!;
+                  // Opacity is eased separately from the geometry: the measured
+                  // motion is constant-velocity, but the content has to be legible
+                  // early, so the fade finishes in the first third.
+                  final panelOpacity =
+                      const Interval(0.0, 0.34, curve: Curves.easeOut)
+                          .transform(value);
                   // FIX: Also hide mini player when bottom sheet flag is set
                   final double miniPlayerOpacity = musicProvider.hideMiniPlayer
                       ? 0.0
-                      : (1.0 - (value * 3)).clamp(0.0, 1.0);
+                      : (1.0 - (value * 2.2)).clamp(0.0, 1.0);
 
                   return Stack(
                     children: [
@@ -256,52 +307,74 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                       ),
 
 
-                      // B. Now Playing Screen (Slides Up)
+                      // B. Now Playing Screen (scales up out of the mini pill)
                       Positioned.fill(
                         child: IgnorePointer(
                           ignoring: value < 0.02,
                           child: Opacity(
-                            opacity: value.clamp(0.0, 1.0),
+                            opacity: panelOpacity,
+                            // Bottom-anchored scale plus a rounded-card clip.
+                            // The inset keeps the collapsed card sitting where
+                            // the pill actually is, so the cross-fade at the
+                            // end of the flight lines up instead of jumping up
+                            // from the screen edge.
                             child: Transform.translate(
-                              offset: Offset(0, panelOffset),
-                              child: GestureDetector(
-                                onVerticalDragUpdate: (musicProvider
-                                            .playerNavigatorKey.currentState
-                                            ?.canPop() ??
-                                        false)
-                                    ? null
-                                    : _handleVerticalDragUpdate,
-                                onVerticalDragEnd: (musicProvider
-                                            .playerNavigatorKey.currentState
-                                            ?.canPop() ??
-                                        false)
-                                    ? null
-                                    : _handleVerticalDragEnd,
-                                child: HeroControllerScope.none(
-                                  child: Navigator(
-                                    key: musicProvider.playerNavigatorKey,
-                                    observers: [_playerNavObserver],
-                                    onGenerateRoute: (settings) {
-                                      // FIX: Added null check for currentTrack
-                                      final track = musicProvider.currentTrack;
-                                      if (track == null) {
-                                        return MaterialPageRoute(
-                                          builder: (context) =>
-                                              const SizedBox.shrink(),
-                                        );
-                                      }
-                                      return MaterialPageRoute(
-                                        builder: (context) => Material(
-                                          elevation: 0,
-                                          color: Colors.transparent,
-                                          child: ThemedNowPlayingScreen(
-                                            track: track,
-                                            onMinimize: () =>
-                                                _animatePanelTo(0.0),
-                                          ),
+                              offset: Offset(0, -panelInset),
+child: Transform.scale(
+                                scale: panelScale,
+                                alignment: Alignment.bottomCenter,
+                                // The rounded clip is not decoration: measured,
+                                // removing it *raised* mean raster from 7.8ms to
+                                // 10.7ms per frame. Clipping to the card lets
+                                // the compositor cull to the rounded region;
+                                // an unclipped full-screen rect rasterises all
+                                // of it. Keep it.
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(
+                                    lerpDouble(_kPanelStartRadius, 0.0, value)!,
+                                  ),
+                                  child: GestureDetector(
+                                    onVerticalDragUpdate: (musicProvider
+                                              .playerNavigatorKey.currentState
+                                              ?.canPop() ??
+                                          false)
+                                      ? null
+                                      : _handleVerticalDragUpdate,
+                                  onVerticalDragEnd: (musicProvider
+                                              .playerNavigatorKey.currentState
+                                              ?.canPop() ??
+                                          false)
+                                      ? null
+                                      : _handleVerticalDragEnd,
+                                  child: HeroControllerScope.none(
+                                    child: RepaintBoundary(
+                                      child: Navigator(
+                                        key: musicProvider.playerNavigatorKey,
+                                        observers: [_playerNavObserver],
+                                        onGenerateRoute: (settings) {
+                                            // FIX: Added null check for currentTrack
+                                            final track = musicProvider.currentTrack;
+                                            if (track == null) {
+                                              return MaterialPageRoute(
+                                                builder: (context) =>
+                                                    const SizedBox.shrink(),
+                                              );
+                                            }
+                                            return MaterialPageRoute(
+                                              builder: (context) => Material(
+                                                elevation: 0,
+                                                color: Colors.transparent,
+                                                child: ThemedNowPlayingScreen(
+                                                  track: track,
+                                                  onMinimize: () =>
+                                                      _animatePanelTo(0.0),
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    },
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -309,8 +382,8 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                           ),
                         ),
                       ),
-                    ],
-                  );
+                      ],
+                    );
                 }),
         ],
       ),

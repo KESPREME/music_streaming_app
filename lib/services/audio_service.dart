@@ -593,8 +593,10 @@ class AudioService {
     // playing. Awaiting it then wedges the whole playback pipeline: the track
     // is audible but nothing after this line ever runs (no window fill, no
     // station, no state update), and every later tap piles another stuck call
-    // on top. Real failures still surface through the playback error listener.
-    unawaited(_audioPlayer.play().then((_) {
+    // on top. Real failures still surface through the playback error listener,
+    // and a play that silently fails to activate the session is retried
+    // inside [_requestPlay].
+    unawaited(_requestPlay().then((_) {
       if (kDebugMode) debugPrint('AudioService: play() returned');
     }));
   }
@@ -702,18 +704,69 @@ class AudioService {
     }
   }
 
-  Future<void> resume() async {
-      // If the player has completed, it means the stream was likely closed.
-      if (_audioPlayer.processingState == ProcessingState.completed) {
-          // If we are resumed from "Completed" state, we might need to check if we are on a Dummy.
-          // But play() normally handles new tracks.
-          // If we just resume same track:
-        if (kDebugMode) debugPrint("AudioService: Stream completed, seeking to current position to resume.");
-        await _audioPlayer.seek(_audioPlayer.position);
+  /// Asks the player to start, and insists that it actually did.
+  ///
+  /// `just_audio`'s [AudioPlayer.play] broadcasts `playing: true`
+  /// optimistically and then *reverts* to false when
+  /// `audioSession.setActive(true)` fails (just_audio.dart L1117-1120). It does
+  /// not retry and it does not raise: there is no error for a listener to see.
+  /// The session is routinely not ready yet immediately after a cold start or
+  /// a resume, so the optimistic play evaporated and the app sat there paused
+  /// with nothing wrong on screen - the only cure being a tap on play.
+  ///
+  /// So: issue the play, then check whether it took, and re-issue while it did
+  /// not. [_playRequestSeq] makes a newer request invalidate an older retry loop
+  /// so a fast tap-through cannot leave two loops fighting.
+  Future<void> _requestPlay({int attempts = 3}) async {
+    final seq = ++_playRequestSeq;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      if (_audioPlayer.playing) return;
+      try {
+        // play() completes on the platform play request, which can hang if the
+        // session never activates. The timeout keeps the caller moving.
+        await _audioPlayer.play().timeout(const Duration(seconds: 4));
+      } catch (_) {
+        // Fall through to the retry below.
       }
-      // Same rule as in [playSources]: `play()` can hang while audio is
-      // genuinely playing, so it is never awaited bare.
-      unawaited(_audioPlayer.play());
+      if (seq != _playRequestSeq) return;
+      if (_audioPlayer.playing) return;
+      if (attempt == attempts - 1) break;
+      if (kDebugMode) {
+        debugPrint('AudioService: play() did not take '
+            '(attempt ${attempt + 1}/$attempts) - session not active, retrying');
+      }
+      await Future<void>.delayed(Duration(milliseconds: 150 * (attempt + 1)));
+    }
+    if (kDebugMode && !_audioPlayer.playing) {
+      debugPrint('AudioService: gave up asking the player to start');
+    }
+  }
+
+  int _playRequestSeq = 0;
+
+  /// Steps the cursor onto the entry after a dry-window repair.
+  ///
+  /// Deliberately not "call play() and hope the finished sequence continues":
+  /// a completed player will not continue by itself, and resuming a completed
+  /// item restarts *that item* from zero - the "the song played twice" report.
+  /// Moving the cursor is the only unambiguous way to mean "carry on".
+  Future<bool> advanceIntoWindow() async {
+    if (!_audioPlayer.hasNext) return false;
+    await _audioPlayer.seekToNext();
+    await _requestPlay();
+    return true;
+  }
+
+  Future<void> resume() async {
+    // If the player has completed, the stream was likely closed. There is
+    // nothing to resume *into* unless the window still holds a successor.
+    if (_audioPlayer.processingState == ProcessingState.completed) {
+      if (await advanceIntoWindow()) return;
+      // Genuinely the end of everything: the only thing left to do is replay
+      // the current item from the top, which is what a play press means here.
+      await _audioPlayer.seek(Duration.zero);
+    }
+    await _requestPlay();
   }
 
   Future<void> stop() async {

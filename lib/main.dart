@@ -10,6 +10,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:video_player_win/video_player_win.dart';
 
 import 'core/navigation/root_navigator.dart';
+import 'core/perf_trace.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/audio_output_service.dart';
@@ -41,6 +42,8 @@ class AppColors {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Opt-in only (--dart-define=PERF_TRACE=true). No-op in every normal build.
+  PerfTrace.install();
 
   // Framework errors reach logcat through this hook. Without it a widget
   // assertion only ever appears in the on-screen banner, with no stack, which
@@ -58,6 +61,12 @@ void main() async {
   // FIX: Request high refresh rate for smoother 120Hz animations
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   
+  // These two are initialised separately on purpose. Sharing one try/catch
+  // meant a failing EqualizerService reported itself as an audio init failure,
+  // and a failing JustAudioBackground.init - no media session, so the player
+  // cannot start - was only ever debugPrint'd, which release builds strip.
+  // The result was a cold start with a silently broken session and nothing on
+  // screen to explain why nothing played.
   try {
     // Initialize JustAudioBackground
     await JustAudioBackground.init(
@@ -65,11 +74,20 @@ void main() async {
       androidNotificationChannelName: 'Music Playback',
       androidNotificationOngoing: true,
     );
+  } catch (e, s) {
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: e,
+      stack: s,
+      library: 'mine_music/audio',
+      context: ErrorDescription('while setting up the media session'),
+    ));
+  }
 
+  try {
     // Initialize Equalizer Service
     await EqualizerService().initialize();
-  } catch (e) {
-    debugPrint("Initialization Error: $e");
+  } catch (e, s) {
+    debugPrint('EqualizerService init failed (non-fatal): $e');
   }
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

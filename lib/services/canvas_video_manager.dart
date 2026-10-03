@@ -13,9 +13,46 @@ import 'innertube/innertube_service.dart';
 /// Shares a single hardware-accelerated [VideoPlayerController] across both
 /// the full-screen blurred background backdrop and the hero motion canvas banner,
 /// matching BitChord's [CanvasArtworkPlayer] and [ArtworkMeshBackdrop] architecture.
-class CanvasVideoManager {
-  CanvasVideoManager._();
+class CanvasVideoManager with WidgetsBindingObserver {
+  CanvasVideoManager._() {
+    // The canvas is a hardware video texture owned by a singleton, so it has
+    // to find out about the app going away. Without this the controller is
+    // left holding a decoder and a SurfaceTexture across the stop/start cycle:
+    // pause()/resume() were only ever driven by the lyrics/queue navigation
+    // inside NowPlayingScreen, never by the app itself. A surface that is not
+    // re-acquired on the way back can leave the texture layer blank - and a
+    // blanked texture layer on Android takes the whole compositor with it, so
+    // the app comes back to a full black screen that only a force-stop clears.
+    WidgetsBinding.instance.addObserver(this);
+  }
   static final CanvasVideoManager instance = CanvasVideoManager._();
+
+  /// True between `inactive` and the next `resumed`.
+  ///
+  /// The gate matters because the navigation-driven [pause] calls must not be
+  /// undone by a resume that was only a notification shade or a permission
+  /// dialog - otherwise the video keeps decoding behind the player screen.
+  bool _backgrounded = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        _backgrounded = true;
+        pause();
+        break;
+      case AppLifecycleState.resumed:
+        if (!_backgrounded) return;
+        _backgrounded = false;
+        resume();
+        break;
+      case AppLifecycleState.detached:
+        _backgrounded = false;
+        break;
+    }
+  }
 
   VideoPlayerController? _controller;
   String? _currentTrackId;
@@ -189,12 +226,29 @@ class CanvasVideoManager {
   }
 
   /// Resumes playback of the canvas video (e.g. when returning to normal screen).
+  ///
+  /// A controller that survived the background cycle can come back
+  /// initialised-but-never-started or wedged on a dead surface. Restarting it
+  /// is cheap; leaving it there is what blacked the screen out. [setPlaying]
+  /// re-syncs the loop once the controller reports a position again.
   void resume() {
     try {
-      if (_controller != null && _controller!.value.isInitialized && !_controller!.value.isPlaying) {
-        _controller?.play();
+      final c = _controller;
+      if (c == null) return;
+      if (c.value.isInitialized) {
+        if (!c.value.isPlaying) c.play();
+        return;
       }
-    } catch (_) {}
+      // Initialisation did not survive: drop the dead controller so the next
+      // attach rebuilds a live one instead of reusing this husk.
+      if (kDebugMode) {
+        debugPrint('CanvasVideoManager: controller did not survive the '
+            'background cycle - detaching so it can be rebuilt');
+      }
+      unawaited(detach());
+    } catch (e) {
+      debugPrint('CanvasVideoManager: resume error: $e');
+    }
   }
 
   /// Detaches and disposes the current controller.

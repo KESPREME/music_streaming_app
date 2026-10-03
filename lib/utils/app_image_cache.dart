@@ -14,4 +14,13 @@ abstract final class AppImageCache {
   /// Hero size for Now Playing screen, explore full card artwork, and album headers.
   /// Decodes at 800x800 (~2.5 MB in RAM).
   static const int heroMemCache = 800;
+
+  /// The shared-element artwork on its way between the hero and the mini pill.
+  ///
+  /// This is the size that actually matters for smoothness. The pill is 46dp,
+  /// but it used to render an [heroMemCache] (800px) bitmap and let the GPU
+  /// resample it down on every frame of the flight - 120 times a second - while
+  /// a second 800px copy for the hero was alive at the same time. 256 keeps the
+  /// smallest copy sharp at pill scale and roughly 10x cheaper to sample.
+  static const int morphMemCache = 256;
 }

@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../models/track.dart';
+import '../core/perf_trace.dart';
 import '../providers/music_provider.dart';
 import '../services/audio_output_service.dart';
 import '../services/canvas_video_manager.dart';
@@ -159,6 +160,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   /// Horizontal travel on the artwork that counts as "show me the lyrics".
   static const double _kArtSwipeThreshold = 56;
+
+  /// Corner radius at the hero end of the morph. The reference animates the
+  /// radius rather than holding it, so the small end reads as a card.
+  static const double _kHeroStartRadius = 20;
+
+  /// Hoisted so the fade shaders are not re-allocated per frame.
+  static const LinearGradient _kOpaqueFade = LinearGradient(
+    colors: [Colors.white, Colors.white],
+  );
+  static const LinearGradient _kBottomFade = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Colors.white, Colors.white, Colors.transparent],
+    stops: [0.0, 0.58, 1.0],
+  );
 
   /// Accumulated artwork drag. Read only on pointer-up, so a swipe that the
   /// PageView also claims cannot double-fire.
@@ -507,7 +523,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Base still album art blur
+                        // Base still album art blur.
+                        //
+                        // The real blur is back: replacing it with a tiny
+                        // decode + upscale was cheaper on paper but visibly
+                        // degraded the wash, and it bought almost nothing —
+                        // this subtree sits inside its own RepaintBoundary, so
+                        // the blur rasterises once and is not what was costing
+                        // the morph its frames.
                         if (currentTrack.albumArtUrl.isNotEmpty)
                           Transform.scale(
                             scale: 1.6,
@@ -550,14 +573,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                     opacity: isRendered ? 1.0 : 0.0,
                                     duration: const Duration(milliseconds: 400),
                                     curve: Curves.easeOutCubic,
-                                    child: Transform.scale(
-                                      scale: 1.35,
-                                      alignment: Alignment.center,
-                                      child: ImageFiltered(
-                                        imageFilter: ImageFilter.blur(
-                                          sigmaX: 55,
-                                          sigmaY: 55,
-                                        ),
+child: Transform.scale(
+                                        scale: 1.35,
+                                        alignment: Alignment.center,
+                                        child: ImageFiltered(
+                                          imageFilter: ImageFilter.blur(
+                                            sigmaX: 55,
+                                            sigmaY: 55,
+                                          ),
                                         child: SizedBox.expand(
                                           child: FittedBox(
                                             fit: BoxFit.cover,
@@ -942,42 +965,49 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         _toggleLyrics();
                       },
                       child: ClipRRect(
-                      borderRadius:
-                          BorderRadius.circular(lerpDouble(0.0, 8.0, t)!),
-                      child: ShaderMask(
-                        blendMode: BlendMode.dstIn,
-                        shaderCallback: (bounds) {
-                          if (t >= 0.05) {
-                            return const LinearGradient(
-                              colors: [Colors.white, Colors.white],
-                            ).createShader(bounds);
-                          }
-                          return const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white,
-                              Colors.white,
-                              Colors.transparent,
-                            ],
-                            stops: [0.0, 0.58, 1.0],
-                          ).createShader(bounds);
-                        },
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            SizedBox.expand(
-                              child: _buildAlbumArtImage(currentTrack),
-                            ),
-                            // In-place animated motion canvas overlay
-                            if (musicProvider.animatedCanvasEnabled)
-                              Positioned.fill(
-                                child: InPlaceCanvasPlayer(
-                                  track: currentTrack,
-                                  isPlaying: isPlaying,
+                      // Radius ramp is part of the motion: the small end has to
+                      // read as a rounded card, not a shrunken rectangle.
+                      borderRadius: BorderRadius.circular(
+                        lerpDouble(_kHeroStartRadius, 8.0, t)!,
+                      ),
+                      // Own repaint boundary. Without one this subtree is
+                      // re-rasterised on every frame of the flight; with one,
+                      // the artwork rasterises once and only the layer matrix
+                      // changes. This is the single biggest win for the morph.
+                      child: RepaintBoundary(
+                        child: ShaderMask(
+                          blendMode: BlendMode.dstIn,
+                          // Hoisted: building these gradients inside the
+                          // callback allocated two shader objects per frame
+                          // for the whole flight.
+                          shaderCallback: (bounds) => (t >= 0.05
+                                  ? _kOpaqueFade
+                                  : _kBottomFade)
+                              .createShader(bounds),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              SizedBox.expand(
+                                child: _buildAlbumArtImage(
+                                  currentTrack,
+                                  // Small once it is on its way to the pill:
+                                  // an 800px bitmap resampled into a 46dp box
+                                  // is pure waste for 380ms.
+                                  cacheSize: t > 0.5
+                                      ? AppImageCache.morphMemCache
+                                      : AppImageCache.heroMemCache,
                                 ),
                               ),
-                          ],
+                              // In-place animated motion canvas overlay
+                              if (musicProvider.animatedCanvasEnabled)
+                                Positioned.fill(
+                                  child: InPlaceCanvasPlayer(
+                                    track: currentTrack,
+                                    isPlaying: isPlaying,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1687,11 +1717,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       _currentTab = 3;
       _deckVisible = true;
     });
-    if (_pageController.hasClients) _pageController.jumpToPage(1);
+if (_pageController.hasClients) _pageController.jumpToPage(1);
     if (miniLanded) {
       _queueMorphController.value = 1.0;
+      PerfTrace.summary('queue-morph-open-instant');
     } else {
-      _queueMorphController.forward(from: 0);
+      PerfTrace.mark('queue-morph-open');
+      _queueMorphController
+          .forward(from: 0)
+          .then((_) => PerfTrace.summary('queue-morph-open'));
     }
     // The collapse trackers belong to the page you just left. Carrying their
     // state across meant returning to a scrolled-down queue with the deck
@@ -1711,7 +1745,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       _currentTab = provider.animatedCanvasEnabled ? 1 : -1;
       _deckVisible = true;
     });
+    PerfTrace.mark('queue-morph-close');
     unawaited(_queueMorphController.reverse().then((_) {
+      PerfTrace.summary('queue-morph-close');
       if (!mounted || gen != _queueMorphGen) return;
       if (_pageController.hasClients) _pageController.jumpToPage(0);
       setState(() => _queueMorphOpen = false);
@@ -1783,7 +1819,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       ).createShader(bounds);
                     },
                     child: SizedBox.expand(
-                      child: _buildAlbumArtImage(currentTrack),
+                      child: _buildAlbumArtImage(
+                      // This copy only ever lives in flight, and it only ever
+                      // grows smaller. Decoding it at hero size meant two
+                      // 800px textures alive for the same image mid-morph.
+                      currentTrack,
+                      cacheSize: AppImageCache.morphMemCache,
+                    ),
                     ),
                   ),
                 ),
@@ -2016,20 +2058,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     );
   }
 
-  Widget _buildAlbumArtImage(Track track, {BoxFit fit = BoxFit.cover}) {
+  Widget _buildAlbumArtImage(
+    Track track, {
+    BoxFit fit = BoxFit.cover,
+    int? cacheSize,
+  }) {
     final art = ImageQualityUtils.getHighResArtwork(track.albumArtUrl);
     if (art.isEmpty) return _buildArtPlaceholder();
     if (!art.contains('://')) {
       final f = File(art);
       if (f.existsSync()) return Image.file(f, fit: fit);
     }
-      return CachedNetworkImage(
-        imageUrl: art,
-        fit: fit,
-        memCacheWidth: AppImageCache.heroMemCache,
-        memCacheHeight: AppImageCache.heroMemCache,
-        errorWidget: (_, __, ___) => _buildArtPlaceholder(),
-      );
+    final size = cacheSize ?? AppImageCache.heroMemCache;
+    return CachedNetworkImage(
+      imageUrl: art,
+      fit: fit,
+      memCacheWidth: size,
+      memCacheHeight: size,
+      errorWidget: (_, __, ___) => _buildArtPlaceholder(),
+    );
   }
 
   Widget _buildArtPlaceholder() {

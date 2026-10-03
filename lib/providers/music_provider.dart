@@ -2638,6 +2638,22 @@ class MusicProvider
         return;
       }
 
+      // The window can still hold the next entry when the player reports
+      // `completed` - an entry that fails to load leaves the sequence finished
+      // with its successor queued behind it. Appending a second copy of a track
+      // the window already has is exactly how one song came to play twice: once
+      // from its original slot, then again from the duplicate. So check first
+      // and move the cursor onto the copy that is already there.
+      if (_audioService.windowTrackIds.contains(next.id)) {
+        _dryRepairFor = null;
+        if (kDebugMode) {
+          debugPrint('MusicProvider: next "${next.trackName}" is already in '
+              'the window - advancing onto it instead of appending');
+        }
+        await _audioService.advanceIntoWindow();
+        return;
+      }
+
       final source = await _sourceForTrack(next);
       if (superseded()) return;
       if (source == null) {
@@ -2656,14 +2672,19 @@ class MusicProvider
 
       // Appending to a finished sequence does not restart it. The repair only
       // runs when the track genuinely finished while playing - a paused player
-      // never reaches `completed` - so resuming here cannot override a pause
-      // the listener asked for. Without it the next song sat at 0:00 waiting.
+      // never reaches `completed` - so moving on here cannot override a pause
+      // the listener asked for. Stepping the cursor rather than resuming is
+      // what keeps the finished track from being replayed from zero.
       if (superseded()) return;
       try {
-        await _audioService.resume();
+        final advanced = await _audioService.advanceIntoWindow();
+        if (!advanced && kDebugMode) {
+          debugPrint('MusicProvider: appended but the window still reports no '
+              'successor - leaving playback alone');
+        }
       } catch (e) {
         if (kDebugMode) {
-          debugPrint('MusicProvider: dry-window resume failed: $e');
+          debugPrint('MusicProvider: dry-window advance failed: $e');
         }
       }
     } catch (e) {
@@ -3086,17 +3107,46 @@ class MusicProvider
 
       // Resolve stream URL via the racing resolution service
       // (InnerTube ANDROID_VR vs Saavn 320kbps, first validated wins).
-      final resolved = await _streamResolution.resolve(ResolveRequest(
-        videoId: playableId,
-        title: effectiveTrack.trackName,
-        artist: effectiveTrack.artistName,
-        durationMs: effectiveTrack.durationMs,
-      ));
+      //
+      // Retried before giving up. A cold start is the single worst moment for
+      // this call - the DNS cache is empty, the socket is new, and both racing
+      // sources have to be dialled from scratch - so a first-resolve failure
+      // used to end in [_handlePlaybackError] -> `skipToNext()`, which threw the
+      // listener's own song away one second after they asked for it. The skip is
+      // still the fallback; it just is not the first thing we reach for.
+      ResolvedStream? resolved;
+      Object? lastResolveError;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        if (gen != _playbackGeneration) return;
+        try {
+          resolved = await _streamResolution.resolve(ResolveRequest(
+            videoId: playableId,
+            title: effectiveTrack.trackName,
+            artist: effectiveTrack.artistName,
+            durationMs: effectiveTrack.durationMs,
+          ));
+        } catch (e) {
+          lastResolveError = e;
+          resolved = null;
+        }
+        if (gen != _playbackGeneration) return;
+        if (resolved != null && resolved!.url.isNotEmpty) break;
+        if (attempt == 2) break;
+        if (kDebugMode) {
+          debugPrint('MusicProvider: resolve failed for '
+              '"${effectiveTrack.trackName}" (attempt ${attempt + 1}/3)'
+              '${lastResolveError == null ? '' : ' - $lastResolveError'}');
+        }
+        // Drop any negative cache entry before asking again.
+        _streamResolution.invalidate(playableId);
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
 
       if (gen != _playbackGeneration) return;
 
       if (resolved == null || resolved.url.isEmpty) {
-        throw Exception('Failed to get stream: all sources exhausted');
+        throw Exception(
+            'Failed to get stream: all sources exhausted${lastResolveError == null ? '' : ' ($lastResolveError)'}');
       }
       if (kDebugMode) {
         debugPrint('MusicProvider: Stream resolved via ${resolved.source}');
