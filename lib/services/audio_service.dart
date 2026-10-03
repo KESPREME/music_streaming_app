@@ -696,6 +696,16 @@ class AudioService {
   }
 
   Future<void> pause() async {
+    // Retires any in-flight [_requestPlay] retry loop before pausing.
+    //
+    // That loop's only cancellation is [_playRequestSeq], and until now only a
+    // newer *play* request bumped it - so a pause did not stop it. The loop
+    // wakes up after the pause, checks `playing`, finds false (which the pause
+    // is exactly why it finds), and re-issues play. The song pauses for about a
+    // second and then carries on, and only the press that happens to land after
+    // the loop exhausts its attempts sticks - which is why it took two or three
+    // taps to pause.
+    _playRequestSeq++;
     try {
       await _audioPlayer.pause();
     } catch (e) {
@@ -720,6 +730,12 @@ class AudioService {
   Future<void> _requestPlay({int attempts = 3}) async {
     final seq = ++_playRequestSeq;
     for (var attempt = 0; attempt < attempts; attempt++) {
+      // Checked *before* issuing play, not only after. The post-play check alone
+      // still lets one spurious play() through: a pause landing during the
+      // backoff delay bumps the sequence, but the loop had already decided to
+      // play before it woke up, so it would resume a track the user had just
+      // paused and only notice afterwards.
+      if (seq != _playRequestSeq) return;
       if (_audioPlayer.playing) return;
       try {
         // play() completes on the platform play request, which can hang if the
@@ -770,6 +786,9 @@ class AudioService {
   }
 
   Future<void> stop() async {
+    // Same hole as pause(), one layer out: a retry loop that wakes after a stop
+    // would restart playback into a source that is being torn down.
+    _playRequestSeq++;
     try {
       _sourceEpoch++;
       cancelPendingRetry();
