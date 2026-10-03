@@ -7,6 +7,8 @@ uniform vec2 uSize;
 uniform float uTime;
 uniform float uProgress;
 uniform vec2 uTouch;
+uniform vec3 uTint;
+uniform float uUseTint;
 
 out vec4 fragColor;
 
@@ -212,6 +214,23 @@ void main() {
     vec3 specColor = vec3(0.6588, 0.8510, 1.0);
     vec3 canvasColor = vec3(0.0039, 0.0078, 0.0275);
     vec3 glowColor = mix(vec3(0.1216, 0.3137, 0.4627), vec3(0.0863, 0.5529, 1.0), progress);
+
+    // Apply dynamic album palette tinting if enabled (uUseTint > 0.0), else pure blue default
+    if (uUseTint > 0.01) {
+        float tintWeight = clamp(uUseTint, 0.0, 1.0);
+        vec3 tintDark = uTint * 0.15;
+        vec3 tintMid = uTint * 0.75;
+        vec3 tintVibrant = mix(uTint, vec3(1.0), 0.35);
+        vec3 tintLight = mix(uTint, vec3(1.0), 0.75);
+
+        colorA = mix(colorA, tintDark, tintWeight);
+        colorB = mix(colorB, tintMid, tintWeight);
+        colorC = mix(colorC, tintVibrant, tintWeight);
+        colorD = mix(colorD, tintLight, tintWeight);
+        shellMid = mix(shellMid, tintVibrant, tintWeight);
+        shellEdge = mix(shellEdge, tintMid, tintWeight);
+        glowColor = mix(glowColor, tintVibrant, tintWeight);
+    }
 
     float pd = length(uv) / contourRad;
 

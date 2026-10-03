@@ -115,8 +115,8 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 100));
 
-      // With isActive=false, eq bars must NOT be rendered
-      expect(find.byKey(const ValueKey('eq_bar_0')), findsNothing,
+      // With isActive=false, the equalizer must not be rendered at all
+      expect(find.byKey(const ValueKey('feed_eq')), findsNothing,
           reason: 'Inactive card must not animate equalizer or tick vsync');
 
       // Now switch isActive to true (user returns to Explore tab)
@@ -142,7 +142,7 @@ void main() {
       );
 
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byKey(const ValueKey('eq_bar_0')), findsOneWidget,
+      expect(find.byKey(const ValueKey('feed_eq')), findsOneWidget,
           reason: 'Active card should show equalizer when playing');
     });
 
@@ -172,7 +172,7 @@ void main() {
       );
 
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byKey(const ValueKey('eq_bar_0')), findsNothing,
+      expect(find.byKey(const ValueKey('feed_eq')), findsNothing,
           reason: 'Off-screen card must not render active equalizer');
     });
   });

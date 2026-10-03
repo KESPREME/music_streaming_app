@@ -9,6 +9,7 @@ import '../screens/login_screen.dart';
 import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 import '../widgets/material_you_elevated_card.dart';
+import '../widgets/lyric_providers_sheet.dart';
 
 /// Material You Settings Screen - NO BLUR, solid colors, Material 3 design
 class MaterialYouSettingsScreen extends StatelessWidget {
@@ -111,7 +112,14 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                     subtitle: '${musicProvider.cellularBitrate} kbps',
                     onTap: () => _showBitrateDialog(context, musicProvider, false, colorScheme),
                   ),
-
+                  _buildDivider(colorScheme),
+                  _buildListTile(
+                    context,
+                    icon: Icons.tune_rounded,
+                    title: 'Lyric Providers',
+                    subtitle: 'Reorder priority & toggle sources',
+                    onTap: () => LyricProvidersSheet.show(context, isMaterialYou: true),
+                  ),
                 ],
               ),
             ),
@@ -486,7 +494,6 @@ class MaterialYouSettingsScreen extends StatelessWidget {
   }
 
   void _showBitrateDialog(BuildContext context, MusicProvider musicProvider, bool isWifi, ColorScheme colorScheme) {
-    final currentBitrate = isWifi ? musicProvider.wifiBitrate : musicProvider.cellularBitrate;
     final List<int> options = isWifi ? [64, 128, 256, 320] : [32, 64, 128];
 
     showDialog(

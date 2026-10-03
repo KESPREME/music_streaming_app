@@ -5,12 +5,14 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../core/test_environment.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../services/canvas_resolution_service.dart';
 import '../../services/explore/explore_engine.dart';
 import '../../services/explore/explore_palette.dart';
+import '../../utils/app_image_cache.dart';
 
 /// Full-screen discovery card representing a song in the vertical feed.
 /// Features full-bleed blurred album art background or video canvas loop,
@@ -61,8 +63,7 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   bool _canvasReady = false;
   Timer? _canvasDebounceTimer;
 
-  bool get _isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+  bool get _isTesting => TestEnvironment.isTesting;
 
   bool get _isVisuallyActive => widget.isActive && widget.isCurrentTrack;
 
@@ -227,6 +228,7 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
                       // Animated Soundwave Equalizer (only when playing, matches video 00:00 - 01:13 & test suite)
                       if (activePlaying)
                         _FeedSoundwaveEqualizer(
+                          key: const ValueKey('feed_eq'),
                           animation: _eqAnim,
                           isPlaying: activePlaying,
                           color: accent,
@@ -444,6 +446,8 @@ class _BlurredAlbumArtBackground extends StatelessWidget {
                   imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
                   child: CachedNetworkImage(
                     imageUrl: backdrop,
+                    memCacheWidth: 300,
+                    memCacheHeight: 300,
                     fit: BoxFit.cover,
                     placeholder: (_, __) => const SizedBox.shrink(),
                     errorWidget: (_, __, ___) => const SizedBox.shrink(),
@@ -520,8 +524,7 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
   bool _isSeekingToLoop = false;
   Duration _highlightStart = Duration.zero;
 
-  bool get _isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+  bool get _isTesting => TestEnvironment.isTesting;
 
   @override
   void initState() {
@@ -651,7 +654,21 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
     }
     final c = _controller;
     if (c != null && _initialized) {
-      if (widget.isPlaying && !c.value.isPlaying) {
+      if (!widget.isPlaying && c.value.isPlaying) {
+        // Pause AND release the codec. On a hardware decoder, pause() alone
+        // leaves ExoPlayer's playback thread and MediaCodec_loop running,
+        // which keeps burning ~14% CPU on a tab the user cannot see.
+        // `await pause()` lets ExoPlayer tear the codec down; that await is
+        // what actually stops the work, so it must not be abandoned.
+        unawaited(c.pause().then((_) async {
+          if (!mounted || _controller != c) return;
+          try {
+            await c.setLooping(false);
+          } catch (_) {
+            // Decoder already released; nothing to restore.
+          }
+        }).catchError((_) {}));
+      } else if (widget.isPlaying && !c.value.isPlaying) {
         if (c.value.duration > Duration.zero &&
             (c.value.position >= c.value.duration ||
                 (c.value.duration - c.value.position) <=
@@ -666,8 +683,6 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
         } else {
           c.play();
         }
-      } else if (!widget.isPlaying && c.value.isPlaying) {
-        c.pause();
       }
     }
   }
@@ -687,6 +702,17 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
     if (c == null || !_initialized || !c.value.isInitialized) {
       return const SizedBox.shrink();
     }
+    // The texture keeps asking the raster thread to composite frames for a tab
+    // the user cannot see, which shows up as sustained `1.raster` load while
+    // off-screen. An Offstage subtree is not painted, so the texture is left
+    // untouched (no reload/tear-down) but stops feeding the compositor.
+    return Offstage(
+      offstage: !widget.isPlaying,
+      child: _buildVideoSurface(c),
+    );
+  }
+
+  Widget _buildVideoSurface(VideoPlayerController c) {
     return AnimatedOpacity(
       opacity: _initialized ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 600),
@@ -772,6 +798,8 @@ class _AlbumCover extends StatelessWidget {
           child: imageUrl.isNotEmpty
               ? CachedNetworkImage(
                   imageUrl: imageUrl,
+                  memCacheWidth: AppImageCache.heroMemCache,
+                  memCacheHeight: AppImageCache.heroMemCache,
                   fit: BoxFit.cover,
                   placeholder: (_, __) => Container(
                     color: const Color(0xFF1C1C1E),
@@ -804,6 +832,7 @@ class _AlbumCover extends StatelessWidget {
 /// Symmetrical 36-bar Soundwave Equalizer (matches video frames 00:00, 00:05, 00:13, 00:57).
 class _FeedSoundwaveEqualizer extends StatelessWidget {
   const _FeedSoundwaveEqualizer({
+    super.key,
     required this.animation,
     required this.isPlaying,
     required this.color,
@@ -816,7 +845,6 @@ class _FeedSoundwaveEqualizer extends StatelessWidget {
   static const int _barCount = 36;
   static const double _width = 285.0;
   static const double _maxHeight = 44.0;
-  static const double _minHeight = 4.0;
 
   // Precomputed Gaussian bell envelope for all 36 bars (never recalculates at runtime)
   static final List<double> _bellFactors = List.generate(_barCount, (i) {
@@ -830,45 +858,79 @@ class _FeedSoundwaveEqualizer extends StatelessWidget {
     return SizedBox(
       width: _width,
       height: _maxHeight,
-      child: AnimatedBuilder(
-        animation: animation,
-        builder: (context, _) {
-          final t = animation.value * 2 * pi;
-          final barColor = color.withValues(alpha: isPlaying ? 0.95 : 0.60);
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: List.generate(_barCount, (i) {
-              final bell = _bellFactors[i];
-
-              double height;
-              if (isPlaying) {
-                // Organic multi-harmonic sinusoidal pulsation
-                final wave1 = sin(t * 1.8 + i * 0.35);
-                final wave2 = cos(t * 2.4 - i * 0.45);
-                final wave3 = sin(t * 3.6 + i * 0.70);
-                final energy =
-                    ((wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) + 1.0) / 2.0;
-                height = _minHeight +
-                    (_maxHeight - _minHeight) * bell * (0.35 + 0.65 * energy);
-              } else {
-                // Resting baseline waveform
-                height = _minHeight + (_maxHeight * 0.45 - _minHeight) * bell;
-              }
-
-              return Container(
-                key: ValueKey('eq_bar_$i'),
-                width: 3.5,
-                height: height.clamp(_minHeight, _maxHeight),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(2.0),
-                  color: barColor,
-                ),
-              );
-            }),
-          );
-        },
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: const Size(_width, _maxHeight),
+          painter: _EqualizerPainter(
+            animation: animation,
+            isPlaying: isPlaying,
+            color: color,
+            bellFactors: _bellFactors,
+          ),
+        ),
       ),
     );
   }
+}
+
+class _EqualizerPainter extends CustomPainter {
+  final Animation<double> animation;
+  final bool isPlaying;
+  final Color color;
+  final List<double> bellFactors;
+  final Paint _barPaint = Paint()..style = PaintingStyle.fill;
+
+  _EqualizerPainter({
+    required this.animation,
+    required this.isPlaying,
+    required this.color,
+    required this.bellFactors,
+  }) : super(repaint: animation);
+
+  static const int _barCount = 36;
+  static const double _barWidth = 3.5;
+  static const double _maxHeight = 44.0;
+  static const double _minHeight = 4.0;
+  static const Radius _radius = Radius.circular(2.0);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = animation.value * 2 * pi;
+    _barPaint.color = color.withValues(alpha: isPlaying ? 0.95 : 0.60);
+
+    final totalBarsWidth = _barCount * _barWidth;
+    final totalGap = size.width - totalBarsWidth;
+    final gap = totalGap / (_barCount - 1);
+
+    final centerY = size.height / 2.0;
+
+    for (int i = 0; i < _barCount; i++) {
+      final bell = bellFactors[i];
+      double h;
+      if (isPlaying) {
+        final wave1 = sin(t * 1.8 + i * 0.35);
+        final wave2 = cos(t * 2.4 - i * 0.45);
+        final wave3 = sin(t * 3.6 + i * 0.70);
+        final energy = ((wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) + 1.0) / 2.0;
+        h = _minHeight + (_maxHeight - _minHeight) * bell * (0.35 + 0.65 * energy);
+      } else {
+        h = _minHeight + (_maxHeight * 0.45 - _minHeight) * bell;
+      }
+
+      final clampedH = h.clamp(_minHeight, _maxHeight);
+      final x = i * (_barWidth + gap);
+      final y = centerY - (clampedH / 2.0);
+      final rrect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, _barWidth, clampedH),
+        _radius,
+      );
+      canvas.drawRRect(rrect, _barPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _EqualizerPainter oldDelegate) =>
+      oldDelegate.isPlaying != isPlaying ||
+      oldDelegate.color != color ||
+      oldDelegate.animation != animation;
 }

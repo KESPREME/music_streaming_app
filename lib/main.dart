@@ -12,6 +12,7 @@ import 'package:video_player_win/video_player_win.dart';
 import 'core/navigation/root_navigator.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/audio_output_service.dart';
 import 'providers/accent_controller.dart';
 import 'services/deep_link_service.dart';
 import 'screens/search_screen.dart';
@@ -40,6 +41,15 @@ class AppColors {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Framework errors reach logcat through this hook. Without it a widget
+  // assertion only ever appears in the on-screen banner, with no stack, which
+  // makes it unreproducible outside the device it happened on.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrintSynchronously(
+        'APP_FATAL ${details.exceptionAsString()}\n${details.stack}');
+  };
   
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
     WindowsVideoPlayer.registerWith();
@@ -80,6 +90,9 @@ void main() async {
         ),
         ChangeNotifierProvider(create: (context) => AuthService()),
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        ChangeNotifierProvider(
+          create: (context) => AudioOutputService()..init(),
+        ),
       ],
       child: const MyApp(),
     ),
@@ -448,9 +461,22 @@ class _MainScreenState extends State<MainScreen> {
                         return FadeIndexedStack(
                           index: state.index,
                           children: [
-                            const ThemedHomeScreen(),
-                            ThemedExploreScreen(isActive: state.index == 1 && !state.searchMode),
-                            const ThemedLibraryScreen(),
+                            TickerMode(
+                              enabled: state.index == 0,
+                              child: const ThemedHomeScreen(),
+                            ),
+                            TickerMode(
+                              enabled: state.index == 1 && !state.searchMode,
+                              child: ThemedExploreScreen(
+                                isActive: state.index == 1 && !state.searchMode,
+                              ),
+                            ),
+                            TickerMode(
+                              enabled: state.index == 2,
+                              child: ThemedLibraryScreen(
+                                isActive: state.index == 2,
+                              ),
+                            ),
                           ],
                         );
                       },

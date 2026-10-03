@@ -866,6 +866,27 @@ class InnerTubeService {
     }
   }
 
+  /// Warms the InnerTube session so the first tap does not pay for it.
+  ///
+  /// Every playable request needs `visitorData` and a signature timestamp, and
+  /// neither is cheap: the browse that hands out visitorData plus the player JS
+  /// round trip together cost seconds on a cold start. Left lazy, that whole
+  /// cost landed on the listener's first tap — the tap appeared to do nothing
+  /// for several seconds, and a second press felt instant only because the
+  /// session was already warm by then.
+  ///
+  /// Fire-and-forget by design: it must never delay app start, and every step
+  /// already tolerates failure, so a hostile network just leaves the lazy path
+  /// to do its job later.
+  Future<void> warmUp() async {
+    try {
+      await _ensureVisitorData();
+      await _getSignatureTimestamp();
+    } catch (e) {
+      if (kDebugMode) debugPrint('InnerTubeService: warmUp failed: $e');
+    }
+  }
+
   /// Fast path used by [StreamResolutionService].
   /// [preferredBitrate] is an upper bound in kbps; the closest stream at or
   /// under it wins, else the highest available.

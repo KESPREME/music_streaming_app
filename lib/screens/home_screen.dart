@@ -120,8 +120,9 @@ class _HomeScreenState extends State<HomeScreen>
                   selector: (_, p) => p.homeContentVersion,
                   child: _LowerSections(
                     bottomInset: bottomInset,
-                    excludeHeroSectionId:
-                        _heroCandidate(context.read<MusicProvider>())?.$1.id,
+                    excludeHeroSectionId: _topPicksList(context.read<MusicProvider>()).isNotEmpty
+                        ? null
+                        : _heroCandidate(context.read<MusicProvider>())?.$1.id,
                   ),
                   builder: (context, version, lower) => lower!,
                 ),
@@ -197,29 +198,39 @@ class _HomeScreenState extends State<HomeScreen>
 
   List<Track> _topPicksList(MusicProvider provider) {
     if (provider.recommendedTracks.isNotEmpty) {
-      return provider.recommendedTracks.take(5).toList();
+      return provider.recommendedTracks.take(8).toList();
+    }
+    if (provider.quickPicks.isNotEmpty) {
+      return provider.quickPicks.take(8).toList();
     }
     if (provider.trendingTracks.isNotEmpty) {
-      return provider.trendingTracks.take(5).toList();
+      return provider.trendingTracks.take(8).toList();
     }
     return const [];
   }
 
   Widget _buildTopPicks(BuildContext context) {
     final provider = context.watch<MusicProvider>();
-    final hero = _heroCandidate(provider);
 
-    // Curated feed hero → render with the source's real shelf title.
+    // 1. Personalized recommendations from engine / radio / Jump Back In take priority
+    final personalizedPicks = _topPicksList(provider);
+    if (personalizedPicks.isNotEmpty) {
+      return _buildHeroCarousel(
+        context,
+        personalizedPicks,
+        'Quick Picks',
+        'personalized_quick_picks',
+      );
+    }
+
+    // 2. If no personalized engine picks exist yet, fall back to curated feed hero
+    final hero = _heroCandidate(provider);
     if (hero != null) {
       final (section, picks) = hero;
       return _buildHeroCarousel(context, picks, section.title, section.id);
     }
 
-    // No valid hero: fall back to local data. If that's empty too, collapse
-    // the section completely — never reserve a giant blank region.
-    final picks = _topPicksList(provider);
-    if (picks.isEmpty) return const SizedBox.shrink();
-    return _buildTopPicksFallback(context, picks);
+    return const SizedBox.shrink();
   }
 
   Widget _buildHeroCarousel(
@@ -257,42 +268,6 @@ class _HomeScreenState extends State<HomeScreen>
             },
           ),
         ),
-      ],
-    );
-  }
-
-  /// Top-picks fallback body (recommendation engine / trending).
-  Widget _buildTopPicksFallback(BuildContext context, List<Track> picks) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const HomeSectionHeader(title: 'Top picks for you'),
-        if (picks.isEmpty)
-          const _HeroSkeleton()
-        else
-          SizedBox(
-            height:
-                (MediaQuery.sizeOf(context).height * 0.40).clamp(280.0, 360.0),
-            child: ParallaxMediaCarousel(
-              controller: _topPicksController,
-              count: picks.length,
-              itemBuilder: (context, index, pageOffset) {
-                final track = picks[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: _TopPickCard(
-                    track: track,
-                    pageOffset: pageOffset,
-                    sectionTitle: 'Top picks for you',
-                    parallaxFactor: 0.16,
-                    onPlay: () => _play(context, track, picks),
-                    onOverflow: () =>
-                        ThemedOptionsSheet.show(context, track: track),
-                  ),
-                );
-              },
-            ),
-          ),
       ],
     );
   }
@@ -803,7 +778,14 @@ class _LowerSections extends StatelessWidget {
     if (recents.isNotEmpty) {
       sections.add(_JumpBackInSection(
         recents: recents,
-        onPlay: (track) => _play(context, track, recents),
+        // The recents list is the ordered context for this tap. Without it playback
+        // starts with no list at all, so the window is one item: the track ends
+        // with nothing to advance into and the lock screen has no prev/next.
+        onPlay: (track) => context.read<MusicProvider>().playTrack(
+              track,
+              playlistTracks: recents,
+              playlistId: 'jump_back_in',
+            ),
         onOptions: (track) => ThemedOptionsSheet.show(
           context,
           track: track,
@@ -1690,36 +1672,3 @@ class _TopPickCardState extends State<_TopPickCard> {
   }
 }
 
-// ── Skeletons (geometry-matched, no spinner) ─────────────────────────────────
-
-class _SkeletonBox extends StatelessWidget {
-  const _SkeletonBox({required this.height, this.radius = 14});
-
-  final double height;
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(radius),
-      ),
-    );
-  }
-}
-
-class _HeroSkeleton extends StatelessWidget {
-  const _HeroSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    // Skeleton matches real hero geometry (spec #59): width × 4:5.
-    final contentW =
-        t.HomeTokens.contentWidth(MediaQuery.sizeOf(context).width);
-    final heroHeight = (contentW * t.HomeTokens.heroCardFraction * (5 / 4))
-        .clamp(280.0, 380.0);
-    return _SkeletonBox(height: heroHeight, radius: 20);
-  }
-}

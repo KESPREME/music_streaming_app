@@ -22,12 +22,17 @@ class LiquidLens extends StatelessWidget {
     this.tier = GlassTier.floating,
     this.accent,
     this.selected = false,
+    this.touch,
   });
 
   final Widget child;
   final GlassTier tier;
   final Color? accent;
   final bool selected;
+
+  /// Package touch physics (press-compress, tap-pop, hold-swell, spring
+  /// wobble) via liquid_glass_easy. Null = static lens.
+  final easy.LiquidGlassTouch? touch;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +46,6 @@ class LiquidLens extends StatelessWidget {
             accent: effectiveAccent,
           );
 
-    return easy.LiquidGlassLens(style: style, child: child);
+    return easy.LiquidGlassLens(style: style, touch: touch, child: child);
   }
 }

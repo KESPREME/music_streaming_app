@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -187,23 +187,21 @@ class SaavnService {
         return null;
       }
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final match = parseBestMatch(
-        data,
-        artistQuery: artist,
-        targetDurationMs: targetDurationMs,
-      );
-      if (match == null) {
-        if (kDebugMode) {
-          debugPrint('SaavnService: no match for "$query"');
-        }
-        return null;
-      }
+      final body = response.body;
+      final decrypted = await Isolate.run(() {
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final match = parseBestMatch(
+          data,
+          artistQuery: artist,
+          targetDurationMs: targetDurationMs,
+        );
+        if (match == null) return null;
+        return decryptMediaUrl(match.encryptedMediaUrl);
+      });
 
-      final decrypted = decryptMediaUrl(match.encryptedMediaUrl);
       if (decrypted == null || !decrypted.contains('saavncdn.com')) {
         if (kDebugMode) {
-          debugPrint('SaavnService: decrypt failed for "${match.title}"');
+          debugPrint('SaavnService: decrypt/match failed for "$query"');
         }
         return null;
       }

@@ -109,8 +109,6 @@ class _WavyProgressBarState extends State<WavyProgressBar>
         final double phase =
             animationsEnabled ? _controller.value * 2 * math.pi : 0.0;
 
-        String formatUnpadded(Duration d) => _formatUnpadded(d);
-
         return Column(
           children: [
             SizedBox(
@@ -172,8 +170,8 @@ class _WavyProgressBarState extends State<WavyProgressBar>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(formatUnpadded(position), style: labelStyle),
-                  Text(formatUnpadded(duration), style: labelStyle),
+                  Text(_formatUnpadded(position), style: labelStyle),
+                  Text(_formatUnpadded(duration), style: labelStyle),
                 ],
               ),
             ),
@@ -213,6 +211,10 @@ class WavySliderPainter extends CustomPainter {
     // Config
     const double waveAmplitude = 4.0;
     const double waveFrequency = 0.05;
+    // Sample the wave every 2px instead of every 1px. At waveFrequency 0.05 a
+    // 2px step is 0.1 rad (~63px per wavelength), which is visually identical
+    // at this amplitude but halves the per-frame path point count.
+    const double step = 2.0;
 
     // Draw Inactive Line (Straight)
     final activeWidth = size.width * progress;
@@ -232,30 +234,32 @@ class WavySliderPainter extends CustomPainter {
         centerY + math.sin((0 * waveFrequency) + phase) * waveAmplitude;
     activePath.moveTo(0, startY);
 
-    double lastX = 0;
-    double lastY = startY;
-
     // Draw waves only up to the active width
-    for (double x = 0; x <= activeWidth; x++) {
+    for (double x = 0.0; x < activeWidth; x += step) {
       final y = centerY + math.sin((x * waveFrequency) + phase) * waveAmplitude;
       activePath.lineTo(x, y);
-      lastX = x;
-      lastY = y;
     }
+
+    // Land the path exactly on the active edge so the stroked line and the
+    // thumb are not short of `activeWidth` by up to one step.
+    final endX = activeWidth;
+    final endY =
+        centerY + math.sin((endX * waveFrequency) + phase) * waveAmplitude;
+    activePath.lineTo(endX, endY);
     canvas.drawPath(activePath, paint);
 
     // Draw Thumb at the tip of the wave
     final thumbPaint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(lastX, lastY), 8.0, thumbPaint);
+    canvas.drawCircle(Offset(endX, endY), 8.0, thumbPaint);
 
     // Thumb Glow — skip when invisible to avoid overdraw.
     if (glowAlpha > 0.0) {
       final glowPaint = Paint()
         ..color = color.withValues(alpha: glowAlpha)
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(lastX, lastY), glowRadius, glowPaint);
+      canvas.drawCircle(Offset(endX, endY), glowRadius, glowPaint);
     }
   }
 

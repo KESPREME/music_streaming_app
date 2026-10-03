@@ -10,6 +10,7 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/canvas_resolution_service.dart';
 import '../services/innertube/innertube_service.dart';
+import '../utils/app_image_cache.dart';
 import '../utils/artwork_palette_resolver.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/animated_equalizer_icon.dart';
@@ -302,7 +303,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
     final darkBg = artPalette.background;
     final washColor = artPalette.wash;
@@ -322,79 +323,91 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       body: Stack(
         children: [
           // 1. Layer 1: PageBackground with ArtworkWash
-          ArtworkWash(
-            backgroundColor: darkBg,
-            washColor: washColor,
-            accentColor: accentColor,
-            elevatedColor: elevatedColor,
-            washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
-            imageUrl: _resolvedImageUrl ?? widget.albumImage,
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: ArtworkWash(
+                backgroundColor: darkBg,
+                washColor: washColor,
+                accentColor: accentColor,
+                elevatedColor: elevatedColor,
+                washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
+                imageUrl: _resolvedImageUrl ?? widget.albumImage,
+              ),
+            ),
           ),
 
-          // 2. Layer 2: Full-bleed Immersive Artwork with isolated parallax render offset
-          AnimatedBuilder(
-            animation: _scrollController,
-            builder: (context, child) {
-              final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-              return Positioned(
-                top: -offset.clamp(0.0, artHeight * 1.5),
-                left: 0,
-                right: 0,
-                height: artHeight,
-                child: child!,
-              );
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Still Image
-                if (_resolvedImageUrl != null && _resolvedImageUrl!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: ImageQualityUtils.getHighQualityUrl(_resolvedImageUrl!),
-                    fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
-                  ),
+          // 2. Layer 2: Full-bleed Immersive Artwork with isolated parallax render offset (GPU transform)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: artHeight,
+            child: AnimatedBuilder(
+              animation: _scrollController,
+              builder: (context, child) {
+                final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                final clamped = offset.clamp(0.0, artHeight * 1.5);
+                return Transform.translate(
+                  offset: Offset(0, -clamped),
+                  child: child,
+                );
+              },
+              child: RepaintBoundary(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Still Image
+                    if (_resolvedImageUrl != null && _resolvedImageUrl!.isNotEmpty)
+                      CachedNetworkImage(
+                        imageUrl: ImageQualityUtils.getHighQualityUrl(_resolvedImageUrl!),
+                        fit: BoxFit.cover,
+                        memCacheWidth: AppImageCache.heroMemCache,
+                        memCacheHeight: AppImageCache.heroMemCache,
+                        errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
+                      ),
 
-                // Looping Video Canvas (Only for authentic album motion covers)
-                if (_albumVideoController != null && _albumVideoController!.value.isInitialized)
-                  FittedBox(
-                    fit: BoxFit.cover,
-                    clipBehavior: Clip.hardEdge,
-                    child: SizedBox(
-                      width: _albumVideoController!.value.size.width,
-                      height: _albumVideoController!.value.size.height,
-                      child: VideoPlayer(_albumVideoController!),
-                    ),
-                  ),
+                    // Looping Video Canvas (Only for authentic album motion covers)
+                    if (_albumVideoController != null && _albumVideoController!.value.isInitialized)
+                      FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: _albumVideoController!.value.size.width,
+                          height: _albumVideoController!.value.size.height,
+                          child: VideoPlayer(_albumVideoController!),
+                        ),
+                      ),
 
-                // Top shade under the glass bar (BitChord DetailScreen.kt parity)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: artHeight * 0.28,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          darkBg.withValues(alpha: 0.55),
-                          Colors.transparent,
-                        ],
+                    // Top shade under the glass bar (BitChord DetailScreen.kt parity)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: artHeight * 0.28,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              darkBg.withValues(alpha: 0.55),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-                // Eased foot fade settling onto the wash (BitChord PageBackground
-                // parity); the MergeBand veil covers the seam the rest of the way.
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    child: ArtworkFootFade(washColor: washColor),
-                  ),
+                    // Eased foot fade settling onto the wash (BitChord PageBackground
+                    // parity); the MergeBand veil covers the seam the rest of the way.
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: ArtworkFootFade(washColor: washColor),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
 
@@ -647,116 +660,126 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       (context, index) {
                         final track = displayedTracks[index];
                         final originalTrackNumber = _tracks.indexOf(track) + 1;
-                        final isPlayingThis = track.isSameTrackAs(musicProvider.currentTrack);
 
                         return RepaintBoundary(
-                          child: BitchordSwipeableTrackRow(
-                            track: track,
-                            palette: artPalette,
-                            child: Material(
-                              color: isPlayingThis
-                                  ? accentColor.withValues(alpha: 0.12)
-                                  : Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                final startIndex = _tracks.indexOf(track);
-                                musicProvider.playTrackList(
-                                  _tracks,
-                                  initialIndex: startIndex >= 0 ? startIndex : 0,
-                                );
-                              },
-                              splashColor: Colors.white.withValues(alpha: 0.08),
-                              highlightColor: Colors.white.withValues(alpha: 0.04),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-                                child: Row(
-                                  children: [
-                                    // Track Number or Animated Equalizer
-                                    SizedBox(
-                                      width: 30,
-                                      child: isPlayingThis && musicProvider.isPlaying
-                                          ? AnimatedEqualizerIcon(
-                                              isPlaying: true,
-                                              color: accentColor,
-                                              size: 18,
-                                            )
-                                          : isPlayingThis
-                                              ? Icon(
-                                                  Icons.play_arrow_rounded,
-                                                  color: accentColor,
-                                                  size: 20,
-                                                )
-                                              : Text(
-                                                  '$originalTrackNumber',
-                                                  style: GoogleFonts.plusJakartaSans(
-                                                    color: Colors.white.withValues(alpha: 0.45),
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                    ),
-                                    const SizedBox(width: 8),
+                          child: Selector<MusicProvider, ({bool isCurrent, bool isPlaying})>(
+                            selector: (_, mp) => (
+                              isCurrent: track.isSameTrackAs(mp.currentTrack),
+                              isPlaying: mp.isPlaying,
+                            ),
+                            builder: (context, playbackState, _) {
+                              final isPlayingThis = playbackState.isCurrent;
+                              final isPlaying = playbackState.isPlaying;
 
-                                    // Track Title & Artist
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                              return BitchordSwipeableTrackRow(
+                                track: track,
+                                palette: artPalette,
+                                child: Material(
+                                  color: isPlayingThis
+                                      ? accentColor.withValues(alpha: 0.12)
+                                      : Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      final startIndex = _tracks.indexOf(track);
+                                      context.read<MusicProvider>().playTrackList(
+                                        _tracks,
+                                        initialIndex: startIndex >= 0 ? startIndex : 0,
+                                      );
+                                    },
+                                    splashColor: Colors.white.withValues(alpha: 0.08),
+                                    highlightColor: Colors.white.withValues(alpha: 0.04),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                                      child: Row(
                                         children: [
-                                          Row(
-                                            children: [
-                                              if (track.isExplicit) ...[
-                                                const BitchordExplicitBadge(),
-                                                const SizedBox(width: 6),
-                                              ],
-                                              Expanded(
-                                                child: Text(
-                                                  track.trackName,
+                                          // Track Number or Animated Equalizer
+                                          SizedBox(
+                                            width: 30,
+                                            child: isPlayingThis && isPlaying
+                                                ? AnimatedEqualizerIcon(
+                                                    isPlaying: true,
+                                                    color: accentColor,
+                                                    size: 18,
+                                                  )
+                                                : isPlayingThis
+                                                    ? Icon(
+                                                        Icons.play_arrow_rounded,
+                                                        color: accentColor,
+                                                        size: 20,
+                                                      )
+                                                    : Text(
+                                                        '$originalTrackNumber',
+                                                        style: GoogleFonts.plusJakartaSans(
+                                                          color: Colors.white.withValues(alpha: 0.45),
+                                                          fontSize: 16,
+                                                          fontWeight: FontWeight.w500,
+                                                        ),
+                                                      ),
+                                          ),
+                                          const SizedBox(width: 8),
+
+                                          // Track Title & Artist
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    if (track.isExplicit) ...[
+                                                      const BitchordExplicitBadge(),
+                                                      const SizedBox(width: 6),
+                                                    ],
+                                                    Expanded(
+                                                      child: Text(
+                                                        track.trackName,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: GoogleFonts.plusJakartaSans(
+                                                          color: isPlayingThis ? accentColor : Colors.white,
+                                                          fontSize: 16,
+                                                          fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  track.artistName,
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
                                                   style: GoogleFonts.plusJakartaSans(
-                                                    color: isPlayingThis ? accentColor : Colors.white,
-                                                    fontSize: 16,
-                                                    fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
+                                                    color: Colors.white.withValues(alpha: 0.55),
+                                                    fontSize: 13.5,
+                                                    fontWeight: FontWeight.w400,
                                                   ),
                                                 ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            track.artistName,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: GoogleFonts.plusJakartaSans(
-                                              color: Colors.white.withValues(alpha: 0.55),
-                                              fontSize: 13.5,
-                                              fontWeight: FontWeight.w400,
+                                              ],
                                             ),
+                                          ),
+
+                                          // More Vertical Dots ⋮
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.more_vert_rounded,
+                                              color: Colors.white.withValues(alpha: 0.5),
+                                              size: 20,
+                                            ),
+                                            onPressed: () {
+                                              ThemedOptionsSheet.show(context, track: track);
+                                            },
                                           ),
                                         ],
                                       ),
                                     ),
-
-                                    // More Vertical Dots ⋮
-                                    IconButton(
-                                      icon: Icon(
-                                        Icons.more_vert_rounded,
-                                        color: Colors.white.withValues(alpha: 0.5),
-                                        size: 20,
-                                      ),
-                                      onPressed: () {
-                                        ThemedOptionsSheet.show(context, track: track);
-                                      },
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
-                        ),
-                      );
-                    },
-                    childCount: displayedTracks.length,
+                        );
+                      },
+                      childCount: displayedTracks.length,
                       addRepaintBoundaries: true,
                       addAutomaticKeepAlives: false,
                     ),

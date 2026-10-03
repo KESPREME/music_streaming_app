@@ -141,12 +141,7 @@ class _RecentlyPlayedScreenState extends State<RecentlyPlayedScreen> {
                             track: track,
                             isPlaying: isPlaying,
                             isRecentlyPlayedContext: true,
-                            onTap: () {
-                              musicProvider.playTrack(
-                                track,
-                                playlistTracks: recentlyPlayedTracks,
-                              );
-                            },
+                            onTap: () => musicProvider.playTrack(track),
                           );
                         },
                         childCount: recentlyPlayedTracks.length,

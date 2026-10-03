@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../core/test_environment.dart';
 
 import '../../services/explore/explore_palette.dart';
 import 'explore_tokens.dart';
@@ -41,8 +42,7 @@ class _LiquidMeshBackgroundState extends State<LiquidMeshBackground>
     duration: const Duration(milliseconds: 1400),
   );
 
-  bool get _isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+  bool get _isTesting => TestEnvironment.isTesting;
 
   late ExplorePalette _from;
   late ExplorePalette _to;
@@ -259,6 +259,24 @@ class _SoundwaveBarsPainter extends CustomPainter {
     final barWidth = size.width / barCount;
     final maxBarHeight = size.height * 0.85;
 
+    // One Paint + one gradient shader for all bars.
+    //
+    // Previously each bar built its own `Paint`, `LinearGradient` and
+    // `createShader` inside the loop: 28 gradient shader allocations on every
+    // frame (~1,680/second at 60fps).
+    //
+    // The gradient is built once across the whole canvas. `LinearGradient` from
+    // `topCenter` to `bottomCenter` is purely vertical, so one shader over the
+    // canvas gives every bar the same fade at its own height - and the bars
+    // read as one surface with a shared light falloff rather than 28 separate
+    // gradients that each restart at their own top.
+    final barPaint = Paint();
+    barPaint.shader = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [colorStart, colorEnd],
+    ).createShader(Offset.zero & size);
+
     for (var i = 0; i < barCount; i++) {
       final normalizedX = i / barCount;
       // Multi-harmonic sinusoidal wave for natural audio ripple motion
@@ -281,17 +299,7 @@ class _SoundwaveBarsPainter extends CustomPainter {
         Radius.circular(width / 2),
       );
 
-      final paint = Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colorStart,
-            colorEnd,
-          ],
-        ).createShader(Rect.fromLTWH(left, top, width, height));
-
-      canvas.drawRRect(rect, paint);
+      canvas.drawRRect(rect, barPaint);
     }
   }
 

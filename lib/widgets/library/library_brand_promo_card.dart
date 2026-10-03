@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/music_provider.dart';
 import '../stagger_in.dart';
 import 'library_hero_artwork.dart';
 
@@ -16,12 +18,24 @@ class LibraryBrandPromoCard extends StatelessWidget {
   const LibraryBrandPromoCard({
     super.key,
     this.horizontalPadding = 20.0,
+    this.isActive = true,
   });
 
   final double horizontalPadding;
 
+  /// Forwarded to the Liquid Orb so an off-screen tab stops ticking.
+  final bool isActive;
+
   @override
   Widget build(BuildContext context) {
+    final dynamicColor = context.select<MusicProvider, Color?>((mp) {
+      try {
+        return mp.currentPaletteColor;
+      } catch (_) {
+        return null;
+      }
+    });
+
     return Padding(
       padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 10),
       child: SquishOnPress(
@@ -65,6 +79,8 @@ class LibraryBrandPromoCard extends StatelessWidget {
                     lightAlignment: Alignment.topLeft,
                     enableParallax: true,
                     parallaxScale: 4.8,
+                    dynamicColor: dynamicColor,
+                    isActive: isActive,
                     child: Image.asset(
                       'assets/images/mine_music_mark.png',
                       width: 45,

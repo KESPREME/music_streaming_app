@@ -97,21 +97,29 @@ class _BlurredArt extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return Transform.scale(
-      scale: 1.2,
-      child: ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-        child: Opacity(
-          opacity: 0.85,
-          child: CachedNetworkImage(
-            imageUrl: url,
-            fit: BoxFit.cover,
-            memCacheWidth: 240,
-            fadeInDuration: Motion.ambient,
-            errorWidget: (_, __, ___) => const SizedBox.shrink(),
-            // Oversized decode so the blur never samples edges.
-            width: size.width,
-            height: size.height,
+    return RepaintBoundary(
+      // Isolates the sigma=48 blur from the rest of the shell. Without this,
+      // the backdrop shares a layer with the Navigator / mini player / nav
+      // bar, so any repaint up there can invalidate the filtered layer and
+      // force a full-screen blur to re-run. This is the single most expensive
+      // composited op in the shell, so it must only re-run when `artUrl`
+      // actually changes.
+      child: Transform.scale(
+        scale: 1.2,
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+          child: Opacity(
+            opacity: 0.85,
+            child: CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              memCacheWidth: 240,
+              fadeInDuration: Motion.ambient,
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
+              // Oversized decode so the blur never samples edges.
+              width: size.width,
+              height: size.height,
+            ),
           ),
         ),
       ),

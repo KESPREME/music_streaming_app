@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -39,7 +40,12 @@ import '../widgets/library/library_brand_promo_card.dart';
 /// - Dynamic layout-aware content clearance preventing overlap with persistent bottom navigation.
 /// - Granular Provider rebuild isolation.
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key});
+  const LibraryScreen({super.key, this.isActive = true});
+
+  /// Whether this tab is currently visible. Gating the Liquid Orb on this
+  /// keeps an off-screen tab from running a per-pixel fragment shader at
+  /// 60fps. Defaults to true so behaviour is unchanged for other callers.
+  final bool isActive;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -114,6 +120,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               SliverToBoxAdapter(
                 child: LibraryHeroArtwork(
                   horizontalPadding: horizontalGutter,
+                  isActive: widget.isActive,
                 ),
               ),
 
@@ -338,6 +345,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           index: 6,
           child: LibraryBrandPromoCard(
             horizontalPadding: horizontalGutter,
+            isActive: widget.isActive,
           ),
         ),
       ),
@@ -459,10 +467,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: playlist.imageUrl.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: ImageQualityUtils.getHighResArtwork(playlist.imageUrl),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
+                      ? CachedNetworkImage(
+                          imageUrl: ImageQualityUtils.getHighResArtwork(playlist.imageUrl),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          memCacheWidth: AppImageCache.cardMemCache,
+                          memCacheHeight: AppImageCache.cardMemCache,
                         errorWidget: (_, __, ___) => Container(
                           color: Colors.white.withValues(alpha: 0.04),
                           child: const Icon(Icons.music_note_rounded, color: Colors.white38),
@@ -736,10 +746,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               borderRadius: const BorderRadius.vertical(
                                 top: Radius.circular(20),
                               ),
-                              child: CachedNetworkImage(
-                                imageUrl: ImageQualityUtils.getHighResArtwork(track.albumArtUrl),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
+                                child: CachedNetworkImage(
+                                  imageUrl: ImageQualityUtils.getHighResArtwork(track.albumArtUrl),
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  memCacheWidth: AppImageCache.cardMemCache,
+                                  memCacheHeight: AppImageCache.cardMemCache,
                                 errorWidget: (_, __, ___) => Container(
                                   color: Colors.white.withValues(alpha: 0.04),
                                   child: const Icon(Icons.album_rounded, color: Colors.white30),

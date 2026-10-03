@@ -13,7 +13,11 @@ class MaterialYouQueueScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final musicProvider = Provider.of<MusicProvider>(context);
-    final queue = musicProvider.queue;
+    // upNext, not queue: the listener's own picks, then the rest of the
+    // collection, then whatever the radio station supplied, in the order they
+    // will actually play. `queue` is only the listener's manual picks, so
+    // reading it showed an empty sheet while autoplay was on and working.
+    final queue = musicProvider.upNext;
     final currentTrack = musicProvider.currentTrack;
 
     return Scaffold(

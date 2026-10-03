@@ -46,6 +46,9 @@ class FakeLibraryMusicProvider extends ChangeNotifier implements MusicProvider {
   Track? get currentTrack => null;
 
   @override
+  Color? get currentPaletteColor => null;
+
+  @override
   bool get hideMiniPlayer => false;
 
   @override

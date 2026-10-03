@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -55,9 +56,12 @@ class GlassOptionsSheet extends StatelessWidget {
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
+    final wasPlayerExpanded = provider.isPlayerExpanded;
     final wasHidden = provider.hideMiniPlayer;
-    // Hide Mini Player
-    provider.setHideMiniPlayer(true);
+    // Hide Mini Player only if not already in full player mode
+    if (!wasPlayerExpanded) {
+      provider.setHideMiniPlayer(true);
+    }
 
     final effectiveAccent = accentColor ??
         ColorUtils.getVibrantAccent(
@@ -92,7 +96,7 @@ class GlassOptionsSheet extends StatelessWidget {
       );
     } finally {
       // Restore Mini Player
-      if (!wasHidden) {
+      if (!wasHidden && !wasPlayerExpanded) {
         provider.setHideMiniPlayer(false);
       }
     }
@@ -164,11 +168,13 @@ class GlassOptionsSheet extends StatelessWidget {
                                 sigmaX: 45,
                                 sigmaY: 45,
                               ),
-                              child: CachedNetworkImage(
-                                imageUrl: ImageQualityUtils.getHighResArtwork(
-                                  track.albumArtUrl,
-                                ),
-                                fit: BoxFit.cover,
+                                child: CachedNetworkImage(
+                                  imageUrl: ImageQualityUtils.getHighResArtwork(
+                                    track.albumArtUrl,
+                                  ),
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: AppImageCache.heroMemCache,
+                                  memCacheHeight: AppImageCache.heroMemCache,
                                 errorWidget: (_, __, ___) =>
                                     const SizedBox.shrink(),
                               ),
@@ -220,11 +226,13 @@ class GlassOptionsSheet extends StatelessWidget {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(10),
-                            child: CachedNetworkImage(
-                              imageUrl: ImageQualityUtils.getHighResArtwork(
-                                track.albumArtUrl,
-                              ),
-                              width: 52,
+                              child: CachedNetworkImage(
+                                imageUrl: ImageQualityUtils.getHighResArtwork(
+                                  track.albumArtUrl,
+                                ),
+                                width: 52,
+                                memCacheWidth: AppImageCache.thumbnailMemCache,
+                                memCacheHeight: AppImageCache.thumbnailMemCache,
                               height: 52,
                               fit: BoxFit.cover,
                               errorWidget: (_, __, ___) => Container(
@@ -297,6 +305,37 @@ class GlassOptionsSheet extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
+                        // Play next (hidden if song is currently playing)
+                        if (provider.currentTrack?.id != track.id)
+                          _buildOption(
+                            context,
+                            icon: Icons.playlist_play_rounded,
+                            label: 'Play next',
+                            onTap: () {
+                              Navigator.pop(context);
+                              provider.playNext(track);
+                              showGlassSnackBar(
+                                context,
+                                'Playing "${track.trackName}" next',
+                              );
+                            },
+                          ),
+
+                        // Add to queue
+                        _buildOption(
+                          context,
+                          icon: Icons.queue_music_rounded,
+                          label: 'Add to queue',
+                          onTap: () {
+                            Navigator.pop(context);
+                            provider.addToQueue(track);
+                            showGlassSnackBar(
+                              context,
+                              'Added "${track.trackName}" to queue',
+                            );
+                          },
+                        ),
+
                         // 1. Add to a playlist...
                         _buildOption(
                           context,
@@ -490,22 +529,6 @@ class GlassOptionsSheet extends StatelessWidget {
                           },
                         ),
 
-                        // 7. Force Canvas
-                        _buildOption(
-                          context,
-                          icon: Icons.bolt_rounded,
-                          label: 'Force Canvas',
-                          onTap: () {
-                            provider.toggleCanvas();
-                            Navigator.pop(context);
-                            showGlassSnackBar(
-                              context,
-                              provider.isCanvasActive
-                                  ? 'Canvas mode enabled'
-                                  : 'Canvas mode disabled',
-                            );
-                          },
-                        ),
 
                         // 8. Sleep Timer
                         _buildOption(
@@ -791,10 +814,12 @@ class SongInfoDialog extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: track.albumArtUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: track.albumArtUrl,
-                            width: 52,
-                            height: 52,
+                          ? CachedNetworkImage(
+                              imageUrl: track.albumArtUrl,
+                              width: 52,
+                              height: 52,
+                              memCacheWidth: AppImageCache.thumbnailMemCache,
+                              memCacheHeight: AppImageCache.thumbnailMemCache,
                             fit: BoxFit.cover,
                             errorWidget: (_, __, ___) => Container(
                               width: 52,

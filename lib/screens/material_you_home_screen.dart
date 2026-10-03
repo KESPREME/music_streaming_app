@@ -190,10 +190,7 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
                     subtitle: item.artistName,
                     width: 140, // Match glassmorphism dimensions
                     height: 140,
-                    onTap: () => musicProvider.playTrack(
-                      item,
-                      playlistTracks: musicProvider.recentlyPlayed,
-                    ),
+                    onTap: () => musicProvider.playTrack(item),
                     onLongPress: () {
                       HapticFeedback.mediumImpact();
                       MaterialYouOptionsSheet.show(

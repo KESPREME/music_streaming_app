@@ -102,8 +102,12 @@ class CanvasResolutionService {
       try {
         final appleVideo = await _resolveAppleMusic(track);
         if (appleVideo != null && appleVideo.isNotEmpty) {
-          _cache[track.id] = appleVideo;
-          return appleVideo;
+          final localPath = await _cacheRemoteFile(
+            appleVideo,
+            'canvas_apple_${track.id}.mp4',
+          );
+          _cache[track.id] = localPath;
+          return localPath;
         }
       } catch (e) {
         if (kDebugMode) debugPrint('CanvasResolutionService: Apple Music check failed: $e');
@@ -115,8 +119,12 @@ class CanvasResolutionService {
       try {
         final tidalCover = await _resolveTidalVideo(track);
         if (tidalCover != null && tidalCover.isNotEmpty) {
-          _cache[track.id] = tidalCover;
-          return tidalCover;
+          final localPath = await _cacheRemoteFile(
+            tidalCover,
+            'canvas_tidal_${track.id}.mp4',
+          );
+          _cache[track.id] = localPath;
+          return localPath;
         }
       } catch (e) {
         if (kDebugMode) debugPrint('CanvasResolutionService: Tidal check failed: $e');
@@ -128,15 +136,19 @@ class CanvasResolutionService {
       try {
         final communityVideo = await _resolveCommunityCanvas(track);
         if (communityVideo != null && communityVideo.isNotEmpty) {
-          _cache[track.id] = communityVideo;
-          return communityVideo;
+          final localPath = await _cacheRemoteFile(
+            communityVideo,
+            'canvas_comm_${track.id}.mp4',
+          );
+          _cache[track.id] = localPath;
+          return localPath;
         }
       } catch (e) {
         if (kDebugMode) debugPrint('CanvasResolutionService: Community check failed: $e');
       }
     }
 
-    // 4. Official Music Video search via InnerTube
+    // 5. Official Music Video search via InnerTube
     // YouTube Music's track.id for songs is an Audio Track (ATV) whose video stream
     // is a static still JPEG of the album art. To get a real looping video canvas
     // (matching Spotify Canvas and Muzo discovery), we query YouTube for the
@@ -159,24 +171,32 @@ class CanvasResolutionService {
 
           // Try up to top 3 highest-confidence official video candidates
           for (final candidate in scored.take(3)) {
+            // First: attempt to fetch, sanitize, and cache bounded clip to local disk (0 network on loops)
+            final cached = await _resolveAndCacheVideo(candidate.video.id);
+            if (cached != null) {
+              try {
+                final dir = await _getCacheDir();
+                final trackFile = File('${dir.path}/canvas_track_${track.id}.mp4');
+                if (!await trackFile.exists() && cached != trackFile.path) {
+                  await File(cached).copy(trackFile.path);
+                }
+                final finalPath = trackFile.existsSync() ? trackFile.path : cached;
+                _cache[track.id] = finalPath;
+                unawaited(_pruneCacheIfNeeded());
+                return finalPath;
+              } catch (_) {
+                _cache[track.id] = cached;
+                return cached;
+              }
+            }
+
+            // Fallback: direct stream URL if chunk caching failed
             final directStream = await InnerTubeService.instance
                 .getDirectVideoStreamUrl(candidate.video.id, preferredHeight: 360)
                 .timeout(const Duration(seconds: 5));
             if (directStream != null && directStream.isNotEmpty) {
               _cache[track.id] = directStream;
               return directStream;
-            }
-            final cached = await _resolveAndCacheVideo(candidate.video.id);
-            if (cached != null) {
-              try {
-                final dir = await _getCacheDir();
-                final trackFile = File('${dir.path}/canvas_track_${track.id}.mp4');
-                if (!await trackFile.exists()) {
-                  await File(cached).copy(trackFile.path);
-                }
-              } catch (_) {}
-              _cache[track.id] = cached;
-              return cached;
             }
           }
         }
@@ -342,6 +362,67 @@ class CanvasResolutionService {
       debugPrint('CanvasResolutionService: could not resolve canvas for $videoId: $e');
       return null;
     }
+  }
+
+  Future<String> _cacheRemoteFile(String url, String targetName) async {
+    try {
+      final dir = await _getCacheDir();
+      final targetFile = File('${dir.path}/$targetName');
+      if (await targetFile.exists() && (await targetFile.length()) > 30000) {
+        return targetFile.path;
+      }
+      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+      if (resp.statusCode == 200 && resp.bodyBytes.length > 30000) {
+        final tmp = File('${targetFile.path}.tmp');
+        await tmp.writeAsBytes(resp.bodyBytes);
+        if (await targetFile.exists()) await targetFile.delete();
+        await tmp.rename(targetFile.path);
+        unawaited(_pruneCacheIfNeeded());
+        return targetFile.path;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('CanvasResolutionService: remote cache failed for $url: $e');
+    }
+    return url;
+  }
+
+  DateTime? _lastPruneTime;
+  Future<void> _pruneCacheIfNeeded() async {
+    final now = DateTime.now();
+    if (_lastPruneTime != null &&
+        now.difference(_lastPruneTime!) < const Duration(minutes: 5)) {
+      return;
+    }
+    _lastPruneTime = now;
+    try {
+      final dir = await _getCacheDir();
+      if (!await dir.exists()) return;
+      final entities = await dir.list().toList();
+      final files = entities.whereType<File>().toList();
+      int totalBytes = 0;
+      final fileStats = <File, DateTime>{};
+      for (final f in files) {
+        try {
+          final stat = await f.stat();
+          totalBytes += stat.size;
+          fileStats[f] = stat.modified;
+        } catch (_) {}
+      }
+      // 150 MB maximum disk budget
+      const maxBudget = 150 * 1024 * 1024;
+      if (totalBytes > maxBudget) {
+        files.sort((a, b) =>
+            (fileStats[a] ?? DateTime(2000)).compareTo(fileStats[b] ?? DateTime(2000)));
+        for (final f in files) {
+          if (totalBytes <= 100 * 1024 * 1024) break;
+          try {
+            final len = await f.length();
+            await f.delete();
+            totalBytes -= len;
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 
   /// Sanitizes an fMP4 byte stream:

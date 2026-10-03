@@ -243,10 +243,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 subtitle: track.artistName,
                 width: 150,
                 height: 150,
-                onTap: () => provider.playTrack(
-                  track,
-                  playlistTracks: provider.recentlyPlayed,
-                ),
+                onTap: () => provider.playTrack(track),
                 onLongPress: () => ThemedOptionsSheet.show(
                   context,
                   track: track,

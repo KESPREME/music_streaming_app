@@ -180,6 +180,9 @@ class MusicProvider
     }
   }
 
+  /// Public entry to record explicit search queries into the taste profile
+  void rememberSearchQuery(String raw) => _rememberSearchQuery(raw);
+
   HomeFeed? _homeFeed;
   HomeFeed? get homeFeed => _homeFeed;
 
@@ -197,6 +200,11 @@ class MusicProvider
   /// Cache-first: instant snapshot when available, background refresh when
   /// stale. Concurrent callers coalesce in the repository.
   Future<void> loadHomeFeed() async {
+    // Warm the InnerTube session while the feed loads. Playback needs
+    // visitorData and a signature timestamp, and both cost seconds on a cold
+    // start; doing it here keeps that cost off the listener's first tap, which
+    // is what made the first tap look broken and a second press look instant.
+    unawaited(_innerTubeService.warmUp());
     await _searchGraph.loadFromStore();
     final feed = await _homeRepository.load();
     _publishHomeFeed(feed);
@@ -657,6 +665,19 @@ class MusicProvider
   List<Track> _shuffledPlaylist = [];
   int _currentIndex = -1;
   final List<Track> _queue = []; // Added queue
+
+  /// The radio tier: tracks the station supplied, kept apart from [_queue].
+  ///
+  /// These used to be pushed into [_queue] alongside the listener's own picks,
+  /// which made them indistinguishable from an explicit "play next". Because
+  /// the queue outranks the album, a radio pick would then be played *instead
+  /// of* the next track on the album - the listener heard a skip they never
+  /// asked for. A separate tier is what makes the order honest: user queue,
+  /// then the collection, and only then the station.
+  final List<Track> _autoplayQueue = [];
+  final List<Track> _playbackHistory = []; // Session history stack for skipToPrevious
+  static const int _maxPlaybackHistory = 50;
+  List<Track> get playbackHistory => List.unmodifiable(_playbackHistory);
   int _wifiBitrate = NetworkConfig.goodNetworkBitrate;
   int _cellularBitrate = NetworkConfig.moderateNetworkBitrate;
   bool _isOfflineMode = false;
@@ -803,6 +824,9 @@ class MusicProvider
   );
   PaletteService get paletteService => _paletteService;
   PaletteGenerator? get paletteGenerator => _paletteService.palette;
+  Color? get currentPaletteColor =>
+      _paletteService.palette?.dominantColor?.color ??
+      _paletteService.palette?.vibrantColor?.color;
 
   Future<PaletteArtSource> _resolvePaletteArtSource(Track track) async {
     ImageProvider? imageProvider;
@@ -901,51 +925,65 @@ class MusicProvider
 
   // Method to fetch lyrics
   Future<void> fetchLyrics({bool forceRefresh = false}) async {
-    if (_currentTrack == null) return;
+    final targetTrack = _currentTrack;
+    if (targetTrack == null) return;
+    final targetTrackId = targetTrack.id;
+    final int generation = _playbackGeneration;
 
     // Return if already loaded for this track AND not forcing refresh
     if (!forceRefresh &&
-        _lyricsTrackId == _currentTrack!.id &&
+        _lyricsTrackId == targetTrackId &&
         _currentLyrics != null) {
       if (kDebugMode)
         debugPrint(
-            "MusicProvider: Using cached lyrics for ${_currentTrack!.trackName}");
+            "MusicProvider: Using cached lyrics for ${targetTrack.trackName}");
       return;
     }
 
     _isLoadingLyrics = true;
     _lyricsError = null;
     _currentLyrics = null;
-    _lyricsTrackId = _currentTrack!.id;
+    _lyricsTrackId = null;
     notifyListeners();
 
     try {
       if (kDebugMode)
         debugPrint(
-            "MusicProvider: Fetching lyrics for ${_currentTrack!.trackName} (Force: $forceRefresh)");
+            "MusicProvider: Fetching lyrics for ${targetTrack.trackName} (Force: $forceRefresh)");
       final entries = await _lyricsService.getParsedLyrics(
-        title: _currentTrack!.trackName,
-        artist: _currentTrack!.artistName,
-        durationMs: _currentTrack!.durationMs ?? _duration.inMilliseconds,
-        videoId: _currentTrack!.source == 'youtube' ? _currentTrack!.id : null,
+        title: targetTrack.trackName,
+        artist: targetTrack.artistName,
+        durationMs: targetTrack.durationMs ?? _duration.inMilliseconds,
+        videoId: targetTrack.source == 'youtube' ? targetTrack.id : null,
       );
 
-      // Ensure we haven't changed tracks while fetching
-      if (_lyricsTrackId == _currentTrack!.id) {
-        _currentLyrics = entries;
-        if (entries.isEmpty) {
-          _lyricsError = "No lyrics found";
+      // Verify that neither track nor playback generation changed while fetching
+      if (generation != _playbackGeneration ||
+          _currentTrack == null ||
+          _currentTrack!.id != targetTrackId) {
+        if (kDebugMode) {
+          debugPrint(
+              "MusicProvider: Discarding stale lyrics for ${targetTrack.trackName} (Target: $targetTrackId, Active: ${_currentTrack?.id})");
         }
+        return;
+      }
+
+      _lyricsTrackId = targetTrackId;
+      _currentLyrics = entries;
+      if (entries.isEmpty) {
+        _lyricsError = "No lyrics found";
       }
     } catch (e) {
-      // FIX: Use null-safe check to prevent crash if currentTrack becomes null
-      if (_currentTrack != null && _lyricsTrackId == _currentTrack!.id) {
+      if (generation == _playbackGeneration &&
+          _currentTrack != null &&
+          _currentTrack!.id == targetTrackId) {
         _lyricsError = "Failed to load lyrics";
         debugPrint("Lyrics Fetch Error: $e");
       }
     } finally {
-      // FIX: Use null-safe check to prevent crash if currentTrack becomes null
-      if (_currentTrack != null && _lyricsTrackId == _currentTrack!.id) {
+      if (generation == _playbackGeneration &&
+          _currentTrack != null &&
+          _currentTrack!.id == targetTrackId) {
         _isLoadingLyrics = false;
         notifyListeners();
       }
@@ -1000,6 +1038,70 @@ class MusicProvider
       _downloads.currentlyDownloadingTracks;
   List<Track> get downloadQueue => _downloads.downloadQueue;
   List<Track> get queue => List.unmodifiable(_queue); // Added queue getter
+
+  /// What plays next, in the order it will actually play.
+  ///
+  /// The queue sheet renders this, so the order here has to be the order the
+  /// listener hears: their own picks, then the rest of the collection, then the
+  /// station. Showing the station as if it were already next - which is what
+  /// happened when all three lived in one list - is what made the queue look
+  /// empty and the playback look like it was skipping.
+  ///
+  /// Memoised on purpose. This used to build a fresh `List` on every access, so
+  /// every rebuild of every listener handed the framework a different list
+  /// instance for identical contents. When NowPlaying was pushed while the
+  /// mini-player pill was still in the tree, the framework tried to reparent
+  /// elements between a list that had already been torn down and tripped
+  /// `_elements.contains(element): is not true` on the way in.
+  List<Track> get upNext {
+    final key = '${_queue.length}:${_autoplayQueue.length}:'
+        '${_queue.map((t) => t.id).join()}'
+        '|${_autoplayQueue.map((t) => t.id).join()}';
+    if (key == _upNextKey && _upNextCache != null) return _upNextCache!;
+
+    final out = <Track>[];
+    final seen = <String>{};
+    for (final t in [..._queue, ..._autoplayQueue]) {
+      if (seen.add(t.id)) out.add(t);
+    }
+    _upNextKey = key;
+    _upNextCache = List.unmodifiable(out);
+    return _upNextCache!;
+  }
+
+  String? _upNextKey;
+  List<Track>? _upNextCache;
+
+  /// Where the current queue comes from, for the sheet's provenance line
+  /// ("Playing from X"). Falls back to generic but truthful labels: tracks
+  /// carry no playlist title, so an unnamed curated context is just Playlist.
+  String get queueSourceLabel {
+    final id = _currentPlaylistId;
+    if (_isAutoQueueContext || id == 'auto_queue') return 'Autoplay';
+    if (id == 'jump_back_in') return 'Jump Back In';
+    if (id == 'recently_played') return 'Recently Played';
+    if (_isRealCuratedPlaylist) return 'Playlist';
+    return 'My Music';
+  }
+
+  /// The station's tracks, so the sheet can label where they came from.
+  bool isAutoplayQueued(String trackId) => _autoplayTrackIds.contains(trackId);
+
+  /// The radio station in running order, for the sheet's Autoplay section.
+  List<Track> get autoplayQueue => List.unmodifiable(_autoplayQueue);
+
+  /// The collection tracks still ahead of the current one, for the sheet's
+  /// "Playing Next" section. Empty when there is no ordered context, which is
+  /// itself the honest answer - not every tap has a collection behind it.
+  List<Track> get upcomingCollection {
+    final list = _getActivePlaylist();
+    if (!_isRealCuratedPlaylist || list.isEmpty) return const [];
+    final i = _currentTrack == null
+        ? -1
+        : list.indexWhere((t) => t.id == _currentTrack!.id);
+    if (i < 0 || (i + 1) >= list.length) return const [];
+    return List.unmodifiable(list.sublist(i + 1));
+  }
   bool get isLoggedIn => AuthService().isLoggedIn;
   int get currentIndex => _currentIndex;
   @override
@@ -1033,7 +1135,7 @@ class MusicProvider
       _accentController?.setAlbumAccent(null);
     };
     _paletteService.isCurrentTrackImpl = (id) => _currentTrack?.id == id;
-    _paletteService.addListener(notifyListeners);
+    _paletteService.addListener(_paletteNotified);
     _downloads.addListener(notifyListeners);
     // Attach auth-flip session reset (owned handle; detached in dispose).
     _authSessionReset;
@@ -1078,15 +1180,22 @@ class MusicProvider
 
     final isConnected = _networkService.isConnected;
     if (isConnected && !_isOfflineMode) {
-      try {
-        await Future.wait(
-            [fetchTracks(), fetchTrendingTracks(), fetchNewReleases()]);
-        unawaited(loadHomeFeed());
-      } catch (e) {
-        _errorMessage = 'Could not load initial content.';
-        if (kDebugMode)
-          debugPrint('MusicProvider: Error loading initial content: $e');
-      }
+      // Each source is independent. `Future.wait` defaults to failing fast, so
+      // one failure used to discard the other two successes and report a
+      // blanket "Could not load initial content". `eagerError: false` waits for
+      // all of them, and the per-call catch keeps one dead endpoint from
+      // masquerading as a total failure.
+      final loads = <Future<void>>[
+        fetchTracks(),
+        fetchTrendingTracks(),
+        fetchNewReleases(),
+      ];
+      await Future.wait(
+        loads.map((f) => f.catchError((Object e) {
+          if (kDebugMode) debugPrint('MusicProvider: initial load failed: $e');
+        })),
+      );
+      unawaited(loadHomeFeed());
     } else {
       _errorMessage = _isOfflineMode
           ? (_userManuallySetOffline
@@ -1121,19 +1230,27 @@ class MusicProvider
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-        // App going to background - reduce work
-        // Audio continues via foreground service (just_audio_background)
+      case AppLifecycleState.hidden:
+        // App going to background - reduce work.
+        // Audio continues via foreground service (just_audio_background).
+        //
+        // Note: Flutter already stops producing frames when the app is not
+        // resumed, so all AnimationControllers are muted for free. Timers are
+        // NOT muted, so the retry poller has to be stopped explicitly or it
+        // keeps waking the device (and hitting the network) in the pocket.
+        _retryTimer?.cancel();
         // Note: Palette generation is now skipped in updatePalette() via isInBackground check
         break;
       case AppLifecycleState.resumed:
         // App returning to foreground - resume normal operation
+        _startRetryTimer();
         // Force refresh palette if track changed while in background
         if (_currentTrack != null && paletteGenerator == null) {
           updatePalette();
         }
         break;
       case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
+        _retryTimer?.cancel();
         break;
     }
   }
@@ -1151,14 +1268,6 @@ class MusicProvider
         _position = pos;
         if (pos > const Duration(seconds: 2)) {
           _hasPlayedCurrentTrack = true;
-        }
-        // THROTTLE: Only notify at most every 1000ms to save battery/UI
-        final now = DateTime.now();
-        if (_lastPositionNotify == null ||
-            now.difference(_lastPositionNotify!) >
-                const Duration(milliseconds: 1000)) {
-          _debouncedNotify();
-          _lastPositionNotify = now;
         }
       }
     }, onError: (e) {
@@ -1216,25 +1325,32 @@ class MusicProvider
             'Processing: ${state.processingState}');
       }
 
-      // FIX: Detect track completion and advance to next track
-      // Natural track completion fires ProcessingState.completed. The 2s duplicate
-      // auto-advance guard (_consumeDuplicateAutoAdvance) prevents double-advance
-      // while guaranteeing that completion is never missed.
-      // We check _hasPlayedCurrentTrack so that if ExoPlayer resets position to 0:00
-      // upon completion, playback advance is never missed or stuck at 0:00.
+// Guards against treating a seek-to-zero or a sub-2s blip as a finished
+      // track. ExoPlayer resets position when it wraps, so relying on position
+      // alone left completion both missable and spuriously triggerable.
       final hasPlayedMeaningfully = _hasPlayedCurrentTrack ||
-          (_duration > const Duration(seconds: 2) && _position > const Duration(seconds: 1)) ||
-          (_duration > Duration.zero && _position >= _duration - const Duration(seconds: 3));
+          (_duration > const Duration(seconds: 2) &&
+              _position > const Duration(seconds: 1)) ||
+          (_duration > Duration.zero &&
+              _position >= _duration - const Duration(seconds: 3));
 
+      // The player advances through its window on its own, so `completed` here is
+      // NOT yet "the sequence ended". ExoPlayer reports the finishing item as
+      // completed a moment before it steps to the next one, and advancing from
+      // both places raced: this handler seeked while the window was already
+      // moving, overshot the end of the sequence, and the UI fell back to the
+      // stale current track - which looked like the next song playing for a
+      // second and then snapping back to the finished one.
+      //
+      // So give the window a moment to move first, and only advance if it did
+      // not. The old comment here referenced `_consumeDuplicateAutoAdvance`,
+      // which no longer exists - that removal is what left this unguarded.
       if (state.processingState == ProcessingState.completed &&
           _currentTrack != null &&
           !_isStopping &&
           hasPlayedMeaningfully) {
-        if (kDebugMode)
-          debugPrint(
-              'MusicProvider: Track completed naturally, calling _onTrackComplete');
         _hasPlayedCurrentTrack = false;
-        _onTrackComplete();
+        unawaited(_onSequenceRanDry());
       }
     }, onError: (e) {
       if (kDebugMode)
@@ -1245,6 +1361,17 @@ class MusicProvider
       debugPrint('MusicProvider: Audio listeners set up complete');
 
     // --- Navigation Listeners ---
+    //
+    // The player now advances through its window on its own, so an index change
+    // is the primary "the track changed" signal — not a synthetic skip event.
+    // Everything the old dummy machine used to drive (current track, lyrics,
+    // palette, history, prefetch) is driven from here instead.
+    _audioSubscriptions.add(_audioService.windowIndexStream.listen((id) {
+      if (id == null) return;
+      if (_currentTrack?.id == id) return; // our own head, already applied
+      unawaited(_onPlayerAdvancedTo(id));
+    }));
+
     _audioSubscriptions.add(_audioService.onSkipToNext.listen((_) {
       if (kDebugMode)
         debugPrint(
@@ -1332,6 +1459,10 @@ class MusicProvider
       } catch (_) {
         _repeatMode = RepeatMode.off;
       }
+      // The player is the one that has to know, so push the restored modes
+      // onto it rather than waiting for the user to toggle.
+      unawaited(_audioService.applyRepeatMode(repeatOne: _repeatMode == RepeatMode.one));
+      unawaited(_audioService.setShuffleOn(_shuffleEnabled));
       try {
         _localTracksSortCriteria = SortCriteria.values[
             p.getInt('localSortCriteria') ?? SortCriteria.nameAsc.index];
@@ -1385,6 +1516,10 @@ class MusicProvider
     } else {
       _updateCurrentIndex();
     }
+    // Hand the ordering to the player too, so the window it holds is walked in
+    // the order the UI is showing. Dart keeps _shuffledPlaylist for what the
+    // queue means; the player keeps the window consistent with it.
+    unawaited(_audioService.setShuffleOn(_shuffleEnabled));
     _saveSettings();
     notifyListeners();
   }
@@ -1409,15 +1544,19 @@ class MusicProvider
   }
 
   void cycleRepeatMode() {
-    _repeatMode =
-        RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length];
-    _saveSettings();
-    notifyListeners();
+    setRepeatMode(
+        RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length]);
   }
 
   void setRepeatMode(RepeatMode mode) {
     if (_repeatMode == mode) return;
     _repeatMode = mode;
+    // Repeat-one is delegated: the player loops the current window entry
+    // seamlessly, where the old path had to re-resolve the whole track because
+    // the player was parked on a silent dummy. Repeat-all stays here — the
+    // window is only a few tracks, so the player would loop the window rather
+    // than the playlist.
+    unawaited(_audioService.applyRepeatMode(repeatOne: mode == RepeatMode.one));
     _saveSettings();
     notifyListeners();
   }
@@ -1429,39 +1568,57 @@ class MusicProvider
       return;
     }
     _shuffledPlaylist = List.from(_currentPlayingTracks!)..shuffle(Random());
+    _rebuildTrackIndex();
     _updateCurrentIndex(); /* Preload handled by toggleShuffle or setPlaybackContext */
   }
 
   List<Track> _getActivePlaylist() =>
       _shuffleEnabled ? _shuffledPlaylist : (_currentPlayingTracks ?? []);
-  void _updateCurrentIndex() {
+
+  /// id -> position for the active playlist.
+  ///
+  /// Rebuilt only when the active list changes, not per lookup. This used to be
+  /// a linear `indexWhere` on every track advance and every context set, which
+  /// is O(playlist) on the hot path and noticeable on a large library.
+  Map<String, int> _trackIndex = const {};
+
+  void _rebuildTrackIndex() {
     final list = _getActivePlaylist();
-    _currentIndex = (_currentTrack != null && list.isNotEmpty)
-        ? list.indexWhere((t) => t.id == _currentTrack!.id)
-        : -1;
+    _trackIndex = {for (var i = 0; i < list.length; i++) list[i].id: i};
+  }
+
+  void _updateCurrentIndex() {
+    final id = _currentTrack?.id;
+    if (id == null) {
+      _currentIndex = -1;
+      return;
+    }
+    final i = _trackIndex[id];
+    if (i == null) {
+      // The active list changed under us (shuffle toggled, context replaced);
+      // rebuild once rather than scanning on every call.
+      _rebuildTrackIndex();
+      _currentIndex = _trackIndex[id] ?? -1;
+      return;
+    }
+    _currentIndex = i;
   }
 
   // --- Advance-race protection ---
   // Natural end-of-track triggers BOTH the nav-monitor (dummy item) and the
   // completed handler. This guard suppresses the second advance for the same
   // track within a short window.
-  DateTime? _lastAutoAdvanceAt;
-  String? _lastAutoAdvanceTrackId;
-  bool _consumeDuplicateAutoAdvance(String? trackId) {
-    final now = DateTime.now();
-    final isDup = _lastAutoAdvanceAt != null &&
-        _lastAutoAdvanceTrackId == trackId &&
-        now.difference(_lastAutoAdvanceAt!).inMilliseconds < 2000;
-    if (!isDup) {
-      _lastAutoAdvanceAt = now;
-      _lastAutoAdvanceTrackId = trackId;
-    }
-    return isDup;
-  }
-
-  // Bumped whenever user intent starts/retargets playback; stale async
-  // continuations (e.g. autoplay fetches) compare and abort.
+  /// Bumped whenever user intent starts/retargets playback; stale async
+  /// continuations (e.g. autoplay fetches) compare and abort.
   int _playbackGeneration = 0;
+
+  /// Token for autoplay's own asynchronous attempts.
+  ///
+  /// Deliberately separate from [_playbackGeneration]: that counter belongs to
+  /// the listener. An autoplay attempt has to be abandonable the moment the
+  /// listener taps something, but it must never be able to invalidate the
+  /// playback that tap started - which is exactly what sharing the counter did.
+  int _autoplayGeneration = 0;
 
   /// v5.2 autoqueue: true while playback context came from autoplay
   /// recommendations. Clearing the queue empties the upcoming autoqueue and
@@ -1472,9 +1629,12 @@ class MusicProvider
   /// end-of-playlist must stop instead of re-spawning autoplay.
   bool _suppressAutoplayOnce = false;
 
-  /// Force-reloads the current track, bypassing play/pause toggle logic.
-  /// Needed because after auto-advance the player sits on a silent dummy item,
-  /// so seek(Duration.zero)/resume would target the wrong source.
+  /// Force-reloads the current track.
+  ///
+  /// RETIRED as the repeat-one path: the player now loops the current window
+  /// entry natively (see setRepeatMode), so repeat-one is a gapless loop rather
+  /// than a full stream re-resolve. Kept as an explicit reload for the case
+  /// where the user genuinely wants the track restarted from the top.
   Future<void> _replayCurrentTrack() async {
     final t = _currentTrack;
     if (t == null) return;
@@ -1487,7 +1647,7 @@ class MusicProvider
       {String? playlistId, bool clearQueue = true}) {
     if (!listEquals(_currentPlayingTracks, tracks) ||
         _currentPlaylistId != playlistId) {
-      _isAutoQueueContext = false;
+      _isAutoQueueContext = (playlistId == 'auto_queue');
       debugPrint(
           "Setting playback context. ID: $playlistId, Tracks: ${tracks?.length ?? 0}, ClearQueue: $clearQueue");
       _currentPlayingTracks = tracks != null ? List.from(tracks) : null;
@@ -1496,22 +1656,28 @@ class MusicProvider
         _queue.clear();
         debugPrint("Playback context changed, queue cleared.");
       }
+      // A new collection is a new seed. Keeping the station that was built for
+      // the old one would start the listener off in music they did not choose.
+      if (clearQueue && _autoplayQueue.isNotEmpty) {
+        _autoplayQueue.clear();
+        _rearmAutoplay();
+      }
       if (_shuffleEnabled && _currentPlayingTracks != null) {
         _shufflePlaylist();
       } else {
+        _rebuildTrackIndex();
         _updateCurrentIndex();
       }
     } else {
+      _rebuildTrackIndex();
       _updateCurrentIndex();
     }
   }
 
-  /// Handles skip events arriving via the audio-service stream (dummy-item
-  /// auto-advance and media-session skips). Guards the double-advance race
-  /// with the completed handler and honors repeat-one.
+  /// Handles skip events arriving via the audio-service stream (media-session
+  /// next-track). The dummy-item auto-advance that used to arrive here is gone:
+  /// the player now holds real tracks and reports its own index changes.
   Future<void> _handleAutoSkipToNext() async {
-    if (_consumeDuplicateAutoAdvance(_currentTrack?.id)) return;
-
     // Sleep timer is honored here, at the authoritative advance signal —
     // ProcessingState.completed only ever fires on padding items, so the
     // old completed-path stop check was effectively unreachable.
@@ -1571,33 +1737,54 @@ class MusicProvider
       return;
     }
 
-    if (_repeatMode == RepeatMode.one) {
-      await _replayCurrentTrack();
+    // Repeat-one is the player's job now (a gapless native loop), so this must
+    // not also re-enter the decision path — that is what used to make repeat
+    // a full re-resolve rather than a seek.
+    if (_repeatMode == RepeatMode.one) return;
 
+    // If the player still has the next track loaded, let it advance. This is
+    // the whole point of the window: no resolve, no setAudioSources, no gap.
+    if (_audioService.hasNextInWindow) {
+      if (kDebugMode) {
+        debugPrint('MusicProvider: advancing inside player window');
+      }
+      await _audioService.seekToNextInWindow();
       return;
     }
 
-    // The nav-monitor usually advances first (dummy item); if it already did,
-    // this completed event must not advance a second time.
-    // ponytail: recommendation stats below may be approximate under the race —
-    // acceptable signal noise; revisit only if recommendations degrade.
-    if (_consumeDuplicateAutoAdvance(_currentTrack?.id)) return;
-
     _updateCurrentIndex();
 
-    // 1. Check Queue
+    final isRealCuratedPlaylist = _isRealCuratedPlaylist;
+
     if (_queue.isNotEmpty) {
-      final next = _queue.removeAt(0);
-      if (kDebugMode)
-        debugPrint("MusicProvider: Playing next from queue: ${next.trackName}");
-      _playTrackInternal(next, setContext: false, clearQueue: false);
-      notifyListeners();
-      return;
+      final isFirstAutoplay = _autoplayTrackIds.contains(_queue.first.id);
+      final list = _getActivePlaylist();
+      final hasUpcomingPlaylistTracks =
+          isRealCuratedPlaylist && (_currentIndex + 1) < list.length;
+
+      // Only advance playlist first if the upcoming queue item is an AUTOPLAY track
+      // and we are actively inside a curated playlist/album.
+      // (User-added queue tracks have priority over the remaining playlist!)
+      if (!isFirstAutoplay || !hasUpcomingPlaylistTracks) {
+        final next = _queue.removeAt(0);
+        if (kDebugMode) {
+          debugPrint("MusicProvider: Playing next from queue: ${next.trackName}");
+        }
+        _playTrackInternal(next, setContext: false, clearQueue: false);
+        notifyListeners();
+        return;
+      }
     }
 
     // 2. Standard Playlist Path
     final list = _getActivePlaylist();
-    if (list.isEmpty) {
+    if (!isRealCuratedPlaylist || list.isEmpty) {
+      if (_queue.isNotEmpty) {
+        final next = _queue.removeAt(0);
+        _playTrackInternal(next, setContext: false, clearQueue: false);
+        notifyListeners();
+        return;
+      }
       if (_autoplayEnabled && !_suppressAutoplayOnce) {
         _startAutoplayFromRecommendations();
         return;
@@ -1611,6 +1798,16 @@ class MusicProvider
       if (kDebugMode) debugPrint('MusicProvider: Advancing to index $nextIdx');
       _playTrackInternal(list[nextIdx], setContext: false, clearQueue: false);
     } else {
+      if (_queue.isNotEmpty) {
+        final next = _queue.removeAt(0);
+        if (kDebugMode) {
+          debugPrint(
+              'MusicProvider: Playlist finished -> Advancing to autoplay queue: ${next.trackName}');
+        }
+        _playTrackInternal(next, setContext: false, clearQueue: false);
+        notifyListeners();
+        return;
+      }
       _handleEndOfPlaylist();
     }
   }
@@ -1646,6 +1843,16 @@ class MusicProvider
         _playOfflineTrackInternal(list[0],
             setContext: false, clearQueue: false);
       } else if (_autoplayEnabled && !_suppressAutoplayOnce) {
+        if (_queue.isNotEmpty) {
+          final next = _queue.removeAt(0);
+          if (kDebugMode) {
+            debugPrint(
+                'MusicProvider: End of Playlist -> Continuing with autoplay queue: ${next.trackName}');
+          }
+          _playTrackInternal(next, setContext: false, clearQueue: false);
+          notifyListeners();
+          return;
+        }
         // ENHANCED: Smart Autoplay across online tracks/playlists (BitChord Parity)
         if (kDebugMode) {
           debugPrint('MusicProvider: End of Playlist -> Continuing with AutoPlay');
@@ -1670,7 +1877,7 @@ class MusicProvider
   /// track currently playing).
   bool _isPlayableAutoplayCandidate(Track t) {
     final id = t.id;
-    if (id.length != 11) return false;
+    if (id.isEmpty) return false;
     if (id.startsWith('PL') ||
         id.startsWith('VL') ||
         id.startsWith('UC') ||
@@ -1679,7 +1886,13 @@ class MusicProvider
       return false;
     }
     if (id == _currentTrack?.id) return false;
-    return true;
+    if (id.length == 11 ||
+        t.source == 'saavn' ||
+        t.source == 'spotify' ||
+        (t.trackName.isNotEmpty && t.artistName.isNotEmpty)) {
+      return true;
+    }
+    return false;
   }
 
   /// Start autoplay with AI/Radio recommended tracks based on current track
@@ -1689,9 +1902,19 @@ class MusicProvider
       return;
     }
 
-    // Own this playback attempt; any user interaction bumps the generation
-    // and aborts this continuation before it can hijack playback.
-    final gen = ++_playbackGeneration;
+    // Claim an autoplay attempt WITHOUT bumping the user playback generation.
+    //
+    // This used to do `++_playbackGeneration` - the very counter every
+    // user-initiated playTrack checks at `if (gen != _playbackGeneration) return`.
+    // The player sits in `completed` while the replacement track resolves, so
+    // this handler re-fires, and every re-fire bumped the counter again. Any
+    // track the listener tapped in that window was therefore silently abandoned
+    // mid-resolve: the app looked completely frozen after an autoplay handover.
+    //
+    // Autoplay now has its own token, and aborts when the *user* generation
+    // moves - so it can be cancelled by a tap but can never cancel one.
+    final gen = ++_autoplayGeneration;
+    final userGen = _playbackGeneration;
 
     if (kDebugMode) {
       debugPrint(
@@ -1706,11 +1929,26 @@ class MusicProvider
           _currentTrack!.id.length == 11) {
         recommendations =
             await _innerTubeService.getRadioTracks(_currentTrack!.id, limit: 20);
+      } else if (_currentTrack!.source != 'local' &&
+          _currentTrack!.trackName.isNotEmpty) {
+        final query =
+            '${_currentTrack!.trackName} ${_currentTrack!.artistName}'.trim();
+        final searchResults =
+            await _innerTubeService.searchSongs(query, limit: 10);
+        if (searchResults.isNotEmpty && searchResults.first.id.length == 11) {
+          recommendations = await _innerTubeService
+              .getRadioTracks(searchResults.first.id, limit: 20);
+          if (recommendations.isEmpty) {
+            recommendations = searchResults;
+          }
+        } else {
+          recommendations = searchResults;
+        }
       } else {
-        recommendations = await _fetchPersonalizedForYou();
+        recommendations = [];
       }
 
-      if (gen != _playbackGeneration) {
+      if (gen != _autoplayGeneration || userGen != _playbackGeneration) {
         if (kDebugMode) {
           debugPrint('MusicProvider: Autoplay aborted (user took over).');
         }
@@ -1729,7 +1967,6 @@ class MusicProvider
           ..._quickPicks,
           ..._recommendedTracks,
           ..._trendingTracks,
-          ..._recentlyPlayed,
         ].where((t) => _isPlayableAutoplayCandidate(t) && seen.add(t.id)).toList();
       }
 
@@ -1761,7 +1998,7 @@ class MusicProvider
       }
 
       // Set new context and play first recommendation
-      if (gen != _playbackGeneration) {
+      if (gen != _autoplayGeneration || userGen != _playbackGeneration) {
         if (kDebugMode) {
           debugPrint(
               'MusicProvider: Autoplay aborted before start (user took over).');
@@ -1774,8 +2011,8 @@ class MusicProvider
       }
 
       // Set remaining as new playlist context
+      _setPlaybackContext(ranked, playlistId: 'auto_queue', clearQueue: false);
       _isAutoQueueContext = true;
-      _setPlaybackContext(ranked, clearQueue: false);
       await _playTrackInternal(nextTrack, setContext: false, clearQueue: false);
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: Autoplay error: $e');
@@ -1783,12 +2020,13 @@ class MusicProvider
         ..._quickPicks,
         ..._recommendedTracks,
         ..._trendingTracks,
-        ..._recentlyPlayed,
       ].where(_isPlayableAutoplayCandidate).toList();
-      if (localPool.isNotEmpty && gen == _playbackGeneration) {
+      if (localPool.isNotEmpty &&
+          gen == _autoplayGeneration &&
+          userGen == _playbackGeneration) {
         final fallbackNext = localPool.first;
+        _setPlaybackContext(localPool, playlistId: 'auto_queue', clearQueue: false);
         _isAutoQueueContext = true;
-        _setPlaybackContext(localPool, clearQueue: false);
         await _playTrackInternal(fallbackNext, setContext: false, clearQueue: false);
       } else {
         stopTrack();
@@ -1803,70 +2041,199 @@ class MusicProvider
 
 
 
+  /// How many radio tracks to keep queued ahead of the current one.
+  ///
+  /// This is the station's runway, not the whole station. A track runs minutes,
+  /// so ten is far more than a resolve needs to replace, while keeping the
+  /// queue honest about what the user actually chose.
+  static const int _autoplayQueueTarget = 10;
+
+  /// Every track radio has offered or played this session, so a station that
+  /// wraps around does not replay what the listener just heard.
+  final Set<String> _autoplaySessionHistory = {};
+
+  /// The track the in-flight radio request was seeded with.
+  ///
+  /// One queue edit fires several player callbacks, so without this a single
+  /// refill would be requested repeatedly. Released again when the response
+  /// comes back empty — an empty or failed response is exactly the case where
+  /// a latched seed would leave the toggle on with nothing to play.
+  String? _autoplaySeed;
+
+  /// Retry delay before re-arming an empty station.
+  static const Duration _autoplayEmptyRetryDelay = Duration(seconds: 2);
+
+  bool _autoplayEmptyRetried = false;
+
+  /// Guarded by [_playbackGeneration]; only one radio request at a time.
+  Future<void>? _autoplayFillJob;
+
+  /// Whether the station has enough queued ahead of the current track.
+  bool _autoplayStationIsFull() => _autoplayQueueLength >= _autoplayQueueTarget;
+
+  /// Releases the seed latch so the next request re-arms the station.
+  void _rearmAutoplay() {
+    _autoplaySeed = null;
+    _autoplayEmptyRetried = false;
+  }
+
   /// Automatically populates the queue with the best and related tracks
   /// using InnerTube's official RDAMVM radio mix and BitChord's QueueBuilder algorithm.
   Future<void> _autoFillQueue(Track seedTrack, {int? generation}) async {
     final gen = generation ?? _playbackGeneration;
+    if (kDebugMode) {
+      debugPrint('MusicProvider: autoFill seed=${seedTrack.trackName} '
+          'enabled=$_autoplayEnabled offline=$_isOfflineMode '
+          'repeat=$_repeatMode station=${_autoplayQueueLength}/$_autoplayQueueTarget '
+          'latched=${_autoplaySeed == seedTrack.id}');
+    }
     if (!_autoplayEnabled || _isOfflineMode) return;
+
+    // A full station does not need refilling, and a repeat-all loop is
+    // deliberately playing what is already there.
+    if (_autoplayStationIsFull() || _repeatMode == RepeatMode.all) return;
+
+    // The seed latch: several callbacks from one queue edit must not each
+    // start a request.
+    if (_autoplaySeed == seedTrack.id) return;
+    _autoplaySeed = seedTrack.id;
+    _autoplayEmptyRetried = false;
+
+    // One request at a time. A newer caller wins; the older one is dropped.
+    final running = _autoplayFillJob;
+    if (running != null) await running;
+
+    final job = _fillAutoplayQueue(seedTrack, gen);
+    _autoplayFillJob = job;
+    try {
+      await job;
+    } finally {
+      if (identical(_autoplayFillJob, job)) _autoplayFillJob = null;
+    }
+  }
+
+  /// The actual radio request and insert. Split from [_autoFillQueue] so the
+  /// latch and the single-flight guard above have a Future to hand around.
+  Future<void> _fillAutoplayQueue(Track seedTrack, int gen) async {
     try {
       List<Track> recommendations;
       if (seedTrack.id.length == 11 && seedTrack.source != 'local') {
         recommendations =
             await _innerTubeService.getRadioTracks(seedTrack.id, limit: 20);
-      } else if (seedTrack.source != 'local' && seedTrack.trackName.isNotEmpty) {
-        recommendations = await _innerTubeService.searchSongs(
-            '${seedTrack.trackName} ${seedTrack.artistName}'.trim(),
-            limit: 20);
+      } else if (seedTrack.source != 'local' &&
+          seedTrack.trackName.isNotEmpty) {
+        final query =
+            '${seedTrack.trackName} ${seedTrack.artistName}'.trim();
+        final searchResults =
+            await _innerTubeService.searchSongs(query, limit: 10);
+        if (searchResults.isNotEmpty && searchResults.first.id.length == 11) {
+          recommendations = await _innerTubeService
+              .getRadioTracks(searchResults.first.id, limit: 20);
+          if (recommendations.isEmpty) {
+            recommendations = searchResults;
+          }
+        } else {
+          recommendations = searchResults;
+        }
       } else {
-        recommendations = await _fetchPersonalizedForYou();
+        recommendations = [];
       }
-
-      if (gen != _playbackGeneration) return;
 
       var filtered = recommendations.where(_isPlayableAutoplayCandidate).toList();
 
       if (filtered.isEmpty) {
-        final seen = <String>{seedTrack.id};
+        final seen = <String>{
+          seedTrack.id,
+          ..._autoplaySessionHistory,
+        };
         filtered = [
           ..._quickPicks,
           ..._recommendedTracks,
           ..._trendingTracks,
-          ..._recentlyPlayed,
         ].where((t) => _isPlayableAutoplayCandidate(t) && seen.add(t.id)).toList();
       }
 
-      if (filtered.isEmpty || gen != _playbackGeneration) return;
+      if (filtered.isEmpty) {
+        await _retryEmptyAutoplay(seedTrack, gen);
+        return;
+      }
 
       // Apply BitChord QueueBuilder: deduplicate recordings and enforce artist diversity caps
-      final existingTracks = [
+      final existingTracks = <Track>[
         if (_currentTrack != null) _currentTrack!,
         ..._queue,
-      ];
-      final extended = QueueBuilder.extend(existingTracks, filtered, limit: 12);
+        // Anything the station already offered counts as taken, so a wrap-around
+        // radio response does not hand back the tracks it just gave.
+        ..._autoplaySessionHistory.map(_trackById).whereType<Track>(),
+      ]..removeWhere((t) => t.id == seedTrack.id);
 
-      if (extended.isEmpty || gen != _playbackGeneration) return;
+      final needed = _autoplayQueueTarget - _autoplayQueueLength;
+      if (needed <= 0) return;
 
-      // Fill queue if empty or append when low
-      if (_currentTrack?.id == seedTrack.id) {
-        for (final t in extended) {
-          _autoplayTrackIds.add(t.id);
-        }
-        if (_queue.isEmpty) {
-          _queue.addAll(extended);
-          notifyListeners();
-          _prefetchNextTrack();
-          if (kDebugMode) {
-            debugPrint(
-                'MusicProvider: Auto-filled queue with ${extended.length} BitChord-curated tracks for ${seedTrack.trackName}');
-          }
-        } else if (_queue.length < 5) {
-          _queue.addAll(extended);
-          notifyListeners();
-        }
+      final extended =
+          QueueBuilder.extend(existingTracks, filtered, limit: needed);
+      if (extended.isEmpty) {
+        await _retryEmptyAutoplay(seedTrack, gen);
+        return;
+      }
+
+      // Deliberately NOT gated on the current track or the playback generation.
+      //
+      // The station is a suggestion list, not a playback decision: dropping the
+      // result because the listener skipped while the radio request was in
+      // flight meant a station that was almost always empty by the time it
+      // arrived. Anything that arrives is still valid to offer, and the
+      // per-track re-seed tops it up for whatever is playing now.
+      for (final t in extended) {
+        _autoplayTrackIds.add(t.id);
+        _autoplaySessionHistory.add(t.id);
+      }
+      _autoplayQueue.addAll(extended);
+      notifyListeners();
+
+      // Push the new station entries into the player as well.
+      //
+      // The window is only built once when the head starts, which is before the
+      // station has returned anything - so from a tap with no ordered context
+      // (anything that is not Jump Back In or a real album) the window stayed
+      // empty, and the player had nothing to advance into at the end of the
+      // track. Queueing is what makes the next song play.
+      if (_currentTrack != null) {
+        unawaited(_extendWindowFrom(_currentTrack!));
+      }
+      _prefetchNextTrack();
+      if (kDebugMode) {
+        debugPrint(
+            'MusicProvider: Auto-filled queue with ${extended.length} BitChord-curated tracks for ${seedTrack.trackName}');
       }
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: Auto-fill queue error: $e');
+      await _retryEmptyAutoplay(seedTrack, gen);
     }
+  }
+
+  /// Re-arms an empty station once.
+  ///
+  /// An empty radio response would otherwise leave the toggle on with nothing
+  /// to play: the seed stays latched, so nothing ever asks again. One delayed
+  /// retry heals a flaky response without hammering the endpoint.
+  Future<void> _retryEmptyAutoplay(Track seedTrack, int gen) async {
+    if (_autoplayEmptyRetried) return;
+    _autoplayEmptyRetried = true;
+    _autoplaySeed = null;
+    await Future<void>.delayed(_autoplayEmptyRetryDelay);
+    if (gen != _playbackGeneration) return;
+    if (!_autoplayEnabled || _autoplayStationIsFull()) return;
+    await _autoFillQueue(seedTrack, generation: gen);
+  }
+
+  int get _autoplayQueueLength => _autoplayQueue.length;
+
+  Track? _trackById(String id) {
+    for (final t in _queue) {
+      if (t.id == id) return t;
+    }
+    return _currentTrack?.id == id ? _currentTrack : null;
   }
 
   /// Asynchronously resolves authoritative artist and album metadata from YouTube Music's
@@ -1912,7 +2279,9 @@ class MusicProvider
   }
 
   Future<void> _playTrackInternal(Track track,
-      {bool setContext = true, bool clearQueue = true}) async {
+      {bool setContext = true,
+      bool clearQueue = true,
+      bool recordHistory = true}) async {
     if (setContext) {
       _setPlaybackContext(_currentPlayingTracks,
           playlistId: _currentPlaylistId, clearQueue: clearQueue);
@@ -1929,13 +2298,16 @@ class MusicProvider
     try {
       if (offline) {
         await playOfflineTrack(track,
-            setContext: setContext, clearQueue: setContext ? clearQueue : false);
+            setContext: setContext,
+            clearQueue: setContext ? clearQueue : false,
+            recordHistory: recordHistory);
       } else {
         await playTrack(track,
             playlistTracks: _currentPlayingTracks,
             playlistId: _currentPlaylistId,
             setContext: setContext,
-            clearQueue: setContext ? clearQueue : false);
+            clearQueue: setContext ? clearQueue : false,
+            recordHistory: recordHistory);
       }
     } catch (e) {
       debugPrint("Error in _playTrackInternal: $e");
@@ -1944,36 +2316,533 @@ class MusicProvider
 
   Future<bool> _shouldPlayOffline(Track track) async =>
       track.source == 'local' || await isTrackDownloaded(track.id);
+
+  // --- Player window -----------------------------------------------------
+  //
+  // The player holds a small window of real, already-resolved tracks laid out
+  // as [preceding?] + [current] + [upcoming…], with the player started on the
+  // current one. ExoPlayer then transitions between them seamlessly, so a
+  // plain listen costs one setAudioSources per window instead of one per track,
+  // and prev/next are the real thing rather than a synthetic event.
+  //
+  // The window is only ever a buffer. What plays next is still decided here
+  // (see _peekNextAfter), so the window can never become a second source of
+  // truth; it is refilled from the real decision as it is consumed.
+
+  /// How many tracks to hold after the current one in the player window.
+  ///
+  /// A track runs minutes and a resolve takes well under a second once the
+  /// InnerTube session is warm, so even a short window has plenty of runway for
+  /// one failed resolve. BitChord keeps ten queued ahead for the same reason -
+  /// the depth is what stops the queue running dry mid-listen - but it pays for
+  /// that depth at the moment of the tap, which is the part that made playback
+  /// feel slow to start here. This window is filled *after* the head is already
+  /// audible, so depth costs nothing at the start.
+  static const int _windowUpcoming = 4;
+
+  /// Resolves one track into a tagged source, or null if it cannot play.
+  /// Every track the player has been handed, by id.
+  ///
+  /// The transition handler resolves "what just became current" from the
+  /// visible context, the user queue and the station - but the window is also
+  /// fed by dry-window repairs and preceding-track inserts, whose entries can
+  /// be in neither list when the player reaches them. This registry is the
+  /// fallback that keeps working when all the lists fail: anything audible is
+  /// something we windowed, so it is always in here.
+  ///
+  /// Bounded: only the recent past matters for a transition, and the map never
+  /// grows past [_windowedTrackCap].
+  final Map<String, Track> _windowedTracks = {};
+  static const int _windowedTrackCap = 64;
+
+  void _rememberWindowedTrack(Track t) {
+    // Refresh recency so the cap trims the stalest, not the oldest-inserted.
+    _windowedTracks.remove(t.id);
+    _windowedTracks[t.id] = t;
+    while (_windowedTracks.length > _windowedTrackCap) {
+      _windowedTracks.remove(_windowedTracks.keys.first);
+    }
+  }
+
+  Future<IndexedAudioSource?> _sourceForTrack(Track t) async {
+    _rememberWindowedTrack(t);
+    try {
+      if (t.source == 'local' || await isTrackDownloaded(t.id)) {
+        final path = await _localFileFor(t);
+        if (path == null || path.isEmpty) return null;
+        return _audioService.buildSource(
+          url: path,
+          isLocal: true,
+          title: t.trackName,
+          artist: t.artistName,
+          artUri: t.albumArtUrl,
+          id: t.id,
+        );
+      }
+      final r = await _streamResolution.resolve(ResolveRequest(
+        videoId: t.id,
+        title: t.trackName,
+        artist: t.artistName,
+        durationMs: t.durationMs,
+      ));
+      if (r == null || r.url.isEmpty) return null;
+      return _audioService.buildSource(
+        url: r.url,
+        headers: r.userAgent == null ? null : {'User-Agent': r.userAgent!},
+        title: t.trackName,
+        artist: t.artistName,
+        artUri: t.albumArtUrl,
+        id: t.id,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: window track ${t.id} failed: $e');
+      return null;
+    }
+  }
+
+  /// Completes the live window around whatever is playing.
+  ///
+  /// Runs unawaited, after the head is already audible. The upcoming entries
+  /// are the same work the advance path does, so it goes through
+  /// [_extendWindowFrom]; only the preceding entry is new, because nothing
+  /// else puts one in and without it the lock screen has no previous button.
+  Future<void> _fillWindowAround(Track head) async {
+    if (_currentTrack?.id != head.id) return; // the user moved on
+    final gen = _playbackGeneration;
+
+    final prev = _precedingTrack(head);
+
+    // Both halves run concurrently and neither is awaited before the other.
+    // Awaiting the preceding track's resolve first meant a slow resolve left
+    // the upcoming entries — the ones that actually keep the music going —
+    // waiting on a lookup that only exists to light up a prev button.
+    unawaited(_extendWindowFrom(head));
+
+    if (prev != null) {
+      unawaited(() async {
+        final prevSource = await _sourceForTrack(prev);
+        if (gen != _playbackGeneration) return;
+        if (_currentTrack?.id != head.id) return;
+        if (prevSource == null) return;
+        try {
+          await _audioService.insertWindowAt(0, prevSource);
+          if (kDebugMode) {
+            debugPrint('MusicProvider: window filled -> '
+                '${_audioService.windowTrackIds.length} entries');
+          }
+        } catch (e) {
+          if (kDebugMode) debugPrint('MusicProvider: preceding insert failed: $e');
+        }
+      }());
+    } else if (kDebugMode) {
+      debugPrint('MusicProvider: window filled (no preceding) -> '
+          '${_audioService.windowTrackIds.length} entries');
+    }
+  }
+
+
+  /// Local file path for [track] when it is on disk, else null.
+  Future<String?> _localFileFor(Track track) async {
+    if (track.source == 'local' && track.previewUrl.isNotEmpty) {
+      return track.previewUrl;
+    }
+    try {
+      return await getDownloadedTrackPath(track.id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// True when playback context is a real ordered list of tracks, as opposed to
+  /// an autoplay seed.
+  ///
+  /// Any ordered list counts — an album or playlist, but also Jump Back In,
+  /// which is genuinely walkable and is what a prev/next button should walk
+  /// when the user starts from there. Earlier this also excluded the literal
+  /// ids 'recently_played' and 'jump_back_in', but neither was ever assigned
+  /// anywhere, so those clauses only made those contexts lose their prev/next
+  /// and their ability to advance past the end.
+  ///
+  /// Autoplay stays out because it owns its own advance; [_isAutoQueueContext]
+  /// is the flag that actually tracks that.
+  bool get _isRealCuratedPlaylist =>
+      _currentPlaylistId != null &&
+      _currentPlaylistId != 'auto_queue' &&
+      !_isAutoQueueContext;
+
+  /// The player moved to a windowed track on its own.
+  ///
+  /// Everything a track change normally does is applied here — the window
+  /// exists so this path is a state update rather than a re-resolve, which is
+  /// the whole point of the phase.
+  Future<void> _onPlayerAdvancedTo(String id) async {
+    final list = _getActivePlaylist();
+    final idx = list.indexWhere((t) => t.id == id);
+
+    // Resolve what just became current. In order:
+    //
+    // 1. The window registry. This is authoritative for anything audible,
+    //    because it records every track the player was actually handed -
+    //    including dry-window repairs and preceding-track inserts that the
+    //    lists below may no longer contain.
+    // 2. The visible context, then the full user queue and the full station
+    //    (not just their heads: the player can step past a head that has not
+    //    been consumed yet if two transitions land close together).
+    //
+    // The old fallback of "_currentTrack or _quickPicks.first" is gone. It
+    // returned a track whose id differed from `id`, hit the `next.id != id`
+    // check, and bailed - leaving the audio on the new track while cover,
+    // title and lyrics all kept showing the old one.
+    final Track? resolved = _windowedTracks[id] ??
+        (idx >= 0 ? list[idx] : null) ??
+        _queue.firstWhereOrNull((t) => t.id == id) ??
+        _autoplayQueue.firstWhereOrNull((t) => t.id == id);
+
+    final next = resolved;
+    if (next == null) {
+      if (kDebugMode) {
+        debugPrint('MusicProvider: window advanced to untracked $id '
+            '- registry has ${_windowedTracks.length} entries');
+      }
+      return;
+    }
+    if (next.id == _currentTrack?.id) return;
+
+// Observe, never invalidate.
+    //
+    // This runs because the player moved on by itself, and it does not start a
+    // resolve of its own - it only applies state. It used to do
+    // `++_playbackGeneration`, which is the counter a user-initiated playTrack
+    // checks at `if (gen != _playbackGeneration) return`. So whenever a track
+    // change raced a tap, the tap was cancelled mid-resolve and silently did
+    // nothing: the listener pressed a song and heard silence, with no error.
+    //
+    // This is the same rule BitChord follows - `onMediaItemTransition` does
+    // bookkeeping and never cancels an in-flight resolve.
+    final gen = _playbackGeneration;
+
+    // A track that came from the user queue is consumed now that it is
+    // actually playing. _peekNextAfter deliberately does not consume it, so
+    // this is the one place that does.
+    if (_queue.isNotEmpty && _queue.first.id == next.id) {
+      _queue.removeAt(0);
+    } else if (_autoplayQueue.isNotEmpty && _autoplayQueue.first.id == next.id) {
+      // Same for the station, or it would keep offering a track already playing
+      // and the queue would drift one entry behind the audio forever.
+      _autoplayQueue.removeAt(0);
+    }
+
+    // History before the move, so "previously played" records the track that
+    // actually ended rather than the one that started.
+    final previous = _currentTrack;
+    if (previous != null && previous.id != next.id) {
+      _playbackHistory.add(previous);
+      if (_playbackHistory.length > _maxPlaybackHistory) {
+        _playbackHistory.removeAt(0);
+      }
+    }
+
+    _currentTrack = TrackMetadataEnricher.sanitizeTrack(next);
+    // A new current track clears the dry-window latch, so whichever track
+    // finishes next gets its own repair rather than being skipped as "already
+    // handled".
+    _dryRepairFor = null;
+    // -1 when the track is not in the context list, which is the honest index:
+    // prev/next then come from the window rather than from a list position.
+    _currentIndex = idx;
+    _paletteService.clear();
+    _isOfflineTrack = next.source == 'local';
+    _currentLyrics = null;
+    _lyricsTrackId = null;
+    _isLoadingLyrics = true;
+    _lyricsError = null;
+    notifyListeners();
+
+    if (!_isOfflineMode) {
+      unawaited(fetchLyrics());
+    }
+    updatePalette();
+    _updateRecentlyPlayed(_currentTrack!);
+    _recordSearchFollowup(_currentTrack!);
+
+    // Keep the window topped up so the player never runs dry.
+    unawaited(_extendWindowFrom(_currentTrack!));
+
+    // Re-seed the station from the track that is actually playing now. Without
+    // this the radio is frozen on whatever was playing when it was first
+    // filled, so the queue keeps recommending music for a track that ended
+    // minutes ago. The latch inside makes the extra callbacks from one queue
+    // edit cost nothing.
+    _autoplaySessionHistory.add(next.id);
+    if (_autoplayEnabled && !_isOfflineMode) {
+      unawaited(_autoFillQueue(_currentTrack!, generation: gen));
+    }
+    notifyListeners();
+
+    if (gen != _playbackGeneration) return;
+  }
+
+
+  /// Repairs an exhausted player window, then lets the player do the advancing.
+  ///
+  /// Modelled on BitChord, which is the version of this that works. There, the
+  /// player owns the queue outright: `onMediaItemTransition` is the only
+  /// "track changed" signal, and `STATE_ENDED` deliberately does *not* advance —
+  /// it only tops the queue up so ExoPlayer continues by itself. The listener's
+  /// queue runs ~10 tracks deep precisely so the queue rarely runs dry at all.
+  ///
+  /// We had two advancers. The window moved on by itself *and* `completed` ran a
+  /// second advance, which seeked past the end of the sequence, left the UI
+  /// showing the finished track, and — because that path bumped the user
+  /// playback generation — silently cancelled whatever the listener tapped next.
+  ///
+  /// So there is no second advancer. A dry window is a queue problem: top up the
+  /// station, push one entry into the player, and the player continues on its
+  /// own. [windowIndexStream] then applies the state change like any other.
+  Future<void> _onSequenceRanDry() async {
+    // The player reports `completed` repeatedly while it sits at the end of a
+    // track, so without this latch every emission started another repair - which
+    // is how a single track end turned into an unbounded pile of overlapping
+    // radio requests.
+    final finishedId = _currentTrack?.id;
+    if (finishedId == null) return;
+    if (_dryRepairFor == finishedId) return;
+    _dryRepairFor = finishedId;
+    _hasPlayedCurrentTrack = false;
+
+    if (kDebugMode) {
+      debugPrint('MusicProvider: window ran dry after "$finishedId" '
+          '- topping up instead of advancing');
+    }
+
+    // Autoplay gets its own token so it can be abandoned when the listener
+    // takes over, but can never invalidate what the listener asked for.
+    final autoplayGen = ++_autoplayGeneration;
+    final userGen = _playbackGeneration;
+    bool superseded() =>
+        autoplayGen != _autoplayGeneration || userGen != _playbackGeneration;
+
+    try {
+      if (_autoplayEnabled && !_isOfflineMode) {
+        await _autoFillQueue(_currentTrack!, generation: userGen);
+        if (superseded()) return;
+      }
+
+      final next = _peekNextAfter(_currentTrack?.id);
+      if (next == null) {
+        if (kDebugMode) {
+          debugPrint('MusicProvider: nothing left to play - stopping');
+        }
+        _dryRepairFor = null;
+        stopTrack();
+        return;
+      }
+
+      final source = await _sourceForTrack(next);
+      if (superseded()) return;
+      if (source == null) {
+        // Could not resolve the one thing we meant to play. Try once more via
+        // the queue decision so a single bad resolve does not end the session.
+        _dryRepairFor = null;
+        await _onTrackComplete();
+        return;
+      }
+
+      await _audioService.appendWindow([source]);
+      if (kDebugMode) {
+        debugPrint('MusicProvider: appended "${next.trackName}" '
+            '- the player will move on by itself');
+      }
+
+      // Appending to a finished sequence does not restart it. The repair only
+      // runs when the track genuinely finished while playing - a paused player
+      // never reaches `completed` - so resuming here cannot override a pause
+      // the listener asked for. Without it the next song sat at 0:00 waiting.
+      if (superseded()) return;
+      try {
+        await _audioService.resume();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('MusicProvider: dry-window resume failed: $e');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: dry-window repair failed: $e');
+      _dryRepairFor = null;
+    }
+  }
+
+  /// The track whose dry-window repair is already in flight, if any.
+  ///
+  /// Cleared whenever a different track becomes current, so the next track to
+  /// finish gets its own repair.
+  String? _dryRepairFor;
+
+  /// Appends the tracks that follow the current one to the live window.
+  ///
+  /// Reads the same decision the advance path would make (see
+  /// [_peekNextAfter]), so a refill never disagrees with playback. Best effort:
+  /// a track that will not resolve is simply not added, and the next
+  /// completion falls through to the existing decision path.
+  Future<void> _extendWindowFrom(Track current) async {
+    final pending = _upcomingTracks(current, _windowUpcoming);
+    if (pending.isEmpty) return;
+
+    final already = _audioService.windowTrackIds.toSet();
+    pending.removeWhere((t) => already.contains(t.id));
+    if (pending.isEmpty) return;
+
+    final built = await Future.wait(pending.map(_sourceForTrack));
+    final addable = built.whereType<IndexedAudioSource>().toList();
+    if (addable.isNotEmpty) {
+      await _audioService.appendWindow(addable);
+      if (kDebugMode) {
+        debugPrint('MusicProvider: window filled -> '
+            '${_audioService.windowTrackIds.length} entries');
+      }
+    }
+  }
+
+  /// The playlist track that follows the current one, or null at the end.
+  Track? _nextPlaylistTrack() {
+    final list = _getActivePlaylist();
+    if (!_isRealCuratedPlaylist || list.isEmpty) return null;
+    final i = _currentIndex + 1;
+    if (i < 0 || i >= list.length) return null;
+    return list[i];
+  }
+
+  /// The playlist track that precedes the current one, or null at the start.
+  Track? _previousPlaylistTrack() {
+    final list = _getActivePlaylist();
+    if (!_isRealCuratedPlaylist || list.isEmpty) return null;
+    final i = _currentIndex - 1;
+    if (i < 0 || i >= list.length) return null;
+    return list[i];
+  }
+
+  /// What plays after [fromId], following the same precedence the advance path
+  /// uses: a user-queued track first, then the playlist, then nothing.
+  ///
+  /// This is what the window is built from. An earlier version windowed only
+  /// playlist successors, which made the window a single item whenever playback
+  /// came from Home or Search (no curated context) — so the media session had
+  /// no queue to offer and the lock screen lost prev/next, and a track that
+  /// ended had nothing to advance into. Reading it from the real decision
+  /// keeps the window honest in every context.
+  ///
+  /// Read-only: it never consumes the user queue. A track taken from the queue
+  /// is dropped from the queue when it actually becomes current.
+  Track? _peekNextAfter(String? fromId) {
+    // Precedence, in order: what the listener queued by hand, then the
+    // collection they are playing through, then the station.
+    //
+    // The station is last deliberately. It is a filler for when the real queue
+    // runs out, never a reason to step over a track the listener can already
+    // see queued. Keeping it in the same list as [_queue] made it outrank the
+    // collection, which sounded like the app skipping a track on purpose.
+    if (_queue.isNotEmpty) return _queue.first;
+
+    final list = _getActivePlaylist();
+    if (_isRealCuratedPlaylist && list.isNotEmpty) {
+      final nextId = fromId ?? _currentTrack?.id;
+      final i = nextId == null ? -1 : list.indexWhere((t) => t.id == nextId);
+      if (i >= 0 && (i + 1) < list.length) return list[i + 1];
+    }
+
+    return _autoplayQueue.isEmpty ? null : _autoplayQueue.first;
+  }
+
+  /// The tracks to place after [current] in the window.
+  List<Track> _upcomingTracks(Track current, int count) {
+    final out = <Track>[];
+    final seen = {current.id};
+    var cursor = current;
+    for (var i = 0; i < count; i++) {
+      final next = _peekNextAfter(cursor.id);
+      if (next == null || !seen.add(next.id)) break;
+      out.add(next);
+      cursor = next;
+    }
+    return out;
+  }
+
+  /// The track to place before [current], so prev/next are real rather than
+  /// absent. Never more than one: history beyond that is not what anyone
+  /// reaches for, and each entry costs a resolve.
+  Track? _precedingTrack(Track current) {
+    final prev = _previousPlaylistTrack();
+    if (prev != null && prev.id != current.id) return prev;
+    // Falling back to playback history covers the no-playlist case, where a
+    // prev button is still expected.
+    for (final h in _playbackHistory.reversed) {
+      if (h.id != current.id) return h;
+    }
+    return null;
+  }
+
   Future<void> skipToNext() async {
     debugPrint('MusicProvider: SkipNext requested.');
     _playbackGeneration++; // invalidate stale async continuations
     if (_currentTrack == null) return;
-    if (_queue.isNotEmpty) {
-      final next = _queue.removeAt(0);
-      debugPrint(
-          "MusicProvider: Skipping to next from queue: ${next.trackName}");
-      await _playTrackInternal(next, setContext: false, clearQueue: false);
-      notifyListeners();
+
+    // The window holds user picks, then the collection, then the station, in
+    // the order they will actually play. If the player has a next item, that
+    // item IS the answer: seeking to it is seamless, while re-resolving here
+    // rebuilds the player (the audible gap) and routinely picks a different
+    // track than the one the queue shows (the wrong song).
+    //
+    // This used to gate the seamless path on the window's next being the
+    // playlist's next, which is almost never what a station-fed window holds,
+    // so nearly every skip took the slow, wrong path - and the station had no
+    // branch at all, so it was skipped over entirely.
+    if (_audioService.hasNextInWindow) {
+      if (kDebugMode) debugPrint('MusicProvider: skip inside window');
+      await _audioService.seekToNextInWindow();
       return;
     }
-    final list = _getActivePlaylist();
-    if (list.isEmpty) {
-      if (_autoplayEnabled && !_suppressAutoplayOnce) {
-        _startAutoplayFromRecommendations();
-      }
+
+    // The player has nothing after the current item. Make the same decision an
+    // automatic advance would - user queue, then collection, then station -
+    // and start it as a fresh head so the window rebuilds around it.
+    Track? next = _peekNextAfter(_currentTrack?.id);
+    if (next != null &&
+        _suppressAutoplayOnce &&
+        isAutoplayQueued(next.id)) {
+      // The listener cleared autoplay and asked for it to stay off: a manual
+      // skip honors that rather than handing them a station track.
+      next = null;
+    }
+    if (next == null && _repeatMode == RepeatMode.all) {
+      final list = _getActivePlaylist();
+      if (_isRealCuratedPlaylist && list.isNotEmpty) next = list.first;
+    }
+    if (next == null &&
+        _autoplayEnabled &&
+        !_suppressAutoplayOnce &&
+        !_isOfflineMode) {
+      // Last resort before stopping dead: seed the station from the current
+      // track, then read the decision again.
+      await _autoFillQueue(_currentTrack!);
+      next = _peekNextAfter(_currentTrack?.id);
+    }
+    if (next == null) {
+      stopTrack();
       return;
     }
-    _updateCurrentIndex();
-    if (_currentIndex == -1 && list.isNotEmpty) {
-      await _playTrackInternal(list[0]);
-      return;
+    final resolved = next;
+
+    // Consume from whichever tier supplied it, and only when it is the head.
+    // Anything deeper stays queued; the player reaches it in order, and the
+    // sheet never disagrees with the audio about what was taken.
+    if (_queue.isNotEmpty && _queue.first.id == resolved.id) {
+      _queue.removeAt(0);
+    } else if (_autoplayQueue.isNotEmpty &&
+        _autoplayQueue.first.id == resolved.id) {
+      _autoplayQueue.removeAt(0);
     }
-    int next = _currentIndex + 1;
-    if (next < list.length) {
-      await _playTrackInternal(list[next]);
-    } else {
-      _handleEndOfPlaylist(); // Unified logic
-    }
+    await _playTrackInternal(resolved, setContext: false, clearQueue: false);
+    notifyListeners();
   }
 
   Future<void> skipToPrevious() async {
@@ -1985,24 +2854,49 @@ class MusicProvider
       if (!_isPlaying) await resumeTrack();
       return;
     }
+
     final list = _getActivePlaylist();
-    if (list.isEmpty) return;
+    final isRealCuratedPlaylist = _isRealCuratedPlaylist && list.isNotEmpty;
+
     _updateCurrentIndex();
-    if (_currentIndex == -1 && list.isNotEmpty) {
-      await _playTrackInternal(list.last);
+
+    // 0. If the player already holds the preceding track, going back is a
+    // seek inside its own window — instant, and no re-resolve.
+    if (_audioService.hasPreviousInWindow) {
+      if (kDebugMode) debugPrint('MusicProvider: previous inside window');
+      await _audioService.seekToPreviousInWindow();
       return;
     }
-    int prev = _currentIndex - 1;
-    if (prev >= 0) {
-      await _playTrackInternal(list[prev]);
-    } else {
-      if (_repeatMode != RepeatMode.off) {
-        await _playTrackInternal(list.last);
-      } else {
-        await seekTo(Duration.zero);
-        if (!_isPlaying) await resumeTrack();
+
+    // 1. If in a real curated playlist with a previous index, go back in that playlist
+    if (isRealCuratedPlaylist && _currentIndex > 0) {
+      final prevTrack = list[_currentIndex - 1];
+      await _playTrackInternal(prevTrack, setContext: false);
+      return;
+    }
+
+    // 2. If we have a session playback history stack (e.g. from autoplay, queue, jump back in, search)
+    if (_playbackHistory.isNotEmpty) {
+      final prevTrack = _playbackHistory.removeLast();
+      // Put current track back into the front of queue so 'next' goes back to it
+      if (_currentTrack != null) {
+        _queue.insert(0, _currentTrack!);
       }
-    } /* Preload handled by playTrackInternal if it plays */
+      await _playTrackInternal(prevTrack,
+          setContext: false, clearQueue: false, recordHistory: false);
+      notifyListeners();
+      return;
+    }
+
+    // 3. Fallback: if in curated playlist and repeat is on, wrap around to last track
+    if (isRealCuratedPlaylist && _repeatMode != RepeatMode.off && list.isNotEmpty) {
+      await _playTrackInternal(list.last, setContext: false);
+      return;
+    }
+
+    // 4. Default: restart current song
+    await seekTo(Duration.zero);
+    if (!_isPlaying) await resumeTrack();
   }
 
   // --- Helper Methods for Navigation State ---
@@ -2010,13 +2904,13 @@ class MusicProvider
     if (_queue.isNotEmpty) return true;
     final list = _getActivePlaylist();
     if (list.isEmpty) return false;
-    if (_repeatMode != RepeatMode.off) return true;
     return _currentIndex < list.length - 1;
   }
 
   bool _hasPrevious() {
     // If repeat is one or all, we can technically go back (restarts or wraps)
     if (_repeatMode != RepeatMode.off) return true;
+    if (_playbackHistory.isNotEmpty) return true;
     final list = _getActivePlaylist();
     if (list.isEmpty) return false;
     return _currentIndex > 0;
@@ -2024,10 +2918,13 @@ class MusicProvider
 
   // --- Core Playback Methods ---
   /// Plays a list of tracks starting from [initialIndex] (BitChord detail screen parity).
-  Future<void> playTrackList(List<Track> tracks, {int initialIndex = 0}) async {
+  Future<void> playTrackList(List<Track> tracks,
+      {int initialIndex = 0, String? playlistId}) async {
     if (tracks.isEmpty) return;
     final index = initialIndex.clamp(0, tracks.length - 1);
-    await playTrack(tracks[index], playlistTracks: tracks);
+    await playTrack(tracks[index],
+        playlistTracks: tracks,
+        playlistId: playlistId ?? 'curated_album_or_playlist');
   }
 
   Future<void> playTrack(
@@ -2037,6 +2934,7 @@ class MusicProvider
     bool setContext = true,
     bool clearQueue = true,
     bool prefetchMetadata = true,
+    bool recordHistory = true,
   }) async {
     final isQueueRowPlayback = !setContext && !clearQueue;
 
@@ -2058,7 +2956,6 @@ class MusicProvider
     }
 
     final gen = ++_playbackGeneration; // invalidate stale async continuations
-    _isOfflineContext = false; // Reset offline flag for online playback
 
     // Resume audio service if it was stopped
     // await _audioService.resume(); // (Not needed, play() handles it)
@@ -2102,7 +2999,9 @@ class MusicProvider
       bool playOffline = await _shouldPlayOffline(track);
       if (playOffline) {
         await playOfflineTrack(track,
-            setContext: setContext, clearQueue: clearQueue);
+            setContext: setContext,
+            clearQueue: clearQueue,
+            recordHistory: recordHistory);
         return;
       }
 
@@ -2117,15 +3016,24 @@ class MusicProvider
 
       // Update current track state
       final sanitizedTrack = TrackMetadataEnricher.sanitizeTrack(track);
+
+      // Record playback history before changing track
+      if (recordHistory && _currentTrack != null && _currentTrack!.id != sanitizedTrack.id) {
+        _playbackHistory.add(_currentTrack!);
+        if (_playbackHistory.length > _maxPlaybackHistory) {
+          _playbackHistory.removeAt(0);
+        }
+      }
+
       _currentTrack = sanitizedTrack;
       _paletteService.clear(); // Reset palette immediately
       _isOfflineTrack = false;
       _updateCurrentIndex();
 
-      // FIX 1: Immediately clear previous lyrics so normal screen preview snippet
+      // Immediately clear previous lyrics so normal screen preview snippet
       // never displays stale lyrics from the previous song while the new song loads.
       _currentLyrics = null;
-      _lyricsTrackId = sanitizedTrack.id;
+      _lyricsTrackId = null;
       _isLoadingLyrics = true;
       _lyricsError = null;
       notifyListeners();
@@ -2197,6 +3105,10 @@ class MusicProvider
       // Play the resolved URL. YouTube bot-gates URLs per-request (rotation),
       // so a rejected URL often just needs a fresh resolution — retry up to
       // 3 times, invalidating the cache each round.
+      //
+      // The window is built here, alongside the retry: the head must be the
+      // URL that actually played, and the upcoming entries are resolved
+      // concurrently so a slow one cannot delay the first sample.
       ResolvedStream current = resolved;
       for (var attempt = 1; attempt <= 3; attempt++) {
         if (gen != _playbackGeneration) return;
@@ -2204,15 +3116,36 @@ class MusicProvider
           if (current.userAgent != null) 'User-Agent': current.userAgent!,
         };
         try {
-          await _audioService.play(
-            current.url,
+          // The head is the URL that actually won the race; the window around
+          // it is resolved alongside so a slow entry cannot delay first audio.
+          final headSource = await _audioService.buildSource(
+            url: current.url,
             headers: headers.isNotEmpty ? headers : null,
             title: effectiveTrack.trackName,
             artist: effectiveTrack.artistName,
             artUri: effectiveTrack.albumArtUrl,
             id: effectiveTrack.id,
-            hasNext: _hasNext(),
-            hasPrevious: _hasPrevious(),
+          );
+          if (gen != _playbackGeneration) return;
+          if (headSource == null) {
+            throw Exception('Failed to build a playable source');
+          }
+          // The head bypasses [_sourceForTrack], so register it by hand.
+          // Otherwise the very first transition into it finds nothing in the
+          // window registry and has to hope a list still contains it.
+          _rememberWindowedTrack(sanitizedTrack);
+
+          // The head goes into the player on its own. Resolving the rest of
+          // the window first would cost first-audio latency (and a slow entry
+          // would stop the track starting at all), so the window is completed
+          // in the background once this is audible.
+          await _audioService.playSources(
+            [headSource],
+            initialIndex: 0,
+            title: effectiveTrack.trackName,
+            artist: effectiveTrack.artistName,
+            artUri: effectiveTrack.albumArtUrl,
+            id: effectiveTrack.id,
           );
           break;
         } catch (e) {
@@ -2248,6 +3181,9 @@ class MusicProvider
       _updateCurrentIndex();
       notifyListeners();
 
+      // Window is filled in the background; the head is already playing.
+      unawaited(_fillWindowAround(sanitizedTrack));
+
       // Start fetching lyrics in PARALLEL (don't wait)
       if (!_isOfflineMode) {
         unawaited(fetchLyrics());
@@ -2265,17 +3201,21 @@ class MusicProvider
         unawaited(_enrichCurrentTrackMetadata(_currentTrack!));
       }
 
-      // Auto-fill queue with best and related tracks if upcoming items are low (BitChord parity)
-      final remainingContextTracks =
-          (_currentPlayingTracks != null && _currentIndex >= 0)
-              ? (_currentPlayingTracks!.length - 1 - _currentIndex)
-              : 0;
-      final totalUpcoming = _queue.length + remainingContextTracks;
-      if (_autoplayEnabled &&
-          !_suppressAutoplayOnce &&
-          totalUpcoming < 5) {
-        unawaited(_autoFillQueue(effectiveTrack, generation: gen));
+      // Top up the station right after the head starts.
+      //
+      // This used to be gated on `!_suppressAutoplayOnce && _queue.length < 5`,
+      // which made the fill unpredictable - the station was regularly still
+      // empty tens of seconds into the track, and the empty state was the whole
+      // reason the queue ran dry at the end of it. `_autoFillQueue` already
+      // makes the decisions that matter (is the station full, is this seed
+      // already latched, is a request already in flight), so the trigger does
+      // not need to second-guess it. `_queue` is the listener's own picks and
+      // says nothing about how much the station holds.
+      if (kDebugMode) {
+        debugPrint('MusicProvider: playTrack state-update reached '
+            '(gen=$gen current=${_playbackGeneration})');
       }
+      unawaited(_autoFillQueue(effectiveTrack, generation: gen));
 
       // Prefetch Metadata (Artist & Album) for Instant Navigation (suppressed in Explore to save battery/data)
       if (prefetchMetadata) {
@@ -2321,7 +3261,8 @@ class MusicProvider
   Future<void> playOfflineTrack(Track track,
       {bool setContext = true,
       bool clearQueue = true,
-      List<Track>? contextList}) async {
+      List<Track>? contextList,
+      bool recordHistory = true}) async {
     bool knownOffline =
         track.source == 'local' || _downloads.metadata.containsKey(track.id);
 
@@ -2330,7 +3271,8 @@ class MusicProvider
           playlistTracks: contextList ?? _currentPlayingTracks,
           playlistId: _currentPlaylistId,
           setContext: setContext,
-          clearQueue: clearQueue);
+          clearQueue: clearQueue,
+          recordHistory: recordHistory);
       return;
     }
 
@@ -2348,7 +3290,8 @@ class MusicProvider
     await _playOfflineTrackInternal(track,
         setContext: setContext,
         clearQueue: clearQueue,
-        contextList: contextList);
+        contextList: contextList,
+        recordHistory: recordHistory);
 
     if (setContext && contextList != null) {
       _setPlaybackContext(contextList, clearQueue: clearQueue);
@@ -2358,8 +3301,17 @@ class MusicProvider
   Future<void> _playOfflineTrackInternal(Track track,
       {bool setContext = true,
       bool clearQueue = true,
-      List<Track>? contextList}) async {
+      List<Track>? contextList,
+      bool recordHistory = true}) async {
     _clearError();
+
+    // Record playback history before changing track
+    if (recordHistory && _currentTrack != null && _currentTrack!.id != track.id) {
+      _playbackHistory.add(_currentTrack!);
+      if (_playbackHistory.length > _maxPlaybackHistory) {
+        _playbackHistory.removeAt(0);
+      }
+    }
 
     // Sync current track metadata immediately for UI consistency
     _currentTrack = track;
@@ -2565,8 +3517,11 @@ class MusicProvider
       p.setBool('autoplayEnabled', next);
     });
     if (!next) {
-      _queue.removeWhere((t) => _autoplayTrackIds.contains(t.id));
+      // Switching the station off means taking back what it queued and has not
+      // played yet, not merely stopping new suggestions.
+      _autoplayQueue.clear();
       _autoplayTrackIds.clear();
+      _rearmAutoplay();
     } else if (_currentTrack != null) {
       unawaited(_autoFillQueue(_currentTrack!, generation: _playbackGeneration));
     }
@@ -2675,6 +3630,7 @@ class MusicProvider
       _currentPlaylistId = null;
       _shuffledPlaylist = [];
       _queue.clear();
+      _autoplayQueue.clear();
 
       // FIX: Ensure UI is minimized when track stops
       _isPlayerExpanded = false;
@@ -2835,6 +3791,72 @@ class MusicProvider
     notifyListeners();
   }
 
+  /// Reorders the station within itself. A drag never leaves its section, and
+  /// the new order feeds [_peekNextAfter] and the window top-up, so what the
+  /// listener puts first is genuinely what plays next.
+  void reorderAutoplayItem(int oldIndex, int newIndex) {
+    if (oldIndex < 0 ||
+        oldIndex >= _autoplayQueue.length ||
+        newIndex < 0) {
+      return;
+    }
+    final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final tr = _autoplayQueue.removeAt(oldIndex);
+    _autoplayQueue.insert(iIdx.clamp(0, _autoplayQueue.length), tr);
+    notifyListeners();
+  }
+
+  /// Reorders the collection (context) section within itself.
+  ///
+  /// [upcomingCollection] hands out `sublist(currentIndex + 1)` - a copy - so
+  /// reordering that list would reorder a throwaway and the row would snap
+  /// straight back. The order that actually plays lives in the active playlist,
+  /// so the move is applied to the *upcoming window* of that list and written
+  /// back in place.
+  ///
+  /// Bounded like every other reorder: the already-played prefix never moves,
+  /// so the current track keeps its index and a drag cannot jump the head.
+  void reorderCollectionItem(int oldIndex, int newIndex) {
+    final list = _getActivePlaylist();
+    final current = _currentTrack;
+    if (current == null || list.isEmpty || !_isRealCuratedPlaylist) return;
+
+    // Same anchor the getter uses, so row N here is row N there.
+    final base = list.indexWhere((t) => t.id == current.id);
+    if (base < 0) return;
+    final start = base + 1;
+    final windowLength = list.length - start;
+    if (windowLength <= 1) return;
+    if (oldIndex < 0 || oldIndex >= windowLength || newIndex < 0) return;
+
+    final int iIdx = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final int target = iIdx.clamp(0, windowLength - 1);
+    if (oldIndex == target) return;
+
+    final window = list.sublist(start);
+    final moved = window.removeAt(oldIndex);
+    window.insert(target, moved);
+    final rebuilt = <Track>[...list.sublist(0, start), ...window];
+
+    // Write back into whichever list is driving playback right now.
+    if (_shuffleEnabled) {
+      _shuffledPlaylist
+        ..clear()
+        ..addAll(rebuilt);
+    } else if (_currentPlayingTracks != null) {
+      _currentPlayingTracks!
+        ..clear()
+        ..addAll(rebuilt);
+    } else {
+      return;
+    }
+
+    // _currentIndex still points at the current track: nothing before `start`
+    // moved. Only the id -> position map is now stale.
+    _rebuildTrackIndex();
+    notifyListeners();
+  }
+
   // Updated to accept Track object or index
   void removeFromQueue(dynamic item) {
     bool removed = false;
@@ -2850,6 +3872,16 @@ class MusicProvider
         debugPrint(
             "Removed from queue by track: ${item.trackName}. Size: ${_queue.length}");
         removed = true;
+      } else {
+        // Not a manual pick - it may be a station entry, which lives in its
+        // own tier. Dismissing it there (rather than silently doing nothing)
+        // is what makes the sheet's swipe actually work on radio tracks.
+        final stationLength = _autoplayQueue.length;
+        _autoplayQueue.removeWhere((t) => t.id == item.id);
+        if (_autoplayQueue.length < stationLength) {
+          debugPrint("Removed station track: ${item.trackName}.");
+          removed = true;
+        }
       }
     } else if (item is String) {
       // Remove by track ID
@@ -2859,6 +3891,13 @@ class MusicProvider
         debugPrint(
             "Removed from queue by track ID: $item. Size: ${_queue.length}");
         removed = true;
+      } else {
+        final stationLength = _autoplayQueue.length;
+        _autoplayQueue.removeWhere((t) => t.id == item);
+        if (_autoplayQueue.length < stationLength) {
+          debugPrint("Removed station track by ID: $item.");
+          removed = true;
+        }
       }
     }
 
@@ -2871,7 +3910,9 @@ class MusicProvider
   void clearQueue() {
     if (_queue.isEmpty && !_isAutoQueueContext) return;
     _queue.clear();
+    _autoplayQueue.clear();
     _autoplayTrackIds.clear();
+    _rearmAutoplay();
     // v5.2 semantics: clearing during an autoplay (autoqueue) context also
     // empties the upcoming autoqueue — the context shrinks to just the
     // active song, and the player stops after it.
@@ -3849,21 +4890,29 @@ class MusicProvider
     final seenIds = <String>{};
 
     // Get recently played tracks as seeds (up to 5)
-    final seeds = _recentlyPlayed
-        .take(5)
-        .where((t) => t.source == 'youtube' && t.id.length == 11)
-        .toList();
+    final seeds = _recentlyPlayed.take(5).toList();
 
     if (seeds.isNotEmpty) {
       // Fetch related tracks from multiple seeds for variety
       for (final seed in seeds.take(3)) {
         try {
-          final related =
-              await _innerTubeService.getSuggestions(seed.id, limit: 15);
-          for (final track in related) {
-            if (!seenIds.contains(track.id)) {
-              seenIds.add(track.id);
-              allTracks.add(track);
+          String? seedId = (seed.source == 'youtube' && seed.id.length == 11) ? seed.id : null;
+          if (seedId == null) {
+            final results = await _innerTubeService.searchSongs(
+                '${seed.trackName} ${seed.artistName}',
+                limit: 1);
+            if (results.isNotEmpty && results.first.id.length == 11) {
+              seedId = results.first.id;
+            }
+          }
+          if (seedId != null) {
+            final related =
+                await _innerTubeService.getSuggestions(seedId, limit: 15);
+            for (final track in related) {
+              if (!seenIds.contains(track.id)) {
+                seenIds.add(track.id);
+                allTracks.add(track);
+              }
             }
           }
         } catch (e) {
@@ -4508,24 +5557,47 @@ class MusicProvider
     }
   }
 
+  /// Re-entrancy guard for [_processRetryQueue].
+  ///
+  /// There are three independent ways into the queue: the 45s poller, an
+  /// immediate call from [_addToRetryQueue], and the self-scheduling
+  /// `Future.delayed` chain. Without this flag they interleave, so several
+  /// chains drain the queue concurrently and each schedules the next link —
+  /// which is how the chain used to grow without bound. A caller that arrives
+  /// while a pass is already running simply joins the existing pass.
+  bool _processingRetryQueue = false;
+
   Future<void> _processRetryQueue() async {
-    if (_retryQueue.isEmpty || _isOfflineMode || !_networkService.isConnected)
-      return;
-    final op = _retryQueue.removeAt(0);
+    if (_processingRetryQueue) return;
+    _processingRetryQueue = true;
     try {
-      await op.execute();
-      if (_retryQueue.isNotEmpty)
-        Future.delayed(const Duration(seconds: 2), _processRetryQueue);
-    } catch (e) {
-      if (op.attempts < _maxRetryAttempts) {
-        op.attempts++;
-        _retryQueue.add(op);
-      } else {
-        _errorMessage = "Failed ${op.description}.";
-        notifyListeners();
+      while (_retryQueue.isNotEmpty &&
+          !_isOfflineMode &&
+          _networkService.isConnected) {
+        final op = _retryQueue.removeAt(0);
+        try {
+          await op.execute();
+        } catch (e) {
+          if (op.attempts < _maxRetryAttempts) {
+            op.attempts++;
+            _retryQueue.add(op);
+          } else {
+            _errorMessage = "Failed ${op.description}.";
+            notifyListeners();
+          }
+          // Stop this pass on failure. The 45s poller is the backoff; keeping
+          // the loop going would immediately re-run the operation that just
+          // failed, turning a failed request into a hot retry loop.
+          break;
+        }
+        // Keep the old pacing between successful items so a long queue does
+        // not become a burst of back-to-back requests.
+        if (_retryQueue.isNotEmpty) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
       }
-      if (_retryQueue.isNotEmpty)
-        Future.delayed(const Duration(seconds: 5), _processRetryQueue);
+    } finally {
+      _processingRetryQueue = false;
     }
   }
 
@@ -4614,6 +5686,17 @@ class MusicProvider
     return _paletteService.updateForTrack(track);
   }
 
+  /// Palette service forwarded to the provider's own notifier.
+  ///
+  /// The service is not owned by this provider, so it can outlive it. Routing
+  /// through a method (rather than passing [notifyListeners] directly) gives
+  /// dispose() something to detach by identity, instead of leaving a listener
+  /// on a long-lived service that keeps waking a dead provider.
+  void _paletteNotified() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
   // --- Dispose ---
   bool _disposed = false;
 
@@ -4623,6 +5706,7 @@ class MusicProvider
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this); // Stop lifecycle updates
     _authSessionReset.dispose();
+    _paletteService.removeListener(_paletteNotified);
 
     // FIX: Cancel all audio subscriptions to prevent memory leaks
     for (final sub in _audioSubscriptions) {

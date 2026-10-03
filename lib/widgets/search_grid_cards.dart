@@ -12,6 +12,7 @@ class SearchMediaGridCard extends StatefulWidget {
   final Track track;
   final String? subtitle;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final int index;
 
   const SearchMediaGridCard({
@@ -19,6 +20,7 @@ class SearchMediaGridCard extends StatefulWidget {
     required this.track,
     this.subtitle,
     this.onTap,
+    this.onLongPress,
     this.index = 0,
   });
 
@@ -39,6 +41,10 @@ class _SearchMediaGridCardState extends State<SearchMediaGridCard> {
       onTap: () {
         HapticFeedback.selectionClick();
         widget.onTap?.call();
+      },
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        widget.onLongPress?.call();
       },
       child: AnimatedScale(
         scale: _pressed ? 0.95 : 1.0,

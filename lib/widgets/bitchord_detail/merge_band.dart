@@ -35,51 +35,58 @@ class MergeBand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (scrollController != null && artHeight != null) {
-      return AnimatedBuilder(
-        animation: scrollController!,
-        builder: (context, _) {
-          final raw = scrollController!.hasClients ? scrollController!.offset : 0.0;
-          // Same clamp as the artwork parallax layer so veil and seam move as one.
-          final offset = raw.clamp(0.0, artHeight! * 1.5);
-          // Past the artwork there is no seam left; skip compositing entirely.
-          if (offset > artHeight! + height) return const SizedBox.shrink();
-          return _buildBand(-offset + artHeight! - (height / 2.0));
-        },
-      );
-    }
-    final fallbackTop = topOffset ?? (artHeight != null ? artHeight! - (height / 2.0) : 0.0);
-    return _buildBand(fallbackTop);
-  }
+    final baseTop = topOffset ?? (artHeight != null ? artHeight! - (height / 2.0) : 0.0);
 
-  Widget _buildBand(double computedTop) {
-    // Eased in/out: flat opaque core over the clip edge, feathers dissolving
-    // both ends so the veil itself has no edge. Bottom feather lands inside
-    // the wash overhang (pure wash), so it is invisible by color equality.
-    return Positioned(
-      top: computedTop,
-      left: 0,
-      right: 0,
-      height: height,
-      child: RepaintBoundary(
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              stops: const [0.0, 0.22, 0.38, 0.62, 0.78, 1.0],
-              colors: [
-                Colors.transparent,
-                washColor.withValues(alpha: 0.45),
-                washColor,
-                washColor,
-                washColor.withValues(alpha: 0.45),
-                Colors.transparent,
-              ],
-            ),
+    final bandContent = RepaintBoundary(
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [0.0, 0.22, 0.38, 0.62, 0.78, 1.0],
+            colors: [
+              Colors.transparent,
+              washColor.withValues(alpha: 0.45),
+              washColor,
+              washColor,
+              washColor.withValues(alpha: 0.45),
+              Colors.transparent,
+            ],
           ),
         ),
       ),
+    );
+
+    if (scrollController != null && artHeight != null) {
+      return Positioned(
+        top: baseTop,
+        left: 0,
+        right: 0,
+        height: height,
+        child: AnimatedBuilder(
+          animation: scrollController!,
+          builder: (context, child) {
+            final raw = scrollController!.hasClients ? scrollController!.offset : 0.0;
+            // Same clamp as the artwork parallax layer so veil and seam move as one.
+            final offset = raw.clamp(0.0, artHeight! * 1.5);
+            // Past the artwork there is no seam left; skip compositing entirely.
+            if (offset > artHeight! + height) return const SizedBox.shrink();
+            return Transform.translate(
+              offset: Offset(0, -offset),
+              child: child,
+            );
+          },
+          child: bandContent,
+        ),
+      );
+    }
+    return Positioned(
+      top: baseTop,
+      left: 0,
+      right: 0,
+      height: height,
+      child: bandContent,
     );
   }
 }

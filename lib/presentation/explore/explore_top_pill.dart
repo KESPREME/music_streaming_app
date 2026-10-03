@@ -2,6 +2,8 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../utils/app_image_cache.dart';
+import '../../core/test_environment.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:share_plus/share_plus.dart';
@@ -43,8 +45,7 @@ class ExploreTopPill extends StatefulWidget {
 class _ExploreTopPillState extends State<ExploreTopPill> {
   bool _menuOpen = false;
 
-  bool get _isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+  bool get _isTesting => TestEnvironment.isTesting;
 
   void _closeMenu() {
     if (_menuOpen) setState(() => _menuOpen = false);
@@ -358,8 +359,7 @@ class _GlassDropdownMenu extends StatelessWidget {
   final VoidCallback onViewArtist;
   final VoidCallback onSongCode;
 
-  bool get _isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+  bool get _isTesting => TestEnvironment.isTesting;
 
   @override
   Widget build(BuildContext context) {
@@ -554,10 +554,12 @@ class SongCodeDialog extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(18),
                       child: track.albumArtUrl.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: track.albumArtUrl,
-                              fit: BoxFit.cover,
-                            )
+                            ? CachedNetworkImage(
+                                imageUrl: track.albumArtUrl,
+                                fit: BoxFit.cover,
+                                memCacheWidth: AppImageCache.thumbnailMemCache,
+                                memCacheHeight: AppImageCache.thumbnailMemCache,
+                              )
                           : Container(color: Colors.white10),
                     ),
                   ),

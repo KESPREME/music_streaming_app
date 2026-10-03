@@ -13,6 +13,7 @@ import '../screens/login_screen.dart';
 import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/liquid_switch.dart';
+import '../widgets/lyric_providers_sheet.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -354,6 +355,21 @@ class SettingsScreen extends StatelessWidget {
                                 musicProvider.setPrioritizeSyllableSync(v),
                           ),
                         ),
+                        _divider(),
+                        _GlassRow(
+                          icon: Icons.tune_rounded,
+                          iconBg: accent.withValues(alpha: 0.18),
+                          iconColor: accent,
+                          title: 'Lyric Providers',
+                          subtitle:
+                              'Reorder source priority and toggle providers',
+                          trailing: Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white.withValues(alpha: 0.6),
+                            size: 22,
+                          ),
+                          onTap: () => LyricProvidersSheet.show(context),
+                        ),
                       ],
                     ),
                   ),
@@ -537,17 +553,26 @@ class _QuickTile extends StatelessWidget {
 }
 
 class _GlassRow extends StatelessWidget {
-  const _GlassRow({required this.icon, required this.iconBg, required this.iconColor, required this.title, required this.subtitle, required this.trailing});
+  const _GlassRow({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+    this.onTap,
+  });
   final IconData icon;
   final Color iconBg;
   final Color iconColor;
   final String title;
   final String subtitle;
   final Widget trailing;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
@@ -559,6 +584,17 @@ class _GlassRow extends StatelessWidget {
         ],
       ),
     );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap!();
+        },
+        child: content,
+      );
+    }
+    return content;
   }
 }
 

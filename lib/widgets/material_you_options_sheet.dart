@@ -54,9 +54,12 @@ class MaterialYouOptionsSheet extends StatelessWidget {
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
+    final wasPlayerExpanded = provider.isPlayerExpanded;
     final wasHidden = provider.hideMiniPlayer;
-    // Hide Mini Player
-    provider.setHideMiniPlayer(true);
+    // Hide Mini Player only if not already in full player mode
+    if (!wasPlayerExpanded) {
+      provider.setHideMiniPlayer(true);
+    }
 
     try {
       await showModalBottomSheet(
@@ -77,7 +80,7 @@ class MaterialYouOptionsSheet extends StatelessWidget {
       );
     } finally {
       // Restore Mini Player
-      if (!wasHidden) {
+      if (!wasHidden && !wasPlayerExpanded) {
         provider.setHideMiniPlayer(false);
       }
     }
@@ -190,6 +193,20 @@ class MaterialYouOptionsSheet extends StatelessWidget {
                         }
                       },
                     ),
+                    if (musicProvider.currentTrack?.id != track?.id)
+                      _buildOptionTile(
+                        context,
+                        icon: Icons.playlist_play_rounded,
+                        title: 'Play Next',
+                        onTap: () {
+                          Navigator.pop(context);
+                          musicProvider.playNext(track!);
+                          showMaterialYouSnackBar(
+                            context,
+                            'Playing "${track!.trackName}" next',
+                          );
+                        },
+                      ),
                     _buildOptionTile(
                       context,
                       icon: Icons.queue_music_rounded,

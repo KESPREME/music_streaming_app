@@ -73,7 +73,8 @@ class FakeExploreProvider extends MusicProvider {
       List<Track>? playlistTracks,
       bool setContext = true,
       bool clearQueue = true,
-      bool prefetchMetadata = true}) async {
+      bool prefetchMetadata = true,
+      bool recordHistory = true}) async {
     playedTracks.add(track);
   }
 
@@ -187,12 +188,12 @@ void main() {
       // so pumpAndSettle would never return while playing.
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byKey(const ValueKey('eq_bar_0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('feed_eq')), findsOneWidget);
 
       provider.fakePlaying = false;
       provider.notifyListeners();
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('eq_bar_0')), findsNothing);
+      expect(find.byKey(const ValueKey('feed_eq')), findsNothing);
       expect(find.bySemanticsLabel('Play'), findsOneWidget);
     });
 

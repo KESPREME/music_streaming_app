@@ -112,6 +112,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                             musicProvider.playTrack(
                               likedSongs.first,
                               playlistTracks: likedSongs,
+                              playlistId: 'liked_songs',
                             );
                           },
                         ),
@@ -126,6 +127,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                             musicProvider.playTrack(
                               likedSongs.first,
                               playlistTracks: likedSongs,
+                              playlistId: 'liked_songs',
                             );
                             if (!musicProvider.shuffleEnabled) {
                               musicProvider.toggleShuffle();
@@ -177,6 +179,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                               musicProvider.playTrack(
                                 track,
                                 playlistTracks: likedSongs,
+                                playlistId: 'liked_songs',
                               );
                             },
                           );

@@ -414,6 +414,11 @@ class _SearchScreenState extends State<SearchScreen>
                                 forceRefresh: true),
                             onSuggestionSelected: (query) =>
                                 _commitSearch(query),
+                            onResultTapped: () {
+                              if (_searchQuery.trim().isNotEmpty) {
+                                _addToHistory(_searchQuery.trim());
+                              }
+                            },
                           ),
                           _buildVideosTab(context, _searchQuery),
                           _buildAlbumsTab(context, _searchQuery),
@@ -557,10 +562,19 @@ class _SearchScreenState extends State<SearchScreen>
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
                                 focusedBorder: InputBorder.none,
-                                prefixIcon: const Icon(
-                                    Icons.search_outlined,
-                                    color: Colors.white54,
-                                    size: 22),
+                                prefixIcon: IconButton(
+                                  icon: const Icon(
+                                      Icons.search_outlined,
+                                      color: Colors.white54,
+                                      size: 22),
+                                  onPressed: () {
+                                    final q = _searchController.text.trim();
+                                    if (q.isNotEmpty) {
+                                      _commitSearch(q);
+                                      _dockFocusNode.unfocus();
+                                    }
+                                  },
+                                ),
                                 prefixIconConstraints:
                                     const BoxConstraints(
                                         minWidth: 44,
@@ -599,15 +613,19 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   void _addToHistory(String query) {
-    if (!_recentSearches.contains(query)) {
-      setState(() {
-        _recentSearches.insert(0, query);
-        if (_recentSearches.length > 5) _recentSearches.removeLast();
-      });
-    }
-    // Persist (dedupe/move-to-front handled by the store; UI list keeps its
-    // existing 5-item display behavior).
-    _historyStore.add(query);
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    setState(() {
+      _recentSearches.remove(trimmed);
+      _recentSearches.insert(0, trimmed);
+      if (_recentSearches.length > 10) _recentSearches.removeLast();
+    });
+    // Persist (dedupe/move-to-front handled by the store)
+    _historyStore.add(trimmed);
+    try {
+      final p = Provider.of<MusicProvider>(context, listen: false);
+      p.rememberSearchQuery(trimmed);
+    } catch (_) {}
   }
 
   bool _showsLoading(MusicProvider p, SearchKind kind, String query) =>
@@ -661,8 +679,12 @@ class _SearchScreenState extends State<SearchScreen>
               track: video,
               isVideo: true,
               isPlaying: isPlaying,
-              onTap: () => provider.playTrack(video,
-                  playlistTracks: videos),
+              onTap: () {
+                if (_searchQuery.trim().isNotEmpty) {
+                  _addToHistory(_searchQuery.trim());
+                }
+                provider.playTrack(video, playlistTracks: videos);
+              },
               onMore: () =>
                   ThemedOptionsSheet.show(context, track: video),
             );
@@ -718,7 +740,13 @@ class _SearchScreenState extends State<SearchScreen>
               subtitle: album.artistName.isNotEmpty
                   ? album.artistName
                   : 'Album',
-              onTap: () => _openAlbumResult(album),
+              onTap: () {
+                if (_searchQuery.trim().isNotEmpty) {
+                  _addToHistory(_searchQuery.trim());
+                }
+                _openAlbumResult(album);
+              },
+              onLongPress: () => ThemedOptionsSheet.show(context, track: album),
             );
           },
         );
@@ -782,6 +810,9 @@ class _SearchScreenState extends State<SearchScreen>
               artistImageUrl: artistTrack.albumArtUrl,
               subtitle: 'Artist',
               onTap: () {
+                if (_searchQuery.trim().isNotEmpty) {
+                  _addToHistory(_searchQuery.trim());
+                }
                 final screen = ThemedArtistDetailScreen(
                   artistId: artistTrack.id,
                   artistName: artistName,
@@ -844,12 +875,16 @@ class _SearchScreenState extends State<SearchScreen>
               track: playlist,
               subtitle: 'Playlist',
               onTap: () {
+                if (_searchQuery.trim().isNotEmpty) {
+                  _addToHistory(_searchQuery.trim());
+                }
                 _pushDetail(ThemedPlaylistDetailScreen(
                   playlistId: playlist.id,
                   playlistName: playlist.trackName,
                   playlistImage: playlist.albumArtUrl,
                 ));
               },
+              onLongPress: () => ThemedOptionsSheet.show(context, track: playlist),
             );
           },
         );
@@ -1014,6 +1049,7 @@ class SearchTabContent extends StatelessWidget {
   final Function(String) onRemoveHistoryItem;
   final VoidCallback onRetry;
   final ValueChanged<String> onSuggestionSelected;
+  final VoidCallback? onResultTapped;
 
   const SearchTabContent({
     super.key,
@@ -1023,6 +1059,7 @@ class SearchTabContent extends StatelessWidget {
     required this.onRemoveHistoryItem,
     required this.onRetry,
     required this.onSuggestionSelected,
+    this.onResultTapped,
   });
 
   @override
@@ -1098,6 +1135,7 @@ class SearchTabContent extends StatelessWidget {
                 track: track,
                 isPlaying: isPlaying,
                 onTap: () {
+                  onResultTapped?.call();
                   musicProvider.playTrack(track,
                       playlistTracks: searchResults);
                 },

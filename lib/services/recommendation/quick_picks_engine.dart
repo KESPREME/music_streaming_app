@@ -77,15 +77,17 @@ class QuickPicksEngine {
     // ── Candidate generation + validation gate (spec #85) ───────────────
     final provider = signalProvider;
     final recentsFiltered = recentlyPlayed.where((track) {
-      // Spec #11: weak recents (low completion, no replay) are not
-      // candidates. Signal source: explicit profile → legacy facade.
+      final hasSignal = profile != null
+          ? profile.trackSignals.containsKey(track.id)
+          : (provider?.signalFor(track.id) != null);
+      if (!hasSignal) return true;
       final completion = profile != null
           ? (profile.trackSignals[track.id]?.completionRate ?? 0)
           : (provider?.signalFor(track.id)?.completionRate ?? 0);
       final replays = profile != null
           ? 0
           : (provider?.signalFor(track.id)?.replayCount ?? 0);
-      return completion > 0.6 || replays > 0;
+      return completion > 0.4 || replays > 0;
     }).toList();
 
     final candidates = <RichCandidate>[];
@@ -120,12 +122,11 @@ class QuickPicksEngine {
       }
     }
 
-    // Pool priority = dedupe first-wins. Favorites outrank chart: an
-    // explicit like is the strongest signal (spec #21/#60) and a favorited
-    // song must never be explained as "Trending".
+    // Pool priority = dedupe first-wins. Favorites and local recents outrank chart:
+    // Jump Back In & personal taste signals take priority over generic trending.
     addPool(favorites, 'local_favorites');
-    addPool(chartTracks, 'chart');
     addPool(recentsFiltered, 'local_history');
+    addPool(chartTracks, 'chart');
     addPool(nativeTracks, 'native_home');
     addPool(newReleases, 'new_release');
 

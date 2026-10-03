@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
-// import 'package:path_provider/path_provider.dart'; // Unused import
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../services/network_service.dart';
 import '../utils/network_config.dart';
@@ -21,6 +21,9 @@ class AudioService {
   
   final NetworkService _networkService = NetworkService();
   bool _isInitialized = false;
+
+  /// The in-flight session configuration, shared so it only ever runs once.
+  Future<void>? _sessionInitFuture;
   String? _currentUrl;
   String? _currentFilePath;
   bool _isLocalFile = false;
@@ -34,15 +37,108 @@ class AudioService {
   // Subscription management for proper cleanup
   final List<StreamSubscription> _subscriptions = [];
 
+  Directory? _audioCacheDir;
+  Future<Directory> _getAudioCacheDir() async {
+    if (_audioCacheDir != null) return _audioCacheDir!;
+    final temp = await getTemporaryDirectory();
+    final dir = Directory('${temp.path}/audio_cache');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    _audioCacheDir = dir;
+    return dir;
+  }
+
+  DateTime? _lastAudioPrune;
+  Future<void> _pruneAudioCacheIfNeeded() async {
+    final now = DateTime.now();
+    if (_lastAudioPrune != null &&
+        now.difference(_lastAudioPrune!) < const Duration(minutes: 5)) {
+      return;
+    }
+    _lastAudioPrune = now;
+    try {
+      final dir = await _getAudioCacheDir();
+      if (!await dir.exists()) return;
+      final entities = await dir.list().toList();
+      final files = entities.whereType<File>().toList();
+      int totalBytes = 0;
+      final fileStats = <File, DateTime>{};
+      for (final f in files) {
+        try {
+          final stat = await f.stat();
+          totalBytes += stat.size;
+          fileStats[f] = stat.modified;
+        } catch (_) {}
+      }
+      // 350 MB budget for cached audio streams
+      const maxBudget = 350 * 1024 * 1024;
+      if (totalBytes > maxBudget) {
+        files.sort((a, b) =>
+            (fileStats[a] ?? DateTime(2000)).compareTo(fileStats[b] ?? DateTime(2000)));
+        for (final f in files) {
+          if (totalBytes <= 250 * 1024 * 1024) break;
+          try {
+            final len = await f.length();
+            await f.delete();
+            totalBytes -= len;
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
   // Streams
-  Stream<Duration> get onPositionChanged => _audioPlayer.positionStream.map((position) => position);
-  Stream<Duration> get onDurationChanged => _audioPlayer.durationStream.map((duration) => duration ?? Duration.zero);
+  //
+  // These are cached rather than computed in the getter. A `.map(...)` call
+  // produces a NEW Stream instance every time, and `StreamBuilder` compares
+  // the incoming stream by identity — so an uncached getter makes every
+  // position/duration StreamBuilder in the app (now playing x2, lyrics,
+  // mini player, progress bar) cancel and re-subscribe on *every* rebuild.
+  late final Stream<Duration> onPositionChanged =
+      _audioPlayer.positionStream;
+  late final Stream<Duration> onDurationChanged =
+      _audioPlayer.durationStream.map((duration) => duration ?? Duration.zero);
   Stream<bool> get onPlaybackStateChanged => _audioPlayer.playingStream;
-  Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream; 
-  Stream<bool> get onPlaybackComplete => _audioPlayer.processingStateStream
-      .map((state) => state == ProcessingState.completed);
+  Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream;
+  late final Stream<bool> onPlaybackComplete =
+      _audioPlayer.processingStateStream
+          .map((state) => state == ProcessingState.completed);
   Stream<double> get onVolumeChanged => _audioPlayer.volumeStream;
   double get volume => _audioPlayer.volume;
+
+  // --- A2.0 measurement baseline ---
+  //
+  // Time from asking for a track to the first non-zero position. This is the
+  // only number that settles whether any of the window work actually helped,
+  // so it is measured rather than inferred.
+  int? _playRequestedAtMs;
+  int? _startLatencyMs;
+
+  void _markPlayRequested() {
+    _playRequestedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _startLatencyMs = null;
+  }
+
+  /// How long the most recent track took to produce its first audio sample.
+  int? get lastStartLatencyMs => _startLatencyMs;
+
+  /// Buffer health of the current track, for the same reason.
+  Duration get bufferedPosition => _audioPlayer.bufferedPosition;
+
+  /// Identifiers of the tracks in the player window, index-aligned.
+  ///
+  /// Kept in step with [playSources]/[appendWindow]. The player's own
+  /// `sequence` is authoritative; this is the mirror the provider reconciles
+  /// against so it never has to guess what is loaded.
+  List<String?> _windowTracks = [];
+
+  /// Head metadata of the current window, kept so a retry can rebuild a tagged
+  /// source for the same track.
+  String? _lastTitle;
+  String? _lastArtist;
+  String? _lastArtUri;
+  String? _lastId;
 
   /// True when a source is loaded in the player (not idle). Used by the
   /// provider to distinguish paused-with-source from stopped.
@@ -83,13 +179,37 @@ class AudioService {
       audioPipeline: AudioPipeline(
         androidAudioEffects: [_equalizer, _loudnessEnhancer],
       ),
+      // Hand sequencing to the player: it skips forward past a windowed track
+      // that fails to load instead of wedging playback. Two attempts is enough
+      // to ride out one flaky URL without silently skipping a whole queue.
+      maxSkipsOnError: 2,
+      // Offload decode to the low-power audio DSP. This is the single largest
+      // battery win available on Android, and the guards keep it from fighting
+      // the rest of the pipeline: gapless must still be possible (a device
+      // that cannot do gapless under offload will not engage it), and a speed
+      // or pitch change forces it back to the full decoder.
+      androidAudioOffloadPreferences: AndroidAudioOffloadPreferences(
+        audioOffloadMode: AndroidAudioOffloadMode.enabled,
+        isGaplessSupportRequired: true,
+        isSpeedChangeSupportRequired: false,
+      ),
+      // Prepare each windowed item just in time before it is reached. This is
+      // what makes the window seam-free; setting it false defeats the point.
+      useLazyPreparation: true,
       audioLoadConfiguration: const AudioLoadConfiguration(
          androidLoadControl: AndroidLoadControl(
            minBufferDuration: Duration(milliseconds: 1000),
-           maxBufferDuration: Duration(milliseconds: 15000),
+           // Far beyond any single track. Latency comes from bytes being on
+           // disk before the track is reached, not from a smaller threshold,
+           // so the thresholds below stay aggressive. Duration is set past any
+           // song so the byte ceiling is the only binding constraint.
+           maxBufferDuration: Duration(minutes: 15),
            bufferForPlaybackDuration: Duration(milliseconds: 200),
            bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 800),
            prioritizeTimeOverSizeThresholds: true,
+           // History only as far as the seek people actually make: nudging
+           // back a few seconds for a lyric. Wider than this and the back
+           // buffer competes with read-ahead for the same byte ceiling.
            backBufferDuration: Duration(seconds: 30),
          ),
          darwinLoadControl: DarwinLoadControl(
@@ -101,6 +221,47 @@ class AudioService {
     
     _initAudioSession();
     _monitorIndexChanges();
+    _measureStartLatency();
+    _emitWindowIndex();
+  }
+
+  /// The MediaItem id of whichever window entry the player is on, or null.
+  ///
+  /// This is the signal that the track changed. The player advances within its
+  /// window by itself, so this — not a synthesised skip event — is what tells
+  /// the rest of the app a new song started.
+  final _windowIndexController = StreamController<String?>.broadcast();
+  Stream<String?> get windowIndexStream => _windowIndexController.stream;
+
+  void _emitWindowIndex() {
+    _subscriptions.add(_audioPlayer.currentIndexStream.listen((index) {
+      final seq = _audioPlayer.sequence;
+      if (index == null || index < 0 || index >= seq.length) {
+        _windowIndexController.add(null);
+        return;
+      }
+      final tag = seq[index].tag;
+      _windowIndexController.add(tag is MediaItem ? tag.id : null);
+    }));
+  }
+
+  /// Records how long the current track took to produce its first sample.
+  ///
+  /// Stops measuring once a non-zero position is seen for the current request,
+  /// so a long track does not keep re-reporting the first second.
+  void _measureStartLatency() {
+    _subscriptions.add(_audioPlayer.positionStream.listen((pos) {
+      final requestedAt = _playRequestedAtMs;
+      if (requestedAt == null || _startLatencyMs != null) return;
+      if (pos <= Duration.zero) return;
+      final ms = DateTime.now().millisecondsSinceEpoch - requestedAt;
+      _startLatencyMs = ms;
+      if (kDebugMode) {
+        debugPrint('AUDIO_LATENCY start=${ms}ms buffered='
+            '${_audioPlayer.bufferedPosition.inMilliseconds}ms '
+            'window=${_windowTracks.length}');
+      }
+    }));
   }
 
   // Monitor index changes to trigger external navigation
@@ -108,9 +269,24 @@ class AudioService {
     _startNavigationMonitor();
   }
 
-  Future<void> _initAudioSession() async {
-    if (_isInitialized) return;
+  Future<void> _initAudioSession() {
+    if (_isInitialized) return Future<void>.value();
+    // Single-flight, not just a flag.
+    //
+    // Construction calls this unawaited and playback awaits it. With only the
+    // `_isInitialized` guard both ran, because neither had set it yet: the
+    // session was configured twice, the interruption/becoming-noisy listeners
+    // were registered twice, and the second `configure` renegotiated audio focus
+    // underneath a player that had already started - so the first tap after a
+    // cold start went silent and only the second press worked. Sharing one
+    // Future means the configuration happens once and every caller waits for
+    // that same attempt.
+    return _sessionInitFuture ??= _configureAudioSession().whenComplete(() {
+      _sessionInitFuture = null;
+    });
+  }
 
+  Future<void> _configureAudioSession() async {
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration(
@@ -177,6 +353,9 @@ class AudioService {
       _isInitialized = true;
     } catch (e) {
       debugPrint('Error initializing audio session: $e');
+      // A failed configure must not latch: the next attempt gets to try again
+      // rather than the session being permanently "initialised" but dead.
+      _isInitialized = false;
     }
   }
 
@@ -192,205 +371,315 @@ class AudioService {
     bool hasNext = false,
   }) async {
     try {
-      if (kDebugMode) {
-        debugPrint('AudioService: play() called. Prev: $hasPrevious, Next: $hasNext');
-      }
-      
-      // Validate inputs
       if (url == null && customSource == null) {
         throw Exception('Cannot play: Both URL and source are null');
       }
-      
-      await _initAudioSession();
-      
-      // Stop current playback
-      if (_audioPlayer.playing) {
-        await _audioPlayer.stop();
-      }
 
+      await _initAudioSession();
+
+      _sourceEpoch++;
+      cancelPendingRetry();
       _currentUrl = url;
-      _isLocalFile = isLocal; // FIX: Correctly track if current playback is local
+      _isLocalFile = isLocal;
       _hasPrevious = hasPrevious;
       _hasNext = hasNext;
 
-      // Initialize Main AudioSource
-      AudioSource mainSource;
-      
-      if (customSource != null) {
-         mainSource = customSource;
-      } else {
-         // ... (Logic to create mainSource from URL)
-         // Check preloaded source
-        if (url == _preloadedUrl && _preloadedSource != null) {
-            mainSource = _preloadedSource!;
-            _preloadedSource = null;
-            _preloadedUrl = null;
-        } else {
-             // Standard URL source creation
-             Uri uri;
-            try {
-              if (isLocal && url != null) {
-                 uri = Uri.file(url);
-              } else if (url != null) {
-                 uri = Uri.parse(url);
-              } else {
-                 throw Exception('URL required if customSource is null');
-              }
-            } catch (e) {
-               throw Exception('Invalid URL: $e');
-            }
-            
-            // Explicit headers (e.g. ANDROID_VR UA from StreamResolutionService)
-            // take precedence; otherwise sniff legacy client params from URL.
-            final resolvedHeaders = <String, String>{
-              'Accept-Encoding': 'gzip',
-              if (headers != null) ...headers,
-            };
-            if (!resolvedHeaders.containsKey('User-Agent')) {
-              if (url!.contains('c=ANDROID')) {
-                resolvedHeaders['User-Agent'] = 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
-              } else if (url.contains('c=IOS')) {
-                resolvedHeaders['User-Agent'] = 'com.google.ios.youtube/19.29.1 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X)';
-              }
-            }
-            
-            MediaItem? tag;
-            if (title != null) {
-              tag = MediaItem(
-                id: id ?? url ?? 'unknown',
-                title: title ?? 'Unknown Track',
-                artist: artist ?? 'Unknown Artist',
-                artUri: artUri != null ? Uri.parse(artUri) : null,
-              );
-            }
-
-            if (isLocal) {
-               // FIX: Use AudioSource.file for local files as recommended by just_audio
-               mainSource = AudioSource.file(url!, tag: tag);
-            } else {
-               mainSource = AudioSource.uri(uri, headers: resolvedHeaders.isNotEmpty ? resolvedHeaders : null, tag: tag);
-            }
-        }
+      final source = customSource ??
+          await buildSource(
+            url: url,
+            isLocal: isLocal,
+            headers: headers,
+            title: title,
+            artist: artist,
+            artUri: artUri,
+            id: id,
+          );
+      if (source == null) {
+        throw Exception('Cannot play: no playable source for $id');
       }
 
-      // Construct Windowed Playlist
-      final List<AudioSource> playlistChildren = [];
-      
-      // ALWAYS add Previous Dummy (Button always visible)
-      playlistChildren.add(await _createDummySource(id: "prev_dummy", title: "Previous Track"));
-      
-      // Current
-      playlistChildren.add(mainSource);
-      
-      // ALWAYS add Next Dummy (Button always visible)
-      playlistChildren.add(await _createDummySource(id: "next_dummy", title: "Next Track"));
-
-      // Note: We used to conditionally add these based on hasPrevious/hasNext,
-      // but user requested they always be present (and potentially disabled or just no-op).
-      // just_audio_background doesn't support "disabled" state easily without custom actions,
-      // so we let them be clickable and handle the event to do nothing or stop if invalid.
-
-      AudioSource finalSource = ConcatenatingAudioSource(children: playlistChildren);
-      int initialIndex = 1; // Current track is always at index 1 now
-
-      if (kDebugMode) debugPrint('AudioService: Setting source with window size ${playlistChildren.length}, index $initialIndex');
-      
-      // FIX: Prevent navigation monitor from triggering during setup
-      _isConfiguring = true;
-      try {
-        await _audioPlayer.setAudioSource(finalSource, initialIndex: initialIndex);
-        // Speed/pitch survive source swaps (ExoPlayer resets on setAudioSource).
-        if (_speed != 1.0) {
-          await _audioPlayer.setSpeed(_speed);
-        }
-        if (_pitch != 1.0) {
-          await setPitch(_pitch);
-        }
-        await _audioPlayer.play();
-      } finally {
-        // Ensure flag is reset even if play fails
-        Future.delayed(const Duration(milliseconds: 500), () {
-           _isConfiguring = false;
-        });
-      }
-      
-      // Listen for index changes SPECIFIC to this playback session logic
-      // We don't want old listeners interfering, but _monitorIndexChanges is global.
-      // Ideally, the global listener handles any "current" playing sequence.
-      
+      await playSources([source], title: title, artist: artist, artUri: artUri, id: id);
     } on PlayerException catch (e) {
+      // Rethrow as-is. Wrapping it in a bare Exception erased the type, so
+      // [_looksLikeNetworkError] and any caller inspecting `code` (ExoPlayer
+      // 2001/2002 = recoverable IO) could no longer classify the failure.
       if (kDebugMode) debugPrint('AudioService: PlayerException: ${e.message}');
-      throw Exception('Audio player error: ${e.message}');
+      rethrow;
     } catch (e) {
       if (kDebugMode) debugPrint('AudioService: Error playing: $e');
       throw Exception('Failed to play audio: $e');
     }
   }
 
-  Future<AudioSource> _createDummySource({required String id, required String title}) async {
-    // We use a silent audio source or just a placeholder. 
-    // Ideally, a small silent file. Since we don't have one handy safely, 
-    // we use a failing URI but with a tag? No, that causes error.
-    // We can use the SAME URI as the current track (if URL available) or a known dummy.
-    // Better: Use a silent DurationSource if just_audio supported it, but it doesn't support streams in bg easily.
-    // Best Trick: Use the current URL/Source but with a "SKIP" tag.
-    // When the player tries to load it, we catch it? 
-    // Actually, just_audio allows AudioSource.uri(Uri.parse("asset:///...")) etc.
-    // If we use a non-playable URI, the player stops with error.
-    // But we want to CATCH the transition before it errors or while it tries to load.
-    
-    // just_audio/ExoPlayer on Android cannot load `data:` URIs — a dummy
-    // built from one throws a source error on every navigation, which the
-    // provider reads as a track failure and skip-cascades the whole queue.
-    // Use a real 0.2s silent WAV written to temp storage instead.
-    final silentFile = await _ensureSilentWav();
-    return AudioSource.file(
-      silentFile.path,
-      tag: MediaItem(
-        id: id,
-        title: title,
-        artist: "",
-        artUri: null, // No art
-      ),
+  /// Builds a tagged, cache-backed [AudioSource] for one resolved track.
+  ///
+  /// Every source produced here MUST carry a [MediaItem] tag. The background
+  /// media session does an unchecked `source.tag as MediaItem` over the whole
+  /// sequence (`just_audio_background`, `queue.add(sequence.map(...))`), so a
+  /// single untagged entry throws and takes the notification down with it.
+  /// Returns null rather than an untagged source when there is nothing to play.
+  Future<IndexedAudioSource?> buildSource({
+    String? url,
+    bool isLocal = false,
+    Map<String, String>? headers,
+    String? title,
+    String? artist,
+    String? artUri,
+    String? id,
+  }) async {
+    if (url == null || url.isEmpty) return null;
+
+    // A warmed connection for this exact URL wins, and is consumed once.
+    final preloaded = takePreloaded(url);
+    if (preloaded != null) {
+      return _retag(preloaded,
+          id: id, url: url, title: title, artist: artist, artUri: artUri);
+    }
+
+    final Uri uri;
+    try {
+      uri = isLocal ? Uri.file(url) : Uri.parse(url);
+    } catch (e) {
+      throw Exception('Invalid URL: $e');
+    }
+
+    // Explicit headers (e.g. the ANDROID_VR UA that StreamResolutionService
+    // derives) take precedence; otherwise sniff legacy client params from the
+    // URL. googlevideo rejects playback when the UA does not match the client
+    // that signed the URL.
+    final resolvedHeaders = <String, String>{
+      'Accept-Encoding': 'gzip',
+      if (headers != null) ...headers,
+    };
+    if (!resolvedHeaders.containsKey('User-Agent')) {
+      if (url.contains('c=ANDROID')) {
+        resolvedHeaders['User-Agent'] =
+            'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip';
+      } else if (url.contains('c=IOS')) {
+        resolvedHeaders['User-Agent'] =
+            'com.google.ios.youtube/19.29.1 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X)';
+      }
+    }
+
+    // Never null: the cast above is unchecked, so a missing title would
+    // produce a null tag and break the media session.
+    final tag = MediaItem(
+      id: (id != null && id.isNotEmpty) ? id : url,
+      title: title ?? 'Unknown Track',
+      artist: artist ?? 'Unknown Artist',
+      artUri: (artUri != null && artUri.isNotEmpty) ? Uri.parse(artUri) : null,
+    );
+
+    if (isLocal) {
+      return AudioSource.file(url, tag: tag);
+    }
+
+    if (id != null && id.isNotEmpty) {
+      try {
+        final dir = await _getAudioCacheDir();
+        final sanitizedId = id.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+        final cacheFile = File('${dir.path}/audio_$sanitizedId.m4a');
+        if (await cacheFile.exists() && (await cacheFile.length()) > 100000) {
+          return AudioSource.file(cacheFile.path, tag: tag);
+        }
+        unawaited(_pruneAudioCacheIfNeeded());
+        return LockCachingAudioSource(
+          uri,
+          cacheFile: cacheFile,
+          headers: resolvedHeaders.isNotEmpty ? resolvedHeaders : null,
+          tag: tag,
+        );
+      } catch (_) {
+        // Fall through to a plain URI source; still tagged.
+      }
+    }
+
+    return AudioSource.uri(
+      uri,
+      headers: resolvedHeaders.isNotEmpty ? resolvedHeaders : null,
+      tag: tag,
     );
   }
 
-  File? _silentWavFile;
+  /// Rebuilds [source] carrying [tag], so a preloaded source (created before
+  /// the track's metadata was known) still satisfies the media session's
+  /// unchecked `tag as MediaItem` cast.
+  Future<IndexedAudioSource> _retag(
+    AudioSource source, {
+    required String? id,
+    required String url,
+    String? title,
+    String? artist,
+    String? artUri,
+  }) async {
+    final tag = MediaItem(
+      id: (id != null && id.isNotEmpty) ? id : url,
+      title: title ?? 'Unknown Track',
+      artist: artist ?? 'Unknown Artist',
+      artUri: (artUri != null && artUri.isNotEmpty) ? Uri.parse(artUri) : null,
+    );
+    if (source is LockCachingAudioSource) {
+      // cacheFile is a Future<File> on the getter but the constructor takes a
+      // File, so the original cannot be reused as-is; resolve the path and
+      // reopen the same file, which keeps the warmed bytes.
+      final file = await source.cacheFile;
+      return LockCachingAudioSource(
+        source.uri,
+        cacheFile: file,
+        headers: source.headers,
+        tag: tag,
+      );
+    }
+    if (source is UriAudioSource) {
+      return AudioSource.uri(source.uri, headers: source.headers, tag: tag);
+    }
+    return source as IndexedAudioSource;
+  }
 
-  Future<File> _ensureSilentWav() async {
-    final existing = _silentWavFile;
-    if (existing != null && await existing.exists()) return existing;
+  /// Installs [sources] as the player's queue and starts playback.
+  ///
+  /// This is the single place the player queue is set. A window of real,
+  /// already-resolved tracks means ExoPlayer transitions between them
+  /// seamlessly, so the player — not the caller — performs the advance.
+  /// Callers use [seekToNext] when the next track is already in the window,
+  /// and come back here only when it is not.
+  Future<void> playSources(
+    List<AudioSource> sources, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+    String? title,
+    String? artist,
+    String? artUri,
+    String? id,
+  }) async {
+    if (sources.isEmpty) {
+      throw Exception('playSources: empty window');
+    }
+    await _initAudioSession();
 
-    const sampleRate = 8000;
-    const samples = 1600; // 0.2s of silence
-    final dataBytes = ByteData(2 * samples);
-    final header = BytesBuilder();
-    void u32(int v) => header.add([
-          v & 0xFF,
-          (v >> 8) & 0xFF,
-          (v >> 16) & 0xFF,
-          (v >> 24) & 0xFF,
-        ]);
-    void u16(int v) => header.add([v & 0xFF, (v >> 8) & 0xFF]);
-    header.add('RIFF'.codeUnits);
-    u32(36 + dataBytes.lengthInBytes);
-    header.add('WAVE'.codeUnits);
-    header.add('fmt '.codeUnits);
-    u32(16);
-    u16(1); // PCM
-    u16(1); // mono
-    u32(sampleRate);
-    u32(sampleRate * 2); // byte rate
-    u16(2); // block align
-    u16(16); // bits
-    header.add('data'.codeUnits);
-    u32(dataBytes.lengthInBytes);
+    if (_audioPlayer.playing) {
+      await _audioPlayer.stop();
+    }
 
-    final file = File('${Directory.systemTemp.path}/silent_padding.wav');
-    await file.writeAsBytes(
-        [...header.takeBytes(), ...dataBytes.buffer.asUint8List()]);
-    _silentWavFile = file;
-    return file;
+    // Remembered so a network-failure retry can rebuild a correctly tagged
+    // source: the media session casts every sequence tag to MediaItem without
+    // a check, so a retry that came back untagged would take it down.
+    _lastTitle = title;
+    _lastArtist = artist;
+    _lastArtUri = artUri;
+    _lastId = id;
+
+    _windowTracks = List<String?>.filled(sources.length, null, growable: true);
+    _markPlayRequested();
+
+    if (kDebugMode) {
+      debugPrint('AudioService: playSources window=${sources.length} '
+          'index=$initialIndex pos=$initialPosition');
+    }
+
+    await _audioPlayer.setAudioSources(
+      sources,
+      initialIndex: initialIndex.clamp(0, sources.length - 1),
+      initialPosition: initialPosition,
+    );
+    if (kDebugMode) debugPrint('AudioService: setAudioSources done');
+    // Speed/pitch survive a source swap only if reapplied; ExoPlayer resets
+    // them on setAudioSources.
+    if (_speed != 1.0) await _audioPlayer.setSpeed(_speed);
+    if (_pitch != 1.0) await setPitch(_pitch);
+    // `play()` must not be awaited bare. Its future resolves when the player
+    // reports playing, and that report can already have happened - or arrive
+    // via a path the request is not listening on - while audio is genuinely
+    // playing. Awaiting it then wedges the whole playback pipeline: the track
+    // is audible but nothing after this line ever runs (no window fill, no
+    // station, no state update), and every later tap piles another stuck call
+    // on top. Real failures still surface through the playback error listener.
+    unawaited(_audioPlayer.play().then((_) {
+      if (kDebugMode) debugPrint('AudioService: play() returned');
+    }));
+  }
+
+  /// Extends the live window without interrupting playback.
+  Future<void> appendWindow(List<AudioSource> sources) async {
+    if (sources.isEmpty) return;
+    _windowTracks.addAll(List<String?>.filled(sources.length, null, growable: true));
+    await _audioPlayer.addAudioSources(sources);
+  }
+
+  /// Inserts [source] at [index] in the live window without interrupting
+  /// playback, used to put a preceding track in front of the head.
+  ///
+  /// The player's current item stays current — only its index moves — so this
+  /// is safe to call mid-track. If the player rejects it the tracking list is
+  /// rolled back, because a placeholder with no matching source would make
+  /// [windowTrackIds] report a track that is not loaded.
+  Future<void> insertWindowAt(int index, AudioSource source) async {
+    final at = index.clamp(0, _windowTracks.length);
+    _windowTracks.insert(at, null);
+    try {
+      await _audioPlayer.insertAudioSource(at, source);
+    } catch (e) {
+      _windowTracks.removeAt(at);
+      rethrow;
+    }
+  }
+
+  /// Identifiers of the tracks currently in the player window, index-aligned.
+  ///
+  /// Read from the player's own sequence so it can never drift from what is
+  /// actually loaded. Used to decide whether a seek stays inside the window
+  /// or needs a rebuild.
+  List<String?> get windowTrackIds =>
+      _audioPlayer.sequence.map((s) => s.tag is MediaItem ? (s.tag! as MediaItem).id : null).toList();
+
+  /// The windowed track after the current one, or null if the window ends here.
+  String? get nextWindowTrackId {
+    final seq = _audioPlayer.sequence;
+    final i = _audioPlayer.currentIndex;
+    if (i == null || i + 1 >= seq.length) return null;
+    final tag = seq[i + 1].tag;
+    return tag is MediaItem ? tag.id : null;
+  }
+
+  bool get hasNextInWindow => _audioPlayer.hasNext;
+  bool get hasPreviousInWindow => _audioPlayer.hasPrevious;
+
+  /// Where the player is in its window, or -1 when nothing is loaded.
+  ///
+  /// Read to tell "the sequence ended" from "ExoPlayer is halfway through
+  /// stepping to the next item", which look identical from the outside.
+  int get windowIndex => _audioPlayer.currentIndex ?? -1;
+
+  Future<void> seekToNextInWindow() => _audioPlayer.seekToNext();
+  Future<void> seekToPreviousInWindow() => _audioPlayer.seekToPrevious();
+
+  /// Applies the app's repeat mode to the player.
+  ///
+  /// Repeat-one is delegated so it becomes a gapless native loop rather than
+  /// the full re-resolve it used to be. Repeat-all is deliberately NOT
+  /// delegated: the window is a bounded few tracks, so `LoopMode.all` there
+  /// would loop the window rather than the playlist, and the provider drives
+  /// repeat-all explicitly.
+  Future<void> applyRepeatMode({required bool repeatOne}) async {
+    await _audioPlayer.setLoopMode(repeatOne ? LoopMode.one : LoopMode.off);
+  }
+
+  Future<void> setShuffleOn(bool enabled) async {
+    if (enabled) {
+      if (!_audioPlayer.shuffleModeEnabled) await _audioPlayer.setShuffleModeEnabled(true);
+    } else if (_audioPlayer.shuffleModeEnabled) {
+      await _audioPlayer.setShuffleModeEnabled(false);
+    }
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    try {
+      await _audioPlayer.seek(position);
+    } catch (e) {
+      debugPrint('Error seeking audio: $e');
+      throw Exception('Failed to seek audio: $e');
+    }
   }
 
   Future<void> playLocalFile(String filePath, {
@@ -416,17 +705,21 @@ class AudioService {
   Future<void> resume() async {
       // If the player has completed, it means the stream was likely closed.
       if (_audioPlayer.processingState == ProcessingState.completed) {
-         // If we are resumed from "Completed" state, we might need to check if we are on a Dummy.
-         // But play() normally handles new tracks.
-         // If we just resume same track:
+          // If we are resumed from "Completed" state, we might need to check if we are on a Dummy.
+          // But play() normally handles new tracks.
+          // If we just resume same track:
         if (kDebugMode) debugPrint("AudioService: Stream completed, seeking to current position to resume.");
         await _audioPlayer.seek(_audioPlayer.position);
       }
-      await _audioPlayer.play();
+      // Same rule as in [playSources]: `play()` can hang while audio is
+      // genuinely playing, so it is never awaited bare.
+      unawaited(_audioPlayer.play());
   }
 
   Future<void> stop() async {
     try {
+      _sourceEpoch++;
+      cancelPendingRetry();
       await _audioPlayer.stop();
       _currentUrl = null;
       _currentFilePath = null;
@@ -436,15 +729,6 @@ class AudioService {
     } catch (e) {
       debugPrint('Error stopping audio: $e');
       throw Exception('Failed to stop audio: $e');
-    }
-  }
-
-  Future<void> seekTo(Duration position) async {
-    try {
-      await _audioPlayer.seek(position);
-    } catch (e) {
-      debugPrint('Error seeking audio: $e');
-      throw Exception('Failed to seek audio: $e');
     }
   }
 
@@ -475,8 +759,22 @@ class AudioService {
 
   // Handle playback errors
   void _handlePlaybackError(dynamic error) {
+    if (_retryInFlight) return;
     if (!_isLocalFile && _currentUrl != null && _looksLikeNetworkError(error)) {
       _retryPlayback();
+      return;
+    }
+    // Not a network error, so retrying the same URL cannot heal it (bad codec,
+    // deleted file, unplayable stream). If the player holds something after the
+    // current item, step past the dead one instead of stalling on it. The
+    // provider's index listener applies the state change like any other
+    // advance, so cover, lyrics and queue all follow.
+    if (_audioPlayer.hasNext) {
+      if (kDebugMode) {
+        debugPrint('AudioService: current item unplayable ($error) '
+            '- skipping past it');
+      }
+      unawaited(_audioPlayer.seekToNext());
     }
   }
 
@@ -494,13 +792,30 @@ class AudioService {
   }
 
   // Retry playback with exponential backoff
+  //
+  // Cancelled by [cancelPendingRetry] whenever a new track is installed, and
+  // abandoned early if [_sourceEpoch] moves on (a fresh play() or another
+  // retry). Without this, a skip during the backoff window let the loop wake
+  // up and call setAudioSource on whatever track was playing NOW, clobbering it.
   Future<void> _retryPlayback() async {
     if (_currentUrl == null || _isLocalFile) return;
 
-    for (int attempt = 0; attempt < NetworkConfig.maxRetries; attempt++) {
+    final epoch = _sourceEpoch;
+    final targetUrl = _currentUrl;
+    _retryInFlight = true;
+
+    try {
+      for (int attempt = 0; attempt < NetworkConfig.maxRetries; attempt++) {
       try {
         final backoffSeconds = pow(2, attempt) + (Random().nextInt(1000) / 1000.0);
         await Future.delayed(Duration(milliseconds: (backoffSeconds * 1000).round()));
+
+        // Bail out if the user moved on, or another retry superseded us.
+        if (_sourceEpoch != epoch) {
+          if (kDebugMode) debugPrint('AudioService: retry abandoned (source changed)');
+          return;
+        }
+        if (_currentUrl != targetUrl) return;
 
         if (!_networkService.isConnected) continue;
 
@@ -511,53 +826,56 @@ class AudioService {
         // back to the WEB_REMIX UA — never a plain Chrome UA (which is what
         // caused 403s here before).
         final headers = <String, String>{
-          'User-Agent': InnerTubeService.userAgentForStreamUrl(_currentUrl!) ?? kWebRemixUserAgent,
+          'User-Agent': InnerTubeService.userAgentForStreamUrl(targetUrl!) ?? kWebRemixUserAgent,
           'Accept': '*/*',
           'Accept-Language': 'en-US,en;q=0.9',
           'Accept-Encoding': 'gzip',
           'Connection': 'keep-alive',
         };
-        
-        if (_currentUrl!.contains('googlevideo.com') || _currentUrl!.contains('youtube.com')) {
+
+        if (targetUrl.contains('googlevideo.com') || targetUrl.contains('youtube.com')) {
           headers['Referer'] = 'https://www.youtube.com/';
           headers['Origin'] = 'https://www.youtube.com';
         }
-        
-        // Note: Retrying simple single source for now to keep it robust
-        // But we should try to restore the window if possible
-        AudioSource mainSource = AudioSource.uri(Uri.parse(_currentUrl!), headers: headers);
-        
-        // Reconstruct Windowed Playlist logic - Restore ALWAYS structure
-        final List<AudioSource> playlistChildren = [];
-        playlistChildren.add(await _createDummySource(id: "prev_dummy", title: "Previous Track"));
-        playlistChildren.add(mainSource);
-        playlistChildren.add(await _createDummySource(id: "next_dummy", title: "Next Track"));
-        
-        AudioSource finalSource = ConcatenatingAudioSource(children: playlistChildren);
-        int initialIndex = 1;
 
-        // FIX: Prevent navigation monitor from triggering during setup
-        _isConfiguring = true;
-        try {
-          await _audioPlayer.setAudioSource(finalSource, initialIndex: initialIndex);
-
-          if (position > Duration.zero) {
-            await _audioPlayer.seek(position);
-          }
-          if (_speed != 1.0) {
-            await _audioPlayer.setSpeed(_speed);
-          }
-
-          await _audioPlayer.play();
+        // Re-check after the awaits above: they touch the disk and the network.
+        if (_sourceEpoch != epoch) {
+          if (kDebugMode) debugPrint('AudioService: retry abandoned before install');
           return;
-        } finally {
-           Future.delayed(const Duration(milliseconds: 500), () {
-             _isConfiguring = false;
-           });
-        } 
+        }
+
+        // A retry replaces the window with the single track it is recovering.
+        // The provider rebuilds the window on its next decision, and until then
+        // a one-entry window is the honest state: the rest of the queue is not
+        // known-good enough to promise to the player.
+        final source = await buildSource(
+          url: targetUrl,
+          headers: headers,
+          title: _lastTitle,
+          artist: _lastArtist,
+          artUri: _lastArtUri,
+          id: _lastId,
+        );
+        if (source == null) continue;
+
+        if (_sourceEpoch != epoch) return;
+
+        _markPlayRequested();
+        await _audioPlayer.setAudioSources([source]);
+        if (position > Duration.zero) {
+          await _audioPlayer.seek(position);
+        }
+        if (_speed != 1.0) {
+          await _audioPlayer.setSpeed(_speed);
+        }
+        await _audioPlayer.play();
+        return;
       } catch (e) {
         debugPrint('Retry attempt $attempt failed: $e');
       }
+      }
+    } finally {
+      _retryInFlight = false;
     }
 
     debugPrint('All retry attempts failed');
@@ -574,7 +892,7 @@ class AudioService {
     if (kDebugMode) debugPrint("AudioService: Preloading track $url");
     _preloadedUrl = url;
     try {
-      // Same UA discipline as play(): if the caller doesn't specify one,
+      // Same UA discipline as buildSource(): if the caller doesn't specify one,
       // derive it from the URL — never default to a generic Chrome UA.
       final headers = <String, String>{
         'User-Agent': userAgent ?? InnerTubeService.userAgentForStreamUrl(url) ?? kWebRemixUserAgent,
@@ -583,7 +901,7 @@ class AudioService {
         'Accept-Encoding': 'gzip',
         'Connection': 'keep-alive',
       };
-      
+
       if (url.contains('googlevideo.com') || url.contains('youtube.com')) {
         headers['Referer'] = 'https://www.youtube.com/';
         headers['Origin'] = 'https://www.youtube.com';
@@ -597,69 +915,59 @@ class AudioService {
       _preloadedSource = null;
     }
   }
+
+  /// The preloaded source for [url], consumed once, or null.
+  ///
+  /// Kept so the existing prefetch path still short-circuits the first track
+  /// of a window onto a connection that was already warmed.
+  AudioSource? takePreloaded(String? url) {
+    if (url == null || url != _preloadedUrl || _preloadedSource == null) {
+      return null;
+    }
+    final s = _preloadedSource;
+    _preloadedSource = null;
+    _preloadedUrl = null;
+    return s;
+  }
   
   // Internal monitor for navigation
-  DateTime _lastNavigationEvent = DateTime.fromMillisecondsSinceEpoch(0);
-  Timer? _pendingNavigationTimer;
-  bool _isConfiguring = false; // Flag to prevent self-triggering during setup
+  //
+  // RETIRED. The player now sequences real tracks itself, so there is no dummy
+  // item left whose index change could be mistaken for "the user hit next".
+  // The setup guard that used to live here existed only to hide those
+  // self-inflicted index events; with the machine gone it has nothing to hide.
 
-  void _fireDummySkip(String dummyId) {
-    _lastNavigationEvent = DateTime.now();
-    if (dummyId == "prev_dummy") {
-      _onSkipToPreviousController.add(null);
-    } else if (dummyId == "next_dummy") {
-      _onSkipToNextController.add(null);
+  /// Bumped every time a new source is installed (or playback is stopped).
+  ///
+  /// Long-running async work captures it and compares on resume; if it moved,
+  /// the work belonged to a track the user has since left and must not touch
+  /// player state. See [_retryPlayback].
+  int _sourceEpoch = 0;
+
+  /// Guards against a second retry loop stacking on top of the first when
+  /// several network errors land close together.
+  bool _retryInFlight = false;
+
+  /// Abandons any in-progress retry backoff. Called when a new track starts.
+  void cancelPendingRetry() {
+    if (_retryInFlight) {
+      if (kDebugMode) debugPrint('AudioService: cancelling pending retry');
     }
+    _retryInFlight = false;
   }
 
   void _startNavigationMonitor() {
-      // FIX: Store subscription for proper cleanup
-      _subscriptions.add(_audioPlayer.currentIndexStream.listen((index) {
-          if (index == null || _isConfiguring) return; // Ignore during configuration
+      // The index watcher that used to live here is gone: it existed only to
+      // spot the silent dummy items and translate them into skip events. The
+      // player now holds real tracks and advances on its own, so its index
+      // changes are ordinary playback, not navigation intents.
 
-          // DO NOT trigger navigation if player is stopped/idle
-          final pState = _audioPlayer.playerState.processingState;
-          if (pState == ProcessingState.idle) return;
-
-          final source = _audioPlayer.audioSource;
-          if (source is! ConcatenatingAudioSource) return;
-          // Strategy: identify if we are on a "dummy"
-          if (index >= 0 && index < source.children.length) {
-             final child = source.children[index];
-             if (child is UriAudioSource) {
-                final sequence = _audioPlayer.sequence;
-                if (sequence != null && index < sequence.length) {
-                   final tag = sequence[index].tag;
-                   if (tag is MediaItem && (tag.id == "prev_dummy" || tag.id == "next_dummy")) {
-                      // Rate limit navigation events, but keep trailing-edge:
-                      // rapid skips collapse into ONE deferred event instead of
-                      // being silently dropped.
-                      final elapsed =
-                          DateTime.now().difference(_lastNavigationEvent).inMilliseconds;
-                      const windowMs = 500;
-                      if (elapsed < windowMs) {
-                        _pendingNavigationTimer?.cancel();
-                        _pendingNavigationTimer = Timer(
-                          Duration(milliseconds: windowMs - elapsed),
-                          () => _fireDummySkip(tag.id),
-                        );
-                      } else {
-                        _pendingNavigationTimer?.cancel();
-                        _fireDummySkip(tag.id);
-                      }
-                   }
-                }
-             }
-          }
-      }));
-    
-    // --- Error Handling Monitor ---
-    // FIX: Store subscriptions for proper cleanup
-    _subscriptions.add(_audioPlayer.playerStateStream.listen((state) {
+      // --- Error Handling Monitor ---
+      _subscriptions.add(_audioPlayer.playerStateStream.listen((state) {
         if (state.processingState == ProcessingState.idle) {
-             // Idle usually happens after stop or reset, but check for error
+          // Idle usually happens after stop or reset, but check for error
         }
-    }));
+      }));
     
     // Listen for Player Exceptions explicitly
     _subscriptions.add(_audioPlayer.playbackEventStream.listen((event) {}, 
@@ -675,7 +983,6 @@ class AudioService {
 
   void dispose() {
     // FIX: Cancel all subscriptions before disposing
-    _pendingNavigationTimer?.cancel();
     for (final sub in _subscriptions) {
       sub.cancel();
     }

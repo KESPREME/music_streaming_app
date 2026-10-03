@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/track.dart';
+import '../../utils/app_image_cache.dart';
 import '../../utils/artwork_palette_resolver.dart';
 import '../animated_equalizer_icon.dart';
 import '../themed_options_sheet.dart';
@@ -107,6 +108,8 @@ class TopSongsPagerGrid extends StatelessWidget {
                                     children: [
                                       CachedNetworkImage(
                                         imageUrl: song.albumArt,
+                                        memCacheWidth: AppImageCache.thumbnailMemCache,
+                                        memCacheHeight: AppImageCache.thumbnailMemCache,
                                         fit: BoxFit.cover,
                                         errorWidget: (_, __, ___) => Container(
                                           color: Colors.white.withValues(alpha: 0.08),

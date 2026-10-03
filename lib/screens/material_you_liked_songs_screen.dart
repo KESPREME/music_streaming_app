@@ -84,6 +84,7 @@ class _MaterialYouLikedSongsScreenState extends State<MaterialYouLikedSongsScree
                           musicProvider.playTrack(
                             likedSongs.first,
                             playlistTracks: likedSongs,
+                            playlistId: 'liked_songs',
                           );
                         },
                       ),
@@ -100,6 +101,7 @@ class _MaterialYouLikedSongsScreenState extends State<MaterialYouLikedSongsScree
                           musicProvider.playTrack(
                             likedSongs.first,
                             playlistTracks: likedSongs,
+                            playlistId: 'liked_songs',
                           );
                           if (!musicProvider.shuffleEnabled) {
                             musicProvider.toggleShuffle();
@@ -153,6 +155,7 @@ class _MaterialYouLikedSongsScreenState extends State<MaterialYouLikedSongsScree
                             musicProvider.playTrack(
                               track,
                               playlistTracks: likedSongs,
+                              playlistId: 'liked_songs',
                             );
                           },
                         );

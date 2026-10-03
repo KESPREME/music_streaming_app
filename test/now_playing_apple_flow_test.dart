@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/material.dart'
+    show AnimatedOpacity, CustomScrollView;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +15,7 @@ import 'package:music_streaming_app/services/lyrics/lyrics_service.dart';
 import 'package:music_streaming_app/services/canvas_resolution_service.dart';
 import 'package:music_streaming_app/services/canvas_video_manager.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
+import 'package:music_streaming_app/screens/queue_screen.dart';
 import 'package:music_streaming_app/widgets/apple_player_icons.dart';
 
 class TestMusicProvider extends MusicProvider {
@@ -100,6 +103,9 @@ class TestMusicProvider extends MusicProvider {
   List<Track> get queue => List.unmodifiable(_testQueue);
 
   @override
+  List<Track> get upNext => List.unmodifiable(_testQueue);
+
+  @override
   bool get canClearQueue => _testQueue.isNotEmpty;
 
   @override
@@ -116,6 +122,7 @@ class TestMusicProvider extends MusicProvider {
     bool setContext = true,
     bool clearQueue = true,
     bool prefetchMetadata = true,
+    bool recordHistory = true,
   }) async {
     _lastPlayedTrack = track;
     initialTrack = track;
@@ -279,17 +286,334 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Queue tab'));
     await tester.pumpAndSettle();
 
-    // Verify Queue view elements
-    expect(find.text('Playing Next'), findsOneWidget);
-    expect(find.text('From Muzo'), findsOneWidget);
+    // Verify Queue view elements (no source subtitle: removed by design).
+    // Landed state: the flight retired, the page header owns the row.
+    expect(find.text('Queue'), findsOneWidget);
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Playing Now'), findsNothing);
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+    expect(find.text('From Muzo'), findsNothing);
+    expect(find.text('From Mine Music'), findsNothing);
     expect(find.text('Clear'), findsOneWidget);
     expect(find.text('Moonlight'), findsOneWidget);
 
-    // Verify pill buttons
-    expect(find.bySemanticsLabel('Autoplay'), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel('Autoplay'));
+    // Verify the controls-only pill in the bottom bar (the player
+    // transport above keeps its own set - scope into the pill).
+    final controlsPill = find.byKey(const ValueKey('controls'));
+    expect(controlsPill, findsOneWidget);
+    expect(
+      find.descendant(
+        of: controlsPill,
+        matching: find.bySemanticsLabel('Autoplay'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.descendant(
+      of: controlsPill,
+      matching: find.bySemanticsLabel('Autoplay'),
+    ));
     await tester.pump();
     expect(provider.autoplayEnabled, isFalse);
+  });
+
+  testWidgets('queue morph flies, then hands off to the page header',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    // Mid-flight: the flying artwork exists, and the queue content underneath
+    // is still fully transparent - the staged entrance waits for the landing.
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsOneWidget);
+    final staged = tester.widget<Opacity>(
+      find.ancestor(of: find.byType(QueueScreen), matching: find.byType(Opacity))
+          .first,
+    );
+    expect(staged.opacity, 0.0);
+
+    // Landed: flight retired, page header owns the resting row. Retiring the
+    // overlay is what keeps the star / a? / options buttons reachable.
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+  });
+
+  testWidgets('queue to lyrics swaps the middle without replaying the flight',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+
+    // Queue -> lyrics. The flight artwork must never appear: the mini is
+    // already on screen and both surfaces rest at the same rect, so this is a
+    // page swap. A single frame proves no mini -> hero -> mini replay started.
+    await tester.tap(find.bySemanticsLabel('Lyrics tab'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byType(LyricsScreen), findsOneWidget);
+
+    // Lyrics -> queue: same rule in the other direction.
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+  });
+
+  testWidgets('artwork swipe right opens lyrics, left stays with the pager',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Leftward is the PageView's job (artwork -> queue); the Listener must not
+    // eat it. -320 clears the pager's half-page threshold on a 400px surface.
+    await tester.drag(
+      find.byKey(const ValueKey('now_playing_album_art')),
+      const Offset(-320, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+
+    // Back home, then rightward: nothing is to the left of page 0, so this is
+    // the one direction the pager leaves free for the lyrics.
+    await tester.tap(find.byKey(const ValueKey('queueHeaderArt')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('now_playing_album_art')), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('now_playing_album_art')),
+      const Offset(180, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(LyricsScreen), findsOneWidget);
+  });
+
+  testWidgets('queue panel toggles closed from the Queue button',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    await tester.pumpAndSettle();
+    // Landed: the flight has retired and the page's own header owns the
+    // resting state - which is where the star / a? / options actions live.
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+    expect(find.text('Queue'), findsOneWidget);
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Playing Now'), findsNothing);
+
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
+    expect(find.byKey(const ValueKey('queueHeaderArt')), findsNothing);
+    expect(find.text('Queue'), findsNothing);
+  });
+
+  testWidgets('lyrics chrome hides after 5s idle and returns on tap',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Lyrics tab'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LyricsScreen), findsOneWidget);
+
+    bool deckShown() =>
+        find.byKey(const Key('npPlayerDeck')).evaluate().isNotEmpty;
+
+    expect(deckShown(), isTrue);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(deckShown(), isFalse);
+
+    await tester.tapAt(const Offset(200, 200));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(deckShown(), isTrue);
+  });
+
+  testWidgets('queue scroll collapses the deck and back up reveals it',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    for (var i = 0; i < 12; i++) {
+      provider._testQueue.add(Track(
+        id: 'scrolltrack$i',
+        trackName: 'Scroll Song $i',
+        artistName: 'Artist $i',
+        albumName: 'Album',
+        previewUrl: '',
+      ));
+    }
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    await tester.pumpAndSettle();
+
+    bool deckShown() =>
+        find.byKey(const Key('npPlayerDeck')).evaluate().isNotEmpty;
+
+    expect(deckShown(), isTrue);
+
+    final list = find.descendant(
+      of: find.byType(QueueScreen),
+      matching: find.byType(CustomScrollView),
+    );
+    expect(list, findsOneWidget);
+
+    // Finger drags the list down (plain drag: no ballistic bounce to
+    // muddy the assert): the deck collapses.
+    await tester.drag(list, const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(deckShown(), isFalse);
+
+    // Drags back up: the deck returns.
+    await tester.drag(list, const Offset(0, 400));
+    await tester.pumpAndSettle();
+    expect(deckShown(), isTrue);
+
+    // Slow long drags accumulate instead of gating per-frame, so they
+    // collapse too (back at the top after the drag home above). Travels
+    // well past touch slop so the scrolled distance itself crosses.
+    await tester.timedDrag(
+      list,
+      const Offset(0, -140),
+      const Duration(milliseconds: 800),
+    );
+    await tester.pumpAndSettle();
+    expect(deckShown(), isFalse);
+  });
+
+  testWidgets('short viewport never throws in hero math (deck shares column)',
+      (tester) async {
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    // Short screen: the shared deck leaves the player page under 538px
+    // tall, where the old 280 floor exceeded the 52% ceiling and clamp()
+    // threw every frame (white screen on device).
+    await tester.binding.setSurfaceSize(const Size(400, 500));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(NowPlayingScreen), findsOneWidget);
   });
 
   testWidgets('options sheet shows Apple / Muzo options matching Image 3',
@@ -321,9 +645,9 @@ void main() {
     expect(find.text('Go to artist'), findsOneWidget);
     expect(find.text('Download'), findsOneWidget);
     expect(find.text('Share'), findsOneWidget);
-    expect(find.text('Song Info'), findsOneWidget);
-    expect(find.text('Force Canvas'), findsOneWidget);
-    expect(find.text('Sleep Timer'), findsOneWidget);
+      expect(find.text('Song Info'), findsOneWidget);
+      // "Force Canvas" was removed from the sheet; no longer asserted.
+      expect(find.text('Sleep Timer'), findsOneWidget);
   });
 
   test('LyricsUtils: parses enhanced word-level LRC tags and character-weighted fallback', () {

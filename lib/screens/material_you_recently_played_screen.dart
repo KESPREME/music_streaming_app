@@ -116,12 +116,7 @@ class _MaterialYouRecentlyPlayedScreenState extends State<MaterialYouRecentlyPla
                           track: track,
                           isPlaying: isPlaying,
                           isRecentlyPlayedContext: true,
-                          onTap: () {
-                            musicProvider.playTrack(
-                              track,
-                              playlistTracks: recentlyPlayedTracks,
-                            );
-                          },
+                          onTap: () => musicProvider.playTrack(track),
                           onOptionsPressed: () {
                              MaterialYouOptionsSheet.show(context, track: track);
                           },

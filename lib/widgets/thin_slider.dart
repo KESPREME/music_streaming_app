@@ -85,21 +85,25 @@ class _ThinSliderState extends State<ThinSlider>
     super.dispose();
   }
 
-  void _handlePointerDown(PointerDownEvent event, double totalW) {
-    _isDragging = true;
-    _animController.forward();
-    HapticFeedback.selectionClick();
-    widget.onValueChangeStart?.call();
-    _updatePosition(event.localPosition.dx, totalW);
+  void _startDrag(double localX, double totalW) {
+    if (!_isDragging) {
+      _isDragging = true;
+      _animController.forward();
+      HapticFeedback.selectionClick();
+      widget.onValueChangeStart?.call();
+    }
+    _updatePosition(localX, totalW);
   }
 
-  void _handlePointerMove(PointerMoveEvent event, double totalW) {
-    if (_isDragging) {
-      _updatePosition(event.localPosition.dx, totalW);
+  void _updateDrag(double localX, double totalW) {
+    if (!_isDragging) {
+      _startDrag(localX, totalW);
+    } else {
+      _updatePosition(localX, totalW);
     }
   }
 
-  void _handlePointerUp(PointerUpEvent event) {
+  void _endDrag() {
     if (_isDragging) {
       _isDragging = false;
       _animController.reverse();
@@ -108,7 +112,7 @@ class _ThinSliderState extends State<ThinSlider>
     }
   }
 
-  void _handlePointerCancel(PointerCancelEvent event) {
+  void _cancelDrag() {
     if (_isDragging) {
       _isDragging = false;
       _animController.reverse();
@@ -132,12 +136,20 @@ class _ThinSliderState extends State<ThinSlider>
         builder: (context, constraints) {
           final totalW = constraints.maxWidth;
 
-          return Listener(
+          return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: (event) => _handlePointerDown(event, totalW),
-            onPointerMove: (event) => _handlePointerMove(event, totalW),
-            onPointerUp: _handlePointerUp,
-            onPointerCancel: _handlePointerCancel,
+            onTapDown: (details) =>
+                _startDrag(details.localPosition.dx, totalW),
+            onTapUp: (_) => _endDrag(),
+            onTapCancel: _cancelDrag,
+            onHorizontalDragDown: (details) =>
+                _startDrag(details.localPosition.dx, totalW),
+            onHorizontalDragStart: (details) =>
+                _startDrag(details.localPosition.dx, totalW),
+            onHorizontalDragUpdate: (details) =>
+                _updateDrag(details.localPosition.dx, totalW),
+            onHorizontalDragEnd: (_) => _endDrag(),
+            onHorizontalDragCancel: _cancelDrag,
             child: SizedBox(
               width: totalW,
               height: widget.touchHeight,

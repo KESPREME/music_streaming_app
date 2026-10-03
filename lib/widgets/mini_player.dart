@@ -10,6 +10,7 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../screens/themed_now_playing_screen.dart';
 import '../utils/color_utils.dart';
+import '../utils/app_image_cache.dart';
 
 /// Floating liquid-glass mini player matching Muzo sizing (Image 2)
 /// with Previous, Play/Pause, Next inline controls and soft dynamic
@@ -303,6 +304,8 @@ class _PillBody extends StatelessWidget {
                     imageUrl: currentTrack.albumArtUrl,
                     width: 32,
                     height: 32,
+                    memCacheWidth: AppImageCache.thumbnailMemCache,
+                    memCacheHeight: AppImageCache.thumbnailMemCache,
                     fit: BoxFit.cover,
                     fadeInDuration: const Duration(milliseconds: 150),
                     errorWidget: (_, __, ___) => Container(
@@ -384,6 +387,8 @@ class _PillBody extends StatelessWidget {
                     imageUrl: currentTrack.albumArtUrl,
                     width: 36,
                     height: 36,
+                    memCacheWidth: AppImageCache.thumbnailMemCache,
+                    memCacheHeight: AppImageCache.thumbnailMemCache,
                     fit: BoxFit.cover,
                     fadeInDuration: const Duration(milliseconds: 150),
                     errorWidget: (_, __, ___) => Container(

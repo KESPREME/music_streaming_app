@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../utils/app_image_cache.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -228,7 +229,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context);
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
     final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
     final darkBg = artPalette.background;
     final washColor = artPalette.wash;
@@ -242,67 +243,79 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       body: Stack(
         children: [
           // 1. Layer 1: PageBackground with ArtworkWash
-          ArtworkWash(
-            backgroundColor: darkBg,
-            washColor: washColor,
-            accentColor: accentColor,
-            elevatedColor: artPalette.elevated,
-            washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
-            imageUrl: _resolvedArtistImage ?? widget.artistImage,
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: ArtworkWash(
+                backgroundColor: darkBg,
+                washColor: washColor,
+                accentColor: accentColor,
+                elevatedColor: artPalette.elevated,
+                washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
+                imageUrl: _resolvedArtistImage ?? widget.artistImage,
+              ),
+            ),
           ),
 
           // 2. Layer 2: Full-bleed Hero Photography with isolated parallax render offset (BitChord 120 FPS parity)
-          AnimatedBuilder(
-            animation: _scrollController,
-            builder: (context, child) {
-              final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-              return Positioned(
-                top: -offset.clamp(0.0, artHeight * 1.5),
-                left: 0,
-                right: 0,
-                height: artHeight,
-                child: child!,
-              );
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Cinematic Artist Portrait
-                if (_resolvedArtistImage != null && _resolvedArtistImage!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: ImageQualityUtils.getHighQualityUrl(_resolvedArtistImage!),
-                    fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
-                  ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: artHeight,
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _scrollController,
+                builder: (context, child) {
+                  final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                  final clamped = offset.clamp(0.0, artHeight * 1.5);
+                  return Transform.translate(
+                    offset: Offset(0, -clamped),
+                    child: child,
+                  );
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Cinematic Artist Portrait
+                    if (_resolvedArtistImage != null && _resolvedArtistImage!.isNotEmpty)
+                        CachedNetworkImage(
+                          imageUrl: ImageQualityUtils.getHighQualityUrl(_resolvedArtistImage!),
+                          fit: BoxFit.cover,
+                          memCacheWidth: AppImageCache.heroMemCache,
+                          memCacheHeight: AppImageCache.heroMemCache,
+                        errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
+                      ),
 
-                // Top shade under the glass bar (BitChord DetailScreen.kt parity)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: artHeight * 0.28,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          darkBg.withValues(alpha: 0.55),
-                          Colors.transparent,
-                        ],
+                    // Top shade under the glass bar (BitChord DetailScreen.kt parity)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: artHeight * 0.28,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              darkBg.withValues(alpha: 0.55),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-                // Eased foot fade settling onto the wash (BitChord PageBackground
-                // parity); the MergeBand veil covers the seam the rest of the way.
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    child: ArtworkFootFade(washColor: washColor),
-                  ),
+                    // Eased foot fade settling onto the wash (BitChord PageBackground
+                    // parity); the MergeBand veil covers the seam the rest of the way.
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: ArtworkFootFade(washColor: washColor),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
 
@@ -462,15 +475,21 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 // "Top songs" horizontal 4-row pager grid (Screenshot 7)
                 if (_topSongs.isNotEmpty)
                   SliverToBoxAdapter(
-                    child: TopSongsPagerGrid(
-                      songs: _topSongs,
-                      onSongTap: (queue, index) {
-                        musicProvider.playTrackList(queue, initialIndex: index);
-                      },
-                      currentTrack: musicProvider.currentTrack,
-                      isPlaying: musicProvider.isPlaying,
-                      accentColor: accentColor,
-                      palette: artPalette,
+                    child: Selector<MusicProvider, ({Track? currentTrack, bool isPlaying})>(
+                      selector: (_, mp) => (
+                        currentTrack: mp.currentTrack,
+                        isPlaying: mp.isPlaying,
+                      ),
+                      builder: (context, playbackState, _) => TopSongsPagerGrid(
+                        songs: _topSongs,
+                        onSongTap: (queue, index) {
+                          context.read<MusicProvider>().playTrackList(queue, initialIndex: index);
+                        },
+                        currentTrack: playbackState.currentTrack,
+                        isPlaying: playbackState.isPlaying,
+                        accentColor: accentColor,
+                        palette: artPalette,
+                      ),
                     ),
                   ),
 

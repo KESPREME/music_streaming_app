@@ -51,7 +51,6 @@ dependencies:
   app_links: ^7.2.1
   video_player: ^2.14.0
   video_player_win: ^3.2.2
-
 dependency_overrides: {}
 
 flutter:

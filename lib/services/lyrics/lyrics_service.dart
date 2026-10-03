@@ -4,6 +4,7 @@
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'better_lyrics_provider.dart';
 import 'simp_music_provider.dart';
 import 'kugou_provider.dart';
@@ -22,9 +23,97 @@ enum LyricsProvider {
   youtubeTranscript,
 }
 
+extension LyricsProviderExtension on LyricsProvider {
+  String get displayName {
+    switch (this) {
+      case LyricsProvider.betterLyrics:
+        return 'BetterLyrics';
+      case LyricsProvider.simpMusic:
+        return 'SimpMusic';
+      case LyricsProvider.kugou:
+        return 'KuGou';
+      case LyricsProvider.lrclib:
+        return 'LRCLIB';
+      case LyricsProvider.youtubeTranscript:
+        return 'YouTube Transcript';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case LyricsProvider.betterLyrics:
+        return 'Apple Music TTML syllable sync';
+      case LyricsProvider.simpMusic:
+        return 'RichSync word-level timing';
+      case LyricsProvider.kugou:
+        return 'Massive synced catalog';
+      case LyricsProvider.lrclib:
+        return 'Community synced lyrics';
+      case LyricsProvider.youtubeTranscript:
+        return 'Video transcript fallback';
+    }
+  }
+}
+
 /// Main lyrics service that orchestrates multiple providers
 /// with syllable-first priority, two-tier caching, and instrumental gap handling
 class LyricsService {
+  static final LyricsService _instance = LyricsService._internal();
+  factory LyricsService() => _instance;
+  LyricsService._internal();
+
+  static const List<LyricsProvider> defaultProviderOrder = [
+    LyricsProvider.betterLyrics,
+    LyricsProvider.simpMusic,
+    LyricsProvider.kugou,
+    LyricsProvider.lrclib,
+    LyricsProvider.youtubeTranscript,
+  ];
+
+  static const String _orderPrefKey = 'lyrics_providers_order';
+  static const String _enabledPrefKey = 'lyrics_providers_enabled';
+
+  List<LyricsProvider> _providerOrder = List.from(defaultProviderOrder);
+  Set<LyricsProvider> _enabledProviders = Set.from(defaultProviderOrder);
+
+  List<LyricsProvider> get providerOrder => List.unmodifiable(_providerOrder);
+  Set<LyricsProvider> get enabledProviders => Set.unmodifiable(_enabledProviders);
+
+  bool isProviderEnabled(LyricsProvider provider) =>
+      _enabledProviders.contains(provider);
+
+  Future<void> updateProviderOrder(List<LyricsProvider> newOrder) async {
+    _providerOrder = List.from(newOrder);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        _orderPrefKey, _providerOrder.map((e) => e.name).toList());
+  }
+
+  Future<void> setProviderEnabled(LyricsProvider provider, bool enabled) async {
+    if (!enabled &&
+        _enabledProviders.length <= 1 &&
+        _enabledProviders.contains(provider)) {
+      // Must keep at least one provider enabled
+      return;
+    }
+    if (enabled) {
+      _enabledProviders.add(provider);
+    } else {
+      _enabledProviders.remove(provider);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        _enabledPrefKey, _enabledProviders.map((e) => e.name).toList());
+  }
+
+  Future<void> resetProvidersToDefault() async {
+    _providerOrder = List.from(defaultProviderOrder);
+    _enabledProviders = Set.from(defaultProviderOrder);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_orderPrefKey);
+    await prefs.remove(_enabledPrefKey);
+  }
+
   final BetterLyricsProvider _betterLyricsProvider = BetterLyricsProvider();
   final SimpMusicProvider _simpMusicProvider = SimpMusicProvider();
   final KuGouProvider _kugouProvider = KuGouProvider();
@@ -51,8 +140,35 @@ class LyricsService {
   Future<void> initialize() async {
     if (_isInitialized) return;
     await _diskCache.initialize();
+
+    final prefs = await SharedPreferences.getInstance();
+    final savedOrder = prefs.getStringList(_orderPrefKey);
+    if (savedOrder != null && savedOrder.isNotEmpty) {
+      final parsed = <LyricsProvider>[];
+      for (final name in savedOrder) {
+        final p = LyricsProvider.values.where((e) => e.name == name).firstOrNull;
+        if (p != null && !parsed.contains(p)) parsed.add(p);
+      }
+      for (final p in defaultProviderOrder) {
+        if (!parsed.contains(p)) parsed.add(p);
+      }
+      _providerOrder = parsed;
+    }
+
+    final savedEnabled = prefs.getStringList(_enabledPrefKey);
+    if (savedEnabled != null) {
+      final parsed = <LyricsProvider>{};
+      for (final name in savedEnabled) {
+        final p = LyricsProvider.values.where((e) => e.name == name).firstOrNull;
+        if (p != null) parsed.add(p);
+      }
+      if (parsed.isNotEmpty) {
+        _enabledProviders = parsed;
+      }
+    }
+
     _isInitialized = true;
-    if (kDebugMode) debugPrint('LyricsService: Initialized with disk cache');
+    if (kDebugMode) debugPrint('LyricsService: Initialized with disk cache and custom providers');
   }
 
   /// Get parsed lyrics entries with BitChord's syllable/word-first prioritization
@@ -63,7 +179,7 @@ class LyricsService {
     String? videoId,
     String? album,
   }) async {
-    final cacheKey = _buildCacheKey(title, artist);
+    final cacheKey = _buildCacheKey(title, artist, videoId: videoId);
 
     // 1. Check memory parsed cache
     if (_parsedCache.containsKey(cacheKey)) {
@@ -121,7 +237,7 @@ class LyricsService {
     }
   }
 
-  /// Fetches lyrics trying word/syllable-level sources first, then line-synced fallbacks
+  /// Fetches lyrics trying enabled providers in user-configured priority order
   Future<List<LyricsEntry>> _fetchWithSyllablePriority({
     required String cacheKey,
     required String title,
@@ -130,104 +246,77 @@ class LyricsService {
     String? videoId,
     String? album,
   }) async {
-    // ── TIER 1: Word / Syllable-synced sources (highest priority) ────────
-    // 1a. BetterLyrics (Apple Music TTML per-syllable timing)
-    try {
-      final betterEntries = await _betterLyricsProvider.getLyrics(
-        title: title,
-        artist: artist,
-        durationMs: durationMs,
-        album: album,
-      );
-      if (betterEntries != null && betterEntries.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('LyricsService: BetterLyrics word-synced hit (${betterEntries.length} lines)');
-        }
-        final withGaps = withInstrumentalGaps(betterEntries);
-        _cacheParsed(cacheKey, withGaps, LyricsProvider.betterLyrics);
-        return withGaps;
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('LyricsService: BetterLyrics failed: $e');
-    }
+    for (final provider in _providerOrder) {
+      if (!_enabledProviders.contains(provider)) continue;
 
-    // 1b. SimpMusic (matched on video ID, richSync word-timing)
-    if (videoId != null && videoId.isNotEmpty) {
       try {
-        final simpEntries = await _simpMusicProvider.getLyrics(
-          videoId: videoId,
-          durationMs: durationMs,
-        );
-        if (simpEntries != null && simpEntries.isNotEmpty) {
-          if (simpEntries.any((e) => e.isWordSynced)) {
-            if (kDebugMode) {
-              debugPrint('LyricsService: SimpMusic richSync word-synced hit (${simpEntries.length} lines)');
+        List<LyricsEntry>? entries;
+        switch (provider) {
+          case LyricsProvider.betterLyrics:
+            entries = await _betterLyricsProvider.getLyrics(
+              title: title,
+              artist: artist,
+              durationMs: durationMs,
+              album: album,
+            );
+            break;
+
+          case LyricsProvider.simpMusic:
+            if (videoId != null && videoId.isNotEmpty) {
+              final simpEntries = await _simpMusicProvider.getLyrics(
+                videoId: videoId,
+                durationMs: durationMs,
+              );
+              if (simpEntries != null && simpEntries.isNotEmpty) {
+                entries = simpEntries;
+              }
             }
-            final withGaps = withInstrumentalGaps(simpEntries);
-            _cacheParsed(cacheKey, withGaps, LyricsProvider.simpMusic);
-            return withGaps;
+            break;
+
+          case LyricsProvider.kugou:
+            entries = await _kugouProvider.getLyrics(
+              title: title,
+              artist: artist,
+              durationMs: durationMs,
+            );
+            break;
+
+          case LyricsProvider.lrclib:
+            final lrcResult = await _tryLrcLib(title, artist, durationMs);
+            if (lrcResult != null && lrcResult.lyrics.isNotEmpty) {
+              final parsed = LyricsUtils.parseLrc(lrcResult.lyrics);
+              if (parsed.isNotEmpty) {
+                entries = parsed;
+              }
+            }
+            break;
+
+          case LyricsProvider.youtubeTranscript:
+            if (videoId != null && videoId.isNotEmpty) {
+              final ytResult = await _tryYouTubeTranscript(videoId);
+              if (ytResult != null && ytResult.lyrics.isNotEmpty) {
+                final parsed = LyricsUtils.parseLrc(ytResult.lyrics);
+                if (parsed.isNotEmpty) {
+                  entries = parsed;
+                }
+              }
+            }
+            break;
+        }
+
+        if (entries != null && entries.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint(
+                'LyricsService: Hit from ${provider.displayName} (${entries.length} lines)');
           }
-        }
-      } catch (e) {
-        if (kDebugMode) debugPrint('LyricsService: SimpMusic failed: $e');
-      }
-    }
-
-    // ── TIER 2: Line-synced fallbacks ────────────────────────────────────
-    // 2a. KuGou (massive catalogue)
-    try {
-      final kugouEntries = await _kugouProvider.getLyrics(
-        title: title,
-        artist: artist,
-        durationMs: durationMs,
-      );
-      if (kugouEntries != null && kugouEntries.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('LyricsService: KuGou line-synced hit (${kugouEntries.length} lines)');
-        }
-        final withGaps = withInstrumentalGaps(kugouEntries);
-        _cacheParsed(cacheKey, withGaps, LyricsProvider.kugou);
-        return withGaps;
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('LyricsService: KuGou failed: $e');
-    }
-
-    // 2b. LrcLib (free community database)
-    try {
-      final lrcResult = await _tryLrcLib(title, artist, durationMs);
-      if (lrcResult != null && lrcResult.lyrics.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('LyricsService: LrcLib line-synced hit');
-        }
-        final entries = LyricsUtils.parseLrc(lrcResult.lyrics);
-        if (entries.isNotEmpty) {
           final withGaps = withInstrumentalGaps(entries);
-          _cacheParsed(cacheKey, withGaps, LyricsProvider.lrclib);
+          _cacheParsed(cacheKey, withGaps, provider);
           return withGaps;
         }
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('LyricsService: LrcLib failed: $e');
-    }
-
-    // ── TIER 3: Plaintext / Transcript fallbacks ─────────────────────────
-    if (videoId != null && videoId.isNotEmpty) {
-      try {
-        final ytResult = await _tryYouTubeTranscript(videoId);
-        if (ytResult != null && ytResult.lyrics.isNotEmpty) {
-          if (kDebugMode) {
-            debugPrint('LyricsService: YouTube transcript hit');
-          }
-          final entries = LyricsUtils.parseLrc(ytResult.lyrics);
-          if (entries.isNotEmpty) {
-            final withGaps = withInstrumentalGaps(entries);
-            _cacheParsed(cacheKey, withGaps, LyricsProvider.youtubeTranscript);
-            return withGaps;
-          }
-        }
       } catch (e) {
-        if (kDebugMode) debugPrint('LyricsService: YouTube transcript failed: $e');
+        if (kDebugMode) {
+          debugPrint('LyricsService: Provider ${provider.name} failed: $e');
+        }
       }
     }
 
@@ -409,8 +498,12 @@ class LyricsService {
     return null;
   }
 
-  String _buildCacheKey(String title, String artist) {
-    return '${title.toLowerCase().trim()}_${artist.toLowerCase().trim()}';
+  String _buildCacheKey(String title, String artist, {String? videoId}) {
+    final base = '${title.toLowerCase().trim()}_${artist.toLowerCase().trim()}';
+    if (videoId != null && videoId.isNotEmpty) {
+      return '${videoId}_$base';
+    }
+    return base;
   }
 
   /// Prefetch lyrics for upcoming tracks
@@ -421,7 +514,7 @@ class LyricsService {
       final videoId = track['videoId'];
 
       if (title.isEmpty || artist.isEmpty) continue;
-      final cacheKey = _buildCacheKey(title, artist);
+      final cacheKey = _buildCacheKey(title, artist, videoId: videoId);
 
       if (_parsedCache.containsKey(cacheKey)) continue;
       if (_prefetchQueue.any((t) => t.cacheKey == cacheKey)) continue;

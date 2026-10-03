@@ -101,7 +101,8 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
           ? FloatingActionButton.extended(
               onPressed: () {
                 final provider = Provider.of<MusicProvider>(context, listen: false);
-                provider.playTrack(_tracks.first, playlistTracks: _tracks);
+                provider.playTrack(_tracks.first,
+                    playlistTracks: _tracks, playlistId: widget.playlistId);
               },
               backgroundColor: MaterialYouTokens.primaryVibrant,
               foregroundColor: Colors.black,
@@ -270,7 +271,8 @@ class _MaterialYouPlaylistDetailScreenState extends State<MaterialYouPlaylistDet
               track: track,
               isPlaying: isPlaying,
               onTap: () {
-                provider.playTrack(track, playlistTracks: _tracks);
+                provider.playTrack(track,
+                    playlistTracks: _tracks, playlistId: widget.playlistId);
               },
               onOptionsPressed: () async {
                   await MaterialYouOptionsSheet.show(

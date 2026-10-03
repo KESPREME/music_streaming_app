@@ -25,6 +25,34 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   // Height of the phone screen
   double get screenHeight => MediaQuery.of(context).size.height;
 
+  /// Guards [_onRoutesChanged] so a burst of route changes costs one rebuild
+  /// instead of one per notification.
+  bool _routeSyncScheduled = false;
+
+  /// Navigator observers fire inside the navigator's own build/update phase, so
+  /// calling `setState` straight from one is "markNeedsBuild during build".
+  ///
+  /// Beyond the immediate error it corrupted the framework's inactive-element
+  /// bookkeeping, which surfaced on a *later*, unrelated rebuild as
+  /// `_InactiveElements.remove: _elements.contains(element): is not true` — the
+  /// stack pointed at `inflateWidget`, nowhere near the real cause.
+  ///
+  /// Deferring past the frame is the fix: a route change always animates, so
+  /// the callback runs on the very next frame and the overlay is at most one
+  /// frame behind, which is imperceptible for a repaint.
+  void _onRoutesChanged() {
+    if (!mounted || _routeSyncScheduled) return;
+    _routeSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _routeSyncScheduled = false;
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  late final _PlayerNavigatorObserver _playerNavObserver =
+      _PlayerNavigatorObserver(onRoutesChanged: _onRoutesChanged);
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +72,17 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
         if (_GlobalMusicOverlayState._isExpanded != isExpanded) {
           _GlobalMusicOverlayState._isExpanded = isExpanded;
           provider.setPlayerExpanded(isExpanded);
+          if (!isExpanded) {
+            // Dismiss any subroutes or modal sheets if panel collapsed
+            final playerNav = provider.playerNavigatorKey.currentState;
+            if (playerNav != null && playerNav.canPop()) {
+              playerNav.popUntil((r) => r.isFirst);
+            }
+            // Ensure mini player is never stuck hidden when panel is collapsed
+            if (provider.hideMiniPlayer) {
+              provider.setHideMiniPlayer(false);
+            }
+          }
         }
       });
     });
@@ -61,11 +100,23 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   // --- Gesture Handling ---
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    final playerNav = Provider.of<MusicProvider>(context, listen: false)
+        .playerNavigatorKey
+        .currentState;
+    if (playerNav != null && playerNav.canPop()) {
+      return;
+    }
     double sensitivity = details.primaryDelta! / screenHeight;
     _panelController.value -= sensitivity;
   }
 
   void _handleVerticalDragEnd(DragEndDetails details) {
+    final playerNav = Provider.of<MusicProvider>(context, listen: false)
+        .playerNavigatorKey
+        .currentState;
+    if (playerNav != null && playerNav.canPop()) {
+      return;
+    }
     double velocity = details.primaryVelocity!;
     double currentPos = _panelController.value;
 
@@ -214,11 +265,22 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                             child: Transform.translate(
                               offset: Offset(0, panelOffset),
                               child: GestureDetector(
-                                onVerticalDragUpdate: _handleVerticalDragUpdate,
-                                onVerticalDragEnd: _handleVerticalDragEnd,
+                                onVerticalDragUpdate: (musicProvider
+                                            .playerNavigatorKey.currentState
+                                            ?.canPop() ??
+                                        false)
+                                    ? null
+                                    : _handleVerticalDragUpdate,
+                                onVerticalDragEnd: (musicProvider
+                                            .playerNavigatorKey.currentState
+                                            ?.canPop() ??
+                                        false)
+                                    ? null
+                                    : _handleVerticalDragEnd,
                                 child: HeroControllerScope.none(
                                   child: Navigator(
                                     key: musicProvider.playerNavigatorKey,
+                                    observers: [_playerNavObserver],
                                     onGenerateRoute: (settings) {
                                       // FIX: Added null check for currentTrack
                                       final track = musicProvider.currentTrack;
@@ -285,5 +347,35 @@ class PlayerAwarePopScope extends StatelessWidget {
       },
       child: child,
     );
+  }
+}
+
+class _PlayerNavigatorObserver extends NavigatorObserver {
+  final VoidCallback onRoutesChanged;
+
+  _PlayerNavigatorObserver({required this.onRoutesChanged});
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    onRoutesChanged();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    onRoutesChanged();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    onRoutesChanged();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    onRoutesChanged();
   }
 }

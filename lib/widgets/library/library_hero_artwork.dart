@@ -3,6 +3,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/music_provider.dart';
 
 /// Hero editorial typography and living liquid glass depth artwork for LibraryScreen.
 ///
@@ -17,12 +20,24 @@ class LibraryHeroArtwork extends StatelessWidget {
   const LibraryHeroArtwork({
     super.key,
     this.horizontalPadding = 20.0,
+    this.isActive = true,
   });
 
   final double horizontalPadding;
 
+  /// Forwarded to the Liquid Orb so an off-screen tab stops ticking.
+  final bool isActive;
+
   @override
   Widget build(BuildContext context) {
+    final dynamicColor = context.select<MusicProvider, Color?>((mp) {
+      try {
+        return mp.currentPaletteColor;
+      } catch (_) {
+        return null;
+      }
+    });
+
     return RepaintBoundary(
       child: SizedBox(
         height: 108,
@@ -39,6 +54,8 @@ class LibraryHeroArtwork extends StatelessWidget {
                 size: const Size(160, 150),
                 lightAlignment: Alignment.topRight,
                 childAlignment: const Alignment(0.42, -0.06),
+                dynamicColor: dynamicColor,
+                isActive: isActive,
                 child: Transform.rotate(
                   angle: -8 * math.pi / 180,
                   child: Text(
@@ -114,20 +131,33 @@ class LibraryHeroArtwork extends StatelessWidget {
 /// Global shader manager that pre-loads and caches the GPU `liquid_orb.frag` program.
 class LiquidOrbShaderManager {
   static ui.FragmentProgram? _program;
-  static bool _isLoading = false;
+
+  /// The in-flight load, shared by every concurrent caller.
+  ///
+  /// The previous `_isLoading` bool made `ensureLoaded()` return *immediately*
+  /// when a load was already running, so a second caller received an
+  /// already-completed future while `_program` was still null. Library mounts
+  /// two orbs in the same frame, so one of them would silently and permanently
+  /// fall back to the Skia painter. Sharing the Future makes all callers await
+  /// the same load instead.
+  static Future<void>? _pending;
 
   static ui.FragmentProgram? get program => _program;
 
-  static Future<void> ensureLoaded() async {
-    if (_program != null || _isLoading) return;
-    _isLoading = true;
+  static Future<void> ensureLoaded() {
+    if (_program != null) return Future<void>.value();
+    return _pending ??= _load();
+  }
+
+  static Future<void> _load() async {
     try {
       _program = await ui.FragmentProgram.fromAsset('shaders/liquid_orb.frag');
     } catch (_) {
-      // Gracefully falls back to high-fidelity procedural Skia painter in environments
-      // without native fragment shader compilation.
+      // Gracefully falls back to high-fidelity procedural Skia painter in
+      // environments without native fragment shader compilation.
     } finally {
-      _isLoading = false;
+      // Allow a later caller to retry (e.g. after a transient failure).
+      _pending = null;
     }
   }
 }
@@ -164,6 +194,8 @@ class LiquidOrb extends StatefulWidget {
     this.enableParallax = false,
     this.parallaxScale = 4.5,
     this.onTap,
+    this.dynamicColor,
+    this.isActive = true,
   });
 
   final Size size;
@@ -173,6 +205,16 @@ class LiquidOrb extends StatefulWidget {
   final bool enableParallax;
   final double parallaxScale;
   final VoidCallback? onTap;
+  final Color? dynamicColor;
+
+  /// Whether this orb is on the visible tab. When false the idle ticker is
+  /// stopped and the subtree is wrapped in an inert [TickerMode], so an
+  /// off-screen Library tab costs nothing. The orb is a per-pixel shader
+  /// (see shaders/liquid_orb.frag) and is by far the most expensive thing on
+  /// screen, so it must not tick while hidden.
+  ///
+  /// Defaults to true so existing call sites keep their exact behaviour.
+  final bool isActive;
 
   @override
   State<LiquidOrb> createState() => _LiquidOrbState();
@@ -190,6 +232,17 @@ class _LiquidOrbState extends State<LiquidOrb> with TickerProviderStateMixin {
   double _touchNormalizedX = 0.0;
   double _touchNormalizedY = 0.0;
 
+  /// Single reused GPU shader instance.
+  ///
+  /// Previously `program!.fragmentShader()` was called on *every paint*,
+  /// allocating a fresh native shader 60x/second and never disposing it.
+  /// One instance is created here and disposed with the State; uniforms are
+  /// fully rewritten each frame so there is no stale-value risk.
+  ui.FragmentShader? _shader;
+
+  /// Reused paint for the shader pass (avoids a Paint allocation per frame).
+  final ui.Paint _shaderPaint = ui.Paint();
+
   @override
   void initState() {
     super.initState();
@@ -199,7 +252,8 @@ class _LiquidOrbState extends State<LiquidOrb> with TickerProviderStateMixin {
     _idleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3500),
-    )..repeat();
+    );
+    if (widget.isActive) _idleController.repeat();
 
     _idleController.addListener(_updateMotionPhase);
 
@@ -218,8 +272,35 @@ class _LiquidOrbState extends State<LiquidOrb> with TickerProviderStateMixin {
     // Eagerly prewarm shader
     if (LiquidOrbShaderManager.program == null) {
       LiquidOrbShaderManager.ensureLoaded().then((_) {
-        if (mounted) setState(() {});
+        if (!mounted) return;
+        _adoptProgram();
+        setState(() {});
       });
+    } else {
+      _adoptProgram();
+    }
+  }
+
+  /// Binds the cached [LiquidOrbShaderManager.program] to this State's
+  /// reusable shader instance. Safe to call repeatedly.
+  void _adoptProgram() {
+    final program = LiquidOrbShaderManager.program;
+    if (program == null) return;
+    _shader?.dispose();
+    _shader = program.fragmentShader();
+  }
+
+  @override
+  void didUpdateWidget(LiquidOrb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive == oldWidget.isActive) return;
+    if (widget.isActive) {
+      // Resync the phase clock so the first delta after a long pause is not
+      // a large jump (the shader time is wall-clock derived).
+      _lastElapsedSeconds = _stopwatch.elapsedMicroseconds / 1000000.0;
+      _idleController.repeat();
+    } else {
+      _idleController.stop();
     }
   }
 
@@ -240,6 +321,8 @@ class _LiquidOrbState extends State<LiquidOrb> with TickerProviderStateMixin {
     _springController.dispose();
     _transitionController.dispose();
     _stopwatch.stop();
+    _shader?.dispose();
+    _shader = null;
     super.dispose();
   }
 
@@ -293,86 +376,98 @@ class _LiquidOrbState extends State<LiquidOrb> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final size = widget.size;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanDown: _handlePanDown,
-      onPanUpdate: _handlePanUpdate,
-      onPanEnd: (_) => _handlePanEnd(),
-      onPanCancel: _handlePanEnd,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([
-          _idleController,
-          _springController,
-          _transitionController,
-        ]),
-        builder: (context, child) {
-          final idleProgress = _idleController.value * 2 * math.pi;
-          final idleFloatY = math.sin(idleProgress) * 2.2;
-          final idleScale = 1.0 + (math.cos(idleProgress) * 0.014);
+    return TickerMode(
+      // Mutes any tickers owned by descendants. The orb's own controllers are
+      // gated explicitly in initState/didUpdateWidget, because a TickerMode
+      // below this State cannot mute tickers it created.
+      enabled: widget.isActive,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanDown: _handlePanDown,
+        onPanUpdate: _handlePanUpdate,
+        onPanEnd: (_) => _handlePanEnd(),
+        onPanCancel: _handlePanEnd,
+        child: AnimatedBuilder(
+          animation: Listenable.merge([
+            _idleController,
+            _springController,
+            _transitionController,
+          ]),
+          builder: (context, child) {
+            final idleProgress = _idleController.value * 2 * math.pi;
+            final idleFloatY = math.sin(idleProgress) * 2.2;
+            final idleScale = 1.0 + (math.cos(idleProgress) * 0.014);
 
-          // Spring scale: squishes subtly to ~0.93 on press
-          final springVal = _springController.value;
-          final currentScale = idleScale * (1.0 - (springVal * 0.07));
+            // Spring scale: squishes subtly to ~0.93 on press
+            final springVal = _springController.value;
+            final currentScale = idleScale * (1.0 - (springVal * 0.07));
 
-          // 3D perspective tilt towards touch
-          final tiltX = -_touchNormalizedY * 0.14 * springVal;
-          final tiltY = _touchNormalizedX * 0.14 * springVal;
+            // 3D perspective tilt towards touch
+            final tiltX = -_touchNormalizedY * 0.14 * springVal;
+            final tiltY = _touchNormalizedX * 0.14 * springVal;
 
-          final progress = _transitionController.value;
-          final currentSpeed = ui.lerpDouble(0.27, 0.90, progress) ?? 0.27;
-          final shaderTime = _motionPhase / math.max(currentSpeed, 0.001);
+            final progress = _transitionController.value;
+            final currentSpeed = ui.lerpDouble(0.27, 0.90, progress) ?? 0.27;
+            final shaderTime = _motionPhase / math.max(currentSpeed, 0.001);
 
-          final parallaxX = widget.enableParallax
-              ? _touchNormalizedX * widget.parallaxScale * springVal
-              : 0.0;
-          final parallaxY = widget.enableParallax
-              ? _touchNormalizedY * widget.parallaxScale * springVal
-              : 0.0;
+            final parallaxX = widget.enableParallax
+                ? _touchNormalizedX * widget.parallaxScale * springVal
+                : 0.0;
+            final parallaxY = widget.enableParallax
+                ? _touchNormalizedY * widget.parallaxScale * springVal
+                : 0.0;
 
-          return Transform.translate(
-            offset: Offset(0, idleFloatY),
-            child: Transform.scale(
-              scale: currentScale,
-              child: Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.0015)
-                  ..rotateX(tiltX)
-                  ..rotateY(tiltY),
-                child: SizedBox(
-                  width: size.width,
-                  height: size.height,
-                  child: Stack(
-                    alignment: widget.childAlignment,
-                    children: [
-                      // 1. Living Crystal Liquid Glass Shader Volume
-                      Positioned.fill(
-                        child: CustomPaint(
-                          size: size,
-                          painter: _LiquidOrbPainter(
-                            time: shaderTime,
-                            progress: progress,
-                            touchX: _touchNormalizedX * springVal,
-                            touchY: _touchNormalizedY * springVal,
-                            springVal: springVal,
-                            lightAlignment: widget.lightAlignment,
-                            program: LiquidOrbShaderManager.program,
+            return Transform.translate(
+              offset: Offset(0, idleFloatY),
+              child: Transform.scale(
+                scale: currentScale,
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.0015)
+                    ..rotateX(tiltX)
+                    ..rotateY(tiltY),
+                  child: SizedBox(
+                    width: size.width,
+                    height: size.height,
+                    child: Stack(
+                      alignment: widget.childAlignment,
+                      children: [
+                        // 1. Living Crystal Liquid Glass Shader Volume
+                        Positioned.fill(
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              size: size,
+                              painter: _LiquidOrbPainter(
+                                time: shaderTime,
+                                progress: progress,
+                                touchX: _touchNormalizedX * springVal,
+                                touchY: _touchNormalizedY * springVal,
+                                springVal: springVal,
+                                lightAlignment: widget.lightAlignment,
+                                shader: _shader,
+                                shaderPaint: _shaderPaint,
+                                dynamicColor: widget.dynamicColor,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      // 2. Suspended internal element (e.g. Logo mark or Cursive script) with Parallax
-                      if (widget.child != null)
-                        Transform.translate(
-                          offset: Offset(parallaxX, parallaxY),
-                          child: widget.child!,
-                        ),
-                    ],
+                        // 2. Suspended internal element (e.g. Logo mark or Cursive
+                        //    script) with Parallax. `widget.child` is a stable
+                        //    instance, so this subtree is not rebuilt per frame.
+                        if (widget.child != null)
+                          Transform.translate(
+                            offset: Offset(parallaxX, parallaxY),
+                            child: widget.child!,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -392,7 +487,9 @@ class _LiquidOrbPainter extends CustomPainter {
     required this.touchY,
     required this.springVal,
     required this.lightAlignment,
-    this.program,
+    required this.shaderPaint,
+    this.shader,
+    this.dynamicColor,
   });
 
   final double time;
@@ -401,7 +498,16 @@ class _LiquidOrbPainter extends CustomPainter {
   final double touchY;
   final double springVal;
   final Alignment lightAlignment;
-  final ui.FragmentProgram? program;
+
+  /// Reused GPU shader instance owned by the State (see [_LiquidOrbState]).
+  /// Null until the program finishes compiling, or in headless test runs.
+  final ui.FragmentShader? shader;
+
+  /// Reused paint that [shader] is installed into, to avoid a per-frame
+  /// `Paint()` allocation. Owned by the State.
+  final ui.Paint shaderPaint;
+
+  final Color? dynamicColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -412,26 +518,36 @@ class _LiquidOrbPainter extends CustomPainter {
     // -------------------------------------------------------------
     // 1. GPU Shader Pass (or Volumetric Fallback)
     // -------------------------------------------------------------
-    if (program != null) {
-      final shader = program!.fragmentShader();
-      shader.setFloat(0, size.width);
-      shader.setFloat(1, size.height);
-      shader.setFloat(2, time);
-      shader.setFloat(3, progress);
-      shader.setFloat(4, touchX);
-      shader.setFloat(5, touchY);
+    final frag = shader;
+    if (frag != null) {
+      frag.setFloat(0, size.width);
+      frag.setFloat(1, size.height);
+      frag.setFloat(2, time);
+      frag.setFloat(3, progress);
+      frag.setFloat(4, touchX);
+      frag.setFloat(5, touchY);
+      if (dynamicColor != null) {
+        frag.setFloat(6, dynamicColor!.r);
+        frag.setFloat(7, dynamicColor!.g);
+        frag.setFloat(8, dynamicColor!.b);
+        frag.setFloat(9, 1.0);
+      } else {
+        frag.setFloat(6, 0.0);
+        frag.setFloat(7, 0.0);
+        frag.setFloat(8, 0.0);
+        frag.setFloat(9, 0.0);
+      }
 
-      canvas.drawRect(
-        Offset.zero & size,
-        Paint()..shader = shader,
-      );
+      shaderPaint.shader = frag;
+      canvas.drawRect(Offset.zero & size, shaderPaint);
     } else {
       // Fallback: Soft atmospheric back-glow
+      final baseGlow = dynamicColor ?? const Color(0xFF2E4059);
       final glowPaint = Paint()
         ..shader = RadialGradient(
           colors: [
-            const Color(0xFF2E4059).withValues(alpha: (0.22 + progress * 0.12)),
-            const Color(0xFF16202E).withValues(alpha: 0.08),
+            baseGlow.withValues(alpha: (0.22 + progress * 0.12)),
+            baseGlow.withValues(alpha: 0.08),
             Colors.transparent,
           ],
           stops: const [0.0, 0.60, 1.0],
@@ -637,5 +753,10 @@ class _LiquidOrbPainter extends CustomPainter {
       oldDelegate.touchX != touchX ||
       oldDelegate.touchY != touchY ||
       oldDelegate.springVal != springVal ||
-      oldDelegate.program != program;
+      oldDelegate.shader != shader ||
+      // The shader instance is now long-lived, so tint/lighting changes are no
+      // longer accompanied by an identity change. Without these two the orb
+      // would keep a stale album tint whenever it happens to be idle.
+      oldDelegate.dynamicColor != dynamicColor ||
+      oldDelegate.lightAlignment != lightAlignment;
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/bitchord_page_models.dart';
+import '../../utils/app_image_cache.dart';
 import '../themed_album_detail_screen.dart';
 import '../themed_artist_detail_screen.dart';
 import '../themed_playlist_detail_screen.dart';
@@ -126,6 +127,8 @@ class _ShelfCard extends StatelessWidget {
                 child: item.imageUrl.isNotEmpty
                     ? CachedNetworkImage(
                         imageUrl: item.imageUrl,
+                        memCacheWidth: AppImageCache.cardMemCache,
+                        memCacheHeight: AppImageCache.cardMemCache,
                         fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => const Icon(
                           Icons.album_rounded,

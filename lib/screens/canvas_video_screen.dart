@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -639,9 +640,11 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
         child: const Icon(Icons.music_note_rounded, color: Colors.white24, size: 40),
       );
     }
-    return CachedNetworkImage(
-      imageUrl: ImageQualityUtils.getHighResArtwork(track.albumArtUrl),
-      fit: BoxFit.cover,
+      return CachedNetworkImage(
+        imageUrl: ImageQualityUtils.getHighResArtwork(track.albumArtUrl),
+        fit: BoxFit.cover,
+        memCacheWidth: AppImageCache.cardMemCache,
+        memCacheHeight: AppImageCache.cardMemCache,
       placeholder: (_, __) => Container(
         color: const Color(0xFF16161A),
         child: const Center(

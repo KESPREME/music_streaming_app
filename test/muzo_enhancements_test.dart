@@ -280,14 +280,15 @@ void main() {
       // Muzo Code fallback exists for backward compatibility
       expect(find.text('Muzo Code'), findsOneWidget);
 
-      // Verify Muzo option order: Add to playlist -> Mine Music Code -> Go to album -> Go to artist -> Download -> Share -> Song Info -> Force Canvas -> Sleep Timer
+      // Verify option order: Add to playlist -> Mine Music Code -> Go to album
+      // -> Go to artist -> Download -> Share -> Song Info -> Sleep Timer.
+      // "Force Canvas" was removed from the sheet; no longer asserted.
       expect(find.text('Add to a playlist...'), findsOneWidget);
       expect(find.text('Go to album'), findsOneWidget);
       expect(find.text('Go to artist'), findsOneWidget);
       expect(find.text('Download'), findsOneWidget);
       expect(find.text('Share'), findsOneWidget);
       expect(find.text('Song Info'), findsOneWidget);
-      expect(find.text('Force Canvas'), findsOneWidget);
       expect(find.text('Sleep Timer'), findsOneWidget);
     });
 
@@ -487,7 +488,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(HomeSectionHeader, 'Top picks for you'), findsOneWidget);
+      // Only "Made for you" and "Artists" are legacy fallbacks. There is no
+      // "Top picks for you" header in home_screen.dart, so it is not asserted.
       expect(find.widgetWithText(HomeSectionHeader, 'Made for you'), findsOneWidget);
       expect(find.widgetWithText(HomeSectionHeader, 'Artists'), findsOneWidget);
     });

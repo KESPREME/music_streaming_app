@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/test_environment.dart';
 import '../../models/track.dart';
 import '../../providers/music_provider.dart';
 import '../../services/explore/explore_controller.dart';
@@ -438,8 +439,7 @@ class _ExploreScreenState extends State<ExploreScreen>
     } catch (_) {}
   }
 
-  bool get _isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+  bool get _isTesting => TestEnvironment.isTesting;
 
   double get _itemExtent =>
       _isTesting ? 200.0 : (_viewportH > 0 ? _viewportH : 600.0);
@@ -512,9 +512,18 @@ class _ExploreScreenState extends State<ExploreScreen>
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ExploreController>();
-    final provider = context.watch<MusicProvider>();
+    final currentPlayingTrackId = context.select<MusicProvider, String?>(
+      (p) => p.currentTrack?.id,
+    );
+    final isAudioPlaying = context.select<MusicProvider, bool>(
+      (p) => p.isPlaying,
+    );
     final items = controller.session?.items ?? const <ExploreItem>[];
     final active = controller.session?.active;
+    final activeLiked = context.select<MusicProvider, bool>(
+      (p) => active != null ? p.isSongLiked(active.track.id) : false,
+    );
+    final provider = context.read<MusicProvider>();
 
     // Hysteresis: palette only re-resolves on settle (spec #33).
     if (active != null && ExplorePaletteCache.cached(active.id) == null) {
@@ -537,7 +546,13 @@ class _ExploreScreenState extends State<ExploreScreen>
                 ? const _ExploreSkeleton()
                 : items.isEmpty
                     ? _EmptyState(controller: controller)
-                    : _buildFeed(provider, controller, items),
+                    : _buildFeed(
+                        provider,
+                        controller,
+                        items,
+                        currentPlayingTrackId,
+                        isAudioPlaying,
+                      ),
           ),
 
           // 2. Top Floating Liquid-Glass Island Pill (matches video)
@@ -552,8 +567,8 @@ class _ExploreScreenState extends State<ExploreScreen>
                 child: Center(
                   child: ExploreTopPill(
                     track: active?.track,
-                    isPlaying: provider.isPlaying,
-                    isLiked: provider.isSongLiked(active?.track.id ?? ''),
+                    isPlaying: isAudioPlaying,
+                    isLiked: activeLiked,
                     accent: _palette.accent,
                     onTogglePlay: () {
                       if (active != null) {
@@ -617,8 +632,13 @@ class _ExploreScreenState extends State<ExploreScreen>
     );
   }
 
-  Widget _buildFeed(MusicProvider provider, ExploreController controller,
-      List<ExploreItem> items) {
+  Widget _buildFeed(
+    MusicProvider provider,
+    ExploreController controller,
+    List<ExploreItem> items,
+    String? currentPlayingTrackId,
+    bool isAudioPlaying,
+  ) {
     return LayoutBuilder(builder: (context, constraints) {
       _viewportH = constraints.maxHeight;
 
@@ -664,7 +684,7 @@ class _ExploreScreenState extends State<ExploreScreen>
           itemBuilder: (context, index) {
             final item = items[index];
             final isCurrent = (controller.session?.active?.id == item.id) ||
-                (provider.currentTrack?.id == item.track.id);
+                (currentPlayingTrackId == item.track.id);
             final isItemLiked = provider.isSongLiked(item.track.id);
             final isVisuallyActive = widget.isActive && _isAppResumed;
 
@@ -672,7 +692,7 @@ class _ExploreScreenState extends State<ExploreScreen>
               item: item,
               palette: _palette,
               isCurrentTrack: isCurrent,
-              isPlaying: provider.isPlaying,
+              isPlaying: isAudioPlaying,
               isLiked: isItemLiked,
               embedded: widget.embedded,
               isActive: isVisuallyActive,

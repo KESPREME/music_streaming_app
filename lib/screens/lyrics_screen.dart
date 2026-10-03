@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -745,92 +746,97 @@ class _LyricsScreenState extends State<LyricsScreen>
     Color accentColor,
   ) {
     final isPlaying = provider.isPlaying;
-    final pos = provider.position;
-    final dur = provider.duration;
-    final double maxSec =
-        dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
-    final double fraction =
-        (pos.inMilliseconds.toDouble() / maxSec).clamp(0.0, 1.0);
-    final remaining = dur > pos ? dur - pos : Duration.zero;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 1. Scrubber Row: Play Button + Elapsed + ThinSlider + Remaining
-          Row(
+    return StreamBuilder<Duration>(
+      stream: provider.positionStream,
+      initialData: provider.position,
+      builder: (context, snapshot) {
+        final pos = snapshot.data ?? provider.position;
+        final dur = provider.duration;
+        final double maxSec =
+            dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
+        final double fraction =
+            (pos.inMilliseconds.toDouble() / maxSec).clamp(0.0, 1.0);
+        final remaining = dur > pos ? dur - pos : Duration.zero;
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Play / Pause compact white circle button (Image 2)
-              Semantics(
-                label: isPlaying ? 'Pause' : 'Play',
-                button: true,
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    if (isPlaying) {
-                      provider.pauseTrack();
-                    } else {
-                      provider.resumeTrack();
-                    }
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: Icon(
-                      isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: Colors.black,
-                      size: 22,
+              // 1. Scrubber Row: Play Button + Elapsed + ThinSlider + Remaining
+              Row(
+                children: [
+                  // Play / Pause compact white circle button (Image 2)
+                  Semantics(
+                    label: isPlaying ? 'Pause' : 'Play',
+                    button: true,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        if (isPlaying) {
+                          provider.pauseTrack();
+                        } else {
+                          provider.resumeTrack();
+                        }
+                      },
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                        ),
+                        child: Icon(
+                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          color: Colors.black,
+                          size: 22,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
+                  const SizedBox(width: 10),
 
-              // Elapsed time (Image 2: "0:22")
-              Text(
-                _formatTime(pos),
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 8),
+                  // Elapsed time (Image 2: "0:22")
+                  Text(
+                    _formatTime(pos),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
 
-              // iPhone / BitChord style ThinSlider scrubber
-              Expanded(
-                child: ThinSlider(
-                  value: fraction,
-                  idleHeight: 7.0,
-                  activeHeight: 12.0,
-                  activeColor: Colors.white,
-                  inactiveColor: Colors.white.withValues(alpha: 0.24),
-                  onValueChange: (val) {
-                    provider.seekTo(Duration(milliseconds: (val * maxSec).toInt()));
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
+                  // iPhone / BitChord style ThinSlider scrubber
+                  Expanded(
+                    child: ThinSlider(
+                      value: fraction,
+                      idleHeight: 7.0,
+                      activeHeight: 12.0,
+                      activeColor: Colors.white,
+                      inactiveColor: Colors.white.withValues(alpha: 0.24),
+                      onValueChange: (val) {
+                        provider.seekTo(Duration(milliseconds: (val * maxSec).toInt()));
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
 
-              // Remaining time (Image 2: "-2:37")
-              Text(
-                '-${_formatTime(remaining)}',
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+                  // Remaining time (Image 2: "-2:37")
+                  Text(
+                    '-${_formatTime(remaining)}',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
 
-          const SizedBox(height: 10),
+              const SizedBox(height: 10),
 
           // 2. Volume Slider Row (iPhone style ThinSlider)
           Padding(
@@ -866,6 +872,8 @@ class _LyricsScreenState extends State<LyricsScreen>
           ),
         ],
       ),
+    );
+      },
     );
   }
 
@@ -933,11 +941,13 @@ class _LyricsScreenState extends State<LyricsScreen>
       final f = File(art);
       if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
     }
-    return CachedNetworkImage(
-      imageUrl: art,
-      fit: BoxFit.cover,
-      errorWidget: (_, __, ___) => _buildArtPlaceholder(),
-    );
+      return CachedNetworkImage(
+        imageUrl: art,
+        fit: BoxFit.cover,
+        memCacheWidth: AppImageCache.cardMemCache,
+        memCacheHeight: AppImageCache.cardMemCache,
+        errorWidget: (_, __, ___) => _buildArtPlaceholder(),
+      );
   }
 
   Widget _buildArtPlaceholder() {
@@ -982,7 +992,7 @@ class _LineVisualState {
 
 /// Tween for buttery-smooth watery interpolation between line visual states.
 class _LineVisualStateTween extends Tween<_LineVisualState> {
-  _LineVisualStateTween({super.begin, super.end});
+  _LineVisualStateTween({super.end});
 
   @override
   _LineVisualState lerp(double t) {

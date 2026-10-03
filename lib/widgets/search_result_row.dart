@@ -22,6 +22,7 @@ class SearchResultRow extends StatelessWidget {
   final bool isVideo;
   final VoidCallback? onTap;
   final VoidCallback? onMore;
+  final VoidCallback? onLongPress;
 
   /// Stagger entrance delay. Pass [Duration.zero] (or >=12th row) to skip.
   final Duration entranceDelay;
@@ -35,6 +36,7 @@ class SearchResultRow extends StatelessWidget {
     this.isVideo = false,
     this.onTap,
     this.onMore,
+    this.onLongPress,
     this.entranceDelay = Duration.zero,
   });
 
@@ -45,6 +47,7 @@ class SearchResultRow extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress ?? onMore,
         child: Padding(
           padding:
               const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -142,6 +145,7 @@ class SearchResultRow extends StatelessWidget {
     bool isVideo = false,
     VoidCallback? onTap,
     VoidCallback? onMore,
+    VoidCallback? onLongPress,
     required int index,
   }) {
     if (index >= 12) {
@@ -154,6 +158,7 @@ class SearchResultRow extends StatelessWidget {
         isVideo: isVideo,
         onTap: onTap,
         onMore: onMore,
+        onLongPress: onLongPress,
       );
     }
     return _DelayedEntrance(
@@ -167,6 +172,7 @@ class SearchResultRow extends StatelessWidget {
         isVideo: isVideo,
         onTap: onTap,
         onMore: onMore,
+        onLongPress: onLongPress,
         entranceDelay: const Duration(milliseconds: 1),
       ),
     );

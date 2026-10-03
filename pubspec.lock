@@ -668,18 +668,18 @@ packages:
     dependency: "direct main"
     description:
       name: liquid_glass_easy
-      sha256: e0518983b4f1e957785f51fc08b3718c24a720de945517cf67f7ab672538c80c
+      sha256: "48f2147e8b662402ccef9304cf8c216082b7913ad985ea2ac3d4f402b16ab417"
       url: "https://pub.dev"
     source: hosted
-    version: "4.3.0"
+    version: "4.3.4"
   liquid_glass_widgets:
     dependency: "direct main"
     description:
       name: liquid_glass_widgets
-      sha256: b00e51b4b72f4164fac39aa75b8072ea97d1955d91b703d1f354464b082f5b98
+      sha256: "07910c3ccabaacadb5519ded78a970d7fdb8718b4b4211c284b3d34614d26a42"
       url: "https://pub.dev"
     source: hosted
-    version: "1.4.4"
+    version: "1.8.1"
   logging:
     dependency: transitive
     description:
