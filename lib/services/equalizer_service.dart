@@ -45,6 +45,21 @@ class EqualizerService {
   String _currentPresetId = 'flat';
   List<double> _customBandGains = [];
   int _bandCount = 5; // Default, will be updated from device
+
+  /// Whether the device actually exposes a platform equalizer.
+  ///
+  /// False on hardware that reports no EQ capability. The platform effect stays
+  /// out of the player's pipeline in that case, because attaching it there makes
+  /// `play()` and `pause()` throw - see `AudioService._buildAndroidAudioEffects`.
+  /// Presets still render; they simply have nothing to apply to yet.
+  bool _platformAvailable = false;
+
+  /// Synthetic band count used when the device reports none, so the controls
+  /// still read as a phone equalizer instead of collapsing to nothing.
+  static const int _fallbackBandCount = 5;
+
+  /// Whether the equalizer can be switched on on this device.
+  bool get isPlatformAvailable => _platformAvailable;
   
   // Callbacks for UI updates
   final List<VoidCallback> _listeners = [];
@@ -142,9 +157,26 @@ class EqualizerService {
     // Get actual EQ parameters from device
     if (_audioService != null && Platform.isAndroid) {
       try {
-        _eqParams = await _audioService!.equalizer.parameters;
+        // Bounded. `AndroidEqualizer.parameters` is backed by a Completer that
+        // only completes when the effect is activated - and when the effect is
+        // not part of the player's pipeline (see AudioService), that never
+        // happens. Awaiting it unguarded hangs initialisation for ever, which
+        // reads as the whole app failing to start rather than as one missing
+        // feature.
+        _eqParams = await _audioService!.equalizer.parameters
+            .timeout(const Duration(seconds: 2));
         _bandCount = _eqParams?.bands.length ?? 5;
-        
+        _platformAvailable = _eqParams != null && _eqParams!.bands.isNotEmpty;
+      } catch (e) {
+        _platformAvailable = false;
+        _bandCount = _fallbackBandCount;
+        if (kDebugMode) {
+          debugPrint('EqualizerService: no platform equalizer, using synthetic '
+              'bands: $e');
+        }
+      }
+
+      if (_platformAvailable) {
         // Update band labels from device
         if (_eqParams != null) {
           bandLabels = _eqParams!.bands.map((band) {
@@ -155,18 +187,24 @@ class EqualizerService {
             return freq.toStringAsFixed(0);
           }).toList();
         }
-        
+
         // Initialize custom gains to correct size
         if (_customBandGains.length != _bandCount) {
           _customBandGains = List.filled(_bandCount, 0.0);
         }
-        
+
         if (kDebugMode) {
           debugPrint('EqualizerService: Initialized with $_bandCount bands');
           debugPrint('EqualizerService: Band frequencies: $bandLabels');
         }
-      } catch (e) {
-        if (kDebugMode) debugPrint('EqualizerService: Error getting EQ params: $e');
+      } else {
+        // Keep the UI coherent: a five-band curve is what a phone equalizer
+        // looks like everywhere, so the screen renders real controls that
+        // simply have nothing to apply to yet.
+        _bandCount = _fallbackBandCount;
+        bandLabels = const ['60', '230', '910', '3.6k', '14k'];
+        _customBandGains =
+            List.filled(_bandCount, 0.0);
       }
     }
     
@@ -203,8 +241,23 @@ class EqualizerService {
 
   /// Enable/disable the equalizer
   Future<void> setEnabled(bool enabled) async {
+    // Refuse rather than pretend. Turning the platform effect on when the
+    // device has no equalizer is the exact failure that made playback throw
+    // from `play()` and `pause()` - the request has to be refused here, and the
+    // screen has to be told why.
+    if (enabled && !_platformAvailable) {
+      if (kDebugMode) {
+        debugPrint('EqualizerService: ignored enable - this device exposes no '
+            'platform equalizer');
+      }
+      _isEnabled = false;
+      await _saveSettings();
+      _notifyListeners();
+      return;
+    }
+
     _isEnabled = enabled;
-    
+
     // Enable/disable the Android equalizer
     if (_audioService != null && Platform.isAndroid) {
       try {
@@ -217,7 +270,7 @@ class EqualizerService {
         if (kDebugMode) debugPrint('EqualizerService: Error setting enabled: $e');
       }
     }
-    
+
     await _saveSettings();
     _notifyListeners();
   }

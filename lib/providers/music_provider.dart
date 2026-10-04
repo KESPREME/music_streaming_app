@@ -197,7 +197,29 @@ class MusicProvider
 /// The first Home load finished and produced no feed at all.
 ///
 /// Its own state so Home can offer a retry instead of an endless shimmer.
-bool get isHomeLoadExhausted => _homeFeed == null && _homeLoadFailed;
+bool get isHomeLoadExhausted => !hasHomeContent && _homeLoadFailed;
+
+  /// Whether Home has anything at all to show, from any source.
+  ///
+  /// A null feed is not the same as an empty screen. When the feed is null the
+  /// home screen falls back to local signals - recently played, Quick Picks,
+  /// trending, new releases, user playlists - and that content is real. Gating
+  /// a "couldn't load" message on the feed alone therefore covered a working
+  /// screen with an error, which is worse than showing nothing: the listener
+  /// loses sections they could actually use.
+  ///
+  /// Moods is deliberately excluded. It is fetched independently of the feed, so
+  /// it is never evidence that the feed arrived, and it is never absent for
+  /// long.
+  bool get hasHomeContent {
+    if (_homeFeed != null) return true;
+    return recentlyPlayed.isNotEmpty ||
+        _quickPicks.isNotEmpty ||
+        trendingTracks.isNotEmpty ||
+        newReleases.isNotEmpty ||
+        userPlaylists.isNotEmpty ||
+        recommendedTracks.isNotEmpty;
+  }
 
   /// Set when the first fetch settled with nothing to show. Observable through
   /// [homeContentVersion] like everything else the home screen renders.
@@ -254,6 +276,11 @@ bool get isHomeLoadExhausted => _homeFeed == null && _homeLoadFailed;
     final feed = await _homeRepository.refresh();
     if (kDebugMode)
       HomeDiagnostics.logRefreshDiff(previous: previous, next: feed);
+    // A successful refresh clears the failure the retry was offering. Without
+    // this the flag survives a later success, and because it is observable the
+    // screen keeps rendering a "couldn't load" message over a feed that is
+    // plainly there.
+    if (feed != null) _homeLoadFailed = false;
     _publishHomeFeed(feed);
   }
 

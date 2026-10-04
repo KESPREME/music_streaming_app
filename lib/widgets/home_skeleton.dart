@@ -346,7 +346,11 @@ class _TitleLine extends StatelessWidget {
     final fraction = fractions[index % fractions.length];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(_gutter, 0, _gutter, 0),
+      // The bottom inset is the real header's gap to its content. Left at zero
+      // the placeholder is shorter than the section it stands in for, and the
+      // first rail jumps down when real content replaces it.
+      padding: const EdgeInsets.fromLTRB(
+          _gutter, 0, _gutter, t.HomeTokens.headerToContent),
       child: ShimmerBlock(
         sweep: sweep,
         rowWidth: contentW,

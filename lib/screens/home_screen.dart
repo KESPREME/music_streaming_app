@@ -830,11 +830,16 @@ class _HomeBodyState extends State<_HomeBody> {
   static const Duration _kSkeletonGiveUpAfter = Duration(seconds: 12);
 
   bool _gaveUp = false;
+  Timer? _gaveUpTimer;
+  bool _wasLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _armGiveUpTimer();
+    // Evaluated once so the first build can decide from it rather than starting
+    // from a stale default.
+    _wasLoading = context.read<MusicProvider>().isHomeLoading;
+    if (_wasLoading) _armGiveUpTimer();
   }
 
   void _armGiveUpTimer() {
@@ -845,29 +850,53 @@ class _HomeBodyState extends State<_HomeBody> {
     });
   }
 
-  Timer? _gaveUpTimer;
+  void _cancelGiveUpTimer() {
+    _gaveUpTimer?.cancel();
+    _gaveUpTimer = null;
+  }
+
+  /// Arms or cancels the give-up timer on the loading *transition*.
+  ///
+  /// Doing this from [build] looked harmless and was quietly fatal: this widget
+  /// watches the provider, so it rebuilds on every playback tick, and
+  /// re-arming on each rebuild reset the countdown forever. The twelve seconds
+  /// could never elapse, so a request that hung - which is the only case the
+  /// timer exists for - left the shimmer on screen permanently. That is the one
+  /// failure the timer was added to prevent.
+  void _syncGiveUpTimer(bool loading) {
+    if (loading == _wasLoading) return;
+    _wasLoading = loading;
+    if (loading) {
+      if (_gaveUp) setState(() => _gaveUp = false);
+      _armGiveUpTimer();
+    } else {
+      _cancelGiveUpTimer();
+    }
+  }
 
   @override
   void dispose() {
-    _gaveUpTimer?.cancel();
+    _cancelGiveUpTimer();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
-    final showSkeleton = provider.isHomeLoading && !_gaveUp;
+    _syncGiveUpTimer(provider.isHomeLoading);
 
+    final showSkeleton = provider.isHomeLoading && !_gaveUp;
     if (showSkeleton) {
-      _armGiveUpTimer();
       return HomeSkeleton(
         bottomInset: widget.bottomInset,
         withHero: widget.hasHeroHint,
       );
     }
 
-    final failed = provider.isHomeLoadExhausted || _gaveUp;
-    if (failed) {
+    // Only when nothing at all can be rendered. A null feed still leaves the
+    // local-signal sections on screen, and covering those with an error takes
+    // away content the listener could actually use.
+    if (provider.isHomeLoadExhausted || _gaveUp) {
       return _HomeRetry(
         bottomInset: widget.bottomInset,
         onRetry: () {

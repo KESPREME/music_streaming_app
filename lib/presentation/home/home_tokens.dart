@@ -23,12 +23,16 @@ abstract final class HomeTokens {
       screenWidth - contentPadding * 2;
 
   // ── Spacing (spec #21/#22/#43) ──────────────────────────────────────────
-  /// Gap between section header and its content.
-  ///
-  /// Zero. A section title is a label for what sits directly under it, and any
-  /// gap here reads as the header belonging to something else. The separation
-  /// you actually want between sections lives in [sectionGap], below.
-  static const double headerToContent = 0.0;
+/// Gap between section header and its content.
+///
+/// 10dp, and this is a deliberate departure from the reference, which uses none.
+/// Its section title is a 22sp display face with tall metrics, so the label
+/// carries its own air and the rail can butt up against it. Ours is 24sp bold on
+/// a tighter line, and with no gap at all the title reads as joined to the first
+/// card rather than as labelling it - it looked like a rendering seam, not
+/// spacing. The separation between sections still comes from [sectionGap];
+/// this is only enough to say "the row below belongs to the heading above".
+static const double headerToContent = 10.0;
 
   /// Gap between consecutive sections.
   ///

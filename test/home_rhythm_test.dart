@@ -19,10 +19,12 @@ void main() {
       expect(t.HomeTokens.contentPadding, 10.0);
     });
 
-    test('a section title sits flush against its content', () {
-      // A gap here reads as the header labelling whatever is below the gap
-      // rather than what is directly under it.
-      expect(t.HomeTokens.headerToContent, 0.0);
+    testWidgets('a section title is separated from its content', (tester) async {
+      // Zero here reads as joined rather than as labelled: the title looked
+      // fused to the first card. The reference uses none because its heading is
+      // a 22sp display face that carries its own air; ours is tighter and needs
+      // the gap to mean anything.
+      expect(t.HomeTokens.headerToContent, 10.0);
     });
 
     test('sections are separated by 26dp', () {

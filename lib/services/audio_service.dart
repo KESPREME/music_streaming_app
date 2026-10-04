@@ -169,16 +169,49 @@ class AudioService {
   final _onPlaybackErrorController = StreamController<String>.broadcast();
   Stream<String> get onPlaybackError => _onPlaybackErrorController.stream;
 
-  AudioService() {
-    // Initialize audio effects
-    _equalizer = AndroidEqualizer();
-    _loudnessEnhancer = AndroidLoudnessEnhancer();
-    
-    // Create audio player with effects pipeline
-    _audioPlayer = AudioPlayer(
-      audioPipeline: AudioPipeline(
-        androidAudioEffects: [_equalizer, _loudnessEnhancer],
-      ),
+  /// Builds the audio effects pipeline for a device.
+///
+/// The Equalizer is **opt-in** and off by default, because on a device that
+/// reports no equalizer capability it takes playback down with it.
+///
+/// `AudioEffect._activate` runs every time audio becomes active and the Android
+/// equalizer's implementation reads its band count from the platform at that
+/// moment. Where the platform could not create the effect - the effect object is
+/// null, which several OEM builds report as
+/// `AudioEffect ... id: -1 status 0 enabled 0` - that read throws and the
+/// exception surfaces as a PlatformException out of `play()` and out of
+/// `pause()`. Nothing on the Dart side can guard it: `_activate` is
+/// library-private, so it cannot be overridden from another package.
+///
+/// The effect is also not reachable: the settings tile says "coming soon", and
+/// `eq_enabled` defaults to false. So the pipeline was carrying an effect that
+/// nothing asked for, that nothing could turn off, and that made every track
+/// unplayable on affected hardware.
+///
+/// Pass `enableEqualizer: true` once there is a working surface for it AND the
+/// device has been found to support it.
+List<AndroidAudioEffect> _buildAndroidAudioEffects({
+  required bool enableEqualizer,
+}) {
+  final effects = <AndroidAudioEffect>[];
+  if (enableEqualizer) effects.add(AndroidEqualizer());
+  // The loudness enhancer is left in place: it reports a different failure mode
+  // and does not null its handle, so it degrades instead of throwing.
+  effects.add(AndroidLoudnessEnhancer());
+  return effects;
+}
+
+AudioService({bool enableEqualizer = false}) {
+  // Initialize audio effects
+  _equalizer = AndroidEqualizer();
+  _loudnessEnhancer = AndroidLoudnessEnhancer();
+
+  // Create audio player with effects pipeline
+  _audioPlayer = AudioPlayer(
+    audioPipeline: AudioPipeline(
+      androidAudioEffects:
+          _buildAndroidAudioEffects(enableEqualizer: enableEqualizer),
+    ),
       // Hand sequencing to the player: it skips forward past a windowed track
       // that fails to load instead of wedging playback. Two attempts is enough
       // to ride out one flaky URL without silently skipping a whole queue.
