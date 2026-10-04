@@ -7,8 +7,10 @@ import '../services/search_history_store.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
 import '../models/track.dart';
+import '../models/search_history_entry.dart';
 import '../utils/color_utils.dart';
 import '../widgets/search_result_row.dart';
+import '../widgets/search_skeleton.dart';
 import '../widgets/search_glass_pills.dart';
 import '../widgets/search_grid_cards.dart';
 import '../widgets/glass_circle_button.dart';
@@ -43,7 +45,8 @@ class ArtistSearchTile extends StatelessWidget {
     );
   }
 
-  Widget _buildGlassmorphismTile(BuildContext context, ColorScheme colorScheme) {
+  Widget _buildGlassmorphismTile(
+      BuildContext context, ColorScheme colorScheme) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
@@ -94,7 +97,8 @@ class ArtistSearchTile extends StatelessWidget {
     );
   }
 
-  Widget _buildTileContent(BuildContext context, ColorScheme colorScheme, {required bool isGlass}) {
+  Widget _buildTileContent(BuildContext context, ColorScheme colorScheme,
+      {required bool isGlass}) {
     return Row(
       children: [
         Container(
@@ -116,14 +120,18 @@ class ArtistSearchTile extends StatelessWidget {
           ),
           child: CircleAvatar(
             radius: 30,
-            backgroundColor: isGlass ? Colors.grey[850] : colorScheme.surfaceContainerHighest,
-            backgroundImage: artistImageUrl != null && artistImageUrl!.isNotEmpty
-                ? NetworkImage(artistImageUrl!)
-                : null,
+            backgroundColor: isGlass
+                ? Colors.grey[850]
+                : colorScheme.surfaceContainerHighest,
+            backgroundImage:
+                artistImageUrl != null && artistImageUrl!.isNotEmpty
+                    ? NetworkImage(artistImageUrl!)
+                    : null,
             child: artistImageUrl == null || artistImageUrl!.isEmpty
                 ? Icon(
                     Icons.person,
-                    color: isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
+                    color:
+                        isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
                     size: 30,
                   )
                 : null,
@@ -146,7 +154,8 @@ class ArtistSearchTile extends StatelessWidget {
               Text(
                 "Artist",
                 style: GoogleFonts.plusJakartaSans(
-                  color: isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
+                  color:
+                      isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -212,7 +221,7 @@ class _SearchScreenState extends State<SearchScreen>
   /// (easy lenses detach from scrolling transforms), content slides under.
   static const double _kHeaderFull = 110.0;
   static const double _kHeaderSlim = 62.0;
-  final List<String> _recentSearches = [];
+  final List<SearchHistoryEntry> _recentSearches = [];
   final SearchHistoryStore _historyStore = SearchHistoryStore();
 
   SearchKind get _activeKind => SearchKind.values[_tabController.index];
@@ -247,7 +256,9 @@ class _SearchScreenState extends State<SearchScreen>
   Future<void> _loadHistory() async {
     await _historyStore.load();
     if (mounted) {
-      setState(() => _recentSearches..clear()..addAll(_historyStore.entries));
+      setState(() => _recentSearches
+        ..clear()
+        ..addAll(_historyStore.entries));
     }
   }
 
@@ -275,8 +286,7 @@ class _SearchScreenState extends State<SearchScreen>
         // (submit / suggestion / history tap), BitChord record-on-commit parity.
         _performSearch(newQuery);
       } else {
-        Provider.of<MusicProvider>(context, listen: false)
-            .clearSearchResults();
+        Provider.of<MusicProvider>(context, listen: false).clearSearchResults();
       }
     });
   }
@@ -357,8 +367,7 @@ class _SearchScreenState extends State<SearchScreen>
               // Scroll-linked chrome: vertical lists only (chips scroller
               // is horizontal and must not drive the scrim).
               if (n.metrics.axis == Axis.vertical) {
-                final t =
-                    (n.metrics.pixels / 90).clamp(0.0, 1.0);
+                final t = (n.metrics.pixels / 90).clamp(0.0, 1.0);
                 final q = (t * 20).round() / 20;
                 if (q != _headerScrim) {
                   setState(() => _headerScrim = q);
@@ -368,246 +377,229 @@ class _SearchScreenState extends State<SearchScreen>
             return false;
           },
           child: Stack(
-          children: [
-            // Scroll body sits below the fixed header; rows slide under it.
-            AnimatedPadding(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              padding: EdgeInsets.only(
-                top: _scope == SearchScope.mineMusic
-                    ? _kHeaderFull
-                    : _kHeaderSlim,
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween(
-                      begin: const Offset(0, 0.02),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
+            children: [
+              // Scroll body sits below the fixed header; rows slide under it.
+              AnimatedPadding(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(
+                  top: _scope == SearchScope.mineMusic
+                      ? _kHeaderFull
+                      : _kHeaderSlim,
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween(
+                        begin: const Offset(0, 0.02),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
                   ),
-                ),
-                child: _scope == SearchScope.mineMusic
-                    ? TabBarView(
-                        key: const ValueKey('muzo_results'),
-                        controller: _tabController,
-                        children: [
-                          SearchTabContent(
-                            recentSearches: _recentSearches,
-                            onSearchSelected: (query) =>
-                                _commitSearch(query),
-                            onClearHistory: () {
-                              setState(() => _recentSearches.clear());
-                              _historyStore.clear();
-                            },
-                            onRemoveHistoryItem: (query) {
-                              setState(
-                                  () => _recentSearches.remove(query));
-                              _historyStore.remove(query);
-                            },
-                            onRetry: () => _commitSearch(_searchQuery,
-                                forceRefresh: true),
-                            onSuggestionSelected: (query) =>
-                                _commitSearch(query),
-                            onResultTapped: () {
-                              if (_searchQuery.trim().isNotEmpty) {
-                                _addToHistory(_searchQuery.trim());
-                              }
-                            },
-                          ),
-                          _buildVideosTab(context, _searchQuery),
-                          _buildAlbumsTab(context, _searchQuery),
-                          _buildArtistsTab(context, _searchQuery),
-                          _buildPlaylistsTab(context, _searchQuery),
-                        ],
-                      )
-                    : _LibraryScopeBody(
-                        key: const ValueKey('library_results'),
-                        query: _searchQuery,
-                        onPushDetail: _pushDetail,
-                      ),
-              ),
-            ),
-            // Fixed glass header: lenses never scroll (easy lenses detach
-            // from scrolling transforms), rows slide underneath instead.
-            // Scroll-linked scrim fades in behind the pills like TopFadeBlur.
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: RepaintBoundary(
-                child: Stack(
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                      height: (_scope == SearchScope.mineMusic
-                              ? _kHeaderFull
-                              : _kHeaderSlim) +
-                          28,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          stops: const [0.0, 0.55, 1.0],
-                          colors: [
-                            Colors.black.withValues(
-                                alpha: 0.6 * _headerScrim),
-                            Colors.black.withValues(
-                                alpha: 0.28 * _headerScrim),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                    Consumer<MusicProvider>(
-                      builder: (context, p, _) {
-                        final accent =
-                            ColorUtils.getVibrantAccent(
-                                p.paletteGenerator, muzoMauve);
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
+                  child: _scope == SearchScope.mineMusic
+                      ? TabBarView(
+                          key: const ValueKey('muzo_results'),
+                          controller: _tabController,
                           children: [
-                            SearchScopeSegmented(
-                              scope: _scope,
-                              accent: accent,
-                              onChanged: (scope) {
-                                if (scope == _scope) return;
-                                setState(() => _scope = scope);
+                            SearchTabContent(
+                              recentSearches: _recentSearches,
+                              onEntryTapped: _onHistoryEntryTapped,
+                              onClearHistory: () {
+                                setState(() => _recentSearches.clear());
+                                _historyStore.clear();
                               },
+                              onRemoveHistoryItem: (id) {
+                                setState(() => _recentSearches
+                                    .removeWhere((e) => e.id == id));
+                                _historyStore.remove(id);
+                              },
+                              onRetry: () => _commitSearch(_searchQuery,
+                                  forceRefresh: true),
+                              onSuggestionSelected: (query) =>
+                                  _commitSearch(query),
+                              onResultTapped: (track) =>
+                                  _recordPlayedTrack(track),
                             ),
-                            if (_scope == SearchScope.mineMusic)
-                              AnimatedBuilder(
-                                animation: _tabController,
-                                builder: (context, _) =>
-                                    SearchFilterChips(
-                                  labels: _tabs,
-                                  index: _tabController.index,
-                                  accent: accent,
-                                  onSelected: (index) {
-                                    _tabController.animateTo(
-                                      index,
-                                      duration: const Duration(
-                                          milliseconds: 260),
-                                      curve: Curves.easeOutCubic,
-                                    );
-                                    if (_searchQuery.trim().isNotEmpty) {
-                                      _performSearch(_searchQuery);
-                                    } else {
-                                      setState(() {});
-                                    }
-                                  },
-                                ),
-                              ),
+                            _buildVideosTab(context, _searchQuery),
+                            _buildAlbumsTab(context, _searchQuery),
+                            _buildArtistsTab(context, _searchQuery),
+                            _buildPlaylistsTab(context, _searchQuery),
                           ],
-                        );
-                      },
-                    ),
-                  ],
+                        )
+                      : _LibraryScopeBody(
+                          key: const ValueKey('library_results'),
+                          query: _searchQuery,
+                          onPushDetail: _pushDetail,
+                        ),
                 ),
               ),
-            ),
-            // Floating glass search dock (standalone route only — embedded
-            // mode types in the nav pill; the mini player owns this edge).
-            if (!widget.embedded)
+              // Fixed glass header: lenses never scroll (easy lenses detach
+              // from scrolling transforms), rows slide underneath instead.
+              // Scroll-linked scrim fades in behind the pills like TopFadeBlur.
               Positioned(
-                left: 12,
-                right: 12,
-                bottom:
-                    12 + MediaQuery.viewInsetsOf(context).bottom,
-                child: SafeArea(
-                  top: false,
-                  child: Row(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: RepaintBoundary(
+                  child: Stack(
                     children: [
-                      GlassCircleButton(
-                        icon: Icons.home_outlined,
-                        semanticLabel: 'Close search',
-                        onTap: () {
-                          _searchController.clear();
-                          _dockFocusNode.unfocus();
-                          if (Navigator.of(context).canPop()) {
-                            Navigator.of(context).pop();
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: SearchDockShell(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6),
-                            child: TextField(
-                              controller: _searchController,
-                              focusNode: _dockFocusNode,
-                              style: GoogleFonts.plusJakartaSans(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500),
-                              cursorColor: Theme.of(context)
-                                  .colorScheme
-                                  .primary,
-                              decoration: InputDecoration(
-                                hintText: 'Search songs, artists...',
-                                hintStyle:
-                                    GoogleFonts.plusJakartaSans(
-                                        color: Colors.white.withValues(
-                                            alpha: 0.45),
-                                        fontWeight: FontWeight.w400),
-                                filled: false,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                prefixIcon: IconButton(
-                                  icon: const Icon(
-                                      Icons.search_outlined,
-                                      color: Colors.white54,
-                                      size: 22),
-                                  onPressed: () {
-                                    final q = _searchController.text.trim();
-                                    if (q.isNotEmpty) {
-                                      _commitSearch(q);
-                                      _dockFocusNode.unfocus();
-                                    }
-                                  },
-                                ),
-                                prefixIconConstraints:
-                                    const BoxConstraints(
-                                        minWidth: 44,
-                                        minHeight: 44),
-                                suffixIcon: _searchQuery.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(
-                                            Icons.clear_rounded,
-                                            color: Colors.white54,
-                                            size: 20),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                        },
-                                      )
-                                    : null,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(
-                                        vertical: 14.0,
-                                        horizontal: 8.0),
-                              ),
-                              onSubmitted: _commitSearch,
-                              textInputAction: TextInputAction.search,
-                            ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic,
+                        height: (_scope == SearchScope.mineMusic
+                                ? _kHeaderFull
+                                : _kHeaderSlim) +
+                            28,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0.0, 0.55, 1.0],
+                            colors: [
+                              Colors.black
+                                  .withValues(alpha: 0.6 * _headerScrim),
+                              Colors.black
+                                  .withValues(alpha: 0.28 * _headerScrim),
+                              Colors.transparent,
+                            ],
                           ),
                         ),
+                      ),
+                      Consumer<MusicProvider>(
+                        builder: (context, p, _) {
+                          final accent = ColorUtils.getVibrantAccent(
+                              p.paletteGenerator, muzoMauve);
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SearchScopeSegmented(
+                                scope: _scope,
+                                accent: accent,
+                                onChanged: (scope) {
+                                  if (scope == _scope) return;
+                                  setState(() => _scope = scope);
+                                },
+                              ),
+                              if (_scope == SearchScope.mineMusic)
+                                AnimatedBuilder(
+                                  animation: _tabController,
+                                  builder: (context, _) => SearchFilterChips(
+                                    labels: _tabs,
+                                    index: _tabController.index,
+                                    accent: accent,
+                                    onSelected: (index) {
+                                      _tabController.animateTo(
+                                        index,
+                                        duration:
+                                            const Duration(milliseconds: 260),
+                                        curve: Curves.easeOutCubic,
+                                      );
+                                      if (_searchQuery.trim().isNotEmpty) {
+                                        _performSearch(_searchQuery);
+                                      } else {
+                                        setState(() {});
+                                      }
+                                    },
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
                 ),
               ),
-          ],
-        ),
+              // Floating glass search dock (standalone route only — embedded
+              // mode types in the nav pill; the mini player owns this edge).
+              if (!widget.embedded)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12 + MediaQuery.viewInsetsOf(context).bottom,
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
+                      children: [
+                        GlassCircleButton(
+                          icon: Icons.home_outlined,
+                          semanticLabel: 'Close search',
+                          onTap: () {
+                            _searchController.clear();
+                            _dockFocusNode.unfocus();
+                            if (Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SearchDockShell(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              child: TextField(
+                                controller: _searchController,
+                                focusNode: _dockFocusNode,
+                                style: GoogleFonts.plusJakartaSans(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500),
+                                cursorColor:
+                                    Theme.of(context).colorScheme.primary,
+                                decoration: InputDecoration(
+                                  hintText: 'Search songs, artists...',
+                                  hintStyle: GoogleFonts.plusJakartaSans(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.45),
+                                      fontWeight: FontWeight.w400),
+                                  filled: false,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  prefixIcon: IconButton(
+                                    icon: const Icon(Icons.search_outlined,
+                                        color: Colors.white54, size: 22),
+                                    onPressed: () {
+                                      final q = _searchController.text.trim();
+                                      if (q.isNotEmpty) {
+                                        _commitSearch(q);
+                                        _dockFocusNode.unfocus();
+                                      }
+                                    },
+                                  ),
+                                  prefixIconConstraints: const BoxConstraints(
+                                      minWidth: 44, minHeight: 44),
+                                  suffixIcon: _searchQuery.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear_rounded,
+                                              color: Colors.white54, size: 20),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                          },
+                                        )
+                                      : null,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 14.0, horizontal: 8.0),
+                                ),
+                                onSubmitted: _commitSearch,
+                                textInputAction: TextInputAction.search,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
+        ),
       ),
     );
   }
@@ -616,16 +608,70 @@ class _SearchScreenState extends State<SearchScreen>
     final trimmed = query.trim();
     if (trimmed.isEmpty) return;
     setState(() {
-      _recentSearches.remove(trimmed);
-      _recentSearches.insert(0, trimmed);
+      _recentSearches.removeWhere((e) =>
+          e.kind == SearchHistoryKind.query &&
+          e.id.toLowerCase() == trimmed.toLowerCase());
+      _recentSearches.insert(0, SearchHistoryEntry.query(trimmed));
       if (_recentSearches.length > 10) _recentSearches.removeLast();
     });
     // Persist (dedupe/move-to-front handled by the store)
-    _historyStore.add(trimmed);
+    _historyStore.addQuery(trimmed);
     try {
       final p = Provider.of<MusicProvider>(context, listen: false);
       p.rememberSearchQuery(trimmed);
     } catch (_) {}
+  }
+
+  /// Records the track that was just played from the results.
+  ///
+  /// Replaces the old behaviour, which recorded the *query* on any result tap -
+  /// so the list could only ever echo words, with no artwork and nothing to tap
+  /// back into. Recording the track is what makes a row carry a cover and play
+  /// on demand. The query itself is still recorded by [_addToHistory] on submit,
+  /// so searching is still remembered.
+  void _recordPlayedTrack(Track track) {
+    final entry = SearchHistoryEntry.track(
+      id: track.id,
+      title: track.trackName,
+      artist: track.artistName,
+      artworkUrl: track.albumArtUrl,
+    );
+    setState(() {
+      _recentSearches
+          .removeWhere((e) => e.id.toLowerCase() == entry.id.toLowerCase());
+      _recentSearches.insert(0, entry);
+      if (_recentSearches.length > 10) _recentSearches.removeLast();
+    });
+    _historyStore.addTrack(
+      id: track.id,
+      title: track.trackName,
+      artist: track.artistName,
+      artworkUrl: track.albumArtUrl,
+    );
+  }
+
+  /// Tapping a recent-searches row.
+  ///
+  /// A track row plays the track again; a query row re-runs the search. The
+  /// entry is deliberately *not* re-recorded here - tapping an existing row
+  /// should not bump it to the top, which is why the row's own timestamp is
+  /// only ever set when the thing was first played or searched.
+  void _onHistoryEntryTapped(SearchHistoryEntry entry) {
+    if (entry.kind == SearchHistoryKind.query) {
+      _commitSearch(entry.title);
+      return;
+    }
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    musicProvider.playTrack(
+      Track(
+        id: entry.id,
+        trackName: entry.title,
+        artistName: entry.subtitle,
+        albumName: '',
+        previewUrl: '',
+        albumArtUrl: entry.artworkUrl,
+      ),
+    );
   }
 
   bool _showsLoading(MusicProvider p, SearchKind kind, String query) =>
@@ -634,8 +680,7 @@ class _SearchScreenState extends State<SearchScreen>
       query.trim().isNotEmpty;
 
   bool _showsError(MusicProvider p, SearchKind kind) =>
-      p.searchPhase == SearchPhase.error &&
-      p.activeSearchKind == kind;
+      p.searchPhase == SearchPhase.error && p.activeSearchKind == kind;
 
   Widget _buildVideosTab(BuildContext context, String query) {
     return Consumer<MusicProvider>(
@@ -644,6 +689,7 @@ class _SearchScreenState extends State<SearchScreen>
         if (_showsLoading(provider, SearchKind.videos, query)) {
           return _SuggestionOrSpinner(
             query: query,
+            isVideo: true,
             onSuggestionSelected: (q) => _commitSearch(q),
           );
         }
@@ -664,15 +710,13 @@ class _SearchScreenState extends State<SearchScreen>
         }
         return ListView.builder(
           key: ValueKey('videos:$query'),
-          padding: EdgeInsets.fromLTRB(
-              0, 8, 0, widget.embedded ? 100 : 170),
+          padding: EdgeInsets.fromLTRB(0, 8, 0, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
           itemCount: videos.length,
           itemBuilder: (context, index) {
             final video = videos[index];
-            final isPlaying =
-                video.isSameTrackAs(provider.currentTrack) &&
-                    provider.isPlaying;
+            final isPlaying = video.isSameTrackAs(provider.currentTrack) &&
+                provider.isPlaying;
             return SearchResultRow.staged(
               key: ValueKey(video.id),
               index: index,
@@ -685,8 +729,7 @@ class _SearchScreenState extends State<SearchScreen>
                 }
                 provider.playTrack(video, playlistTracks: videos);
               },
-              onMore: () =>
-                  ThemedOptionsSheet.show(context, track: video),
+              onMore: () => ThemedOptionsSheet.show(context, track: video),
             );
           },
         );
@@ -721,8 +764,7 @@ class _SearchScreenState extends State<SearchScreen>
         }
         return GridView.builder(
           key: ValueKey('albums:$query'),
-          padding: EdgeInsets.fromLTRB(
-              16, 12, 16, widget.embedded ? 100 : 170),
+          padding: EdgeInsets.fromLTRB(16, 12, 16, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -737,9 +779,8 @@ class _SearchScreenState extends State<SearchScreen>
               key: ValueKey(album.id),
               index: index,
               track: album,
-              subtitle: album.artistName.isNotEmpty
-                  ? album.artistName
-                  : 'Album',
+              subtitle:
+                  album.artistName.isNotEmpty ? album.artistName : 'Album',
               onTap: () {
                 if (_searchQuery.trim().isNotEmpty) {
                   _addToHistory(_searchQuery.trim());
@@ -760,6 +801,7 @@ class _SearchScreenState extends State<SearchScreen>
         if (_showsLoading(provider, SearchKind.artists, query)) {
           return _SuggestionOrSpinner(
             query: query,
+            circular: true,
             onSuggestionSelected: (q) => _commitSearch(q),
           );
         }
@@ -789,8 +831,7 @@ class _SearchScreenState extends State<SearchScreen>
 
         return GridView.builder(
           key: ValueKey('artists:$query'),
-          padding: EdgeInsets.fromLTRB(
-              16, 14, 16, widget.embedded ? 100 : 170),
+          padding: EdgeInsets.fromLTRB(16, 14, 16, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -857,8 +898,7 @@ class _SearchScreenState extends State<SearchScreen>
 
         return GridView.builder(
           key: ValueKey('playlists:$query'),
-          padding: EdgeInsets.fromLTRB(
-              16, 12, 16, widget.embedded ? 100 : 170),
+          padding: EdgeInsets.fromLTRB(16, 12, 16, widget.embedded ? 100 : 170),
           physics: const BouncingScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -884,7 +924,8 @@ class _SearchScreenState extends State<SearchScreen>
                   playlistImage: playlist.albumArtUrl,
                 ));
               },
-              onLongPress: () => ThemedOptionsSheet.show(context, track: playlist),
+              onLongPress: () =>
+                  ThemedOptionsSheet.show(context, track: playlist),
             );
           },
         );
@@ -956,18 +997,15 @@ class _LibraryScopeBody extends StatelessWidget {
               );
             }
             final track = tracks[index - playlists.length];
-            final isPlaying =
-                track.isSameTrackAs(provider.currentTrack) &&
-                    provider.isPlaying;
+            final isPlaying = track.isSameTrackAs(provider.currentTrack) &&
+                provider.isPlaying;
             return SearchResultRow.staged(
               key: ValueKey('lib-tr:${track.id}'),
               index: index,
               track: track,
               isPlaying: isPlaying,
-              onTap: () =>
-                  provider.playTrack(track, playlistTracks: tracks),
-              onMore: () =>
-                  ThemedOptionsSheet.show(context, track: track),
+              onTap: () => provider.playTrack(track, playlistTracks: tracks),
+              onMore: () => ThemedOptionsSheet.show(context, track: track),
             );
           },
         );
@@ -981,16 +1019,27 @@ class _LibraryScopeBody extends StatelessWidget {
 class _SuggestionOrSpinner extends StatelessWidget {
   final String query;
   final ValueChanged<String> onSuggestionSelected;
+  final bool circular;
+  final bool isVideo;
 
-  const _SuggestionOrSpinner(
-      {required this.query, required this.onSuggestionSelected});
+  const _SuggestionOrSpinner({
+    required this.query,
+    required this.onSuggestionSelected,
+    this.circular = false,
+    this.isVideo = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
         final suggestions = provider.searchSuggestions;
-        if (suggestions.isEmpty) return const _SearchLoadingView();
+        if (suggestions.isEmpty) {
+          return _SearchLoadingView(
+            circular: circular,
+            isVideo: isVideo,
+          );
+        }
         final trimmed = query.trim();
         return ListView.builder(
           padding: const EdgeInsets.only(top: 8, bottom: 100),
@@ -1024,9 +1073,8 @@ class _SuggestionOrSpinner extends StatelessWidget {
                           style: GoogleFonts.plusJakartaSans(
                             color: Colors.white.withValues(alpha: 0.85),
                             fontSize: 15,
-                            fontWeight: isTypedRow
-                                ? FontWeight.w600
-                                : FontWeight.w400,
+                            fontWeight:
+                                isTypedRow ? FontWeight.w600 : FontWeight.w400,
                           ),
                         ),
                       ),
@@ -1043,18 +1091,18 @@ class _SuggestionOrSpinner extends StatelessWidget {
 }
 
 class SearchTabContent extends StatelessWidget {
-  final List<String> recentSearches;
-  final Function(String) onSearchSelected;
+  final List<SearchHistoryEntry> recentSearches;
+  final ValueChanged<SearchHistoryEntry> onEntryTapped;
   final VoidCallback onClearHistory;
-  final Function(String) onRemoveHistoryItem;
+  final ValueChanged<String> onRemoveHistoryItem;
   final VoidCallback onRetry;
   final ValueChanged<String> onSuggestionSelected;
-  final VoidCallback? onResultTapped;
+  final void Function(Track track)? onResultTapped;
 
   const SearchTabContent({
     super.key,
     this.recentSearches = const [],
-    required this.onSearchSelected,
+    required this.onEntryTapped,
     required this.onClearHistory,
     required this.onRemoveHistoryItem,
     required this.onRetry,
@@ -1068,8 +1116,7 @@ class SearchTabContent extends StatelessWidget {
       builder: (context, musicProvider, child) {
         final searchResults = musicProvider.searchedTracks;
         final phase = musicProvider.searchPhase;
-        final kindMatches =
-            musicProvider.activeSearchKind == SearchKind.songs;
+        final kindMatches = musicProvider.activeSearchKind == SearchKind.songs;
         final activeQuery = musicProvider.activeSearchQuery;
 
         // A session for another kind (e.g. user flipped chips mid-flight):
@@ -1118,10 +1165,7 @@ class SearchTabContent extends StatelessWidget {
           return ListView.builder(
             key: ValueKey('songs:$activeQuery'),
             padding: EdgeInsets.fromLTRB(
-                0,
-                8,
-                0,
-                100 + MediaQuery.viewInsetsOf(context).bottom),
+                0, 8, 0, 100 + MediaQuery.viewInsetsOf(context).bottom),
             physics: const BouncingScrollPhysics(),
             itemCount: searchResults.length,
             itemBuilder: (context, index) {
@@ -1135,12 +1179,10 @@ class SearchTabContent extends StatelessWidget {
                 track: track,
                 isPlaying: isPlaying,
                 onTap: () {
-                  onResultTapped?.call();
-                  musicProvider.playTrack(track,
-                      playlistTracks: searchResults);
+                  onResultTapped?.call(track);
+                  musicProvider.playTrack(track, playlistTracks: searchResults);
                 },
-                onMore: () =>
-                    ThemedOptionsSheet.show(context, track: track),
+                onMore: () => ThemedOptionsSheet.show(context, track: track),
               );
             },
           );
@@ -1149,45 +1191,39 @@ class SearchTabContent extends StatelessWidget {
         // Idle: history if available; otherwise the quiet discovery hint.
         if (recentSearches.isNotEmpty) {
           return ListView(
-            padding: const EdgeInsets.all(16),
+            // Vertical only, deliberately. This used to be EdgeInsets.all(16)
+            // on top of each row's own 16dp horizontal padding, so every
+            // history row was indented a full gutter further than the result
+            // rows directly above it and the header sat at a third position
+            // again. The row owns its gutter, exactly as SearchResultRow does,
+            // so history and results now share one left edge.
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Recent Searches",
-                    style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18),
-                  ),
-                  TextButton(
-                    onPressed: onClearHistory,
-                    child: Text("Clear All",
-                        style: GoogleFonts.plusJakartaSans(
-                            color:
-                                Theme.of(context).colorScheme.primary)),
-                  ),
-                ],
-              ),
-              ...recentSearches.map((query) => ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                    leading: const Icon(Icons.history_rounded,
-                        color: Colors.white54, size: 20),
-                    minLeadingWidth: 28,
-                    title: Text(query,
-                        style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w500)),
-                    onTap: () => onSearchSelected(query),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close_rounded,
-                          size: 18, color: Colors.white30),
-                      splashRadius: 18,
-                      onPressed: () => onRemoveHistoryItem(query),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 0, 8.0, 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Recent Searches",
+                      style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18),
                     ),
+                    TextButton(
+                      onPressed: onClearHistory,
+                      child: Text("Clear All",
+                          style: GoogleFonts.plusJakartaSans(
+                              color: Theme.of(context).colorScheme.primary)),
+                    ),
+                  ],
+                ),
+              ),
+              ...recentSearches.map((entry) => _RecentSearchRow(
+                    entry: entry,
+                    onTap: () => onEntryTapped(entry),
+                    onRemove: () => onRemoveHistoryItem(entry.id),
                   )),
             ],
           );
@@ -1204,19 +1240,146 @@ class SearchTabContent extends StatelessWidget {
 /// Quiet, shared search-state views. One visual language: icon + one line,
 /// no cards, no decoration.
 
+/// The wireframe shown while a search is in flight and no typeahead has arrived
+/// yet.
+///
+/// Was a centred 22dp spinner, which said "something is happening" and nothing
+/// about what was coming back. A skeleton says both: it shows the shape of the
+/// answer, and because the placeholders are metric-matched to the real rows,
+/// the list does not jump when the results land.
+///
+/// The shape follows the tab - a circle for artists, a 16:9 tile for videos -
+/// so switching tabs mid-search does not show square tiles for rows that are
+/// about to be circular.
 class _SearchLoadingView extends StatelessWidget {
-  const _SearchLoadingView();
+  final bool circular;
+  final bool isVideo;
+
+  const _SearchLoadingView({this.circular = false, this.isVideo = false});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: SizedBox(
-        width: 22,
-        height: 22,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
+    return SearchSkeletonList(
+      circular: circular,
+      isVideo: isVideo,
+      bottomInset: MediaQuery.viewInsetsOf(context).bottom,
+    );
+  }
+}
+
+/// One "Recent searches" row.
+///
+/// Laid out to the same metrics as a [SearchResultRow] - 64dp artwork at radius
+/// 12, a 14dp gap, the same type sizes - so the list reads as one continuous
+/// set of rows whether it is showing history or results, and the transition
+/// between the two states has nothing to jump.
+///
+/// A track entry shows its cover. A query entry has nothing to show, so it falls
+/// back to the clock glyph rather than an empty box: an empty 64dp square reads
+/// as a failed image load, not as "this one is text".
+class _RecentSearchRow extends StatelessWidget {
+  final SearchHistoryEntry entry;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _RecentSearchRow({
+    required this.entry,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          // Left 16 to match SearchResultRow's gutter; 8 at the end so the
+          // remove button's 48dp target stops short of the screen edge instead
+          // of centring its 18dp glyph on it.
+          padding: const EdgeInsets.fromLTRB(16.0, 8.0, 8.0, 8.0),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: entry.hasArtwork
+                      ? Image.network(
+                          entry.artworkUrl,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          cacheWidth:
+                              (64 * MediaQuery.of(context).devicePixelRatio)
+                                  .round(),
+                          cacheHeight:
+                              (64 * MediaQuery.of(context).devicePixelRatio)
+                                  .round(),
+                          errorBuilder: (_, __, ___) => const _QueryGlyphBox(),
+                        )
+                      : const _QueryGlyphBox(),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                    if (entry.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        entry.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: 14,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded,
+                    size: 18, color: Colors.white30),
+                splashRadius: 18,
+                onPressed: onRemove,
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// The stand-in for a query row's leading slot.
+class _QueryGlyphBox extends StatelessWidget {
+  const _QueryGlyphBox();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.06),
+      child: const Center(
+        child: Icon(Icons.history_rounded, size: 22, color: Colors.white38),
       ),
     );
   }

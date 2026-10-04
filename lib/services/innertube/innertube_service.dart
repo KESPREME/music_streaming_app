@@ -9,6 +9,8 @@ import '../potoken/po_token_webview.dart';
 import '../../models/album.dart';
 import '../metadata/track_metadata_enricher.dart';
 import '../../models/bitchord_page_models.dart';
+import 'search_filter_params.dart';
+import 'track_artist_credit.dart';
 
 /// YouTube client types for different use cases
 enum YouTubeClientType {
@@ -268,13 +270,13 @@ class InnerTubeService {
   /// Search for artists
   Future<List<Track>> searchArtists(String query, {int limit = 20}) async {
     return _searchWithParams(
-        query, 'EgWKAQIgAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_ARTIST
+        query, SearchFilterParams.artists, limit);
   }
 
   /// Search for playlists
   Future<List<Track>> searchPlaylists(String query, {int limit = 20}) async {
     return _searchWithParams(
-        query, 'EgWKAQIoAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_PLAYLIST
+        query, SearchFilterParams.playlists, limit);
   }
 
   Future<List<Track>> _searchWithParams(
@@ -317,7 +319,7 @@ class InnerTubeService {
         debugPrint('InnerTubeService: Searching for "$query"');
       }
       return await _searchWithParams(
-          query, 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D', limit);
+          query, SearchFilterParams.songs, limit);
     } catch (e) {
       rethrow;
     }
@@ -335,7 +337,7 @@ class InnerTubeService {
         debugPrint('InnerTubeService: Searching videos for "$query"');
       }
       return await _searchWithParams(
-          query, 'EgWKAQIQAWoKEAkQBRAKEAMQBA%3D%3D', limit);
+          query, SearchFilterParams.videos, limit);
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: searchVideos error: $e');
       if (strict) rethrow;
@@ -344,9 +346,13 @@ class InnerTubeService {
   }
 
   /// Search for albums on YouTube Music (BitChord SearchFilter.ALBUMS parity).
+  ///
+  /// The filter used to be an inline literal decoding to protobuf field 11
+  /// rather than field 3 - a different content type entirely, which is why this
+  /// tab filled with artist profiles. See [SearchFilterParams] for why the field
+  /// number is what matters, and search_filter_params_test.dart for the guard.
   Future<List<Track>> searchAlbums(String query, {int limit = 20}) async {
-    return _searchWithParams(
-        query, 'EgWKAQJYAWoKEAkQBRAKEAMQBA%3D%3D', limit); // FILTER_ALBUM
+    return _searchWithParams(query, SearchFilterParams.albums, limit);
   }
 
   /// Typeahead suggestions for [input] (BitChord get_search_suggestions parity).
@@ -530,7 +536,7 @@ class InnerTubeService {
       _parseTrackFromRenderer(renderer, allowBrowseIds: allowBrowseIds);
 
   Track? _parseTrackFromRenderer(Map<String, dynamic> renderer,
-      {bool allowBrowseIds = false}) {
+      {bool allowBrowseIds = false, String? fallbackArtist}) {
     try {
       // Get video ID or Browse ID (for playlists/artists)
       String? videoId = renderer['playlistItemData']?['videoId'];
@@ -592,6 +598,17 @@ class InnerTubeService {
           if (extracted.album.isNotEmpty) album = extracted.album;
         }
       }
+
+      // A release's own rows name no artist of their own - the page header is
+      // what names the artist, and on an album page the row's second flex column
+      // carries something else entirely - so every track fell through to the
+      // placeholder below its header, which by then already read correctly.
+      // Resolution order and the "only albums have a page credit" guarantee both
+      // live in the helper, so the playlist and artist paths cannot inherit it.
+      artist = resolveTrackArtistCredit(
+        rowArtist: artist,
+        pageCredit: fallbackArtist,
+      );
 
       // Thumbnail
       String? thumbnail;
@@ -1709,6 +1726,52 @@ class InnerTubeService {
   }
 
   /// Get full BitChord Album Page Data with title, artist, year, track count, cover, and editorial blurb
+    /// The artist an album page's header names, read without touching the rest of
+  /// the header parse.
+  ///
+  /// Both album paths browse the same `MPREb`/`OLAK` id and both hit the same
+  /// problem: the page's rows do not name the artist, only its header does.
+  /// Returns an empty name when the header offers nothing usable, which callers
+  /// must treat as "no credit" rather than as an artist.
+  (String, String?) _albumHeaderArtist(Map<String, dynamic> data) {
+    final header = [
+      ..._collectRenderers(data, 'musicResponsiveHeaderRenderer'),
+      ..._collectRenderers(data, 'musicDetailHeaderRenderer'),
+    ].firstOrNull;
+    if (header == null) return ('', null);
+
+    // Current header: the artist hangs off a strapline above the title.
+    final strapline = header['straplineTextOne']?['runs'] as List?;
+    if (strapline != null && strapline.isNotEmpty) {
+      final run = strapline.first;
+      final text = run['text']?.toString().trim() ?? '';
+      if (text.isNotEmpty) {
+        final browseId =
+            run['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+        return (text, browseId);
+      }
+    }
+
+    // Older header: packed into the subtitle, "Album • Artist • 2024". Prefer the
+    // run that actually links to an artist page over the first run, which is the
+    // word "Album".
+    final subtitle = header['subtitle']?['runs'] as List?;
+    if (subtitle != null && subtitle.isNotEmpty) {
+      for (final run in subtitle) {
+        final browseId =
+            run['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+        final text = run['text']?.toString().trim() ?? '';
+        if (browseId != null && browseId.startsWith('UC') && text.isNotEmpty) {
+          return (text, browseId);
+        }
+      }
+      final first = subtitle.first['text']?.toString().trim() ?? '';
+      if (first.isNotEmpty) return (first, null);
+    }
+
+    return ('', null);
+  }
+
   Future<AlbumDetailData> getAlbumPageData(String browseId) async {
     try {
       if (kDebugMode) {
@@ -1811,11 +1874,17 @@ class InnerTubeService {
       }
 
       // 3. Tracks
+      //
+      // Each row is handed the header's artist as a last-resort credit: a
+      // release's tracks do not name the artist individually, so without this
+      // every row below the header read "Unknown Artist". Parsed after the
+      // header on purpose - the credit has to exist before it can be passed.
       final tracks = <Track>[];
       final itemRenderers = _collectRenderers(data, 'musicResponsiveListItemRenderer');
       final seenIds = <String>{};
       for (final renderer in itemRenderers) {
-        final track = _parseTrackFromRenderer(renderer);
+        final track = _parseTrackFromRenderer(renderer,
+            fallbackArtist: artistName);
         if (track != null && seenIds.add(track.id)) {
           tracks.add(track);
         }
@@ -2108,6 +2177,12 @@ class InnerTubeService {
               ?['twoColumnBrowseResultsRenderer']?['secondaryContents']
           ?['sectionListRenderer']?['contents'];
 
+      // The album's own header names the artist; its rows do not. Read it once
+      // so both layouts below can fall back to it, exactly as the rich page path
+      // does - without it this loader yields a track list that is entirely
+      // "Unknown Artist" beneath a header that knows better.
+      final (headerArtist, _) = _albumHeaderArtist(data);
+
       if (secondaryContents != null) {
         for (final section in secondaryContents) {
           final shelf = section['musicShelfRenderer'];
@@ -2117,7 +2192,8 @@ class InnerTubeService {
               for (final item in contents) {
                 final renderer = item['musicResponsiveListItemRenderer'];
                 if (renderer != null) {
-                  final track = _parseTrackFromRenderer(renderer);
+                  final track = _parseTrackFromRenderer(renderer,
+                      fallbackArtist: headerArtist);
                   if (track != null) tracks.add(track);
                 }
               }
@@ -2142,7 +2218,8 @@ class InnerTubeService {
                   for (final item in contents) {
                     final renderer = item['musicResponsiveListItemRenderer'];
                     if (renderer != null) {
-                      final track = _parseTrackFromRenderer(renderer);
+                      final track = _parseTrackFromRenderer(renderer,
+                          fallbackArtist: headerArtist);
                       if (track != null) tracks.add(track);
                     }
                   }

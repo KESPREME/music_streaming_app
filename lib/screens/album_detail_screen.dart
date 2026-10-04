@@ -20,6 +20,7 @@ import '../widgets/glass_options_sheet.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/artist_picker_sheet.dart';
 import '../core/navigation/root_navigator.dart';
+import '../services/innertube/track_artist_credit.dart';
 
 /// Sleeve aspect ratio matching BitChord's SLEEVE_RATIO in DetailScreen.kt
 const double _kSleeveRatio = 0.92;
@@ -175,7 +176,18 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void _extractMetadata() {
     if (_tracks.isEmpty) return;
     if (_resolvedArtist == null || _resolvedArtist!.isEmpty) {
-      _resolvedArtist = _tracks.first.artistName;
+      // A page whose header names no artist must not be shown as though it did.
+      // "Unknown Artist" is what a row falls back to when it says nothing, not a
+      // name - adopting it here would print that literal in the header and offer
+      // it as a tap target. The constructor argument is the last honest source:
+      // it came from a search result that knew the artist.
+      final fromTrack = _tracks.first.artistName;
+      final passed = (widget.artistName ?? '').trim();
+      if (isUsableArtistName(fromTrack)) {
+        _resolvedArtist = fromTrack;
+      } else if (isUsableArtistName(passed)) {
+        _resolvedArtist = passed;
+      }
     }
     if (_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) {
       _resolvedImageUrl = _tracks.first.albumArtUrl;
@@ -202,6 +214,14 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           (widget.albumId.startsWith('MPREb_') || widget.albumId.startsWith('OLAK'))) {
         // 1. Fetch rich BitChord AlbumPageData (title, artist, year, cover, description, tracks)
         final pageData = await provider.fetchAlbumPageData(widget.albumId);
+        // The header's own metadata is kept even when the page came back with no
+        // tracks. It used to be applied only inside the `tracks.isNotEmpty`
+        // branch below, so falling through to fetchAlbumTracks threw away an
+        // artist name we already had and then re-derived it from the first
+        // track - which, on an album page, reads "Unknown Artist".
+        final pageArtist = pageData.artistName.trim();
+        final headerArtist =
+            pageArtist.isEmpty ? null : pageArtist;
         if (pageData.tracks.isNotEmpty && mounted) {
           setState(() {
             _tracks = pageData.tracks;
@@ -226,6 +246,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         if (mounted) {
           setState(() {
             _tracks = loadedTracks;
+            // Survives _extractMetadata's own fallback below, which would
+            // otherwise reach for the first track's artist - and that reads
+            // "Unknown Artist" on exactly the pages that land here.
+            if (_resolvedArtist == null || _resolvedArtist!.isEmpty) {
+              _resolvedArtist = headerArtist;
+            }
             _isLoading = false;
             _extractMetadata();
           });

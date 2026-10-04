@@ -126,13 +126,13 @@ void main() {
       final store = SearchHistoryStore();
       await store.load();
 
-      await store.add('eminem');
-      await store.add('coldplay');
-      await store.add('eminem');
+      await store.addQuery('eminem');
+      await store.addQuery('coldplay');
+      await store.addQuery('eminem');
 
       expect(store.entries.length, 2);
-      expect(store.entries.first, 'eminem');
-      expect(store.entries[1], 'coldplay');
+      expect(store.entries.first.title, 'eminem');
+      expect(store.entries[1].title, 'coldplay');
     });
   });
 }
