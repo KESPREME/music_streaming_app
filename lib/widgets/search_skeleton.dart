@@ -20,6 +20,15 @@ double shimmerBandStart({
   return rowStart - rowOffset;
 }
 
+/// Default sweep period.
+///
+/// One controller per screen drives every block, so this is the cost of the
+/// whole placeholder rather than of one row.
+const Duration kShimmerPeriod = Duration(milliseconds: 1500);
+
+/// Default band width as a fraction of the sweep's travel distance.
+const double kShimmerBandFraction = 0.42;
+
 /// Skeleton placeholders for the search screen.
 ///
 /// A skeleton is only worth having if the placeholder is laid out to the same
@@ -167,7 +176,7 @@ class SearchRowSkeleton extends StatelessWidget {
 
           return Row(
             children: [
-              _Shimmer(
+              ShimmerBlock(
                 sweep: sweep,
                 rowWidth: row.maxWidth,
                 rowOffset: 0,
@@ -182,7 +191,7 @@ class SearchRowSkeleton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _Shimmer(
+                    ShimmerBlock(
                       sweep: sweep,
                       rowWidth: row.maxWidth,
                       rowOffset: textLeft,
@@ -191,7 +200,7 @@ class SearchRowSkeleton extends StatelessWidget {
                       radius: 5,
                     ),
                     const SizedBox(height: _textGap),
-                    _Shimmer(
+                    ShimmerBlock(
                       sweep: sweep,
                       rowWidth: row.maxWidth,
                       rowOffset: textLeft,
@@ -215,7 +224,7 @@ class SearchRowSkeleton extends StatelessWidget {
 /// Takes either a fixed [width]/[height] or a [fraction] of its parent, so text
 /// lines and artwork share one implementation. [rowWidth] and [rowOffset] place
 /// it within the row so the sweep is shared rather than per-block.
-class _Shimmer extends StatelessWidget {
+class ShimmerBlock extends StatelessWidget {
   final Animation<double>? sweep;
   final double rowWidth;
   final double rowOffset;
@@ -225,7 +234,12 @@ class _Shimmer extends StatelessWidget {
   final double radius;
   final BoxShape shape;
 
-  const _Shimmer({
+  /// Width of the travelling highlight, as a fraction of the sweep travel.
+  /// Wider reads as a slower, softer light; narrower as a scanning line.
+  final double bandFraction;
+
+  const ShimmerBlock({
+    super.key,
     this.sweep,
     required this.rowWidth,
     required this.rowOffset,
@@ -234,6 +248,7 @@ class _Shimmer extends StatelessWidget {
     required this.height,
     this.radius = 6,
     this.shape = BoxShape.rectangle,
+    this.bandFraction = kShimmerBandFraction,
   });
 
   @override
@@ -255,22 +270,24 @@ class _Shimmer extends StatelessWidget {
               alignment: Alignment.centerLeft,
               widthFactor: fraction,
               child: CustomPaint(
-                painter: _ShimmerPainter(
+                painter: ShimmerPainter(
                   base: base,
                   highlight: highlight,
                   sweep: sweep,
                   rowWidth: rowWidth,
                   rowOffset: rowOffset,
+                  bandFraction: bandFraction,
                 ),
               ),
             )
           : CustomPaint(
-              painter: _ShimmerPainter(
+              painter: ShimmerPainter(
                 base: base,
                 highlight: highlight,
                 sweep: sweep,
                 rowWidth: rowWidth,
                 rowOffset: rowOffset,
+                bandFraction: bandFraction,
               ),
             ),
     );
@@ -295,19 +312,23 @@ class _Shimmer extends StatelessWidget {
 /// Read from the animation inside [paint] rather than rebuilt: `repaint` keeps
 /// this on the paint path, so a screenful of blocks costs one repaint per frame
 /// and no layout or build at all.
-class _ShimmerPainter extends CustomPainter {
+class ShimmerPainter extends CustomPainter {
   final Color base;
   final Color highlight;
   final Animation<double>? sweep;
   final double rowWidth;
   final double rowOffset;
 
-  _ShimmerPainter({
+  /// Width of the travelling highlight as a fraction of the sweep travel.
+  final double bandFraction;
+
+  ShimmerPainter({
     required this.base,
     required this.highlight,
     required this.sweep,
     required this.rowWidth,
     required this.rowOffset,
+    this.bandFraction = kShimmerBandFraction,
   }) : super(repaint: sweep);
 
   @override
@@ -317,8 +338,9 @@ class _ShimmerPainter extends CustomPainter {
       t: t,
       rowWidth: rowWidth,
       rowOffset: rowOffset,
+      bandFraction: bandFraction,
     );
-    final band = (rowWidth > 0 ? rowWidth : size.width) * 0.42;
+    final band = (rowWidth > 0 ? rowWidth : size.width) * bandFraction;
 
     final paint = Paint()
       ..shader = LinearGradient(
@@ -330,10 +352,11 @@ class _ShimmerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ShimmerPainter old) =>
+  bool shouldRepaint(ShimmerPainter old) =>
       old.base != base ||
       old.highlight != highlight ||
       old.sweep != sweep ||
       old.rowWidth != rowWidth ||
-      old.rowOffset != rowOffset;
+      old.rowOffset != rowOffset ||
+      old.bandFraction != bandFraction;
 }

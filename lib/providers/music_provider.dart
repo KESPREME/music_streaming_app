@@ -186,6 +186,23 @@ class MusicProvider
   HomeFeed? _homeFeed;
   HomeFeed? get homeFeed => _homeFeed;
 
+  /// Whether Home should render a loading placeholder.
+  ///
+  /// True only on a cold start with nothing cached and a fetch in flight. A
+  /// background refresh over an existing feed is deliberately not loading: the
+  /// sections are already on screen, and replacing them with a shimmer would
+  /// throw away the work and read as a flash.
+  bool get isHomeLoading => _homeRepository.isColdStarting;
+
+/// The first Home load finished and produced no feed at all.
+///
+/// Its own state so Home can offer a retry instead of an endless shimmer.
+bool get isHomeLoadExhausted => _homeFeed == null && _homeLoadFailed;
+
+  /// Set when the first fetch settled with nothing to show. Observable through
+  /// [homeContentVersion] like everything else the home screen renders.
+  bool _homeLoadFailed = false;
+
   /// Quick Picks section (spec #2A) — generated from local signals +
   /// chart + native feed; deterministic, no randomization.
   List<Track> get quickPicks => _quickPicks;
@@ -208,6 +225,25 @@ class MusicProvider
     await _searchGraph.loadFromStore();
     final feed = await _homeRepository.load();
     _publishHomeFeed(feed);
+
+    // With a cached feed there is already something on screen, so the background
+    // refresh is allowed to finish whenever it finishes. With nothing cached
+    // there is an empty screen and no way for the UI to learn how the fetch
+    // ended - so wait for the answer and report it.
+    //
+    // This is what lets Home show a retry instead of a shimmer that runs
+    // forever. The reference implementation has no such state: if every request
+    // yields nothing it stays in Loading indefinitely.
+    if (feed == null) {
+      await _homeRepository.awaitFirstFetchSettled();
+      final arrived = _homeRepository.current;
+      if (arrived != null) {
+        _publishHomeFeed(arrived);
+      } else {
+        _homeLoadFailed = true;
+        _bumpHomeContent();
+      }
+    }
   }
 
   Future<void> refreshHomeFeed() async {

@@ -879,6 +879,11 @@ class HomeRepository {
   int _failureCount = 0;
   DateTime _nextAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Set once the first network fetch for this process has run to completion,
+  /// whether it produced a feed or not. Drives the cold-start placeholder and
+  /// the exhausted state above.
+  bool _firstFetchSettled = false;
+
   /// Section memory (spec #3): identity → last-known-good shelf. Populated
   /// from every ACCEPTED feed; consulted by HomeConvergence when a fresh
   /// response omits previously valid categories.
@@ -962,6 +967,44 @@ class HomeRepository {
     return DateTime.now().difference(_current!.fetchedAt) > _freshTtl;
   }
 
+  /// Whether a first-page fetch has run to completion, successfully or not.
+  ///
+  /// Separate from `_current == null` because "we are still working on it" and
+  /// "it is not coming" are different states, and a screen that cannot tell them
+  /// apart has exactly two bad options: show a spinner forever, or show an empty
+  /// page and pretend the work already failed.
+  bool get hasSettledFirstFetch => _firstFetchSettled;
+
+  /// True only while the very first load is in flight *and* there is nothing to
+  /// show yet. This is the one condition under which a loading placeholder is
+  /// honest.
+  ///
+  /// Deliberately false while a refresh runs against a cached feed: the content
+  /// is already on screen, and flashing a skeleton over a good feed reads as the
+  /// app throwing away work it had already done.
+  bool get isColdStarting =>
+      _current == null && _inFlight != null && !_firstFetchSettled;
+
+/// The first load finished and still produced no feed at all.
+///
+/// A distinct state from "loading" on purpose, and the reason this is not
+/// simply `!isColdStarting && _current == null`: an anonymous session that
+/// gets no usable sections at all, or a request that failed, must land on a
+/// retry the user can act on rather than on a shimmer that never resolves.
+bool get isColdStartExhausted => _current == null && _firstFetchSettled;
+
+  /// Completes once a first-page fetch has settled, or immediately if none is
+  /// running.
+  ///
+  /// [load] deliberately does not block on the network - it returns whatever
+  /// the cache held so a warm start paints instantly. That is the right call
+  /// when there is something to paint, and the wrong one when there is not: a
+  /// caller with an empty screen has no way to learn how the fetch ended.
+  Future<void> awaitFirstFetchSettled() async {
+    final pending = _inFlight;
+    if (pending != null) await pending;
+  }
+
   static String _cacheKeyFor(String source, String locale) =>
       '${_cachePrefix}_$source\_$locale';
 
@@ -993,7 +1036,10 @@ class HomeRepository {
     if (_inFlight != null) return _inFlight;
     if (DateTime.now().isBefore(_nextAttemptAt)) return _current;
 
-    _inFlight = _fetchFresh().whenComplete(() => _inFlight = null);
+    _inFlight = _fetchFresh().whenComplete(() {
+      _inFlight = null;
+      _firstFetchSettled = true;
+    });
     return _inFlight;
   }
 

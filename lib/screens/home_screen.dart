@@ -21,6 +21,7 @@ import '../theme/glass_tokens.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/home_sections.dart';
+import '../widgets/home_skeleton.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_options_sheet.dart';
@@ -104,44 +105,20 @@ class _HomeScreenState extends State<HomeScreen>
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _buildHeader(context)),
-              // Only a real carousel needs separating from what follows. When it
-              // collapses, an unconditional spacer left a band of dead space
-              // under the title on every cold start.
+              // One placeholder for the whole body: the hero, the lower
+              // sections, or the retry. Keeping them in one sliver is what lets
+              // the placeholder reserve exactly the space the real content will,
+              // so the swap does not shift the header or the scroll extent.
               SliverToBoxAdapter(
-                child: SizedBox(
-                  height: _hasHero(context.read<MusicProvider>())
-                      ? 12.0
-                      : t.HomeTokens.headerToContent,
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: StaggerIn(
-                  controller: _entry,
-                  interval:
-                      const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
-                  child: _buildTopPicks(context),
-                ),
-              ),
-              // Second+ tiers: rebuild only when Home content lists change,
-              // never on playback ticks or palette updates.
-              SliverToBoxAdapter(
-                child: Selector<MusicProvider, int>(
-                  selector: (_, p) => p.homeContentVersion,
-                  child: _LowerSections(
-                    bottomInset: bottomInset,
-                    // The hero lives in its own sliver, so the gap the lower
-                    // sections space themselves by never applies between it and
-                    // the first of them. Sized to the hero only: when it
-                    // collapses there is nothing to separate.
-                    topGap: _hasHero(context.read<MusicProvider>())
-                        ? t.HomeTokens.sectionGap
-                        : 0.0,
-                    excludeHeroSectionId:
-                        _topPicksList(context.read<MusicProvider>()).isNotEmpty
-                            ? null
-                            : _heroCandidate(context.read<MusicProvider>())?.$1.id,
-                  ),
-                  builder: (context, version, lower) => lower!,
+                child: _HomeBody(
+                  bottomInset: bottomInset,
+                  entryController: _entry,
+                  heroBuilder: _buildTopPicks,
+                  hasHeroHint: _hasHero(context.read<MusicProvider>()),
+                  excludeHeroSectionId:
+                      _topPicksList(context.read<MusicProvider>()).isNotEmpty
+                          ? null
+                          : _heroCandidate(context.read<MusicProvider>())?.$1.id,
                 ),
               ),
             ],
@@ -812,6 +789,210 @@ class _VideoShelf extends StatelessWidget {
 /// Content priority: curated feed shelves (honest source titles) > local
 /// overlays (jump back in, playlists, moods) > legacy fallback sections
 /// when no feed exists yet.
+/// Hero, lower sections, or a retry - whichever the load state calls for.
+///
+/// A cold start with nothing cached shows [HomeSkeleton]; the same screen with a
+/// feed shows the content, and a load that settled with nothing shows a retry the
+/// user can actually press.
+///
+/// The bounded wait is the part that matters. The provider reports a settled
+/// failure, but a request that never returns at all - a socket parked open, a
+/// request that never times out - would leave the skeleton running for ever. A
+/// placeholder that cannot resolve is worse than an honest one, because it tells
+/// the listener to keep waiting when nobody is going to arrive. So the skeleton
+/// also gives up on its own after [_kSkeletonGiveUpAfter].
+class _HomeBody extends StatefulWidget {
+  const _HomeBody({
+    required this.bottomInset,
+    required this.entryController,
+    required this.heroBuilder,
+    required this.hasHeroHint,
+    this.excludeHeroSectionId,
+  });
+
+  final double bottomInset;
+  final String? excludeHeroSectionId;
+  final bool hasHeroHint;
+
+  /// Owned by the screen: the entry choreography controller must outlive any
+  /// swap between placeholder and content, so the skeleton cannot own it.
+  final AnimationController entryController;
+  final WidgetBuilder heroBuilder;
+
+  @override
+  State<_HomeBody> createState() => _HomeBodyState();
+}
+
+class _HomeBodyState extends State<_HomeBody> {
+  /// Long enough for a cold start on a slow connection - the feed request plus
+  /// the InnerTube warm-up it waits on routinely runs several seconds - and short
+  /// enough that a hung request does not strand the listener on a shimmer.
+  static const Duration _kSkeletonGiveUpAfter = Duration(seconds: 12);
+
+  bool _gaveUp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _armGiveUpTimer();
+  }
+
+  void _armGiveUpTimer() {
+    _gaveUpTimer?.cancel();
+    _gaveUpTimer = Timer(_kSkeletonGiveUpAfter, () {
+      if (!mounted) return;
+      setState(() => _gaveUp = true);
+    });
+  }
+
+  Timer? _gaveUpTimer;
+
+  @override
+  void dispose() {
+    _gaveUpTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MusicProvider>();
+    final showSkeleton = provider.isHomeLoading && !_gaveUp;
+
+    if (showSkeleton) {
+      _armGiveUpTimer();
+      return HomeSkeleton(
+        bottomInset: widget.bottomInset,
+        withHero: widget.hasHeroHint,
+      );
+    }
+
+    final failed = provider.isHomeLoadExhausted || _gaveUp;
+    if (failed) {
+      return _HomeRetry(
+        bottomInset: widget.bottomInset,
+        onRetry: () {
+          setState(() => _gaveUp = false);
+          _armGiveUpTimer();
+          context.read<MusicProvider>().refreshHomeFeed();
+        },
+      );
+    }
+
+    return _RealHomeBody(
+      bottomInset: widget.bottomInset,
+      excludeHeroSectionId: widget.excludeHeroSectionId,
+      entryController: widget.entryController,
+      heroBuilder: widget.heroBuilder,
+      hasHeroHint: widget.hasHeroHint,
+    );
+  }
+}
+
+/// The screen's real content: hero plus lower sections.
+class _RealHomeBody extends StatelessWidget {
+  const _RealHomeBody({
+    required this.bottomInset,
+    required this.entryController,
+    required this.heroBuilder,
+    required this.hasHeroHint,
+    this.excludeHeroSectionId,
+  });
+
+  final double bottomInset;
+  final String? excludeHeroSectionId;
+  final bool hasHeroHint;
+  final AnimationController entryController;
+  final WidgetBuilder heroBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    // Only a real carousel needs separating from what follows. When it collapses,
+    // an unconditional spacer left a band of dead space under the title on every
+    // cold start.
+    final hasHero = hasHeroHint;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: hasHero ? 12.0 : t.HomeTokens.headerToContent),
+        if (hasHero)
+          StaggerIn(
+            controller: entryController,
+            interval: const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
+            child: heroBuilder(context),
+          ),
+        Selector<MusicProvider, int>(
+          selector: (_, p) => p.homeContentVersion,
+          child: _LowerSections(
+            bottomInset: bottomInset,
+            // The hero is its own block here, so the section gap has to be
+            // applied across that boundary explicitly.
+            topGap: hasHero ? t.HomeTokens.sectionGap : 0.0,
+            excludeHeroSectionId: excludeHeroSectionId,
+          ),
+          builder: (context, version, lower) => lower!,
+        ),
+      ],
+    );
+  }
+}
+
+/// The load settled with nothing to show, and a retry is the honest response.
+class _HomeRetry extends StatelessWidget {
+  const _HomeRetry({required this.bottomInset, required this.onRetry});
+
+  final double bottomInset;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(t.HomeTokens.contentPadding, 48,
+          t.HomeTokens.contentPadding, 100 + bottomInset),
+      child: Column(
+        children: [
+          Icon(
+            Icons.cloud_off_rounded,
+            size: 34,
+            color: Colors.white.withValues(alpha: 0.28),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            "Couldn't load your Home",
+            style: t.HomeTokens.sectionTitle(context)
+                .copyWith(fontSize: 20, fontWeight: FontWeight.w700),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Check your connection and try again.',
+            style: t.HomeTokens.cardMetadata(context),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 22),
+          GlassSurface(
+            tier: GlassTier.card,
+            borderRadius: GlassTokens.radiusButton,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onRetry();
+              },
+              borderRadius: BorderRadius.circular(GlassTokens.radiusButton),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 26, vertical: 13),
+                child: Text('Try again',
+                    style: t.HomeTokens.cardTitle(context)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LowerSections extends StatelessWidget {
 const _LowerSections({
       required this.bottomInset,
