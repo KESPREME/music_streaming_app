@@ -104,7 +104,16 @@ class _HomeScreenState extends State<HomeScreen>
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _buildHeader(context)),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              // Only a real carousel needs separating from what follows. When it
+              // collapses, an unconditional spacer left a band of dead space
+              // under the title on every cold start.
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: _hasHero(context.read<MusicProvider>())
+                      ? 12.0
+                      : t.HomeTokens.headerToContent,
+                ),
+              ),
               SliverToBoxAdapter(
                 child: StaggerIn(
                   controller: _entry,
@@ -120,9 +129,17 @@ class _HomeScreenState extends State<HomeScreen>
                   selector: (_, p) => p.homeContentVersion,
                   child: _LowerSections(
                     bottomInset: bottomInset,
-                    excludeHeroSectionId: _topPicksList(context.read<MusicProvider>()).isNotEmpty
-                        ? null
-                        : _heroCandidate(context.read<MusicProvider>())?.$1.id,
+                    // The hero lives in its own sliver, so the gap the lower
+                    // sections space themselves by never applies between it and
+                    // the first of them. Sized to the hero only: when it
+                    // collapses there is nothing to separate.
+                    topGap: _hasHero(context.read<MusicProvider>())
+                        ? t.HomeTokens.sectionGap
+                        : 0.0,
+                    excludeHeroSectionId:
+                        _topPicksList(context.read<MusicProvider>()).isNotEmpty
+                            ? null
+                            : _heroCandidate(context.read<MusicProvider>())?.$1.id,
                   ),
                   builder: (context, version, lower) => lower!,
                 ),
@@ -208,6 +225,15 @@ class _HomeScreenState extends State<HomeScreen>
     }
     return const [];
   }
+
+  /// Whether [_buildTopPicks] will render a carousel rather than collapse.
+  ///
+  /// Needed by the sliver list to decide whether a gap belongs above the lower
+  /// sections and below the header. Answering that by building the carousel and
+  /// inspecting its type would construct the whole widget - artwork sizing,
+  /// palette, the lot - on every frame just to ask a yes/no question.
+  bool _hasHero(MusicProvider provider) =>
+      _topPicksList(provider).isNotEmpty || _heroCandidate(provider) != null;
 
   Widget _buildTopPicks(BuildContext context) {
     final provider = context.watch<MusicProvider>();
@@ -329,6 +355,36 @@ void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
 /// One curated-feed shelf rendered through the presentation planner
 /// (spec #3/#41): semantic classification → layout kind → geometry.
 /// The section's own title displays verbatim; provenance never re-titles.
+/// Whether a feed section will render anything.
+///
+/// Defined once and consulted twice: by `_LowerSections` before adding the
+/// section, and by `_FeedSection.build` when deciding what to return. The
+/// parent has to know because a section that collapses to zero still occupies
+/// its slot in the list - and therefore its inter-section gap - unless the
+/// parent declines to add it. Keeping one definition is what stops the two
+/// from drifting, which is how a "collapsed" shelf kept its gap for so long.
+bool _feedSectionRenders(HomeSection section) {
+  switch (planPresentation(section).layoutKind) {
+    case HomeLayoutKind.compactList:
+      // Playable rows only: collection items carry no videoId, so they cannot
+      // become a row, and a shelf of them is not a list.
+      final rows = section.items.map(homeItemToTrack).whereType<Track>().length;
+      return rows >= 3;
+    case HomeLayoutKind.artistRail:
+    case HomeLayoutKind.landscapeRail16x9:
+    case HomeLayoutKind.playlistRail:
+      return true;
+    case HomeLayoutKind.squareGrid:
+      return section.items.isNotEmpty;
+    case HomeLayoutKind.squareRail:
+    // heroCarousel and portraitRail have no dedicated branch and fall through
+    // to the square rail, so they collapse on the same condition.
+    case HomeLayoutKind.heroCarousel:
+    case HomeLayoutKind.portraitRail:
+      return section.items.length >= 3;
+  }
+}
+
 class _FeedSection extends StatelessWidget {
   const _FeedSection({required this.section});
 
@@ -342,10 +398,14 @@ class _FeedSection extends StatelessWidget {
 
     // Zero-invisible-space (spec #21): unrenderable counts collapse
     // entirely — no reserved rail/grid geometry for absent content.
+    //
+    // The parent already declined to add a section that fails
+    // `_feedSectionRenders`, so reaching shrink here means the section list
+    // changed under us. Keep the guard rather than trust that.
+    if (!_feedSectionRenders(section)) return const SizedBox.shrink();
+
     if (plan.layoutKind == HomeLayoutKind.compactList) {
-      return tracks.length >= 3
-          ? _CompactListSection(section: section, tracks: tracks)
-          : const SizedBox.shrink();
+      return _CompactListSection(section: section, tracks: tracks);
     }
     if (plan.layoutKind == HomeLayoutKind.artistRail) {
       return _ArtistShelf(section: section);
@@ -357,15 +417,11 @@ class _FeedSection extends StatelessWidget {
       return _PlaylistShelf(section: section, tracks: tracks);
     }
     if (plan.layoutKind == HomeLayoutKind.squareGrid) {
-      return section.items.isNotEmpty
-          ? _AlbumGridSection(section: section)
-          : const SizedBox.shrink();
+      return _AlbumGridSection(section: section);
     }
     // squareRail fallback — per-item dispatch (mixed shelves may contain
     // songs, videos AND playlist/album cards).
-    return section.items.length >= 3
-        ? _SquareRailSection(section: section)
-        : const SizedBox.shrink();
+    return _SquareRailSection(section: section);
   }
 }
 
@@ -523,7 +579,7 @@ class _ArtistShelf extends StatelessWidget {
       children: [
         HomeSectionHeader(title: section.title),
         SizedBox(
-          height: 96 + homeRailTextBlockHeight(context),
+          height: homeArtistPortraitHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -757,13 +813,19 @@ class _VideoShelf extends StatelessWidget {
 /// overlays (jump back in, playlists, moods) > legacy fallback sections
 /// when no feed exists yet.
 class _LowerSections extends StatelessWidget {
-  const _LowerSections({
-    required this.bottomInset,
-    this.excludeHeroSectionId,
-  });
+const _LowerSections({
+      required this.bottomInset,
+      required this.topGap,
+      this.excludeHeroSectionId,
+    });
 
-  final double bottomInset;
-  final String? excludeHeroSectionId;
+    final double bottomInset;
+
+    /// Space between a rendered hero carousel and the first section below it.
+    /// The hero is a separate sliver, so the inter-section gap does not reach
+    /// across that boundary.
+    final double topGap;
+    final String? excludeHeroSectionId;
 
   @override
   Widget build(BuildContext context) {
@@ -816,6 +878,13 @@ class _LowerSections extends StatelessWidget {
       for (final section in feedSections) {
         final plan = planPresentation(section);
         if (kDebugMode) renderedKinds.add(plan.semanticType.name);
+        if (!_feedSectionRenders(section)) {
+          if (kDebugMode) {
+            debugPrint('HOME_UI collapsed section="${section.title}" '
+                'kind=${plan.layoutKind.name} items=${section.items.length}');
+          }
+          continue;
+        }
         sections.add(_FeedSection(section: section));
       }
     } else {
@@ -892,19 +961,23 @@ class _LowerSections extends StatelessWidget {
     // EXPLORATION — moods: real Moods & Genres discovery from InnerTube
     sections.add(const _MoodsSection());
 
-    // Collapsed sections return SizedBox.shrink() — they must NOT
-    // contribute their inter-section spacing (the giant-gap bug).
-    final rendered = <Widget>[];
-    for (final widget in sections) {
-      if (widget is SizedBox) continue; // collapsed section — zero height
-      rendered.add(widget);
-    }
+    // `_MoodsSection` is always last, so a gap after it when it collapses to
+    // nothing just merges into the tail spacer below and is never seen.
+    //
+    // There is deliberately no `is SizedBox` filter here any more. It looked
+    // right and never fired: `sections` holds `_FeedSection` and friends, and
+    // a section that collapses returns `SizedBox.shrink()` from its own build.
+    // The instance in this list is still the section widget, so the test was
+    // always false and every collapsed shelf still consumed a full gap - which
+    // is the giant-gap bug the comment claimed to be preventing. Feeds gate on
+    // `_feedSectionRenders` before they are added instead, so a section that
+    // will not render is never in the list.
     if (kDebugMode) {
       // UI accounting (spec #25/#44): composer count vs rendered count —
       // presentation-level loss is never silent.
       final composerCount = provider.homeFeed?.sections.length ?? 0;
       debugPrint('HOME_UI composerSections=$composerCount '
-          'rendered=${rendered.length} '
+          'rendered=${sections.length} '
           'kinds=${renderedKinds.isEmpty ? "" : renderedKinds.join(",")}');
       // Section visibility diagnostics (spec #78).
       debugPrint(
@@ -917,9 +990,10 @@ class _LowerSections extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < rendered.length; i++) ...[
-          if (i > 0) const SizedBox(height: 30),
-          rendered[i],
+        if (topGap > 0) SizedBox(height: topGap),
+        for (var i = 0; i < sections.length; i++) ...[
+          if (i > 0) const SizedBox(height: t.HomeTokens.sectionGap),
+          sections[i],
         ],
         SizedBox(height: bottomInset - 88 + 28),
       ],
@@ -1368,7 +1442,7 @@ class _ArtistsSection extends StatelessWidget {
       children: [
         const HomeSectionHeader(title: 'Artists'),
         SizedBox(
-          height: 96 + homeRailTextBlockHeight(context),
+          height: homeArtistPortraitHeight(context),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(

@@ -254,173 +254,6 @@ class MusicProvider
     notifyListeners();
   }
 
-  /// Curated pool of verified Top Global & English Hits and Popular Hindi Hits
-  /// used to seed Quick Picks when not logged in (spec: Guest Quality Floor).
-  static final List<Track> _kGuestCuratedHitTracks = [
-    // ── Top Global & English Hits ──
-    Track(
-      id: '4NRXx6U8ABQ',
-      trackName: 'Blinding Lights',
-      artistName: 'The Weeknd',
-      albumName: 'After Hours',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Pop',
-    ),
-    Track(
-      id: 'H5v3kku4y6Q',
-      trackName: 'As It Was',
-      artistName: 'Harry Styles',
-      albumName: "Harry's House",
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Pop',
-    ),
-    Track(
-      id: 'TUVcZfQe-Kw',
-      trackName: 'Levitating',
-      artistName: 'Dua Lipa',
-      albumName: 'Future Nostalgia',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/TUVcZfQe-Kw/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Pop',
-    ),
-    Track(
-      id: 'ApXoWvfEYVU',
-      trackName: 'Sunflower',
-      artistName: 'Post Malone, Swae Lee',
-      albumName: 'Spider-Man: Into the Spider-Verse',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hip-Hop',
-    ),
-    Track(
-      id: 'V1Pl8CzNzCw',
-      trackName: 'Birds of a Feather',
-      artistName: 'Billie Eilish',
-      albumName: 'HIT ME HARD AND SOFT',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/V1Pl8CzNzCw/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Pop',
-    ),
-    Track(
-      id: 'kPhpHvnnn0E',
-      trackName: 'Die With A Smile',
-      artistName: 'Lady Gaga, Bruno Mars',
-      albumName: 'Die With A Smile',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/kPhpHvnnn0E/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Pop',
-    ),
-    Track(
-      id: 'ic8j13piAhQ',
-      trackName: 'Cruel Summer',
-      artistName: 'Taylor Swift',
-      albumName: 'Lover',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/ic8j13piAhQ/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Pop',
-    ),
-    Track(
-      id: '2S24h8LJvpc',
-      trackName: 'Borderline',
-      artistName: 'Tame Impala',
-      albumName: 'The Slow Rush',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/2S24h8LJvpc/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Alternative',
-    ),
-    Track(
-      id: 'dvgZkm1xWPE',
-      trackName: 'Viva La Vida',
-      artistName: 'Coldplay',
-      albumName: 'Viva la Vida',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/dvgZkm1xWPE/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Alternative',
-    ),
-    // ── Top Popular Hindi Hits ──
-    Track(
-      id: 'BddP6PYotfs',
-      trackName: 'Kesariya',
-      artistName: 'Arijit Singh, Pritam, Amitabh Bhattacharya',
-      albumName: 'Brahmastra',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/BddP6PYotfs/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hindi Pop',
-    ),
-    Track(
-      id: 'gljiO88hYrg',
-      trackName: 'Pehle Bhi Main',
-      artistName: 'Vishal Mishra, Raj Shekhar',
-      albumName: 'ANIMAL',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/gljiO88hYrg/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hindi Pop',
-    ),
-    Track(
-      id: 'ElZfdU54Cp8',
-      trackName: 'Apna Bana Le',
-      artistName: 'Arijit Singh, Sachin-Jigar',
-      albumName: 'Bhediya',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/ElZfdU54Cp8/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hindi Pop',
-    ),
-    Track(
-      id: '284Ov7ysmfA',
-      trackName: 'Channa Mereya',
-      artistName: 'Arijit Singh, Pritam',
-      albumName: 'Ae Dil Hai Mushkil',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/284Ov7ysmfA/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hindi Pop',
-    ),
-    Track(
-      id: 'hhuHYI0_q20',
-      trackName: 'Ranjha',
-      artistName: 'Jasleen Royal, B Praak',
-      albumName: 'Shershaah',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/hhuHYI0_q20/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hindi Romantic',
-    ),
-    Track(
-      id: 'VuG7FT9dUJ4',
-      trackName: 'Maan Meri Jaan',
-      artistName: 'King',
-      albumName: 'Champagne Talk',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/VuG7FT9dUJ4/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Hindi Pop',
-    ),
-    Track(
-      id: 'gvyUuxdRdR4',
-      trackName: 'Husn',
-      artistName: 'Anuv Jain',
-      albumName: 'Husn',
-      previewUrl: '',
-      albumArt: 'https://i.ytimg.com/vi/gvyUuxdRdR4/hqdefault.jpg',
-      source: 'youtube',
-      genre: 'Indie Pop',
-    ),
-  ];
-
   /// Generate Quick Picks from the composed feed + local signals +
   /// chart data (Recommendation Engine 2.0). Deterministic; no randomization.
   void _generateQuickPicks(HomeFeed feed) {
@@ -439,26 +272,20 @@ class MusicProvider
             ))
         .toList();
 
-    // When not logged in or during cold-start, seed Quick Picks with verified
-    // top Global & English hits and Popular Hindi hits instead of random regional items.
-    final isGuest = !isLoggedIn ||
-        (_likedSongs.isEmpty &&
-            _recentlyPlayed.isEmpty &&
-            _recentSearchQueries.isEmpty);
-
     // Chart tracks carry their chart position — the only legitimate
     // numeric popularity signal we receive (popularity prior, spec #19).
-    final baseChart = _chartRankedTracks();
-    final List<Track> chartWithRank;
-    if (isGuest) {
-      final seenChartIds = <String>{};
-      chartWithRank = [
-        ..._kGuestCuratedHitTracks,
-        ...baseChart,
-      ].where((t) => seenChartIds.add(t.id)).toList();
-    } else {
-      chartWithRank = baseChart;
-    }
+    //
+    // There is deliberately no guest seed pool here any more. It was a
+    // hardcoded list of sixteen hand-written tracks, which is the thing this
+    // project's own rules forbid: a section nobody can verify, going stale
+    // silently. Live checks found six of the sixteen video IDs dead (their
+    // thumbnails 404, so they rendered as blank squares in Quick Picks) and two
+    // more resolving to a completely different song than the label claimed.
+    //
+    // An honest cold start is now simply a weak one: the real chart plus the
+    // native feed, both of which carry their own artwork. The loading skeleton
+    // covers the window before they arrive.
+    final chartWithRank = _chartRankedTracks();
 
     final picks = _quickPicksEngine.generate(
       nativeTracks: nativeTracks,
@@ -513,16 +340,21 @@ class MusicProvider
       // favorite artist is highly visible; validation drops staleness.
       final ranked = NewReleasesEngineV2().generate(
         releases: [
-          for (final track in releases)
-            RichCandidate.fromTrack(
-              trackId: track.id,
-              title: track.trackName,
-              artistName: track.artistName,
-              source: 'new_release', // trusted new-releases shelf
-              genre: track.genre,
-              albumName: track.albumName,
-              durationMs: track.durationMs,
-            ),
+for (final track in releases)
+        RichCandidate.fromTrack(
+          trackId: track.id,
+          title: track.trackName,
+          artistName: track.artistName,
+          source: 'new_release', // trusted new-releases shelf
+          genre: track.genre,
+          albumName: track.albumName,
+          durationMs: track.durationMs,
+          // Carried through so the release rail and any Quick Pick drawn from
+          // it show a cover. Omitting this is what left every new-release track
+          // with a blank tile, because the engine's fallback below has nothing
+          // to fall back to.
+          albumArt: track.albumArtUrl,
+        ),
         ],
         profile: _buildTasteProfile(),
         limit: 12,

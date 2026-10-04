@@ -158,9 +158,16 @@ class RailCard extends StatelessWidget {
                         memCacheWidth: 240,
                         fadeInDuration: const Duration(milliseconds: 200),
                         errorWidget: (_, __, ___) => Container(
-                            color: t.HomeTokens.placeholderColor(context)),
+                            color: t.HomeTokens.placeholderColor(context),
+                            child: const Icon(Icons.music_note_rounded,
+                                color: Colors.white24),
+                          ),
                       )
-                    : Container(color: t.HomeTokens.placeholderColor(context)),
+                    : Container(
+                        color: t.HomeTokens.placeholderColor(context),
+                        child: const Icon(Icons.music_note_rounded,
+                            color: Colors.white24),
+                      ),
               ),
             ),
             const SizedBox(height: 8),
@@ -226,8 +233,15 @@ class ForYouRow extends StatelessWidget {
                         fit: BoxFit.cover,
                         memCacheWidth: 120,
                         fadeInDuration: const Duration(milliseconds: 180),
+                        // A failed load gets the same glyph as an absent URL.
+                        // Painting one and not the other made a broken cover
+                        // read as a deliberate blank tile, which is exactly how
+                        // a dead thumbnail went unnoticed for so long.
                         errorWidget: (_, __, ___) => Container(
-                            color: t.HomeTokens.placeholderColor(context)),
+                          color: t.HomeTokens.placeholderColor(context),
+                          child: const Icon(Icons.music_note_rounded,
+                              color: Colors.white24),
+                        ),
                       )
                     : Container(
                         color: t.HomeTokens.placeholderColor(context),
@@ -542,5 +556,29 @@ class StaggerIn extends StatelessWidget {
 double homeRailTextBlockHeight(BuildContext context) {
   final scale = MediaQuery.textScalerOf(context).scale(1.0);
   const base = 20.0 + 2.0 + 20.0 + 4.0;
+  return base * scale;
+}
+
+/// Height of one [ArtistPortrait]: the circle, the gap under it, and the single
+/// line of metadata.
+///
+/// Deliberately not [homeRailTextBlockHeight]. That measures a two-line block
+/// (title + subtitle) for a square card; a portrait has a caption, not a
+/// caption and a sub-caption. Using the two-line figure to size a portrait rail
+/// reserved 142dp for 99dp of content, which showed up as a band of dead space
+/// under every artist shelf on the screen.
+///
+/// The line is budgeted at 20 rather than the 13px font size, because that is
+/// what the font actually produces - the same figure [homeRailTextBlockHeight]
+/// arrived at by live calibration - plus the same 4dp slack for device
+/// font-metric variance. Deriving it as `fontSize * 1.2` came out 3px short and
+/// overflowed the Column.
+///
+/// Lives next to the widget rather than at the call site so the rail that
+/// reserves the space and the portrait that fills it cannot disagree.
+double homeArtistPortraitHeight(BuildContext context) {
+  final scale = MediaQuery.textScalerOf(context).scale(1.0);
+  // 72 circle diameter + 8 gap + one metadata line + 4 slack.
+  const base = 72.0 + 8.0 + 20.0 + 4.0;
   return base * scale;
 }

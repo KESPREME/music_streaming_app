@@ -11,7 +11,12 @@ import 'package:google_fonts/google_fonts.dart';
 abstract final class HomeTokens {
   // ── Content grid (spec #3) ──────────────────────────────────────────────
   /// Horizontal outer margin for headers, rails, grids, lists.
-  static const double contentPadding = 16.0;
+  ///
+  /// 10dp, not 16. One constant, shared with the floating nav bar and the
+  /// mini player, so the leading edge of a card, a row and a heading lines up
+  /// with the edge of the chrome stacked below it. A page-level gutter that
+  /// differs from the bar's is what makes a screen look like two screens.
+  static const double contentPadding = 10.0;
 
   /// Available content width after insets.
   static double contentWidth(double screenWidth) =>
@@ -19,10 +24,18 @@ abstract final class HomeTokens {
 
   // ── Spacing (spec #21/#22/#43) ──────────────────────────────────────────
   /// Gap between section header and its content.
-  static const double headerToContent = 10.0;
+  ///
+  /// Zero. A section title is a label for what sits directly under it, and any
+  /// gap here reads as the header belonging to something else. The separation
+  /// you actually want between sections lives in [sectionGap], below.
+  static const double headerToContent = 0.0;
 
   /// Gap between consecutive sections.
-  static const double sectionGap = 30.0;
+  ///
+  /// 26dp. Applied as bottom padding on each section rather than as a gap
+  /// inserted between them, so a section that collapses to nothing takes its
+  /// own spacing with it instead of leaving a hole.
+  static const double sectionGap = 26.0;
 
   /// Gap between cards in a rail.
   static const double cardGap = 12.0;

@@ -151,7 +151,10 @@ class NewReleasesEngineV2 {
         artistName: release.artists.join(', '),
         albumName: release.albumName ?? '',
         previewUrl: '',
-        albumArt: '',
+        // Read the candidate's artwork instead of discarding it. This used to
+        // be a hardcoded empty string, so every track this engine produced
+        // rendered as a placeholder no matter how good its cover was upstream.
+        albumArt: release.artworkUrl ?? '',
         source: 'youtube',
       );
 }
