@@ -8,7 +8,12 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 235/235 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 522/522 tests green.
+
+> **GATE (current):** `flutter analyze` = **195 issues, zero errors** (195 is the
+> baseline; several commits have moved it DOWN by removing dangling exports).
+> `flutter test` = **522 passing**. Debug APK builds. Treat 195 as the baseline —
+> a rise means something new was introduced, not that the file grew.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
 - State management: `provider` (NOT Riverpod — immutable PlaybackState projection used instead)
@@ -17,7 +22,18 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 23
 
 ---
 
-## CURRENT STATE (commit 105b1a3+)
+## CURRENT STATE (commit f10bb10)
+
+### Auth / session (c12c63a — the session used to be forgotten every restart)
+`AuthService.init()` had **ZERO call sites**: cookies were written to
+`SharedPreferences['youtube_cookies']` and the read path was dead code. `main()`
+now awaits `init()` **before** `runApp`. Ordering is load-bearing:
+`MusicProvider`'s `AuthSessionReset` samples `isLoggedIn` in its constructor
+(during `runApp`), so a restore issued after that reads as a login and resets the
+InnerTube session + refetches the feed on every cold start. `init()` is idempotent
+(`_restored` flag) so a second call cannot fake a flip; `debugResetRestoreFlag()`
+is test-only. 10 tests in `test/auth_session_persistence_test.dart`, including two
+that pin the ordering in BOTH directions.
 
 ### Data pipeline (STABLE — do not casually rewrite)
 ```
@@ -39,12 +55,43 @@ InnerTube browseJson(FEmusic_home)  [dynamic clientVersion 1.YYYYMMDD.01.00,
   + isDegraded vs _bestKnown (high-water mark — NOT latest-accepted!)
   + bounded enrichment (chart + new_release) when native <4 sections
   ↓ HomeRepository  [SWR 45min, backoff 30s×2^n max 2h, in-flight coalescing,
-  cache key = home_feed_snapshot_v4_primary_<locale>, schema+parser+ctx
-  version-validated; section memory persisted to home_section_memory_v1]
+  cache key = home_feed_snapshot_v5_<identity>_primary_<locale>,
+  schema+parser+ctx version-validated; section memory persisted to
+  home_section_memory_v1; isColdStarting / isColdStartExhausted exposed]
   ↓ MusicProvider._homeFeed + .homeFeed + .quickPicks + _bumpHomeContent()
-  ↓ HomeScreen: Selector(homeContentVersion) → _LowerSections
-  ↓ _FeedSection → planPresentation() → layout kind → widget
+  ↓ HomeScreen: _HomeBody (loading gate) → _RealHomeBody → Selector → _LowerSections
+  ↓ _FeedSection → _feedSectionRenders() gate → planPresentation() → widget
 ```
+
+### Home loading states (NEW 964a787 — the screen had NO loading state at all)
+- `HomeRepository.isColdStarting` = `_current == null && _inFlight != null &&
+  !_firstFetchSettled`. ONLY true on a cold start with nothing cached. A refresh
+  over a cached feed is deliberately NOT loading — flashing a skeleton over good
+  content reads as the app discarding work it had done.
+- `isColdStartExhausted` = settled with nothing. `MusicProvider.isHomeLoadExhausted`
+  = `!hasHomeContent && _homeLoadFailed`.
+- **`hasHomeContent` is the important one.** A null feed still renders the local
+  fallback sections (Jump back in, Quick Picks, Trending, New releases,
+  playlists). Gating "Couldn't load Home" on the feed alone covered a WORKING
+  screen with an error and made those sections unreachable. Retry requires that
+  nothing at all can render.
+- `awaitFirstFetchSettled()`: `load()` deliberately doesn't block on network, so
+  a caller with an empty screen had no way to learn the outcome. Provider awaits
+  it when `feed == null` and sets `_homeLoadFailed` + `_bumpHomeContent()`.
+- A successful `refreshHomeFeed()` clears `_homeLoadFailed` — otherwise the flag
+  survives and keeps the message up over a feed that is plainly there.
+- `_HomeBody` gives up on its own after 12s. **The timer must be armed on the
+  loading TRANSITION, not from `build()`** — the widget watches the provider, so
+  re-arming every build resets the countdown forever and the shimmer never gives
+  up. That was a real bug.
+- `HomeSkeleton` (lib/widgets/home_skeleton.dart) reserves exactly what the real
+  sections do: hero clamp expression repeated, rail = card + text block + the same
+  12dp slack, artist = portrait metric + 28dp gap. Skeletons must pixel-match
+  their content or they cause the jump they exist to prevent.
+- Shimmer primitives are public in `search_skeleton.dart` (`ShimmerBlock`,
+  `ShimmerPainter`) and shared by both screens. `kShimmerBandFraction` 0.42
+  (search) vs `kHomeShimmerBandFraction` 0.5 (home — a narrow band over a
+  screen-long distance reads as a scanning line).
 
 ### Playback (STABLE)
 - `HomePlaybackController.activate()` routes ALL Home taps: song+11char-videoId→
@@ -77,18 +124,96 @@ lib/services/recommendation/
 - RecommendationService gained: signalFor(trackId) → RecommendationSignalView,
   topArtistsForPicks(limit) — used via _QuickPicksSignalAdapter.
 
+### Home gaps — FOUR defects fixed (47ebe1f)
+1. **The collapse filter was DEAD CODE.** It tested `widget is SizedBox` against a
+   list of section *widgets*; the instance is always `_FeedSection`, never the
+   `SizedBox.shrink()` its build returns. So every collapsed shelf still ate a
+   30dp gap — the exact "giant-gap bug" the comment claimed to prevent. Feeds are
+   now gated by `_feedSectionRenders()` before being added; `_FeedSection.build`
+   calls the same predicate so the two cannot drift.
+2. Hero→lowerSections gap was **zero** (hero is a separate sliver). Now applied
+   across the boundary via `_LowerSections.topGap`.
+3. The 24dp spacer under "Home" was unconditional → hole on every cold start when
+   the hero collapsed. Now conditional on `_hasHero`.
+4. Artist rails reserved `96 + homeRailTextBlockHeight` (a TWO-line block) for
+   99dp of content → ~76dp dead band under every artist rail. New
+   `homeArtistPortraitHeight()` (104dp: 72 circle + 8 + 20 line + 4 slack) lives
+   NEXT TO the widget so rail and portrait cannot disagree.
+   **Do not derive that line as `fontSize * 1.2`** — it came out 3px short and
+   overflowed the Column. The font really produces ~20dp for a 13px line.
+
 ### Presentation (STABLE)
-- `HomeTokens` (lib/presentation/home/home_tokens.dart): contentPadding 16,
-  sectionGap 30, cardGap 12, headerToContent 10, heroCardFraction 0.88,
-  squareCardFraction 0.46, playlistCardFraction 0.38, videoCardFraction 0.78,
-  artistCardFraction 0.28; hero 4:5, square 1:1, video 16:9; heroRadius 20,
-  cardRadius 12; heroPlay 56/30.
-- Typography: homeTitle 32 bold, sectionTitle 24 bold, heroTitle 26 bold 2-line,
-  cardTitle 15.5 semibold, cardMetadata 13.5, compactTitle 15, compactMetadata 13.
-- `homeRailTextBlockHeight()` in home_sections.dart = 42dp base (LIVE-CALIBRATED:
-  33 was too small, caused 9px overflow). All rail heights = artwork + this.
-- `homeRailTextBlockHeight` lives in home_sections.dart — home_screen.dart
-  imports it via home_sections.dart.
+- `HomeTokens`: **contentPadding 10** (matches the floating chrome gutter so card
+  edges line up with the nav bar), **sectionGap 26**, **headerToContent 10**,
+  cardGap 12, heroCardFraction 0.88, squareCardFraction 0.46; hero 4:5, square
+  1:1; heroRadius 20, cardRadius 12; heroPlay 56/30.
+- **headerToContent is a deliberate DEPARTURE from BitChord**, which uses 0. Their
+  section title is a 22sp display face that carries its own air; ours is 24sp bold
+  on a tighter line and with no gap the title read as FUSED to the first card
+  (user feedback: "almost joined, separated by a thin sliver").
+- Typography: homeTitle 32 bold, sectionTitle 24 bold (`sectionTitleSize`), hero
+  **section** title 19 semibold (`heroSectionTitleSize` — quieter because the
+  carousel is 280-380dp of artwork and 24dp bold competed with it), heroTitle 26
+  bold 2-line (the CARD's own title — different token, don't confuse), cardTitle
+  15.5 semibold, cardMetadata 13.5, compactTitle 15, compactMetadata 13.
+- `HomeSectionHeader` takes an optional `style` so the hero can be quieter
+  without restyling every section.
+- `homeRailTextBlockHeight()` = 46dp base (LIVE-CALIBRATED: 33 was too small,
+  caused 9px overflow). All square-rail heights = card + this + 12 slack.
+
+### Hero carousel (f10bb10)
+- Was titled **'Quick Picks'** — same name as the compact Quick picks list on the
+  same screen, so the page read as glitched. Now **'For you'**, which also
+  describes the source honestly (history-seeded suggestions / engine picks /
+  chart).
+- **It only appeared after playing a track.** Root cause: `hasHeroHint` and
+  `excludeHeroSectionId` were sampled ONCE via `context.read` in the screen's
+  first build — before the chart landed — and passed as constructor args. Nothing
+  recomputed them until an unrelated rebuild. Both are now read inside
+  `_RealHomeBody`, which `context.watch`es the provider. The three helpers are
+  `static` for exactly this reason.
+- Hero source order: recommendedTracks → quickPicks → trendingTracks → feed
+  shelf. **The guest curated-hits pool was DELETED** (47ebe1f): 6 of its 16 hardcoded
+  video IDs were 404 and 2 more resolved to a different song than labelled.
+- **Cold start Quick Picks are therefore honestly weak** — real chart + native
+  feed only. The skeleton covers the window before they arrive. Do not "fix" this
+  by re-adding hardcoded tracks; that violates invariant 5.
+
+### Quick Picks artwork (47ebe1f)
+Three independent causes, all real:
+1. `music_provider.dart` new-release → `RichCandidate.fromTrack` dropped `albumArt`.
+2. `section_engines_v2.dart` `_toTrack` hardcoded `albumArt: ''`, ignoring
+   `release.artworkUrl`. Together these made EVERY new-release track artless.
+3. `ForYouRow`/`RailCard` `errorWidget` had no icon, so a 404 read as a deliberate
+   blank while an absent URL showed a music note. Both now paint the same glyph.
+
+### Playback equalizer — DEVICE HAZARD (1a53ce1)
+`audio_service.dart` put `AndroidEqualizer` in `androidAudioEffects`
+unconditionally. `AudioEffect._activate` runs on EVERY audio activation and the
+equalizer reads its band count from the platform there. On hardware that cannot
+create the effect (log: `EqualizerBundle id: -1 status 0 enabled 0`) the read
+throws a NullPointerException out of BOTH `play()` and `pause()` — the app skipped
+every track. `AudioEffect._activate` is **library-private**, so it cannot be
+overridden from another package; the only fix is to keep the effect out of the
+pipeline. It is now `enableEqualizer: false` by default.
+**Do not re-add it without a working UI AND a device-support check.**
+`EqualizerService` refuses to enable when `!isPlatformAvailable`, and bounds its
+`parameters` read with a 2s timeout (that Completer never completes when the
+effect is not in the pipeline, which would hang init forever).
+
+### Glass setup (c12c63a)
+- `lgw.LiquidGlassWidgets.initialize()` + `wrap(brightnessResolver: Theme.maybeBrightnessOf)`
+  in `main.dart`. Both were NEVER called: no shader pre-warm, no Reduce Motion /
+  High Contrast bridge, and glass shadows/borders vanish when app theme ≠ OS
+  theme. With no `theme:`/`adaptiveQuality:`, `wrap()` returns its child unchanged
+  (verified in the package source) — no Navigator/Directionality injected.
+- `MaterialApp.builder` wraps in `Material(type: transparency)`: lgw ships no
+  Material ancestor and under MaterialApp its `Text` renders with debug underlines.
+- `pubspec.lock` already had liquid_glass_widgets **1.8.1** / easy **4.3.4**; only
+  the constraint strings were stale. The "bump" was a no-op — verified against HEAD.
+- `adaptiveQuality` is deliberately OFF (experimental 3s benchmark, can shift
+  quality mid-session).
+
 - `home_presentation.dart`: classifySection() + planPresentation() —
   newReleases/albums → squareRail (NOT grid, user feedback).
 - Playlist/mood covers are SQUARE 168×168 (AspectRatio 1), NOT landscape —
@@ -101,8 +226,10 @@ lib/services/recommendation/
   via excludeHeroSectionId.
 - `_LowerSections` order: JumpBackIn → QuickPicks → feed sections (native order,
   hero excluded) → legacy fallback (if no feed) → Your playlists → Moods →
-  quiet ending. Inter-section gap: single `SizedBox(height: 30)`.
-- Collapsed sections (SizedBox.shrink) filtered BEFORE gap insertion.
+  quiet ending. Inter-section gap: `SizedBox(height: HomeTokens.sectionGap)` = 26.
+- **There is no collapse filter any more** — feeds are gated by
+  `_feedSectionRenders()` BEFORE being added, so a collapsed shelf is never in the
+  list and never takes a gap. The old `widget is SizedBox` test was dead code.
 - `_AlbumGridSection` (squareGrid) and `_SquareRailSection` (squareRail) both
   route through HomePlaybackController.activate per-item.
 - `_PlaylistShelf` routes through dispatcher (navigateCollection → push detail).
@@ -137,15 +264,22 @@ lib/services/recommendation/
 7. **NO gl override in browse context** — IP-inferred region. Muzo parity.
 8. **Player contexts keep frozen static clientVersion** (BotGuard/PO token
    version-sensitive). ONLY browse uses dynamic version.
-9. **Schema versions**: kHomeFeedSchemaVersion=4, kHomeParserVersion=6,
+9. **Schema versions**: kHomeFeedSchemaVersion=5, kHomeParserVersion=6,
    kHomeRequestContextVersion=2. Bump ALL THREE when parser/context changes;
-   old caches invalidate via fromJson null checks.
+   old caches invalidate via fromJson null checks. v5 because the cache key gained
+   an identity discriminator — a personalized snapshot must not be served to an
+   anonymous app.
 10. **Section memory persists** (home_section_memory_v1 key) and is TTL-swept
-    on load. clearHomeCache() also clears memory.
+   on load. clearHomeCache() also clears memory.
 11. **Stagger/hero/mini-player/nav are user-approved** — don't redesign without ask.
 12. **MY variant (material_you_*) is FROZEN** — 28 files untouched by agreement.
 13. **Playlist/mood covers are SQUARE** (user: collages were too small landscape).
 14. **New releases = squareRail** not grid (user: "make slider like others").
+15. **NEVER `dart format` innertube_service.dart / home_screen.dart /
+    home_tokens.dart wholesale.** It causes 200+/100- churn AND *creates* lint
+    findings by splitting pre-existing one-line `if`s. Also: `git checkout -- <f>`
+    restores from the INDEX — if edits are staged it silently re-applies them. Use
+    `git restore --source=HEAD --staged --worktree -- <f>`.
 
 ---
 
