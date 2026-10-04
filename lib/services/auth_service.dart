@@ -11,21 +11,43 @@ class AuthService extends ChangeNotifier {
   static const String _prefKeyCookies = 'youtube_cookies';
   Map<String, String> _cookies = {};
 
+  /// Guards against a second restore. Loading the session notifies listeners, and
+  /// `MusicProvider` treats any change in [isLoggedIn] as an identity flip - it
+  /// resets the InnerTube session, clears the stream cache and refetches the
+  /// feed. A restore that ran twice, or ran after `MusicProvider` had already
+  /// latched the anonymous state, would fire that whole teardown on a cold start
+  /// that did not actually change identity. See `main.dart`, where this is
+  /// awaited before `runApp` for the same reason.
+  bool _restored = false;
+
   bool get isLoggedIn => _cookies.isNotEmpty && _cookies.containsKey('SAPISID');
 
-  /// Initialize and load saved cookies
+  /// Load the saved session. Must complete before the first `MusicProvider` is
+  /// constructed, otherwise a signed-in user starts the app anonymous.
+  ///
+  /// Idempotent: safe to call more than once, only the first call reads storage.
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    final cookieString = prefs.getString(_prefKeyCookies);
-    if (cookieString != null) {
-      try {
-        _cookies = Map<String, String>.from(jsonDecode(cookieString));
-        notifyListeners();
-      } catch (e) {
-        debugPrint('AuthService: Failed to parse saved cookies: $e');
-      }
+    if (_restored) return;
+    _restored = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cookieString = prefs.getString(_prefKeyCookies);
+      if (cookieString == null) return;
+      final decoded = Map<String, String>.from(jsonDecode(cookieString) as Map);
+      if (decoded.isEmpty) return;
+      _cookies = decoded;
+      notifyListeners();
+    } catch (e) {
+      // A corrupt or unreadable blob must leave the app anonymous, never crash
+      // it on launch. The next successful sign-in overwrites the key.
+      debugPrint('AuthService: could not restore saved session: $e');
     }
   }
+
+  /// Forget that a restore happened. Test-only: lets one process exercise more
+  /// than one stored session.
+  @visibleForTesting
+  void debugResetRestoreFlag() => _restored = false;
 
   /// Save cookies extracted from WebView
   Future<void> saveCookies(Map<String, String> newCookies) async {

@@ -45,6 +45,29 @@ void main() async {
   // Opt-in only (--dart-define=PERF_TRACE=true). No-op in every normal build.
   PerfTrace.install();
 
+  // Warm the glass shader programs to disk-backed RAM before the first frame.
+  //
+  // This was never called, so the nav bar and mini player compiled their
+  // shaders lazily on first paint - the first glass surface in the app was the
+  // one that stuttered. Placed early on purpose: it is documented as pure
+  // disk-to-RAM I/O with no GPU work, so the audio and equalizer awaits below
+  // overlap with it instead of waiting on it.
+  //
+  // initialize() is also what installs the package's accessibility bridge
+  // (Reduce Motion / High Contrast). Without it, glass animates even when the
+  // user has asked the OS for less motion.
+  try {
+    await lgw.LiquidGlassWidgets.initialize();
+  } catch (e, s) {
+    // Non-fatal. Worst case the first glass surface compiles on first paint.
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: e,
+      stack: s,
+      library: 'mine_music/glass',
+      context: ErrorDescription('while pre-warming glass shaders'),
+    ));
+  }
+
   // Framework errors reach logcat through this hook. Without it a widget
   // assertion only ever appears in the on-screen banner, with no stack, which
   // makes it unreproducible outside the device it happened on.
@@ -97,22 +120,51 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   
+  // Restore the saved session BEFORE the first MusicProvider is constructed.
+  //
+  // `MusicProvider`'s `AuthSessionReset` reads `AuthService().isLoggedIn` in its
+  // constructor to decide whether a later change is a real identity flip. That
+  // happens during `runApp`. If the cookies were still sitting unread in
+  // preferences at that point, it would latch "anonymous", and the restore
+  // would then register as a login: reset the InnerTube session, clear the
+  // stream cache, and refetch the feed on every cold start.
+  //
+  // This is why the session appeared to be forgotten after a restart - `init()`
+  // existed but had no call site anywhere in the app.
+  try {
+    await AuthService().init();
+  } catch (e, s) {
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: e,
+      stack: s,
+      library: 'mine_music/auth',
+      context: ErrorDescription('while restoring the saved session'),
+    ));
+  }
+
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (context) => AccentController()),
-        ChangeNotifierProvider(
-          create: (context) => MusicProvider(
-            accentController: context.read<AccentController>(),
+    // Wrap outside MaterialApp: `brightnessResolver` is invoked with a context
+    // from inside it, so the glass shader reads the app's Theme rather than the
+    // raw OS brightness. Without it, glass shadows and borders disappear
+    // whenever the app theme and the system theme disagree.
+    lgw.LiquidGlassWidgets.wrap(
+      brightnessResolver: Theme.maybeBrightnessOf,
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (context) => AccentController()),
+          ChangeNotifierProvider(
+            create: (context) => MusicProvider(
+              accentController: context.read<AccentController>(),
+            ),
           ),
-        ),
-        ChangeNotifierProvider(create: (context) => AuthService()),
-        ChangeNotifierProvider(create: (context) => ThemeProvider()),
-        ChangeNotifierProvider(
-          create: (context) => AudioOutputService()..init(),
-        ),
-      ],
-      child: const MyApp(),
+          ChangeNotifierProvider(create: (context) => AuthService()),
+          ChangeNotifierProvider(create: (context) => ThemeProvider()),
+          ChangeNotifierProvider(
+            create: (context) => AudioOutputService()..init(),
+          ),
+        ],
+        child: const MyApp(),
+      ),
     ),
   );
 }
@@ -238,9 +290,17 @@ class _MyAppState extends State<MyApp> {
       navigatorObservers: [AppRouteObserver.instance],
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.build(accent, textTheme: textTheme),
-      // Integrate Global Music Overlay here
+      // Integrate Global Music Overlay here.
+      //
+      // The transparency Material is required, not cosmetic: liquid_glass_widgets
+      // ships no Material ancestor of its own, and under MaterialApp a bare Text
+      // with no Material above it renders with debug yellow underlines. It paints
+      // nothing, so the ambient canvas behind every screen still shows through.
       builder: (context, child) {
-        return GlobalMusicOverlay(child: child!);
+        return Material(
+          type: MaterialType.transparency,
+          child: GlobalMusicOverlay(child: child!),
+        );
       },
       home: const MainScreen(),
     );

@@ -46,8 +46,8 @@ dependencies:
 
 
   flutter_cache_manager: ^3.4.1
-  liquid_glass_widgets: ^1.4.4
-  liquid_glass_easy: ^4.3.0
+  liquid_glass_widgets: ^1.8.1
+  liquid_glass_easy: ^4.3.4
   app_links: ^7.2.1
   video_player: ^2.14.0
   video_player_win: ^3.2.2

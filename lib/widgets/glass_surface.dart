@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../design/glass/glass_surface.dart' as design;
 
-export '../design/glass/glass_surface.dart'
-    show GlassTier, LiquidGlassStyle;
+export '../design/glass/glass_surface.dart' show GlassTier;
 
 /// Legacy facade kept so existing import paths keep compiling while the
 /// screens migrate to `design/glass` directly. New code must import from
