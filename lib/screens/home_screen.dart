@@ -114,11 +114,6 @@ class _HomeScreenState extends State<HomeScreen>
                   bottomInset: bottomInset,
                   entryController: _entry,
                   heroBuilder: _buildTopPicks,
-                  hasHeroHint: _hasHero(context.read<MusicProvider>()),
-                  excludeHeroSectionId:
-                      _topPicksList(context.read<MusicProvider>()).isNotEmpty
-                          ? null
-                          : _heroCandidate(context.read<MusicProvider>())?.$1.id,
                 ),
               ),
             ],
@@ -164,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// dropped unevenly, then failed at play time. The filter is now strict
   /// AND the semantic type is checked — an album grid must never become
   /// the "Picked for you" hero.
-  (HomeSection, List<Track>)? _heroCandidate(MusicProvider provider) {
+  static (HomeSection, List<Track>)? _heroCandidate(MusicProvider provider) {
     final feed = provider.homeFeed;
     if (feed == null) return null;
     final shelves = <(HomeSection, List<Track>)>[];
@@ -190,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen>
     return shelves[offset];
   }
 
-  List<Track> _topPicksList(MusicProvider provider) {
+  static List<Track> _topPicksList(MusicProvider provider) {
     if (provider.recommendedTracks.isNotEmpty) {
       return provider.recommendedTracks.take(8).toList();
     }
@@ -203,13 +198,18 @@ class _HomeScreenState extends State<HomeScreen>
     return const [];
   }
 
-  /// Whether [_buildTopPicks] will render a carousel rather than collapse.
-  ///
-  /// Needed by the sliver list to decide whether a gap belongs above the lower
-  /// sections and below the header. Answering that by building the carousel and
-  /// inspecting its type would construct the whole widget - artwork sizing,
-  /// palette, the lot - on every frame just to ask a yes/no question.
-  bool _hasHero(MusicProvider provider) =>
+/// Whether the hero carousel will render rather than collapse.
+///
+/// Answering that by building the carousel and inspecting its type would
+/// construct the whole widget - artwork sizing, palette, the lot - on every frame
+/// just to ask a yes/no question.
+///
+/// Static, and read from the watched provider rather than captured once. It used
+/// to be sampled by the screen's first build, which happens before the chart has
+/// finished loading, so the hero stayed hidden for the whole session and only
+/// appeared once something unrelated - playing a track - happened to rebuild
+/// the screen.
+static bool _hasHero(MusicProvider provider) =>
       _topPicksList(provider).isNotEmpty || _heroCandidate(provider) != null;
 
   Widget _buildTopPicks(BuildContext context) {
@@ -221,7 +221,12 @@ class _HomeScreenState extends State<HomeScreen>
       return _buildHeroCarousel(
         context,
         personalizedPicks,
-        'Quick Picks',
+        // "For you", not "Quick Picks". This carousel and the compact Quick picks
+        // list are different surfaces on the same screen, and both were called
+        // Quick Picks - two identically-titled blocks down one page. It also
+        // describes the content honestly: by the time this branch is reached the
+        // source is history-seeded suggestions, the engine's picks, or the chart.
+        'For you',
         'personalized_quick_picks',
       );
     }
@@ -247,7 +252,16 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: title),
+        // Quieter than a rail's heading. The carousel is 280-380dp of artwork;
+        // a 24dp bold title above it competes with the thing it is labelling,
+        // and "Quick Picks" also duplicated the name of the compact Quick picks
+        // list further down the same screen - two identically-titled blocks
+        // reading as one glitch. This is the app's own recommendation surface, so
+        // it says so, in fewer words and quieter.
+        HomeSectionHeader(
+          title: title,
+          style: t.HomeTokens.heroSectionTitle(context),
+        ),
         SizedBox(
           height: heroH,
           child: ParallaxMediaCarousel(
@@ -806,13 +820,9 @@ class _HomeBody extends StatefulWidget {
     required this.bottomInset,
     required this.entryController,
     required this.heroBuilder,
-    required this.hasHeroHint,
-    this.excludeHeroSectionId,
   });
 
   final double bottomInset;
-  final String? excludeHeroSectionId;
-  final bool hasHeroHint;
 
   /// Owned by the screen: the entry choreography controller must outlive any
   /// swap between placeholder and content, so the skeleton cannot own it.
@@ -889,7 +899,7 @@ class _HomeBodyState extends State<_HomeBody> {
     if (showSkeleton) {
       return HomeSkeleton(
         bottomInset: widget.bottomInset,
-        withHero: widget.hasHeroHint,
+        withHero: _HomeScreenState._hasHero(provider),
       );
     }
 
@@ -909,10 +919,8 @@ class _HomeBodyState extends State<_HomeBody> {
 
     return _RealHomeBody(
       bottomInset: widget.bottomInset,
-      excludeHeroSectionId: widget.excludeHeroSectionId,
       entryController: widget.entryController,
       heroBuilder: widget.heroBuilder,
-      hasHeroHint: widget.hasHeroHint,
     );
   }
 }
@@ -923,22 +931,28 @@ class _RealHomeBody extends StatelessWidget {
     required this.bottomInset,
     required this.entryController,
     required this.heroBuilder,
-    required this.hasHeroHint,
-    this.excludeHeroSectionId,
   });
 
   final double bottomInset;
-  final String? excludeHeroSectionId;
-  final bool hasHeroHint;
   final AnimationController entryController;
   final WidgetBuilder heroBuilder;
 
   @override
   Widget build(BuildContext context) {
-    // Only a real carousel needs separating from what follows. When it collapses,
-    // an unconditional spacer left a band of dead space under the title on every
-    // cold start.
-    final hasHero = hasHeroHint;
+    // Watched, not captured. This is the fix for the hero only appearing after a
+    // track had been played: both of these were sampled once by the screen's
+    // first build, before the chart arrived, and nothing recomputed them until
+    // an unrelated rebuild. Reading them here - from a provider this widget
+    // already watches - means the carousel appears the moment there is something
+    // to put in it, which is at start-up rather than after listening.
+    final provider = context.watch<MusicProvider>();
+    final hasHero = _HomeScreenState._hasHero(provider);
+
+    // A feed shelf promoted to the hero must not also render below itself.
+    final excludeHeroSectionId =
+        _HomeScreenState._topPicksList(provider).isEmpty
+            ? _HomeScreenState._heroCandidate(provider)?.$1.id
+            : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

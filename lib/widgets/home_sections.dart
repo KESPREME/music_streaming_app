@@ -17,11 +17,17 @@ class HomeSectionHeader extends StatelessWidget {
     required this.title,
     this.description,
     this.onViewAll,
+    this.style,
   });
 
   final String title;
   final String? description;
   final VoidCallback? onViewAll;
+
+  /// Overrides the title style. Used where the heading labels something much
+  /// larger than a rail of cards - the hero carousel - and the default weight
+  /// would compete with the content it names.
+  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +42,7 @@ class HomeSectionHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: Text(title, style: t.HomeTokens.sectionTitle(context)),
+                child: Text(title, style: style ?? t.HomeTokens.sectionTitle(context)),
               ),
               if (onViewAll != null)
                 GestureDetector(

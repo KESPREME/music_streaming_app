@@ -131,9 +131,33 @@ static const double headerToContent = 10.0;
 
   /// Section header title.
   static TextStyle sectionTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
-        fontSize: 24,
+        fontSize: sectionTitleSize,
         fontWeight: FontWeight.w700,
         height: 1.15,
+        color: titleColor(context),
+      );
+
+/// Font size for [sectionTitle], exposed so it can be asserted without a
+  /// widget tree.
+  static const double sectionTitleSize = 24.0;
+
+  /// Font size for [heroSectionTitle], same reason.
+  static const double heroSectionTitleSize = 19.0;
+
+  /// Hero *section* heading - the label above the carousel itself.
+  ///
+  /// Deliberately lighter and smaller than [sectionTitle]. The carousel is
+  /// 280-380dp of artwork, and a 24dp bold heading above a surface that size
+  /// reads as competing with it rather than labelling it. The hero also sits
+  /// above the compact Quick picks list on the same screen, so a full-weight
+  /// "Quick Picks" twice down one page looked like a rendering fault.
+  ///
+  /// Distinct from [heroTitle], which styles the title on a hero *card*.
+  static TextStyle heroSectionTitle(BuildContext context) =>
+      GoogleFonts.plusJakartaSans(
+        fontSize: heroSectionTitleSize,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
         color: titleColor(context),
       );
 
