@@ -320,6 +320,12 @@ Rebuilt to match the reference app's flow. Read this before touching auth UI.
   into a PRIVATE header set, calls `account/account_menu` (20s cap, one retry at
   750ms), and persists nothing until it passes. Never applies the candidate
   app-wide first.
+  **The candidate headers are MERGED over the standard set, never used as a
+  replacement.** A jar only contributes Cookie + Authorization; replacing the
+  map dropped User-Agent / X-YouTube-Client-Name / Origin / Referer, Google
+  answered 200 with no `activeAccountHeaderRenderer`, and a signed-in user was
+  told the sign-in could not be verified (live log, fixed in 489b004). Use
+  `mergeAuthHeaders()`.
 - **Identity** comes only from `account/account_menu` (name/email/avatar) and
   channels from `account/accounts_list` (pageId + datasyncIdToken). Parsers scan
   for a RENDERER by name, and find tokens by key name inside `supportedTokens` —
