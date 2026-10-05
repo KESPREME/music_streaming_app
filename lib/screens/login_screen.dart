@@ -329,30 +329,53 @@ class _LoginScreenState extends State<LoginScreen> {
     // MainScreen's tab bar, mini-player and FAB show through Google's form.
     final background = theme.scaffoldBackgroundColor;
 
+    // System insets, read once here and applied to the layers below.
+    //
+    // The status bar inset is not decoration. A full-bleed WebView puts
+    // YouTube's own header - hamburger, logo, "Open App", search, avatar - at
+    // the very top of the viewport, where it renders UNDER the clock and the
+    // notification icons. Two overlapping bars of system chrome is not something
+    // the user can read past. Insetting the page gives YTM's header clear air.
+    final media = MediaQuery.of(context);
+    final topInset = media.padding.top;
+    final bottomInset = media.padding.bottom;
+
     return Scaffold(
       backgroundColor: background,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: ColoredBox(color: background, child: _webView()),
+          // Opaque base for the whole screen, including the inset bands. A
+          // WebView that has not painted is transparent, and a transparent band
+          // behind the status bar would show the shell again.
+          Positioned.fill(child: ColoredBox(color: background)),
+
+          Positioned(
+            top: topInset,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _webView(),
           ),
 
-          // A WebView that has not painted is transparent, so the loading state
-          // has its own opaque backing rather than fading in over the shell.
+          // Only over the page area, so the spinner is centred in the content
+          // the user is actually looking at rather than in the padded viewport.
           if (_isLoading)
-            Positioned.fill(
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              bottom: 0,
               child: ColoredBox(
                 color: background,
                 child: const Center(child: CircularProgressIndicator()),
               ),
             ),
 
-          // Chrome floats over the page rather than displacing it, so the
-          // WebView keeps the full viewport and no vertical reflow happens when
-          // the header appears.
+          // Chrome floats over the page rather than displacing it, so nothing
+          // reflows when the header appears or the phase changes.
           if (_pageReady)
             Positioned(
-              top: MediaQuery.of(context).padding.top + Spacing.xs,
+              top: topInset + Spacing.xs,
               left: Spacing.md,
               child: _CloseButton(onTap: () => Navigator.of(context).maybePop()),
             ),
@@ -361,7 +384,7 @@ class _LoginScreenState extends State<LoginScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 0,
+              bottom: bottomInset,
               child: _Header(
                 hint: _hint,
                 actionLabel: _actionLabel,
@@ -464,15 +487,17 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Container(
       // Opaque rather than a scrim: this sits over a WebView, and a
       // translucent panel over a scrolling page is unreadable exactly where the
       // hint text lands.
       color: theme.scaffoldBackgroundColor,
-      padding: EdgeInsets.fromLTRB(
-          Spacing.screenX, Spacing.lg, Spacing.screenX, bottomInset + Spacing.lg),
+      // No bottom inset here - the caller already positioned this panel above
+      // the system inset. Applying it in both places doubles the gap and pushes
+      // the button further from the gesture bar than any other screen.
+      padding: const EdgeInsets.fromLTRB(
+          Spacing.screenX, Spacing.lg, Spacing.screenX, Spacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

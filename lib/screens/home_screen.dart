@@ -119,9 +119,14 @@ class _HomeScreenState extends State<HomeScreen>
                     padding: const EdgeInsets.fromLTRB(
                         t.HomeTokens.contentPadding, Spacing.md, 16, 0),
                     child: SignInPrompt(
+                      // aboveShell: sign-in is full-bleed. Pushed into the
+                      // nested navigator it renders under the tab bar, which
+                      // is exactly why this entry point looked different from
+                      // the account sheet's.
                       onSignIn: () => _pushGuarded(
                         context,
                         (_) => LoginScreen(addAnotherAccount: false),
+                        aboveShell: true,
                       ),
                     ),
                   ),
@@ -163,7 +168,10 @@ class _HomeScreenState extends State<HomeScreen>
               if (auth.isLoggedIn) {
                 AccountSwitcherSheet.show(context);
               } else {
-                _pushGuarded(context, (_) => const ThemedSettingsScreen());
+                // aboveShell for the same reason as sign-in: Settings is a
+                // full-screen page, not a detail screen.
+                _pushGuarded(context, (_) => const ThemedSettingsScreen(),
+                    aboveShell: true);
               }
             },
           ),
@@ -346,8 +354,24 @@ void _openArtist(BuildContext context, Track artistTrack) {
 /// lock (`!navigator._debugLocked` assertion, seen live) and can corrupt
 /// the stack ("album not opening", black screen). One guarded choke point
 /// for every Home push: 600ms debounce + assertion suppression.
+///
+/// [aboveShell] picks WHICH navigator. `false` (the default) pushes into
+/// [mainNavigatorKey], the nested navigator inside MainScreen that keeps the tab
+/// bar and mini-player visible - correct for artist, album, playlist, moods and
+/// genres, which are pages you navigate *within* the app.
+///
+/// `true` pushes onto the ROOT navigator instead, as a sibling of the whole
+/// shell. Required for anything full-bleed: sign-in and settings. Pushed into
+/// the nested one, they render as a CHILD of MainScreen and the floating tab
+/// bar sits on top of them. That is not a cosmetic difference - it is why
+/// signing in from the Home prompt looked different from signing in from the
+/// account sheet.
 DateTime _lastHomePushAt = DateTime.fromMillisecondsSinceEpoch(0);
-void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
+void _pushGuarded(
+  BuildContext context,
+  Widget Function(BuildContext) builder, {
+  bool aboveShell = false,
+}) {
   final now = DateTime.now();
   final sinceLast = now.difference(_lastHomePushAt);
   if (sinceLast < const Duration(milliseconds: 250)) {
@@ -359,6 +383,10 @@ void _pushGuarded(BuildContext context, Widget Function(BuildContext) builder) {
   }
   _lastHomePushAt = now;
   try {
+    if (aboveShell) {
+      pushAboveShell<void>(context, builder(context));
+      return;
+    }
     final navigator = mainNavigatorKey.currentState ?? Navigator.of(context);
     final pushed = navigator.push(MaterialPageRoute(builder: builder));
     if (kDebugMode) {
