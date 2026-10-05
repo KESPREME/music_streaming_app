@@ -3,12 +3,14 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_exp;
 import '../auth_service.dart';
+import '../auth_models.dart';
 import '../../models/track.dart';
 import '../../models/discover_models.dart';
 import '../potoken/po_token_webview.dart';
 import '../../models/album.dart';
 import '../metadata/track_metadata_enricher.dart';
 import '../../models/bitchord_page_models.dart';
+import 'account_parser.dart';
 import 'search_filter_params.dart';
 import 'track_artist_credit.dart';
 
@@ -1313,8 +1315,63 @@ class InnerTubeService {
     }
   }
 
+/// The signed-in viewer: display name, email and avatar.
+  ///
+  /// This is the only endpoint that answers "who is signed in" with something a
+  /// person would recognise. The cookie jar carries none of it, which is why
+  /// accounts otherwise have to render as an unnamed placeholder.
+  ///
+  /// Throws on a non-200. Callers use that as validation: a session the API
+  /// will not describe is a session that will not work, and finding out here
+  /// beats persisting a broken account the user has to sign out of.
+  Future<AccountIdentity> fetchAccountIdentity(
+      {Map<String, String>? headers}) async {
+    final response = await _httpClient
+        .post(
+          Uri.parse('$_apiUrl/account/account_menu?prettyPrint=false'),
+          headers: headers ?? _buildHeaders(),
+          body: jsonEncode({'context': _buildContext()}),
+        )
+        // Bounded because this call gates whether a sign-in is committed, and
+        // an un-timed stall there holds the login screen open forever.
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(
+          'account_menu failed: ${response.statusCode}');
+    }
+    final identity = AccountParser.parseIdentity(jsonDecode(response.body));
+    if (identity == null) {
+      throw Exception('account_menu returned no account header');
+    }
+    return identity;
+  }
+
+  /// Every channel this session can act as: its own, plus brand channels.
+  ///
+  /// Returns an EMPTY list rather than throwing when the envelope holds nothing
+  /// recognisable. Callers fall back to what the WebView page revealed, because
+  /// "no channels here" and "we could not read the answer" must not be the same
+  /// outcome - one is a real answer.
+  Future<List<AccountChannel>> fetchAccountChannels(
+      {Map<String, String>? headers}) async {
+    try {
+      final response = await _httpClient
+          .post(
+            Uri.parse('$_apiUrl/account/accounts_list?prettyPrint=false'),
+            headers: headers ?? _buildHeaders(),
+            body: jsonEncode({'context': _buildContext()}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) return const [];
+      return AccountParser.parseChannels(jsonDecode(response.body));
+    } catch (e) {
+      debugPrint('InnerTubeService: accounts_list unavailable: $e');
+      return const [];
+    }
+  }
+
   /// New Releases shelf (albums/singles/playlists). Items carry browse or
-  /// video ids — the UI routes PL/VL/OLAK ids to the playlist flow.
+  /// video ids - the UI routes PL/VL/OLAK ids to the playlist flow.
   Future<List<Track>> getNewReleases({int limit = 20}) {
     return _cachedBrowse('new_releases:$limit', () async {
       final response = await _httpClient.post(

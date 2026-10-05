@@ -363,6 +363,8 @@ class AuthService extends ChangeNotifier {
     String? email,
     String? displayName,
     YouTubeProfile? profile,
+    List<YouTubeProfile>? incomingProfiles,
+    String? avatarUrl,
   }) async {
     if (cookies.isEmpty) return;
 
@@ -385,6 +387,18 @@ class AuthService extends ChangeNotifier {
     var profiles = match?.profiles ?? const <YouTubeProfile>[];
     String? activeProfileId = match?.activeProfileId;
 
+    // A validated sign-in brings the full channel list. Merge it over the
+    // stored set, keeping stored entries the API did not mention so a partial
+    // answer never deletes a channel the user still has.
+    if (incomingProfiles != null && incomingProfiles.isNotEmpty) {
+      final incoming = {for (final p in incomingProfiles) p.profileId: p};
+      profiles = [
+        for (final known in profiles)
+          if (!incoming.containsKey(known.profileId)) known,
+        ...incomingProfiles,
+      ];
+    }
+
     if (profile != null) {
       // Replace a placeholder we invented from a name, and never keep two
       // entries for the same real identity.
@@ -404,6 +418,7 @@ class AuthService extends ChangeNotifier {
       cookies: cookies,
       name: displayName ?? match?.name ?? '',
       email: email ?? match?.email ?? '',
+      avatarUrl: avatarUrl ?? match?.avatarUrl,
       profiles: profiles,
       activeProfileId: activeProfileId,
     );

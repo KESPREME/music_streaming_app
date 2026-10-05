@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:music_streaming_app/services/auth_models.dart';
 import 'package:music_streaming_app/services/login_session_probe.dart';
 
 const _hour = 3600;

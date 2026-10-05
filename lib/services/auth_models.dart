@@ -1,5 +1,71 @@
 import 'dart:convert';
 
+/// The signed-in viewer, as YouTube reports them.
+///
+/// Sourced from `account/account_menu`. This is the only place a real display
+/// name, email and avatar come from - the cookie jar carries none of them, so
+/// without this call every account has to render as an unnamed placeholder.
+class AccountIdentity {
+  const AccountIdentity({
+    required this.name,
+    this.email = '',
+    this.avatarUrl,
+  });
+
+  final String name;
+  final String email;
+  final String? avatarUrl;
+
+  /// What to show when YouTube gave us only a handle.
+  String get subtitle {
+    if (email.isNotEmpty) return email;
+    if (name.startsWith('@')) return 'YouTube account';
+    return 'YouTube account';
+  }
+}
+
+/// One channel this session can act as: the account's own, or a brand channel.
+///
+/// [pageId] and [dataSyncId] are the two things a request must carry to be made
+/// AS that channel. An entry with neither is dropped by the parser - there is
+/// nothing to send, and offering a channel that silently keeps the current one
+/// is worse than not offering it.
+class AccountChannel {
+  const AccountChannel({
+    required this.name,
+    this.subtitle = '',
+    this.avatarUrl,
+    this.pageId,
+    this.dataSyncId,
+    this.activeOnWeb = false,
+  });
+
+  final String name;
+  final String subtitle;
+  final String? avatarUrl;
+  final String? pageId;
+  final String? dataSyncId;
+
+  /// Whether YouTube's own switcher marks this channel active.
+  ///
+  /// Deliberately NOT the same as "the one this app is acting as": that is our
+  /// choice, this is Google's. They are independent and conflating them would
+  /// make a tick lie.
+  final bool activeOnWeb;
+
+  /// Stable identity for this channel across refetches.
+  String get key => pageId ?? dataSyncId ?? name;
+
+  bool get isBrandAccount => pageId != null;
+
+  /// A line under the name. Never blank - a row with a name and nothing else
+  /// looks broken rather than terse.
+  String get displaySubtitle {
+    if (subtitle.isNotEmpty) return subtitle;
+    return isBrandAccount ? 'Brand channel' : 'Your channel';
+  }
+}
+
 /// One captured cookie, with the metadata needed to use it honestly.
 ///
 /// [domain] is kept because a YouTube sign-in produces cookies scoped to both
@@ -189,6 +255,7 @@ class GoogleAccountSession {
     required this.cookies,
     this.name = '',
     this.email = '',
+    this.avatarUrl,
     this.profiles = const [],
     this.activeProfileId,
   });
@@ -197,8 +264,37 @@ class GoogleAccountSession {
   final List<AuthCookie> cookies;
   final String name;
   final String email;
+
+  /// Channel avatar from `account/account_menu`.
+  ///
+  /// The cookie jar carries no identity at all, so without this an account can
+  /// only ever render as an unnamed placeholder with a letter in a circle.
+  final String? avatarUrl;
+
   final List<YouTubeProfile> profiles;
   final String? activeProfileId;
+
+  /// Best available picture for this account.
+  ///
+  /// Prefers the account's own avatar, then the active channel's. Returns null
+  /// rather than a placeholder URL so callers can decide what an absent avatar
+  /// means in their own layout.
+  String? get bestAvatarUrl {
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) return avatarUrl;
+    return activeProfile?.avatarUrl;
+  }
+
+  /// What to show as the account's name.
+  ///
+  /// Never empty. An unnamed row reads as a broken row rather than as
+  /// anonymity, so this always resolves to something a person would recognise.
+  String get displayName {
+    if (name.trim().isNotEmpty) return name.trim();
+    if (email.trim().isNotEmpty) return email.trim().split('@').first;
+    final channel = activeProfile?.name.trim() ?? '';
+    if (channel.isNotEmpty) return channel;
+    return 'YouTube account';
+  }
 
   YouTubeProfile? get activeProfile {
     if (profiles.isEmpty) return null;
@@ -260,6 +356,7 @@ class GoogleAccountSession {
         'cookies': cookies.map((c) => c.toJson()).toList(),
         'name': name,
         'email': email,
+        'avatarUrl': avatarUrl,
         'activeProfileId': activeProfileId,
         'profiles': profiles.map((p) => p.toJson()).toList(),
       };
@@ -307,6 +404,11 @@ class GoogleAccountSession {
       cookies: cookies,
       name: raw['name']?.toString() ?? '',
       email: raw['email']?.toString() ?? '',
+      // Absent is a normal state, not a parse failure: an account saved before
+      // avatars existed simply has none.
+      avatarUrl: (raw['avatarUrl'] as String?)?.trim().isNotEmpty ?? false
+          ? raw['avatarUrl'] as String
+          : null,
       profiles: profiles,
       activeProfileId: raw['activeProfileId']?.toString(),
     );
