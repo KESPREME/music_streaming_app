@@ -8,11 +8,11 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 522/522 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 583/583 tests green.
 
 > **GATE (current):** `flutter analyze` = **195 issues, zero errors** (195 is the
 > baseline; several commits have moved it DOWN by removing dangling exports).
-> `flutter test` = **522 passing**. Debug APK builds. Treat 195 as the baseline —
+> `flutter test` = **583 passing**. Debug APK builds. Treat 195 as the baseline —
 > a rise means something new was introduced, not that the file grew.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
@@ -22,7 +22,7 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 52
 
 ---
 
-## CURRENT STATE (commit f10bb10)
+## CURRENT STATE (commit 76fc0c9)
 
 ### Auth / session (c12c63a — the session used to be forgotten every restart)
 `AuthService.init()` had **ZERO call sites**: cookies were written to
@@ -265,10 +265,12 @@ effect is not in the pipeline, which would hang init forever).
 8. **Player contexts keep frozen static clientVersion** (BotGuard/PO token
    version-sensitive). ONLY browse uses dynamic version.
 9. **Schema versions**: kHomeFeedSchemaVersion=5, kHomeParserVersion=6,
-   kHomeRequestContextVersion=2. Bump ALL THREE when parser/context changes;
-   old caches invalidate via fromJson null checks. v5 because the cache key gained
-   an identity discriminator — a personalized snapshot must not be served to an
-   anonymous app.
+   kHomeRequestContextVersion=3. Bump ALL THREE when parser/context changes;
+   old caches invalidate via fromJson null checks. v5/ctx v3 because the request
+   context now carries `context.user` and the cache key gained an identity
+   discriminator — a personalized snapshot must not be served to an anonymous
+   app. Parser stays at v6 on purpose: no parsing rule moved, so bumping it
+   would invalidate good caches for a version describing identical behaviour.
 10. **Section memory persists** (home_section_memory_v1 key) and is TTL-swept
    on load. clearHomeCache() also clears memory.
 11. **Stagger/hero/mini-player/nav are user-approved** — don't redesign without ask.
@@ -295,6 +297,44 @@ effect is not in the pipeline, which would hang init forever).
 - Album card tap → HOME_PLAY navigateCollection → playlist detail screen
   (MPREb browseId works there via getPlaylistDetails).
 - Song tap → playTrack SUCCESS.
+
+---
+
+## AUTH / ACCOUNTS (2e105a1 + 0d71aba + ee1b98e)
+
+The flat `youtube_cookies` jar is gone. `AuthService` now holds a registry of
+`GoogleAccountSession`, each with domain- and expiry-aware `AuthCookie`s plus
+its `YouTubeProfile` channels.
+
+- **Storage** is `flutter_secure_storage`, with a SharedPreferences mirror that
+  is *read* as well as written. A device with an unusable keystore degrades to
+  less-protected, not to signed-out. Legacy `youtube_cookies` migrates lazily
+  and is dropped only after a successful save in the new format.
+- **Account id derives from SSID/SID/HSID**, never the whole jar. Google rotates
+  SAPISID and rewrites expiry metadata every sign-in, so hashing the jar minted
+  a new id per login and forked duplicate accounts. Falls back to the signing
+  cookie alone, then to one `acct_unknown` bucket.
+- **Signing cookie** is name-exact: `SAPISID`, `__Secure-3PAPISID`,
+  `__Secure-1PAPISID`. A substring test for "SAPISID" also matches SAPISIDHASH,
+  which is derived FROM the cookie and cannot sign with. An account with no
+  unexpired signing cookie is not loaded at all — reporting signed-in while
+  sending rejected cookies is worse than reporting signed-out.
+- **`context.user`** now carries `lockedSafetyMode` and, only when the shell
+  reported one, `onBehalfOfUser` (dataSyncId). Never inferred. Previously sent as
+  `{}`, which mis-attributes brand-channel sessions.
+- **`identityKey`** = `anon` or `<accountId>[_<profileId>]`. Never cookie
+  material — it becomes a preferences key and preferences are plaintext. Home
+  cache keys carry it, so a personalized feed is never served anonymously.
+- **`logout()` notifies before persisting.** Fail-closed: a keystore write that
+  never lands must not resurrect a session the user removed. Also stops the UI
+  sitting on a stale account for a keystore round trip.
+- **Login never calls `deleteAllCookies()`** — it tore down every saved account
+  on open and made "add another account" impossible. Uses
+  `prompt=select_account`. Visits the music origin once before capturing
+  (ytcfg + music-scoped cookies do not exist on accounts.google.com).
+- **Equalizer tile removed**, not wired: the platform effect is deliberately out
+  of the audio pipeline (see playback hazard), so there is no surface to open.
+  Do not re-add without a device-support check.
 
 ---
 
@@ -344,6 +384,10 @@ effect is not in the pipeline, which would hang init forever).
 | lib/screens/home_screen.dart | HomeScreen + _LowerSections + all section widgets (~1620 lines) |
 | lib/widgets/home_sections.dart | RailCard, ForYouRow, ArtistPortrait, ParallaxArtwork, ParallaxMediaCarousel, EditorialMoodTile, StaggerIn, homeRailTextBlockHeight |
 | lib/providers/music_provider.dart | God-object facade (~3850 lines) — home feed, quick picks, search attribution, playback |
+| lib/services/auth_models.dart | AuthCookie (domain+expiry) / YouTubeProfile / GoogleAccountSession / id derivation / isSigningCookieName |
+| lib/services/auth_service.dart | Secure multi-account session registry; getHeaders, identityKey, selectIdentity, removeAccount, logout |
+| lib/services/login_session_probe.dart | Pure sign-in rules: cookie construction, coalesce, hasSigningCookie, profileFromYtcfg |
+| lib/screens/account_screen.dart | Account + channel management, add account, remove, sign out |
 | lib/services/recommendation_service.dart | TrackSignal DB + rankTracks + signalFor/topArtistsForPicks |
 | lib/services/explore/explore_policy.dart | ExplorePolicy: batch/refill constants + discovery-tilt ranking config |
 | lib/services/explore/explore_engine.dart | ExploreEngine: pool mapping onto SHARED DeterministicRanker |
@@ -363,6 +407,10 @@ effect is not in the pipeline, which would hang init forever).
 |---|---|
 | test/home_convergence_test.dart | SectionIdentity, convergence merge, ratchet sequence, playback routing matrix |
 | test/home_pipeline_test.dart | Composer, quality gate, cache roundtrip, degradation, metadata, quality dims |
+| test/auth_session_persistence_test.dart | Secure store, legacy migration, expiry, domain scoping, multi-account, SAPISIDHASH |
+| test/auth_channel_identity_test.dart | browseUserContext, identityKey isolation (no cookie leakage) |
+| test/login_session_probe_test.dart | Signing-cookie names, jar coalesce, ytcfg → profile, no-guess rule |
+| test/account_screen_test.dart | Signed-out, unnamed account, channel switch, removal confirm, sign out |
 | test/ytm_home_parser_test.dart | Parser fixtures (shelves, identity, types, unsupported) |
 | test/home_presentation_test.dart | Classifier + planner matrix |
 | test/recommendation_engine_test.dart | QuickPicks + SearchFollowupGraph |
@@ -417,12 +465,27 @@ c737dbb nav: GlassTabBar.searchable
 2d975c9 bigger covers + new releases slider
 99e65d9 bigger covers: playlist/mood square
 105b1a3 recommendation: Quick Picks engine + search-followup graph
+7ad97fb docs: refresh CONTEXT for home, auth and glass
+2e105a1 auth: secure multi-account sessions with channel profiles
+0d71aba auth: channel identity in InnerTube context, identity-scoped caches
+ee1b98e settings: account and channel management screen
+76fc0c9 settings: remove tiles that could only say "coming soon"
 ```
 
 ---
 
 ## NEXT STEPS (if resuming)
 
+0. **Phase 4 home sections — BLOCKED ON A DEVICE PROBE.** BitChord also uses
+   `FEmusic_explore` and `FEmusic_history`; we use home / new_releases /
+   moods_and_genres / charts. Do NOT add either blind:
+   - `FEmusic_history` ("Listen again") is the one genuinely worth adding and
+     duplicates nothing. Needs a probe to confirm which renderers it returns and
+     that our staged walker handles them.
+   - `FEmusic_explore` likely **duplicates the existing Explore tab** (wheel,
+     engine, palette). Adding it to Home is a product decision, not a parity fix.
+   Without live fixture evidence this violates invariant 5 and risks
+   convergence churn on a feed that is currently stable.
 1. **Explore live verification (device)**: build+install, open Discover →
    Explore card, swipe; capture `EXPLORE_LOAD` / `EXPLORE_PLAY` /
    `EXPLORE_SKIP` / `EXPLORE_PREFETCH` traces; verify deck peeks render,
@@ -472,6 +535,21 @@ c737dbb nav: GlassTabBar.searchable
   anything >30s.
 - `llvm-strip Permission denied` during build → `Remove-Item -Recurse -Force build`
   then rebuild.
+- **Widget tests + platform channels**: `AuthService.init()` reaches for
+  `flutter_secure_storage`, and awaiting a real channel reply inside
+  `testWidgets` (fake-async zone) HANGS with no error rather than failing.
+  Seed inside `tester.runAsync(() async { ... })`.
+- **Widget tests + GoogleFonts**: the `Type.*` tokens render through
+  GoogleFonts, which fetches the font at runtime when unloaded and also hangs.
+  Set `GoogleFonts.config.allowRuntimeFetching = false` in `setUpAll`.
+- `AuthCookie` serialises `expiresAt` as **epoch milliseconds (a number)**. An
+  ISO-8601 string parses as "no expiry" and a stale jar looks live.
+- The inappwebview `Cookie.expiresDate` is **milliseconds** while our probe
+  takes seconds; Android reports `domain`/`expiresDate` only when the WebView
+  supports `GET_COOKIE_INFO`, so fall back to the host you read from.
+- `Motion.springSoft`/`springSnappy` are `SpringDescription`s, NOT `Curve`s —
+  they cannot be passed to implicit animation curves. Use `Motion.settle` /
+  `Motion.springCurve` there.
 - Test ID fixtures MUST be 11-char lowercase-alnum to pass videoId validation
   ('strong12345' etc, NOT 'strong').
 - `type_tokens.Type` was replaced by `t.HomeTokens` (import as
