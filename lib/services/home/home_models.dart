@@ -10,9 +10,15 @@ library;
 /// capture, multi-dimension quality, parser/context version binding.
 /// parser v6: section provenance (native|chart|new_release|local),
 /// best-known-good convergence, enrichment merge. Old snapshots invalidate.
-const int kHomeFeedSchemaVersion = 4;
+///
+/// schema v5 + ctx v3: the request context now carries `context.user`, so a
+/// snapshot is only meaningful for the identity it was fetched under and the
+/// cache key gained that identity as a discriminator. Parser is deliberately
+/// unchanged at v6 - no parsing rule moved - so bumping it would invalidate
+/// good caches for a version that describes identical behaviour.
+const int kHomeFeedSchemaVersion = 5;
 const int kHomeParserVersion = 6;
-const int kHomeRequestContextVersion = 2;
+const int kHomeRequestContextVersion = 3;
 
 enum HomeContentType { song, video, album, artist, playlist, unknown }
 

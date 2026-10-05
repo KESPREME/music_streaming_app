@@ -148,6 +148,20 @@ class AuthService extends ChangeNotifier {
   /// reported while signed in.
   String? get dataSyncId => activeProfile?.dataSyncId;
 
+  /// Non-secret discriminator for caches that hold personalized content.
+  ///
+  /// A personalized home feed must never be served to an anonymous session, or
+  /// the reverse: signing out has to land on an empty cache rather than on the
+  /// previous user's recommendations. This is a label derived from the account
+  /// and channel ids, never from a cookie value, because it is used as a
+  /// preferences key and preferences are plaintext on disk.
+  String get identityKey {
+    final account = activeAccount;
+    if (account == null) return 'anon';
+    final profile = activeProfile?.profileId;
+    return profile == null ? account.accountId : '${account.accountId}_$profile';
+  }
+
   /// Headers an authenticated InnerTube request needs.
   Map<String, String> getHeaders({String host = 'music.youtube.com'}) {
     if (!isLoggedIn) return const {};

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/track.dart';
+import '../auth_service.dart';
 import '../innertube/innertube_service.dart';
 import 'home_convergence.dart';
 import 'home_diagnostics.dart';
@@ -863,7 +864,7 @@ class HomeRepository {
   final YouTubeMusicHomeSource _primary;
   final FallbackHomeSource _fallback;
 
-  static const _cachePrefix = 'home_feed_snapshot_v4';
+  static const _cachePrefix = 'home_feed_snapshot_v5';
   static const _freshTtl = Duration(minutes: 45);
   static const _maxBackoff = Duration(hours: 2);
 
@@ -1005,8 +1006,24 @@ bool get isColdStartExhausted => _current == null && _firstFetchSettled;
     if (pending != null) await pending;
   }
 
+  /// The cache key carries WHO the feed is for, not just where it came from.
+  ///
+  /// Without the identity a personalized snapshot saved while signed in is
+  /// served to the next anonymous launch - and, worse, signing out leaves the
+  /// previous user's recommendations on screen. `anon` is a real bucket, not a
+  /// special case that shares with a real account.
   static String _cacheKeyFor(String source, String locale) =>
-      '${_cachePrefix}_$source\_$locale';
+      '${_cachePrefix}_${_identityTag()}_${source}_$locale';
+
+  static String _identityTag() {
+    try {
+      return AuthService().identityKey;
+    } catch (_) {
+      // Auth not initialized yet. Anonymous is the safe answer: it cannot leak
+      // one identity's feed to another.
+      return 'anon';
+    }
+  }
 
   static String _localeTag() => PlatformDispatcher.instance.locale.toString();
 

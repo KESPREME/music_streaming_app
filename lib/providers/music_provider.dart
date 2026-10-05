@@ -1044,8 +1044,27 @@ for (final track in releases)
 
   /// Pull the feed for the new identity when online and a feed already
   /// exists; otherwise the next load picks it up.
+  ///
+  /// Convergence memory is personalized - it pins WHICH sections exist and in
+  /// what order - so a new identity inheriting it ends up wearing the previous
+  /// account's shelf order. Persisted snapshots are now keyed by identity, which
+  /// is what stops the old account's feed being served to the new one; clearing
+  /// here also drops that account's copy from disk rather than leaving it for
+  /// the next cold start.
   Future<void> _refreshFeedForNewIdentity() async {
-    if (_homeFeed != null && _networkService.isConnected && !_isOfflineMode) {
+    await _homeRepository.clearHomeCache();
+
+    if (_homeFeed != null) {
+      // Drop the previous identity's feed instead of showing it under the new
+      // one. With a null feed HomeScreen still renders its local fallback
+      // sections, so this is a plainer Home, not an empty screen.
+      _homeFeed = null;
+      _homeLoadFailed = false;
+      _bumpHomeContent();
+      notifyListeners();
+    }
+
+    if (_networkService.isConnected && !_isOfflineMode) {
       await refreshHomeFeed();
     }
   }

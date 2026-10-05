@@ -1238,7 +1238,51 @@ class InnerTubeService {
     if (visitorData != null) {
       (context['client'] as Map<String, dynamic>)['visitorData'] = visitorData;
     }
+    // `context.user` is how the channel actually reaches the API. It used to be
+    // sent as an empty object, which works right up until the signed-in account
+    // is a brand channel: the request is then attributed to the personal
+    // channel and Google either 401s or quietly serves the wrong feed.
+    context['user'] = browseUserContext(_authDataSyncId);
     return context;
+  }
+
+  /// Build the `context.user` block for a browse request.
+  ///
+  /// Pure and separated out so the rule is pinned by tests rather than being
+  /// re-derived inside a private builder nobody can reach.
+  ///
+  /// `lockedSafetyMode: false` is unconditional: it is what the real client
+  /// sends and it affects which results are eligible, so omitting it silently
+  /// narrows the feed.
+  ///
+  /// [dataSyncId] becomes `onBehalfOfUser` and is NEVER inferred. Google answers
+  /// an `onBehalfOfUser` it cannot tie back to the cookie with a 401, and that
+  /// 401 is indistinguishable from a broken app - so an absent value means the
+  /// field is absent, not defaulted.
+  @visibleForTesting
+  static Map<String, dynamic> browseUserContext(String? dataSyncId) {
+    // Trim before testing: a whitespace-only id would otherwise pass an
+    // isNotEmpty check and be sent, and Google answers an onBehalfOfUser it
+    // cannot tie to the cookie with a 401.
+    final sync = dataSyncId?.trim();
+    return {
+      'lockedSafetyMode': false,
+      if (sync != null && sync.isNotEmpty) 'onBehalfOfUser': sync,
+    };
+  }
+
+  /// The signed-in channel's dataSyncId, read from [AuthService] at call time.
+  ///
+  /// Read per request rather than cached: an account or channel switch has to
+  /// take effect on the very next call, and a stale value here would send a
+  /// personalized request under an identity the user already moved off.
+  String? get _authDataSyncId {
+    try {
+      return AuthService().dataSyncId;
+    } catch (_) {
+      // Auth not initialized yet - anonymous is the correct answer.
+      return null;
+    }
   }
 
   /// Get home/browse content (trending, recommendations)
