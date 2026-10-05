@@ -32,6 +32,13 @@ class InnerTubeService {
 
   static const String _apiUrl = 'https://music.youtube.com/youtubei/v1';
   static const String _origin = 'https://music.youtube.com';
+
+  /// Language for endpoint query strings.
+  ///
+  /// Same source the browse context uses, so `?hl=` and `context.client.hl` can
+  /// never disagree about what language the app is asking in.
+  static String get _hl =>
+      PlatformDispatcher.instance.locale.languageCode;
   static const String _referer = 'https://music.youtube.com/';
 
   // WEB_REMIX client (for search, browse)
@@ -178,6 +185,10 @@ class InnerTubeService {
             'gl': 'US',
             'platform': 'DESKTOP',
           },
+          // Present in every real WEB_REMIX request, including the account
+          // endpoints. Cheap to match and one less thing that can differ from
+          // the client we are imitating.
+          'request': {'useSsl': true},
         };
     }
   }
@@ -1325,11 +1336,17 @@ class InnerTubeService {
   /// will not describe is a session that will not work, and finding out here
   /// beats persisting a broken account the user has to sign out of.
   Future<AccountIdentity> fetchAccountIdentity(
-      {Map<String, String>? headers}) async {
+      {Map<String, String>? authHeaders}) async {
     final response = await _httpClient
         .post(
-          Uri.parse('$_apiUrl/account/account_menu?prettyPrint=false'),
-          headers: headers ?? _buildHeaders(),
+          Uri.parse('$_apiUrl/account/account_menu?prettyPrint=false&hl=$_hl'),
+          // MERGED, not replaced. A caller validating a candidate session has
+          // only Cookie + Authorization to contribute; replacing the header map
+          // with those two drops User-Agent, X-YouTube-Client-Name/Version,
+          // Origin and Referer, and the API answers 200 with an envelope that is
+          // not an account header at all. Every request to this API needs the
+          // standard set AND the session headers.
+          headers: mergeAuthHeaders(_buildHeaders(), authHeaders),
           body: jsonEncode({'context': _buildContext()}),
         )
         // Bounded because this call gates whether a sign-in is committed, and
@@ -1341,10 +1358,64 @@ class InnerTubeService {
     }
     final identity = AccountParser.parseIdentity(jsonDecode(response.body));
     if (identity == null) {
+      // Say what we actually got. A bare "no account header" gave a live log
+      // nothing to work with, and this is the failure that decides whether a
+      // sign-in is committed.
+      debugPrint(_describeEnvelope('account_menu', response.body));
       throw Exception('account_menu returned no account header');
     }
     return identity;
   }
+
+  /// A short, safe summary of a response we could not read.
+  ///
+  /// Truncated hard on purpose: this is diagnostic output, and an InnerTube
+  /// response can be large enough to matter in a log buffer.
+  static String _describeEnvelope(String endpoint, String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final response = decoded is Map ? decoded['response'] : null;
+      final keys = response is Map ? response.keys.toList() : const [];
+      final actions = response is Map ? response['actions'] : null;
+      return 'InnerTubeService: $endpoint envelope unreadable. '
+          'response keys=$keys'
+          '${actions is List ? ' actionCount=${actions.length}' : ''}'
+          ' first=${_firstRendererName(actions)}'
+          ' body[0,400]=${body.length > 400 ? body.substring(0, 400) : body}';
+    } catch (e) {
+      return 'InnerTubeService: $endpoint body is not JSON ($e). '
+          'body[0,400]=${body.length > 400 ? body.substring(0, 400) : body}';
+    }
+  }
+
+  /// The renderer name of the first entry in a list, if it has exactly one key.
+  static String _firstRendererName(dynamic list) {
+    if (list is! List || list.isEmpty) return 'none';
+    final first = list.first;
+    if (first is Map && first.length == 1) return first.keys.first.toString();
+    return 'unrecognised';
+  }
+
+  /// Layer a candidate session's headers over the standard set.
+  ///
+  /// Merged, never replaced. This is the whole reason the first sign-in
+  /// validation failed on device: a caller validating a jar has only `Cookie`
+  /// and `Authorization` to contribute, and handing those in as the whole
+  /// header map silently dropped User-Agent, X-YouTube-Client-Name/Version,
+  /// Origin and Referer. The API then answers 200 with an envelope that is not
+  /// an account header, so a genuinely signed-in user was told the sign-in
+  /// could not be verified.
+  ///
+  /// Session headers win on conflict, because the whole point is to describe a
+  /// session other than the one currently loaded.
+  @visibleForTesting
+  static Map<String, String> mergeAuthHeaders(
+    Map<String, String> standard,
+    Map<String, String>? session,
+  ) =>
+      session == null || session.isEmpty
+          ? Map<String, String>.of(standard)
+          : {...standard, ...session};
 
   /// Every channel this session can act as: its own, plus brand channels.
   ///
@@ -1353,17 +1424,23 @@ class InnerTubeService {
   /// "no channels here" and "we could not read the answer" must not be the same
   /// outcome - one is a real answer.
   Future<List<AccountChannel>> fetchAccountChannels(
-      {Map<String, String>? headers}) async {
+      {Map<String, String>? authHeaders}) async {
     try {
       final response = await _httpClient
           .post(
-            Uri.parse('$_apiUrl/account/accounts_list?prettyPrint=false'),
-            headers: headers ?? _buildHeaders(),
+            Uri.parse('$_apiUrl/account/accounts_list?prettyPrint=false&hl=$_hl'),
+            // Merged for the same reason as account_menu: a candidate session
+            // contributes Cookie/Authorization, not a replacement header set.
+            headers: mergeAuthHeaders(_buildHeaders(), authHeaders),
             body: jsonEncode({'context': _buildContext()}),
           )
           .timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) return const [];
-      return AccountParser.parseChannels(jsonDecode(response.body));
+      final channels = AccountParser.parseChannels(jsonDecode(response.body));
+      if (channels.isEmpty) {
+        debugPrint(_describeEnvelope('accounts_list', response.body));
+      }
+      return channels;
     } catch (e) {
       debugPrint('InnerTubeService: accounts_list unavailable: $e');
       return const [];

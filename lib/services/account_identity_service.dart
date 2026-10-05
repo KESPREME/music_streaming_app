@@ -79,7 +79,8 @@ class AccountIdentityService {
       if (attempt > 0) await Future<void>.delayed(retryDelay);
       try {
         identity =
-            await InnerTubeService.instance.fetchAccountIdentity(headers: headers);
+            await InnerTubeService.instance
+            .fetchAccountIdentity(authHeaders: headers);
         lastError = null;
         break;
       } catch (e) {
@@ -98,7 +99,7 @@ class AccountIdentityService {
     List<AccountChannel> channels = const [];
     try {
       channels = await InnerTubeService.instance
-          .fetchAccountChannels(headers: headers)
+          .fetchAccountChannels(authHeaders: headers)
           .timeout(validationTimeout);
     } catch (e) {
       debugPrint('AccountIdentity: channels unavailable: $e');
