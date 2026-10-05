@@ -308,11 +308,23 @@ Rebuilt to match the reference app's flow. Read this before touching auth UI.
   (`mainNavigatorKey`) so detail screens keep the tab bar and mini-player up.
   `Navigator.push(context, ...)` resolves to that NEAREST navigator, so a
   full-screen page becomes a CHILD of MainScreen and the chrome floats over it.
-  Visible in the login WebView — the only body in the app that does not paint
-  its own background, which is why it was the only place it showed. Use
-  `pushAboveShell()` for auth/account/settings. Detail screens push normally.
-  The Material You settings screen is FROZEN and still pushes Login inward, so
-  `LoginScreen` is opaque internally to cover both variants.
+  **Two entry points to the SAME screen can therefore look different** — that is
+  not a styling inconsistency, it is two different navigators.
+  - Detail screens (artist/album/playlist/moods/genres/trending): push normally.
+  - Full-bleed surfaces (sign-in, settings, account): `pushAboveShell()`.
+  - From Home, `_pushGuarded(..., aboveShell: true)` — the flag keeps the
+    double-tap debounce and only changes the target navigator. Nine detail-screen
+    call sites pass no flag and are unchanged.
+  - `LoginScreen` is ALSO opaque internally, because the frozen Material You
+    settings screen still pushes it inward; that fixes the bleed-through of page
+    content but NOT the nav bar overlay, which is a routing problem.
+- **Status bar inset on the login WebView.** A full-bleed WebView puts
+  YouTube's own header (hamburger/logo/"Open App"/search/avatar) under the clock
+  and notification icons — two overlapping bars of system chrome. The page is
+  inset by `MediaQuery.padding.top`; the close button sits just below it; the
+  bottom inset is applied by the `Positioned`, NOT also inside the panel (doing
+  both doubles the gap). The opaque base must cover the inset bands too, or an
+  unpainted WebView lets the shell show through the status bar.
 - **Nothing is captured on sign-in automatically.** Auto-capture on page-finish
   is a race: the jar settles after the page does. The screen only READS the jar
   to decide whether to OFFER "Use this profile"; nothing is written until tapped.
@@ -389,6 +401,16 @@ its `YouTubeProfile` channels.
 ---
 
 ## KNOWN LIMITATIONS
+
+- **Material You still has two full-screen routes pointing at the wrong
+  navigator** (`ee25374` fixed the glass variant only). Both are in FROZEN
+  files, so they were left alone pending a decision:
+  - `material_you_home_screen.dart:96` → `Navigator.push(... ThemedSettingsScreen)`
+  - `material_you_settings_screen.dart:405` → `Navigator.push(... LoginScreen)`
+  Each is a one-line swap to `pushAboveShell<void>(context, ...)` plus the
+  `core/navigation/root_navigator.dart` import. Nothing about the MY *look*
+  changes; only which navigator the route lands on. If the user is on the MY
+  theme, the nav bar still overlays Settings and Login there.
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
 - `musicImmersiveHeaderRenderer` / `musicDescriptionShelfRenderer`:
