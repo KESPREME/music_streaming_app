@@ -14,12 +14,47 @@ import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/liquid_switch.dart';
 import '../widgets/lyric_providers_sheet.dart';
+import '../widgets/settings/settings_search.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  /// Current filter. Held here rather than in a search widget so the same query
+  /// can decide which groups render and whether the empty state appears.
+  String _query = '';
+
+  /// Keywords for every row on this screen.
+  ///
+  /// Several entries carry words that are deliberately NOT on the row - "mobile
+  /// data" for Cellular Quality, "sign in" for Account - because those are what
+  /// somebody actually types.
+  static const _entries = <SettingsEntry>[
+    SettingsEntry('quick.quality', ['Quality', 'bitrate', 'audio']),
+    SettingsEntry('quick.lyrics', ['Lyrics', 'providers']),
+    SettingsEntry('quick.downloads', ['Downloads', 'offline']),
+    SettingsEntry('account', ['Account', 'sign in', 'google', 'profile', 'channel']),
+    SettingsEntry('version', ['Version', 'about']),
+    SettingsEntry('source', ['Source', 'innertube', 'powered by']),
+    SettingsEntry('prefs.theme', ['Theme', 'appearance', 'dark mode', 'accent', 'colour', 'color']),
+    SettingsEntry('prefs.dynamic', ['Dynamic Colors', 'material you', 'wallpaper']),
+    SettingsEntry('accent.card', ['Accent', 'colour', 'color', 'swatch', 'album art']),
+    SettingsEntry('playback.autoQueue', ['Auto Queue', 'keep playing', 'queue']),
+    SettingsEntry('playback.cellular', ['Cellular Quality', 'mobile data', 'stream over mobile data']),
+    SettingsEntry('playback.lowData', ['Low Data Mode', 'data saver']),
+    SettingsEntry('playback.offline', ['Offline Mode', 'local', 'downloaded only']),
+    SettingsEntry('playback.canvas', ['Animated Cover Art', 'canvas video']),
+    SettingsEntry('playback.blur', ['Animated Cover Art', 'bleed artwork']),
+    SettingsEntry('data.cache', ['Clear Cache', 'storage', 'free up space']),
+  ];
+
+  @override
   Widget build(BuildContext context) {
+    final index = SettingsSearchIndex(_query)..registerAll(_entries);
     final theme = Theme.of(context);
     final musicProvider = context.watch<MusicProvider>();
     final themeProvider = context.watch<ThemeProvider>();
@@ -51,7 +86,7 @@ class SettingsScreen extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Setup',
+                          'Settings',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 36,
                             fontWeight: FontWeight.w900,
@@ -69,8 +104,20 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
 
-              // Profile card
+              // Search. Sits directly under the title, before anything it can
+              // filter, so what it controls is visible when it is used.
               SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
+                  child: SettingsSearchField(
+                    onChanged: (value) => setState(() => _query = value),
+                  ),
+                ),
+              ),
+
+              // Profile card
+              if (index.matchesAny(const ['account']))
+                SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: _ProfileCard(authService: authService),
@@ -78,8 +125,12 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
-              // Quick tiles
-              SliverToBoxAdapter(
+              // Quick tiles. Gated as a group rather than per tile: the three
+              // tiles are a single visual unit, and leaving one stranded on its
+              // own row looks like a rendering fault.
+              if (index.matchesAny(
+                  const ['quick.quality', 'quick.lyrics', 'quick.downloads']))
+                SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -105,19 +156,25 @@ class SettingsScreen extends StatelessWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 28)),
 
               // Preferences header
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'PREFERENCES',
-                    style: GoogleFonts.plusJakartaSans(color: accent.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6),
+              //
+              // The header is hidden together with its group, never on its own:
+              // a section title above nothing is worse than no section title.
+              if (index.anyMatch)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      'PREFERENCES',
+                      style: GoogleFonts.plusJakartaSans(color: accent.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6),
+                    ),
                   ),
                 ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              if (index.anyMatch)
+                const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
               // Appearance group — grounded elevated, only switches are glass
-              SliverToBoxAdapter(
+              if (index.matchesAny(const ['prefs.theme', 'prefs.dynamic']))
+                SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -171,7 +228,13 @@ class SettingsScreen extends StatelessWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
               // Player & Playback — grounded
-              SliverToBoxAdapter(
+              if (index.matchesAny(const [
+                'playback.autoQueue',
+                'playback.cellular',
+                'playback.lowData',
+                'playback.offline',
+              ]))
+                SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -225,7 +288,8 @@ class SettingsScreen extends StatelessWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
               // Streaming quality — grounded
-              SliverToBoxAdapter(
+              if (index.matchesAny(const ['data.cache']))
+                SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -279,7 +343,8 @@ class SettingsScreen extends StatelessWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
               // Motion Artwork & Lyrics group
-              SliverToBoxAdapter(
+              if (index.matchesAny(const ['playback.canvas', 'playback.blur']))
+                SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
@@ -408,6 +473,13 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Honest empty state, and only when NOTHING matched. An empty
+              // screen with no explanation reads as a crash, not as a filter,
+              // and the query is echoed back so it is clear what was searched.
+              if (index.isFiltering && !index.anyMatch)
+                SliverToBoxAdapter(
+                  child: SettingsSearchEmpty(query: index.needle),
+                ),
               const SliverToBoxAdapter(child: SizedBox(height: 28)),
               SliverToBoxAdapter(child: _MadeByFooter(isDark: isDark)),
               const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
