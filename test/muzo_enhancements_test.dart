@@ -10,6 +10,7 @@ import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/screens/home_screen.dart';
+import 'package:music_streaming_app/services/auth_service.dart';
 import 'package:music_streaming_app/services/home/home_models.dart';
 import 'package:music_streaming_app/models/playlist.dart';
 import 'package:music_streaming_app/services/recommendation/quick_picks_engine.dart';
@@ -406,9 +407,14 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<MusicProvider>.value(
           value: provider,
-          child: MaterialApp(
-            theme: theme,
-            home: const HomeScreen(),
+          // HomeScreen reads auth state for its header avatar and the
+          // signed-out prompt, so the mount has to provide it.
+          child: ChangeNotifierProvider<AuthService>.value(
+            value: AuthService(),
+            child: MaterialApp(
+              theme: theme,
+              home: const HomeScreen(),
+            ),
           ),
         ),
       );
@@ -450,9 +456,14 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<MusicProvider>.value(
           value: provider,
-          child: MaterialApp(
-            theme: theme,
-            home: const HomeScreen(),
+          // HomeScreen reads auth state for its header avatar and the
+          // signed-out prompt, so the mount has to provide it.
+          child: ChangeNotifierProvider<AuthService>.value(
+            value: AuthService(),
+            child: MaterialApp(
+              theme: theme,
+              home: const HomeScreen(),
+            ),
           ),
         ),
       );
@@ -480,9 +491,14 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<MusicProvider>.value(
           value: provider,
-          child: MaterialApp(
-            theme: theme,
-            home: const HomeScreen(),
+          // HomeScreen reads auth state for its header avatar and the
+          // signed-out prompt, so the mount has to provide it.
+          child: ChangeNotifierProvider<AuthService>.value(
+            value: AuthService(),
+            child: MaterialApp(
+              theme: theme,
+              home: const HomeScreen(),
+            ),
           ),
         ),
       );
@@ -579,9 +595,14 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<MusicProvider>.value(
           value: provider,
-          child: MaterialApp(
-            theme: theme,
-            home: const HomeScreen(),
+          // HomeScreen reads auth state for its header avatar and the
+          // signed-out prompt, so the mount has to provide it.
+          child: ChangeNotifierProvider<AuthService>.value(
+            value: AuthService(),
+            child: MaterialApp(
+              theme: theme,
+              home: const HomeScreen(),
+            ),
           ),
         ),
       );

@@ -151,16 +151,23 @@ class _SignedIn extends StatelessWidget {
 /// The index is clamped so a long list cannot accumulate delay - past a few
 /// rows, waiting for the last one to arrive reads as the app being slow rather
 /// than as an animation.
+///
+/// Reveals by SCALE and slide, never by opacity. These cards sit on glass, and
+/// a translucent layer isolates the backdrop the lens samples: an opacity
+/// animation here flattens the glass for the whole duration of the animation,
+/// which is worse than not animating at all.
 Widget _stagger(int index, {required Widget child}) {
   final clamped = index.clamp(0, 4);
   return TweenAnimationBuilder<double>(
     tween: Tween(begin: 0, end: 1),
     duration: Motion.normal + Duration(milliseconds: 40 * clamped),
     curve: Motion.settle,
-    builder: (context, t, child) => Opacity(
-      opacity: t,
-      child: Transform.translate(
-        offset: Offset(0, 14 * (1 - t)),
+    builder: (context, t, child) => Transform.translate(
+      offset: Offset(0, 14 * (1 - t)),
+      child: Transform.scale(
+        // Starts slightly small rather than at zero: a scale from nothing reads
+        // as a pop, and 0.96 reads as settling into place.
+        scale: 0.96 + 0.04 * t,
         child: child,
       ),
     ),
@@ -337,16 +344,17 @@ class _ChannelRow extends StatelessWidget {
             const SizedBox(width: Spacing.xs),
             // The check scales in rather than toggling, so a channel switch
             // reads as movement instead of a repaint.
+            //
+            // Scale only, no AnimatedOpacity wrapped around it: an opacity
+            // layer here would flatten the card's glass for the whole
+            // transition. At scale 0 the icon is already unreadable, so the
+            // fade was buying nothing.
             AnimatedScale(
               scale: selected ? 1 : 0,
               duration: Motion.fast,
               curve: Motion.springCurve,
-              child: AnimatedOpacity(
-                opacity: selected ? 1 : 0,
-                duration: Motion.fast,
-                child: Icon(Icons.check_circle_rounded,
-                    size: 18, color: theme.colorScheme.primary),
-              ),
+              child: Icon(Icons.check_circle_rounded,
+                  size: 18, color: theme.colorScheme.primary),
             ),
           ],
         ),
@@ -363,16 +371,14 @@ class _ActiveCheck extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Scale only, for the same reason as the channel check: no opacity layer
+    // over a glass surface.
     return AnimatedScale(
       scale: active ? 1 : 0,
       duration: Motion.normal,
       curve: Motion.springCurve,
-      child: AnimatedOpacity(
-        opacity: active ? 1 : 0,
-        duration: Motion.fast,
-        child: Icon(Icons.check_circle_rounded,
-            color: theme.colorScheme.primary, size: 22),
-      ),
+      child: Icon(Icons.check_circle_rounded,
+          color: theme.colorScheme.primary, size: 22),
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/home/home_models.dart';
+import '../services/auth_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/recommendation/quick_picks_engine.dart'
     show QuickPickCandidate, kCandidateVersion, kRankerVersion;
@@ -16,11 +17,15 @@ import '../presentation/home/home_playback.dart'
     show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
+import '../design/tokens/space.dart';
 import '../presentation/home/home_tokens.dart' as t;
+import '../screens/account_switcher_sheet.dart';
+import '../screens/login_screen.dart';
 import '../theme/glass_tokens.dart';
-import '../widgets/glass_circle_button.dart';
+import '../widgets/account_button.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/home_sections.dart';
+import '../widgets/home_sign_in_prompt.dart';
 import '../widgets/home_skeleton.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
@@ -105,6 +110,22 @@ class _HomeScreenState extends State<HomeScreen>
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _buildHeader(context)),
+              // First thing under the title, above the feed: the request is
+              // about what the feed IS, so it belongs before the feed rather
+              // than at the end of a scroll the user may never reach.
+              if (!context.watch<AuthService>().isLoggedIn)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        t.HomeTokens.contentPadding, Spacing.md, 16, 0),
+                    child: SignInPrompt(
+                      onSignIn: () => _pushGuarded(
+                        context,
+                        (_) => LoginScreen(addAnotherAccount: false),
+                      ),
+                    ),
+                  ),
+                ),
               // One placeholder for the whole body: the hero, the lower
               // sections, or the retry. Keeping them in one sliver is what lets
               // the placeholder reserve exactly the space the real content will,
@@ -126,28 +147,40 @@ class _HomeScreenState extends State<HomeScreen>
   // ── Header: one title, small utility action ──────────────────────────────
 
   Widget _buildHeader(BuildContext context) {
+    final auth = context.watch<AuthService>();
     return Padding(
       padding:
           const EdgeInsets.fromLTRB(t.HomeTokens.contentPadding, 12, 16, 0),
       child: Row(
         children: [
           Expanded(child: Text('Home', style: t.HomeTokens.homeTitle(context))),
-          GlassCircleButton(
-            icon: Icons.settings_outlined,
-            iconSize: 20,
+          AccountButton(
+            auth: auth,
+            // Signed out, the avatar goes straight to Settings, which is where
+            // sign-in lives. Signed in, it opens the quick-switch. Either way
+            // the button is doing the thing its icon advertises.
             onTap: () {
-              HapticFeedback.lightImpact();
-              _pushGuarded(
-                context,
-                (_) => const ThemedSettingsScreen(),
-              );
+              if (auth.isLoggedIn) {
+                AccountSwitcherSheet.show(context);
+              } else {
+                _pushGuarded(context, (_) => const ThemedSettingsScreen());
+              }
             },
-            semanticLabel: 'Settings',
           ),
         ],
       ),
     );
   }
+
+  /// Avatar that opens the account quick-switch.
+  ///
+  /// Replaces the gear that used to sit here. Settings is still one tap away -
+  /// it is the last row of the sheet - but the button now answers the question a
+  /// header button is usually for, which is "who am I and how do I change that".
+  ///
+  /// Vertical swipe cycles channels within the active account. The gesture is
+  /// here because the header is always reachable, whereas the sheet is one tap
+  /// away, and switching is something people do repeatedly.
 
   // ── Hero ─────────────────────────────────────────────────────────────────
 
