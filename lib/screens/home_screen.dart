@@ -19,14 +19,18 @@ import '../presentation/home/home_presentation.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/space.dart';
 import '../presentation/home/home_tokens.dart' as t;
+import '../presentation/home/home_view_mode.dart';
 import '../screens/account_switcher_sheet.dart';
 import '../screens/login_screen.dart';
 import '../theme/glass_tokens.dart';
 import '../widgets/account_button.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/section_view_toggle.dart';
+import '../widgets/home_layout_switch.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/home_sign_in_prompt.dart';
 import '../widgets/home_skeleton.dart';
+import '../widgets/track_list_column.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_options_sheet.dart';
@@ -455,6 +459,14 @@ class _FeedSection extends StatelessWidget {
     // `_feedSectionRenders`, so reaching shrink here means the section list
     // changed under us. Keep the guard rather than trust that.
     if (!_feedSectionRenders(section)) return const SizedBox.shrink();
+
+    // History shelves get a layout toggle before the planner's kind is
+    // consulted: switching to rows replaces the grid wholesale, so which grid
+    // it was is irrelevant once the user has chosen rows.
+    if (tracks.length > 1 &&
+        SectionIdentity.semanticSlug(section) == 'recent') {
+      return _HistoryFeedSection(section: section, tracks: tracks);
+    }
 
     if (plan.layoutKind == HomeLayoutKind.compactList) {
       return _CompactListSection(section: section, tracks: tracks);
@@ -1115,6 +1127,10 @@ const _LowerSections({
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicProvider>();
+    // Watched so a mode change repaints the section that owns the toggle, and
+    // no other. Without the watch the button would flip its icon and nothing
+    // else would move.
+    final viewModes = context.watch<HomeViewModeStore>();
     final sections = <Widget>[];
     final renderedKinds = <String>[];
 
@@ -1138,6 +1154,9 @@ const _LowerSections({
           track: track,
           isRecentlyPlayedContext: true,
         ),
+        viewMode: viewModes.modeOf(HomeViewSection.jumpBackIn),
+        onToggleView: () =>
+            viewModes.toggle(HomeViewSection.jumpBackIn),
       ));
     }
 
@@ -1150,6 +1169,8 @@ const _LowerSections({
         candidates: provider.quickPickCandidates,
         onPlay: (track) => _play(context, track, quickPicks),
         onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        viewMode: viewModes.modeOf(HomeViewSection.quickPicks),
+        onToggleView: () => viewModes.toggle(HomeViewSection.quickPicks),
       ));
     }
 
@@ -1313,43 +1334,78 @@ class _JumpBackInSection extends StatelessWidget {
     required this.recents,
     required this.onPlay,
     required this.onOptions,
+    required this.viewMode,
+    required this.onToggleView,
   });
 
   final List<Track> recents;
   final void Function(Track) onPlay;
   final void Function(Track) onOptions;
+  final HomeSectionViewMode viewMode;
+  final VoidCallback onToggleView;
+
+  bool get _isCard => viewMode == HomeSectionViewMode.card;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const HomeSectionHeader(title: 'Jump back in'),
-        SizedBox(
-          height: 178 + homeRailTextBlockHeight(context),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-                horizontal: t.HomeTokens.contentPadding),
-            physics: const BouncingScrollPhysics(),
-            itemCount: recents.length,
-            itemBuilder: (context, index) {
-              final track = recents[index];
-              return Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: RailCard(
-                  artUrl: track.albumArtUrl,
-                  title: track.trackName,
-                  subtitle: track.artistName,
-                  size: 178,
-                  onTap: () => onPlay(track),
-                  onLongPress: () => onOptions(track),
-                ),
-              );
-            },
+        HomeSectionHeader(
+          title: 'Jump back in',
+          trailing: SectionViewToggle(
+            mode: viewMode,
+            onToggle: onToggleView,
           ),
         ),
+        // Height is animated because the two layouts are wildly different sizes
+        // (a 178dp card rail versus a multi-row column). Without this the whole
+        // page below jumps the instant the mode changes, which reads as a
+        // scroll glitch rather than as a layout choice.
+        HomeLayoutSwitch(
+          isCard: _isCard,
+          card: _cardRail(context),
+          list: _rowColumns(context),
+        ),
       ],
+    );
+  }
+
+  Widget _cardRail(BuildContext context) {
+    return SizedBox(
+      height: 178 + homeRailTextBlockHeight(context),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding:
+            const EdgeInsets.symmetric(horizontal: t.HomeTokens.contentPadding),
+        physics: const BouncingScrollPhysics(),
+        itemCount: recents.length,
+        itemBuilder: (context, index) {
+          final track = recents[index];
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: RailCard(
+              artUrl: track.albumArtUrl,
+              title: track.trackName,
+              subtitle: track.artistName,
+              size: 178,
+              onTap: () => onPlay(track),
+              onLongPress: () => onOptions(track),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _rowColumns(BuildContext context) {
+    return SizedBox(
+      height: trackListColumnsHeight(context, recents.length),
+      child: TrackListColumns(
+        tracks: recents,
+        onPlay: onPlay,
+        onOptions: onOptions,
+      ),
     );
   }
 }
@@ -1386,47 +1442,97 @@ class _MadeForYouSection extends StatelessWidget {
   }
 }
 
-/// Quick Picks: dense compact list (spec #2A/#75). Each row: 52dp
-/// thumbnail + title + artist + play chip. Deterministic picks from
-/// the local recommendation engine. No giant cards.
+/// Quick Picks: deterministic picks from the local recommendation engine.
+///
+/// Two layouts. It opens on CARDS by default (see
+/// [HomeViewModeStore.defaultFor]): this is a discovery shelf, and a column of
+/// 52dp rows reads as a queue to work through rather than as things to pick
+/// from. The compact list is still one tap away for someone who wants to
+/// recognise a track by its row rather than its cover.
 class _QuickPicksSection extends StatelessWidget {
   const _QuickPicksSection({
     required this.candidates,
     required this.onPlay,
     required this.onOptions,
+    required this.viewMode,
+    required this.onToggleView,
   });
 
   final List<QuickPickCandidate> candidates;
   final void Function(Track) onPlay;
   final void Function(Track) onOptions;
+  final HomeSectionViewMode viewMode;
+  final VoidCallback onToggleView;
+
+  /// Subtitle = artist name (user preference: reason labels are noise in the
+  /// list; engine reasoning lives in the RECOMMENDATION_ITEM debug traces).
+  static String _subtitleOf(Track track) {
+    final firstArtist = track.artistName.split(',').first.trim();
+    return firstArtist.isEmpty ? track.artistName : firstArtist;
+  }
+
+  List<Track> get _tracks =>
+      candidates.take(6).map((c) => c.track).toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
+    final isCard = viewMode == HomeSectionViewMode.card;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const HomeSectionHeader(title: 'Quick picks'),
-        ...candidates.take(6).map((candidate) {
-          final track = candidate.track;
-          // Subtitle = artist name (user preference: reason labels are
-          // noise in the list; engine reasoning lives in the
-          // RECOMMENDATION_ITEM debug traces, not the row).
-          final firstArtist = track.artistName.split(',').first.trim();
-          return ForYouRow(
-            key: ValueKey('qp_${track.id}'),
-            artUrl: track.albumArtUrl,
-            title: track.trackName,
-            subtitle: firstArtist.isEmpty ? track.artistName : firstArtist,
-            isPlaying: false,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              context.read<MusicProvider>().playTrack(track,
-                  playlistTracks: candidates.map((c) => c.track).toList());
-            },
-            onLongPress: () => onOptions(track),
-          );
-        }),
+        HomeSectionHeader(
+          title: 'Quick picks',
+          trailing: SectionViewToggle(
+            mode: viewMode,
+            onToggle: onToggleView,
+          ),
+        ),
+        HomeLayoutSwitch(
+          isCard: isCard,
+          card: _cards(context),
+          list: _rows(context),
+        ),
       ],
+    );
+  }
+
+  Widget _cards(BuildContext context) {
+    final tracks = _tracks;
+    return SizedBox(
+      height: 178 + homeRailTextBlockHeight(context),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding:
+            const EdgeInsets.symmetric(horizontal: t.HomeTokens.contentPadding),
+        physics: const BouncingScrollPhysics(),
+        itemCount: tracks.length,
+        itemBuilder: (context, index) {
+          final track = tracks[index];
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: RailCard(
+              artUrl: track.albumArtUrl,
+              title: track.trackName,
+              subtitle: _subtitleOf(track),
+              size: 178,
+              onTap: () => onPlay(track),
+              onLongPress: () => onOptions(track),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _rows(BuildContext context) {
+    return SizedBox(
+      height: trackListColumnsHeight(context, _tracks.length),
+      child: TrackListColumns(
+        tracks: _tracks,
+        onPlay: onPlay,
+        onOptions: onOptions,
+      ),
     );
   }
 }
@@ -1534,97 +1640,150 @@ class _AlbumGridSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HomeSectionHeader(title: section.title),
-        Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: t.HomeTokens.contentPadding),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Tablet/landscape: 3 columns above 600dp content width
-              // (spec: landscape/tablet adaptation). Phone keeps 2.
-              final columns = constraints.maxWidth > 600 ? 3 : 2;
-              final gap = 16.0;
-              final tileW =
-                  (constraints.maxWidth - gap * (columns - 1)) / columns;
-              return Wrap(
-                spacing: gap,
-                runSpacing: 18,
-                children: [
-                  for (final item in section.items)
-                    SizedBox(
-                      width: tileW,
-                      child: PressableScale(
-                        onTap: () {
-                          final action = HomePlaybackController.activate(
-                            context,
-                            item,
-                            sectionTitle: section.title,
-                          );
-                          if (action == HomePlayAction.navigateCollection) {
-                            _pushGuarded(
-                              context,
-                              (_) => ThemedPlaylistDetailScreen(
-                                playlistId: item.browseId ?? item.id,
-                                playlistName: item.title,
-                                playlistImage: item.artworkUrl,
-                              ),
-                            );
-                          }
-                        },
-                        onLongPress: () {
-                          final track = homeItemToTrack(item);
-                          if (track != null) {
-                            ThemedOptionsSheet.show(context, track: track);
-                          }
-                        },
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: AspectRatio(
-                                aspectRatio: 1,
-                                child: item.artworkUrl.isNotEmpty
-                                    ? CachedNetworkImage(
-                                        imageUrl: item.artworkUrl,
-                                        fit: BoxFit.cover,
-                                        memCacheWidth: 340,
-                                        fadeInDuration:
-                                            const Duration(milliseconds: 200),
-                                        errorWidget: (_, __, ___) => Container(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.05),
-                                            child: const Icon(
-                                                Icons.album_rounded,
-                                                color: Colors.white24)),
-                                      )
-                                    : Container(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.05),
-                                        child: const Icon(Icons.album_rounded,
-                                            color: Colors.white24)),
-                              ),
-                            ),
-                            const SizedBox(height: 9),
-                            Text(
-                              item.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.HomeTokens.cardTitle(context),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              item.subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.HomeTokens.cardMetadata(context),
-                            ),
-                          ],
+        _albumGridBody(context, section),
+      ],
+    );
+  }
+}
+
+/// The square grid itself, without its header.
+///
+/// Extracted so a shelf that can switch between this and a row list owns its
+/// header once and animates only the body. Two copies of this grid would drift
+/// the first time a card's radius or spacing changed.
+Widget _albumGridBody(BuildContext context, HomeSection section) {
+  return Padding(
+    padding:
+        const EdgeInsets.symmetric(horizontal: t.HomeTokens.contentPadding),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        // Tablet/landscape: 3 columns above 600dp content width
+        // (spec: landscape/tablet adaptation). Phone keeps 2.
+        final columns = constraints.maxWidth > 600 ? 3 : 2;
+        final gap = 16.0;
+        final tileW = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: 18,
+          children: [
+            for (final item in section.items)
+              SizedBox(
+                width: tileW,
+                child: PressableScale(
+                  onTap: () {
+                    final action = HomePlaybackController.activate(
+                      context,
+                      item,
+                      sectionTitle: section.title,
+                    );
+                    if (action == HomePlayAction.navigateCollection) {
+                      _pushGuarded(
+                        context,
+                        (_) => ThemedPlaylistDetailScreen(
+                          playlistId: item.browseId ?? item.id,
+                          playlistName: item.title,
+                          playlistImage: item.artworkUrl,
+                        ),
+                      );
+                    }
+                  },
+                  onLongPress: () {
+                    final track = homeItemToTrack(item);
+                    if (track != null) {
+                      ThemedOptionsSheet.show(context, track: track);
+                    }
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: item.artworkUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: item.artworkUrl,
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: 340,
+                                  fadeInDuration:
+                                      const Duration(milliseconds: 200),
+                                  errorWidget: (_, __, ___) => Container(
+                                      color: Colors.white.withValues(alpha: 0.05),
+                                      child: const Icon(Icons.album_rounded,
+                                          color: Colors.white24)),
+                                )
+                              : Container(
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                  child: const Icon(Icons.album_rounded,
+                                      color: Colors.white24)),
                         ),
                       ),
-                    ),
-                ],
-              );
-            },
+                      const SizedBox(height: 9),
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.HomeTokens.cardTitle(context),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.HomeTokens.cardMetadata(context),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+/// A feed shelf the parser classified as listening history, which can lay its
+/// items out as a card grid or as paging rows.
+///
+/// Eligibility comes from [SectionIdentity.semanticSlug] == 'recent', which the
+/// parser derives from the shelf's own title. Matching on the title here instead
+/// would hard-code "Listen again" and stop working the moment the source, the
+/// locale, or the account changed the wording; matching on the slug also means
+/// this picks up "Recents" and "Jump back in" from the feed for free.
+class _HistoryFeedSection extends StatelessWidget {
+  const _HistoryFeedSection({required this.section, required this.tracks});
+
+  final HomeSection section;
+  final List<Track> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewModes = context.watch<HomeViewModeStore>();
+    final isCard = viewModes.isCard(HomeViewSection.listenAgain);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(
+          title: section.title,
+          trailing: SectionViewToggle(
+            mode: viewModes.modeOf(HomeViewSection.listenAgain),
+            onToggle: () => viewModes.toggle(HomeViewSection.listenAgain),
+          ),
+        ),
+        HomeLayoutSwitch(
+          isCard: isCard,
+          card: _albumGridBody(context, section),
+          list: SizedBox(
+            height: trackListColumnsHeight(context, tracks.length),
+            child: TrackListColumns(
+              tracks: tracks,
+              onPlay: (track) =>
+                  _LowerSections._play(context, track, tracks),
+              onOptions: (track) =>
+                  ThemedOptionsSheet.show(context, track: track),
+            ),
           ),
         ),
       ],

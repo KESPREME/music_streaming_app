@@ -137,29 +137,75 @@ static const double headerToContent = 10.0;
         color: titleColor(context),
       );
 
-/// Font size for [sectionTitle], exposed so it can be asserted without a
+/// Fraction of the row width a paging column of compact track rows occupies.
+  ///
+  /// Wider than a card rail on purpose: rows need a title and an artist, and a
+  /// column narrower than this truncates both. Leaves a 12% peek so the rail
+  /// reads as scrollable rather than as a fixed pane.
+  static const double trackColumnFraction = 0.88;
+
+  /// Cap on that column width, so it does not sprawl on a tablet.
+  static const double trackColumnMaxWidth = 400.0;
+
+  /// Artwork edge in a compact row. Squarer and smaller than a rail card:
+  /// this is a list, and the artwork is an identifier rather than the subject.
+  static const double rowArtSize = 48.0;
+
+  /// Corner radius of that artwork.
+  ///
+  /// Tighter than [cardRadius] on purpose. A list wants the thumbnails to read as
+  /// a set of consistent marks; rounded-larger chips make eight of them look
+  /// like eight unrelated buttons.
+  static const double rowArtRadius = 7.0;
+
+  /// Gap between a row's artwork and its text.
+  static const double rowArtGap = 12.0;
+
+  /// Vertical padding inside a row. The visual row pitch is [rowArtSize] plus
+  /// twice this.
+  static const double rowVerticalPadding = 4.0;
+
+  /// Tap target for a row's overflow button.
+  static const double rowOverflowSize = 36.0;
+
+  /// Rows per paging column.
+  static const int tracksPerColumn = 4;
+
+  /// Gap between paging columns.
+  static const double trackColumnGap = 12.0;
+
+  /// How wide a column of track rows should be in a row [available] wide.
+  ///
+  /// Shared by Home's Jump back in, Quick picks and anything else that pages
+  /// rows, because a column that disagrees with itself between two sections
+  /// makes the same content look like two different designs.
+  static double trackColumnWidth(double available) =>
+      available * trackColumnFraction < trackColumnMaxWidth
+          ? available * trackColumnFraction
+          : trackColumnMaxWidth;
+
+  /// Font size for [sectionTitle], exposed so it can be asserted without a
   /// widget tree.
   static const double sectionTitleSize = 24.0;
 
-  /// Font size for [heroSectionTitle], same reason.
-  static const double heroSectionTitleSize = 19.0;
-
   /// Hero *section* heading - the label above the carousel itself.
   ///
-  /// Deliberately lighter and smaller than [sectionTitle]. The carousel is
-  /// 280-380dp of artwork, and a 24dp bold heading above a surface that size
-  /// reads as competing with it rather than labelling it. The hero also sits
-  /// above the compact Quick picks list on the same screen, so a full-weight
-  /// "Quick Picks" twice down one page looked like a rendering fault.
+  /// Now deliberately IDENTICAL to [sectionTitle].
+  ///
+  /// This used to be 19/w600 so the heading would not compete with 280-380dp of
+  /// artwork beneath it. Measured against the reference app, that reasoning does
+  /// not survive: every section heading there is one size and one weight, and
+  /// the lead shelf is not treated as a special case. A page where one heading
+  /// is visibly smaller than its neighbours reads as a styling fault, not as
+  /// restraint - and "For you" is a section label like any other, so it should
+  /// look like one.
+  ///
+  /// The hierarchy on this screen comes from [homeTitle] ("Listen Now") above
+  /// it, which is where it belongs.
   ///
   /// Distinct from [heroTitle], which styles the title on a hero *card*.
   static TextStyle heroSectionTitle(BuildContext context) =>
-      GoogleFonts.plusJakartaSans(
-        fontSize: heroSectionTitleSize,
-        fontWeight: FontWeight.w600,
-        height: 1.2,
-        color: titleColor(context),
-      );
+      sectionTitle(context);
 
   /// Section description (secondary, muted).
   static TextStyle sectionDescription(BuildContext context) =>

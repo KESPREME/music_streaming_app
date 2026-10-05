@@ -40,6 +40,43 @@ Map<String, SectionMemoryEntry> _memoryFrom(HomeFeed feed) => {
 
 void main() {
   group('SectionIdentity (spec #4)', () {
+    test('history titles all resolve to the same "recent" slug', () {
+      // Load-bearing: this slug is what decides a feed shelf gets the
+      // rows/cards toggle. If a reordering of the `contains` checks in
+      // semanticSlug ever lets one of these fall through, the toggle silently
+      // disappears from a shelf the user can plainly see it on.
+      for (final title in const [
+        'Listen again',
+        'Recents',
+        'Jump back in',
+        'Recently played',
+        'LISTEN AGAIN', // case must not matter
+      ]) {
+        expect(
+          SectionIdentity.semanticSlug(_shelf(title, [_song('a1', 'T', 'X')])),
+          'recent',
+          reason: '"$title" should be classified as history',
+        );
+      }
+    });
+
+    test('non-history titles are NOT classified as recent', () {
+      // The flip side: too loose a match would hand the toggle to every shelf
+      // on the page, which is noise rather than a feature.
+      for (final title in const [
+        'New releases',
+        'Charts & Trending',
+        'Your playlists',
+        'Moods & genres',
+      ]) {
+        expect(
+          SectionIdentity.semanticSlug(_shelf(title, [_song('a1', 'T', 'X')])),
+          isNot('recent'),
+          reason: '"$title" is not a history shelf',
+        );
+      }
+    });
+
     test('index-independent: same title → same identity across requests', () {
       final requestA = _shelf('New releases', [
         _song('a1', 'Old', 'X'),

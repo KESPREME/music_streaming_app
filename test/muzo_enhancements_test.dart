@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/models/lyrics_entry.dart';
 import 'package:music_streaming_app/now_playing_screen.dart';
+import 'package:music_streaming_app/presentation/home/home_view_mode.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
@@ -413,7 +414,11 @@ void main() {
             value: AuthService(),
             child: MaterialApp(
               theme: theme,
-              home: const HomeScreen(),
+              // Section headers read the persisted rows-vs-cards choice from this store.
+              home: ChangeNotifierProvider<HomeViewModeStore>(
+                create: (_) => HomeViewModeStore(),
+                child: const HomeScreen(),
+              ),
             ),
           ),
         ),
@@ -462,7 +467,11 @@ void main() {
             value: AuthService(),
             child: MaterialApp(
               theme: theme,
-              home: const HomeScreen(),
+              // Section headers read the persisted rows-vs-cards choice from this store.
+              home: ChangeNotifierProvider<HomeViewModeStore>(
+                create: (_) => HomeViewModeStore(),
+                child: const HomeScreen(),
+              ),
             ),
           ),
         ),
@@ -497,7 +506,11 @@ void main() {
             value: AuthService(),
             child: MaterialApp(
               theme: theme,
-              home: const HomeScreen(),
+              // Section headers read the persisted rows-vs-cards choice from this store.
+              home: ChangeNotifierProvider<HomeViewModeStore>(
+                create: (_) => HomeViewModeStore(),
+                child: const HomeScreen(),
+              ),
             ),
           ),
         ),
@@ -601,7 +614,11 @@ void main() {
             value: AuthService(),
             child: MaterialApp(
               theme: theme,
-              home: const HomeScreen(),
+              // Section headers read the persisted rows-vs-cards choice from this store.
+              home: ChangeNotifierProvider<HomeViewModeStore>(
+                create: (_) => HomeViewModeStore(),
+                child: const HomeScreen(),
+              ),
             ),
           ),
         ),

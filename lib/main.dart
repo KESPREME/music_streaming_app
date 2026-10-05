@@ -13,6 +13,7 @@ import 'core/navigation/root_navigator.dart';
 import 'core/perf_trace.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
+import 'presentation/home/home_view_mode.dart';
 import 'services/audio_output_service.dart';
 import 'providers/accent_controller.dart';
 import 'services/deep_link_service.dart';
@@ -162,6 +163,12 @@ void main() async {
           ChangeNotifierProvider(
             create: (context) => AudioOutputService()..init(),
           ),
+          // Per-section Home layout choices (rows vs cards). Reads and writes
+          // its own preferences key, so it loads lazily rather than needing an
+          // init step in main() before the first frame.
+          ChangeNotifierProvider(
+            create: (context) => HomeViewModeStore(),
+          ),
         ],
         child: const MyApp(),
       ),
@@ -187,6 +194,7 @@ class _MyAppState extends State<MyApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ThemeProvider>(context, listen: false).initialize();
       Provider.of<AccentController>(context, listen: false).initialize();
+      Provider.of<HomeViewModeStore>(context, listen: false).initialize();
       _deepLinks.start();
       _deepLinkSub = _deepLinks.links.listen(_handleDeepLink);
     });

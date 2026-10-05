@@ -34,8 +34,9 @@ void main() {
     });
 
     testWidgets('accepts a style override', (tester) async {
-      // The carousel heading needs to be quieter than a rail's. This is the seam
-      // that allows it without restyling every section on the screen.
+      // The seam still exists, so a heading CAN be styled differently - it is
+      // simply no longer used that way, because every section heading now looks
+      // the same.
       late TextStyle style;
       await tester.pumpWidget(host(Builder(builder: (context) {
         style = t.HomeTokens.heroSectionTitle(context);
@@ -43,7 +44,7 @@ void main() {
       })));
       expect(find.text('For you'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      expect(style.fontSize, t.HomeTokens.heroSectionTitleSize);
+      expect(style.fontSize, t.HomeTokens.sectionTitleSize);
     });
 
     testWidgets('defaults to the standard section style', (tester) async {
@@ -52,13 +53,23 @@ void main() {
       expect(text.style?.fontSize, t.HomeTokens.sectionTitleSize);
     });
 
-    test('the hero heading is quieter than a rail heading', () {
-      // A 24dp bold heading above 280-380dp of artwork competes with it. And
-      // the hero sits above the compact Quick picks list on the same screen, so
-      // a full-weight "Quick Picks" twice down one page read as a rendering fault
-      // rather than as two different sections.
-      expect(t.HomeTokens.heroSectionTitleSize,
-          lessThan(t.HomeTokens.sectionTitleSize));
+    testWidgets('the hero heading matches a rail heading exactly', (tester) async {
+      // It used to be deliberately quieter: 19/w600 against 24/w700, on the
+      // reasoning that a full-weight heading competed with 280-380dp of
+      // artwork. Measured against the reference app that reasoning does not
+      // hold - every heading there is one size and one weight, and a page where
+      // one heading is visibly smaller than its neighbours reads as a styling
+      // fault rather than as restraint. "For you" labels a section like any
+      // other, so it now looks like one.
+      late TextStyle hero;
+      late TextStyle rail;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        hero = t.HomeTokens.heroSectionTitle(context);
+        rail = t.HomeTokens.sectionTitle(context);
+        return const SizedBox.shrink();
+      })));
+      expect(hero.fontSize, rail.fontSize);
+      expect(hero.fontWeight, rail.fontWeight);
     });
   });
 

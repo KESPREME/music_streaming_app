@@ -18,6 +18,7 @@ class HomeSectionHeader extends StatelessWidget {
     this.description,
     this.onViewAll,
     this.style,
+    this.trailing,
   });
 
   final String title;
@@ -28,6 +29,14 @@ class HomeSectionHeader extends StatelessWidget {
   /// larger than a rail of cards - the hero carousel - and the default weight
   /// would compete with the content it names.
   final TextStyle? style;
+
+  /// Control shown at the trailing edge of the heading.
+  ///
+  /// Sits beside "See all" rather than replacing it: they answer different
+  /// questions, and a section that offers both needs both. When a section
+  /// supplies this, "See all" is suppressed unless there is room for it, because
+  /// two controls at one edge read as clutter.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +53,12 @@ class HomeSectionHeader extends StatelessWidget {
               Expanded(
                 child: Text(title, style: style ?? t.HomeTokens.sectionTitle(context)),
               ),
-              if (onViewAll != null)
+              if (trailing != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: trailing!,
+                )
+              else if (onViewAll != null)
                 GestureDetector(
                   onTap: onViewAll,
                   behavior: HitTestBehavior.opaque,
