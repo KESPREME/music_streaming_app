@@ -8,11 +8,11 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 623/623 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 654/654 tests green.
 
 > **GATE (current):** `flutter analyze` = **195 issues, zero errors** (195 is the
 > baseline; several commits have moved it DOWN by removing dangling exports).
-> `flutter test` = **623 passing**. Debug APK builds. Treat 195 as the baseline —
+> `flutter test` = **654 passing**. Debug APK builds. Treat 195 as the baseline —
 > a rise means something new was introduced, not that the file grew.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
@@ -22,7 +22,7 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 62
 
 ---
 
-## CURRENT STATE (commit 7ca553f)
+## CURRENT STATE (commit 7f6777a)
 
 ### Auth / session (c12c63a — the session used to be forgotten every restart)
 `AuthService.init()` had **ZERO call sites**: cookies were written to
@@ -142,6 +142,83 @@ lib/services/recommendation/
    **Do not derive that line as `fontSize * 1.2`** — it came out 3px short and
    overflowed the Column. The font really produces ~20dp for a 13px line.
 
+### Card / list layouts per section (NEW 7f6777a)
+Three history/recommendation shelves can each switch between artwork cards and
+paging rows. Persisted per section, one key each.
+
+```
+lib/presentation/home/home_view_mode.dart
+  HomeSectionViewMode { list, card }   + .toggled
+  HomeViewSection { jumpBackIn, quickPicks, listenAgain }
+  HomeViewModeStore  — ChangeNotifier, keys home_view_<section>
+    initialize() read in main.dart alongside ThemeProvider/AccentController
+    modeOf/isCard/toggle; defaultFor() owns every default
+    toggle() swallows a prefs write failure (see gotcha below)
+lib/widgets/section_view_toggle.dart  — glass circular toggle, destination icon
+lib/widgets/track_list_column.dart     — TrackListRow + TrackListColumns
+lib/widgets/home_layout_switch.dart    — HomeLayoutSwitch + sectionLayoutTransition
+```
+- **Which feed shelves qualify** comes from `SectionIdentity.semanticSlug(section)
+  == 'recent'`, which the parser ALREADY derives from the shelf's own title
+  (home_models.dart: "listen again" | "recent" | "jump back"). **Do not
+  hardcode a title string** — that is what BitChord does (`RECENTS_TITLE`, plus
+  `index == 0`, which never matches in our tree since Jump back in is a local
+  overlay). The slug matches in any locale/account and covers "Recents" for free.
+  It had ZERO test coverage until now; `test/home_convergence_test.dart` pins it
+  both ways (history titles match, non-history shelves must NOT).
+- **"Listen again" is a NATIVE FEED SHELF, not `FEmusic_history`.** It arrives
+  with its real source title and renders as `_AlbumGridSection` (squareGrid,
+  2 columns, 6 rows = 12 items). The grid body was extracted to
+  `_albumGridBody()` so the plain and toggleable versions share one grid —
+  two copies would drift on the first radius change.
+- Defaults: ALL THREE open on **card**. Quick picks + jump back in as before;
+  listen again defaults to card because that is how it has always rendered, so
+  upgrading does not silently restyle the feed.
+- Row metrics are exact BitChord parity (`RECENT_TRACKS_PER_COLUMN = 4`,
+  `TRACK_COLUMN_FRACTION = 0.88f`, max 400, art 48/r7/gap 12/pad 4/overflow 36).
+  The 0.88 width is **intentional peek**, not a bug — the next column peeks in.
+  Do not "fix" it.
+- **THE GAP BUG — read before touching `trackListColumnsHeight`.** It reserved
+  `ceil(count/4)*4` rows, as if the columns STACKED. They scroll sideways, so
+  10 tracks are 3 columns of 4/4/2 and still **4 rows** tall; the old math left
+  a screen-tall hole under a four-row list. Now `min(count, 4)`, matching
+  BitChord's `chunked(4)` inside a wrap-content row. `count <= 0` still reserves
+  ONE full column so the skeleton keeps its shape while loading.
+  The first version of the fix was pinned by a test that derived its
+  expectation FROM the implementation — it passed while the UI was visibly
+  broken. Derive expectations from correct behaviour, never from the code.
+- `HomeLayoutSwitch` replaced an `AnimatedSize`+`AnimatedSwitcher` block that
+  had been **copy-pasted into all three sections**; the same class of bug now
+  has one home.
+
+### Layout-swap motion — three defects, all found by MEASURING (7f6777a)
+- **`AnimatedSwitcher` reports the SAME `AnimationStatus` for both roles.** It
+  drives the arriving child 0 → 1 and the departing child 1 → 0, so you **cannot
+  infer the role from the animation**. Guessing backwards is worse than not
+  animating: measured, the arriving layout shrank to nothing while the departing
+  one sat at 94% fully painted on top of it. That is exactly the reported
+  "the next thing comes before the animation completes".
+  **The role now travels WITH the child** — compared by key against the layout
+  currently on screen (`arrivingKey`). Deterministic, no inference.
+- **One monotonic tween cannot both arrive gently and leave completely.** A
+  shared `0.94 → 1.0` ends the departing body at 0.94 (a ghost); a shared
+  `0 → 1` makes the arriving body pop from nothing. Hence: arriving settles
+  `0.94 → 1`, departing shrinks `1 → 0` (gone by ~160ms of 220ms).
+- **`Curves.easeOutBack` (`Motion.springCurve`) is WRONG for a state change.**
+  It passes its target at ~60% of the clock — measured **1.086 at 132ms of
+  220ms** — then spends the rest unwinding, which reads as arriving early. Use
+  monotonic curves (`Motion.enter`/`Motion.exit`/`Motion.standard`).
+- **Height landed in two beats.** A `Stack` sizes to its TALLEST child, so a
+  tall departing body (listen again's ~1446dp grid vs a 224dp list) held the box
+  open for the whole swap, then collapsed. `Positioned` takes the departing body
+  out of the size calculation → `AnimatedSize` animates in ONE pass. A
+  `ClipRect` around it is required or it paints over the section below.
+- No opacity anywhere in the swap: the nav bar and mini-player are backdrop
+  lenses, and a translucent layer between a lens and its content flattens the
+  glass (same rule as the account switcher).
+- Pinned by `test/home_layout_switch_test.dart` — per-frame scale sampling, both
+  directions, height monotonicity, no overflow, glyph morph, one glyph at rest.
+
 ### Presentation (STABLE)
 - `HomeTokens`: **contentPadding 10** (matches the floating chrome gutter so card
   edges line up with the nav bar), **sectionGap 26**, **headerToContent 10**,
@@ -152,12 +229,17 @@ lib/services/recommendation/
   on a tighter line and with no gap the title read as FUSED to the first card
   (user feedback: "almost joined, separated by a thin sliver").
 - Typography: homeTitle 32 bold, sectionTitle 24 bold (`sectionTitleSize`), hero
-  **section** title 19 semibold (`heroSectionTitleSize` — quieter because the
-  carousel is 280-380dp of artwork and 24dp bold competed with it), heroTitle 26
-  bold 2-line (the CARD's own title — different token, don't confuse), cardTitle
-  15.5 semibold, cardMetadata 13.5, compactTitle 15, compactMetadata 13.
-- `HomeSectionHeader` takes an optional `style` so the hero can be quieter
-  without restyling every section.
+  **section** title — see below, heroTitle 26 bold 2-line (the CARD's own title —
+  different token, don't confuse), cardTitle 15.5 semibold, cardMetadata 13.5,
+  compactTitle 15, compactMetadata 13.
+- **`heroSectionTitle` == `sectionTitle` (7f6777a).** It used to be 19/w600 on the
+  reasoning that a 24dp bold heading competes with 280-380dp of artwork beneath
+  it. Measured against BitChord, that reasoning does not hold: every section
+  heading there is one size and one weight and the lead shelf is not a special
+  case. `heroSectionTitleSize` was **DELETED** — if you find a reference to it
+  (e.g. an old test) it is stale. Hierarchy on this screen comes from `homeTitle`
+  above it. `heroSectionHeader` still accepts a `style` override; nothing uses it
+  that way now.
 - `homeRailTextBlockHeight()` = 46dp base (LIVE-CALIBRATED: 33 was too small,
   caused 9px overflow). All square-rail heights = card + this + 12 slack.
 
@@ -282,6 +364,16 @@ effect is not in the pipeline, which would hang init forever).
     findings by splitting pre-existing one-line `if`s. Also: `git checkout -- <f>`
     restores from the INDEX — if edits are staged it silently re-applies them. Use
     `git restore --source=HEAD --staged --worktree -- <f>`.
+16. **NO overshooting curve for a state change or layout swap.** `Motion.springCurve`
+    is `Curves.easeOutBack`: it clears its target at ~60% of the clock and unwinds
+    for the rest, so the motion finishes before the animation does and reads as
+    "it jumped early". Reserve it for something that genuinely wants overshoot.
+    See "Layout-swap motion" above.
+17. **NEVER `Opacity`/`AnimatedOpacity` anywhere above or around a glass lens.**
+    The nav bar and mini-player are backdrop lenses; a translucent layer between
+    a lens and its content isolates the backdrop it samples and the glass goes
+    flat for the duration. Reveal by scale/slide. Never stretch-overscroll under a
+    lens either (black scroll-edge artefacts on Android).
 
 ---
 
@@ -297,6 +389,19 @@ effect is not in the pipeline, which would hang init forever).
 - Album card tap → HOME_PLAY navigateCollection → playlist detail screen
   (MPREb browseId works there via getPlaylistDetails).
 - Song tap → playTrack SUCCESS.
+
+### Card/list capture (CPH2723, 2026-10-05 — drove 7f6777a)
+- Screenshots of Home confirmed the toggles render, the persisted choice is
+  honoured per section, and card mode was unaffected by the list work.
+- **The list-mode gap was visible on-device**, which is how the
+  `ceil(count/4)*4` reservation bug was found — arithmetic, not layout.
+- **"Listen again" EXISTS on Home** as a native feed shelf, 2-column grid,
+  6 rows = 12 items. It was never built by us under that name; the title comes
+  from the source. Earlier CONTEXT claimed it was missing and needed
+  `FEmusic_history` — that was wrong.
+- Row rail measured on device: 48dp art, ~62dp pitch, and the second column
+  is a deliberate 12% peek at the right edge (0.88 width parity), NOT a
+  rendering fault.
 
 ---
 
@@ -444,8 +549,12 @@ its `YouTubeProfile` channels.
 | lib/presentation/home/home_presentation.dart | classifySection + planPresentation + HomeSemanticType/LayoutKind |
 | lib/presentation/home/home_playback.dart | HomePlaybackController + HomePlayAction |
 | lib/presentation/home/home_tokens.dart | ALL design tokens |
-| lib/screens/home_screen.dart | HomeScreen + _LowerSections + all section widgets (~1620 lines) |
-| lib/widgets/home_sections.dart | RailCard, ForYouRow, ArtistPortrait, ParallaxArtwork, ParallaxMediaCarousel, EditorialMoodTile, StaggerIn, homeRailTextBlockHeight |
+| lib/presentation/home/home_view_mode.dart | HomeSectionViewMode / HomeViewSection / HomeViewModeStore (persisted per-shelf layout) |
+| lib/screens/home_screen.dart | HomeScreen + _LowerSections + all section widgets (~2190 lines) |
+| lib/widgets/home_sections.dart | HomeSectionHeader (has `trailing`), RailCard, ForYouRow, ArtistPortrait, ParallaxArtwork, ParallaxMediaCarousel, EditorialMoodTile, StaggerIn, homeRailTextBlockHeight |
+| lib/widgets/home_layout_switch.dart | HomeLayoutSwitch + sectionLayoutTransition — the ONE card⇄list swap, used by all three shelves |
+| lib/widgets/section_view_toggle.dart | SectionViewToggle — glass circular toggle, destination icon, selection haptic |
+| lib/widgets/track_list_column.dart | TrackListRow / TrackListColumns / trackListColumnsHeight (paging rows) |
 | lib/providers/music_provider.dart | God-object facade (~3850 lines) — home feed, quick picks, search attribution, playback |
 | lib/services/auth_models.dart | AuthCookie (domain+expiry) / YouTubeProfile / GoogleAccountSession / AccountIdentity / AccountChannel / id derivation / isSigningCookieName |
 | lib/services/auth_service.dart | Secure multi-account session registry; getHeaders, identityKey, selectIdentity, removeAccount, logout |
@@ -477,8 +586,10 @@ its `YouTubeProfile` channels.
 ### Tests
 | File | Covers |
 |---|---|
-| test/home_convergence_test.dart | SectionIdentity, convergence merge, ratchet sequence, playback routing matrix |
+| test/home_convergence_test.dart | SectionIdentity, convergence merge, ratchet sequence, playback routing matrix, semanticSlug 'recent' both ways |
 | test/home_pipeline_test.dart | Composer, quality gate, cache roundtrip, degradation, metadata, quality dims |
+| test/home_view_mode_test.dart | Store defaults + independence, prefs roundtrip, corrupt-value fallback, toggle semantics/icon, header trailing slot, row-rail height (the gap bug) |
+| test/home_layout_switch_test.dart | Per-frame scale sampling: departing reaches ~0, arriving 0.94→1, BOTH directions, height monotonic (one beat), no overflow, glyph morph |
 | test/auth_session_persistence_test.dart | Secure store, legacy migration, expiry, domain scoping, multi-account, SAPISIDHASH |
 | test/auth_channel_identity_test.dart | browseUserContext, identityKey isolation (no cookie leakage) |
 | test/login_session_probe_test.dart | Signing-cookie names, jar coalesce, ytcfg → profile, no-guess rule |
@@ -550,18 +661,36 @@ c1685b6 fix(nav): full-screen auth/account/settings routes go above the shell
 9b53508 feat(auth): manual profile confirmation before a session is committed
 4d60b87 feat(account): avatar quick-switch, Home sign-in prompt, no opacity over glass
 7ca553f feat(settings): keyword search over the settings list
+6b13605 docs: record the account flow, glass rules and new gates
+489b004 fix(auth): merge candidate session headers instead of replacing them
+0486d5f docs: record the header-merge rule and the errorBuilder gotcha
+ee25374 fix(login): consistent route target from Home, and a real status-bar inset
+44cb1e9 docs: record the route-target flag, the WebView inset rule, and the MY gap
+79fabf6 fix(nav): Material You full-screen routes go above the shell too
+7f6777a feat(home): per-section card/list layouts for the history shelves
 ```
 
 ---
 
 ## NEXT STEPS (if resuming)
 
-0. **Phase 4 home sections — BLOCKED ON A DEVICE PROBE.** BitChord also uses
-   `FEmusic_explore` and `FEmusic_history`; we use home / new_releases /
-   moods_and_genres / charts. Do NOT add either blind:
-   - `FEmusic_history` ("Listen again") is the one genuinely worth adding and
-     duplicates nothing. Needs a probe to confirm which renderers it returns and
-     that our staged walker handles them.
+0. **Card/list toggle — device verification outstanding.** 7f6777a is unit-tested
+   but the morph has never been watched on hardware. Install on CPH2723 and
+   capture the swap in BOTH directions on all three shelves; check the departing
+   body is gone before the arriving one settles, the height moves in one beat,
+   nothing clips the section below, and the choice survives a cold restart.
+   The row rail in particular has only been seen in screenshots, not measured.
+1. **Phase 4 home sections — `FEmusic_history` still BLOCKED ON A DEVICE PROBE.**
+   BitChord also uses `FEmusic_explore` and `FEmusic_history`; we use home /
+   new_releases / moods_and_genres / charts. Do NOT add either blind:
+   - **CORRECTION to the older note here: "Listen again" is ALREADY on Home and
+     is NOT `FEmusic_history`.** It arrives as a native `musicShelf` from the
+     home browse with its real title, and now carries the card/list toggle. So
+     the long-standing claim that "Listen again" was missing and needed
+     `FEmusic_history` was wrong — the title was there all along.
+   - `FEmusic_history` as an extra *source* still needs a probe to confirm which
+     renderers it returns and that our staged walker handles them. Low value now
+     that a real history shelf renders.
    - `FEmusic_explore` likely **duplicates the existing Explore tab** (wheel,
      engine, palette). Adding it to Home is a product decision, not a parity fix.
    Without live fixture evidence this violates invariant 5 and risks
@@ -629,7 +758,23 @@ c1685b6 fix(nav): full-screen auth/account/settings routes go above the shell
   supports `GET_COOKIE_INFO`, so fall back to the host you read from.
 - `Motion.springSoft`/`springSnappy` are `SpringDescription`s, NOT `Curve`s —
   they cannot be passed to implicit animation curves. Use `Motion.settle` /
-  `Motion.springCurve` there.
+  `Motion.springCurve` there — but see invariant 16: `springCurve` is
+  `easeOutBack`, which overshoots, so it is WRONG for a state change or layout
+  swap. Prefer `Motion.enter`/`exit`/`standard` unless overshoot is the point.
+- **A probe that cannot fail is worse than no probe.** The first attempt to
+  measure the swap read a constant `1.000` and looked clean: it was walking
+  `visitAncestorElements` (parent → root) and keeping the LAST match, i.e. the
+  app-root transform, not the local one. When measuring an ancestor property,
+  take the FIRST match, and make the test assert something that would actually
+  break. That misreading nearly shipped a "fix" that inverted the animation.
+- **`AnimatedSwitcher` reports the same `AnimationStatus` for both roles** (it
+  drives arriving 0→1 and departing 1→0). Do not infer which child you are
+  looking at from the animation — carry the role on the child (key compare)
+  instead. Getting it backwards is worse than not animating.
+- `SharedPreferences.getInstance()` throws `MissingPluginException` in a widget
+  test with no mock set up. Any store that may touch it should catch and
+  degrade (a layout preference is not worth failing a tap over) — and `toggle`
+  needs the same guard as `initialize`, or the first tap throws.
 - Test ID fixtures MUST be 11-char lowercase-alnum to pass videoId validation
   ('strong12345' etc, NOT 'strong').
 - `type_tokens.Type` was replaced by `t.HomeTokens` (import as
