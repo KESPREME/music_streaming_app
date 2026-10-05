@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../core/navigation/root_navigator.dart';
 import '../services/auth_models.dart';
 import '../services/auth_service.dart';
 import '../services/login_session_probe.dart';
@@ -31,12 +32,15 @@ class LoginScreen extends StatefulWidget {
 
   /// Opens the WebView and returns the saved account id, or null if the user
   /// backed out without completing a sign-in.
+  ///
+  /// Pushed ABOVE the shell: a sign-in page is full-bleed, and pushing it into
+  /// the nested detail navigator would leave the tab bar and the mini-player
+  /// floating over Google's sign-in form.
   static Future<String?> open(BuildContext context,
       {bool addAnotherAccount = false}) {
-    return Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(addAnotherAccount: addAnotherAccount),
-      ),
+    return pushAboveShell<String>(
+      context,
+      LoginScreen(addAnotherAccount: addAnotherAccount),
     );
   }
 
@@ -234,39 +238,28 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Explicitly opaque, and independent of the theme.
+    //
+    // This screen is pushed into the nested detail navigator when it is reached
+    // from the Material You settings screen, which we are not allowed to edit.
+    // A transparent Scaffold there lets MainScreen's tab bar, mini-player and
+    // FAB show through Google's sign-in form - the only body in the app that
+    // does not paint its own background, so it is the only place the leak is
+    // visible. Being opaque is correct whichever navigator we land on.
+    final opaqueBackground = theme.scaffoldBackgroundColor;
     return Scaffold(
-      appBar: AppBar(title: const Text('Log in to YouTube')),
+      backgroundColor: opaqueBackground,
+      appBar: AppBar(
+        backgroundColor: opaqueBackground,
+        title: const Text('Sign in to YouTube Music'),
+      ),
       body: Stack(
         children: [
-          InAppWebView(
-            initialUrlRequest: URLRequest(
-              url: WebUri(_signInUrl()),
-            ),
-            initialSettings: InAppWebViewSettings(
-              userAgent: _userAgent,
-              javaScriptEnabled: true,
-              // The WebView is the sign-in surface only; caching it serves a
-              // stale consent interstitial on the next attempt.
-              cacheEnabled: false,
-              clearCache: true,
-            ),
-            onWebViewCreated: (controller) => _controller = controller,
-            onLoadStart: (controller, url) {
-              _isOnMusicOrigin =
-                  url?.host.toLowerCase().contains('music.youtube.com') ?? false;
-              if (mounted) setState(() => _isLoading = true);
-            },
-            onLoadStop: (controller, url) async {
-              if (url?.host.toLowerCase().contains('music.youtube.com') ??
-                  false) {
-                _isOnMusicOrigin = true;
-              }
-              if (mounted) setState(() => _isLoading = false);
-              await _tryComplete();
-            },
-            onUpdateVisitedHistory: (controller, url, isReload) async {
-              await _tryComplete();
-            },
+          // The WebView sits on an opaque base of its own. A WebView that has
+          // not painted yet is transparent, which is what let the shell bleed
+          // through during the load.
+          Positioned.fill(
+            child: ColoredBox(color: opaqueBackground, child: _webView()),
           ),
           if (_isLoading)
             const Center(child: CircularProgressIndicator()),
@@ -297,6 +290,38 @@ class _LoginScreenState extends State<LoginScreen> {
         label: const Text("I'm logged in"),
         icon: const Icon(Icons.check),
       ),
+    );
+  }
+
+  Widget _webView() {
+    return InAppWebView(
+      initialUrlRequest: URLRequest(
+        url: WebUri(_signInUrl()),
+      ),
+      initialSettings: InAppWebViewSettings(
+        userAgent: _userAgent,
+        javaScriptEnabled: true,
+        // The WebView is the sign-in surface only; caching it serves a
+        // stale consent interstitial on the next attempt.
+        cacheEnabled: false,
+        clearCache: true,
+      ),
+      onWebViewCreated: (controller) => _controller = controller,
+      onLoadStart: (controller, url) {
+        _isOnMusicOrigin =
+            url?.host.toLowerCase().contains('music.youtube.com') ?? false;
+        if (mounted) setState(() => _isLoading = true);
+      },
+      onLoadStop: (controller, url) async {
+        if (url?.host.toLowerCase().contains('music.youtube.com') ?? false) {
+          _isOnMusicOrigin = true;
+        }
+        if (mounted) setState(() => _isLoading = false);
+        await _tryComplete();
+      },
+      onUpdateVisitedHistory: (controller, url, isReload) async {
+        await _tryComplete();
+      },
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/navigation/root_navigator.dart';
 import '../design/glass/glass_materials.dart' show GlassTier;
 import '../design/glass/glass_surface.dart' as design;
 import '../design/tokens/motion.dart';
@@ -27,10 +28,10 @@ import 'login_screen.dart';
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
 
+  /// Pushed above the shell so the tab bar and mini-player do not float over the
+  /// account list.
   static Future<void> open(BuildContext context) {
-    return Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AccountScreen()),
-    );
+    return pushAboveShell<void>(context, const AccountScreen());
   }
 
   @override
