@@ -6,10 +6,10 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
-import '../providers/accent_controller.dart';
 import '../services/auth_service.dart';
 import '../models/music_source.dart';
 import '../screens/account_screen.dart';
+import '../widgets/themed_downloaded_songs_screen.dart';
 import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/liquid_switch.dart';
@@ -23,7 +23,6 @@ class SettingsScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final musicProvider = context.watch<MusicProvider>();
     final themeProvider = context.watch<ThemeProvider>();
-    final accentController = context.watch<AccentController>();
     final authService = Provider.of<AuthService>(context, listen: false);
     final isDark = theme.brightness == Brightness.dark;
     final accent = theme.colorScheme.primary;
@@ -87,9 +86,18 @@ class SettingsScreen extends StatelessWidget {
                     children: [
                       Expanded(child: _QuickTile(icon: Icons.equalizer_rounded, title: 'Quality', subtitle: 'HIGH', accent: accent, onTap: () => _showBitrateDialog(context, musicProvider, true, isDark))),
                       const SizedBox(width: 12),
-                      Expanded(child: _QuickTile(icon: Icons.tune_rounded, title: 'Equalizer', subtitle: 'Audio EQ', accent: accent, onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Equalizer coming soon'))))),
+                      // Replaced the "Equalizer - coming soon" and "App icon -
+                      // coming soon" tiles.
+                      //
+                      // A tile that can only ever say "coming soon" teaches the
+                      // user to distrust the row it sits in. The equalizer
+                      // could not be honest anyway: the platform effect is
+                      // deliberately kept out of the audio pipeline after it
+                      // threw out of play() and pause() on hardware that
+                      // cannot create it, so there is no working surface to open.
+                      Expanded(child: _QuickTile(icon: Icons.lyrics_rounded, title: 'Lyrics', subtitle: 'Providers', accent: accent, onTap: () => LyricProvidersSheet.show(context))),
                       const SizedBox(width: 12),
-                      Expanded(child: _QuickTile(icon: Icons.apps_rounded, title: 'App Icon', subtitle: 'Logos', accent: accent, onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('App icon picker coming soon'))))),
+                      Expanded(child: _QuickTile(icon: Icons.download_rounded, title: 'Downloads', subtitle: 'Offline', accent: accent, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemedDownloadedSongsScreen())))),
                     ],
                   ),
                 ),
@@ -137,15 +145,10 @@ class SettingsScreen extends StatelessWidget {
                           subtitle: themeProvider.isDynamicColorEnabled ? 'Enabled' : 'Disabled',
                           trailing: LiquidSwitch(value: themeProvider.isDynamicColorEnabled, onChanged: (v) => themeProvider.setDynamicColorEnabled(v)),
                         ),
-                        _divider(),
-                        _GlassNavRow(
-                          icon: Icons.auto_awesome_rounded,
-                          iconBg: accent.withValues(alpha: 0.18),
-                          iconColor: accent,
-                          title: 'Album-Art Adaptive',
-                          subtitle: accentController.isAlbumAdaptive ? 'Accent follows artwork' : 'Manual accent',
-                          trailing: LiquidSwitch(value: accentController.isAlbumAdaptive, onChanged: (v) => accentController.setAlbumAdaptive(v)),
-                        ),
+                        // The "Album-Art Adaptive" row that used to sit here
+                        // is gone: AccentSettingsCard a few lines below already
+                        // exposes the same switch, so the screen was offering
+                        // one setting twice in two different-looking places.
                       ],
                     ),
                   ),
@@ -596,18 +599,6 @@ class _GlassRow extends StatelessWidget {
     }
     return content;
   }
-}
-
-class _GlassNavRow extends StatelessWidget {
-  const _GlassNavRow({required this.icon, required this.iconBg, required this.iconColor, required this.title, required this.subtitle, required this.trailing});
-  final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final Widget trailing;
-  @override
-  Widget build(BuildContext context) => _GlassRow(icon: icon, iconBg: iconBg, iconColor: iconColor, title: title, subtitle: subtitle, trailing: trailing);
 }
 
 /// Honest account state for a subtitle.
