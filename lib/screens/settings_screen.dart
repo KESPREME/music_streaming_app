@@ -9,7 +9,7 @@ import '../providers/theme_provider.dart';
 import '../providers/accent_controller.dart';
 import '../services/auth_service.dart';
 import '../models/music_source.dart';
-import '../screens/login_screen.dart';
+import '../screens/account_screen.dart';
 import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/liquid_switch.dart';
@@ -395,7 +395,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        _NavTile(icon: Icons.person_outline_rounded, title: 'Account', subtitle: Provider.of<AuthService>(context, listen: false).isLoggedIn ? 'Connected' : 'Log in to YouTube', onTap: () { final a = Provider.of<AuthService>(context, listen: false); if (!a.isLoggedIn) Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())); }),
+                        _NavTile(icon: Icons.person_outline_rounded, title: 'Account', subtitle: _accountSubtitle(context), onTap: () => AccountScreen.open(context)),
                         _divider(),
                         _NavTile(icon: Icons.info_outline_rounded, title: 'Version', subtitle: '1.0.4 (Mine Music)'),
                         _divider(),
@@ -469,7 +469,7 @@ class _ProfileCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: isLoggedIn ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+        onTap: () => AccountScreen.open(context),
         child: Row(
           children: [
             Container(
@@ -494,12 +494,12 @@ class _ProfileCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8), border: Border.all(color: accent.withValues(alpha: 0.35))),
-                        child: Text('PROFILE', style: GoogleFonts.plusJakartaSans(color: accent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                        child: Text(isLoggedIn ? 'MANAGE' : 'PROFILE', style: GoogleFonts.plusJakartaSans(color: accent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(isLoggedIn ? 'Connected' : 'Mine Music Account & Media', style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12.5)),
+                  Text(isLoggedIn ? _connectedLabel(authService) : 'Mine Music Account & Media', style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12.5)),
                 ],
               ),
             ),
@@ -608,6 +608,31 @@ class _GlassNavRow extends StatelessWidget {
   final Widget trailing;
   @override
   Widget build(BuildContext context) => _GlassRow(icon: icon, iconBg: iconBg, iconColor: iconColor, title: title, subtitle: subtitle, trailing: trailing);
+}
+
+/// Honest account state for a subtitle.
+///
+/// A flat "Connected" hid the two things a user actually needs to know: that
+/// more than one account is saved, and which one is live. The account name is
+/// never invented when Google did not give us one.
+String _connectedLabel(AuthService auth) {
+  final count = auth.accounts.length;
+  if (count > 1) return '$count accounts · switch active';
+  final name = auth.activeAccount?.name.trim() ?? '';
+  final email = auth.activeAccount?.email.trim() ?? '';
+  if (name.isNotEmpty) return 'Signed in as $name';
+  if (email.isNotEmpty) return 'Signed in as ${email.split('@').first}';
+  return 'Signed in';
+}
+
+/// Subtitle for the Account row.
+///
+/// Says which account is live rather than a flat "Connected", because the row
+/// now leads to switching rather than to a single sign-in state.
+String _accountSubtitle(BuildContext context) {
+  final auth = Provider.of<AuthService>(context, listen: false);
+  if (!auth.isLoggedIn) return 'Log in to YouTube';
+  return _connectedLabel(auth);
 }
 
 class _NavTile extends StatelessWidget {

@@ -548,6 +548,18 @@ class AuthService extends ChangeNotifier {
     _accounts = const [];
     _activeAccountId = null;
     _activeProfileId = null;
+
+    // Tell listeners BEFORE touching disk.
+    //
+    // Signing out is fail-closed: if the keystore write never lands, the next
+    // launch restoring a session the user believes they removed is the worse
+    // outcome, so the in-memory truth is what the UI should act on. It also
+    // means the screen does not sit on a stale account card for the length of a
+    // keystore round trip - which is exactly what a widget test caught, since a
+    // platform-channel future does not complete there and the notify below
+    // would never be reached at all.
+    notifyListeners();
+
     try {
       await _secure.delete(key: _accountKey);
     } catch (e) {
@@ -558,7 +570,6 @@ class AuthService extends ChangeNotifier {
     await prefs.remove(_prefKeyAccounts);
     await prefs.remove(_prefKeyActiveAccount);
     await prefs.remove(_prefKeyActiveProfile);
-    notifyListeners();
   }
 
   // ── Test support ───────────────────────────────────────────────────────
