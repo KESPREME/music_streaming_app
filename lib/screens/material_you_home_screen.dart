@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
+import '../core/navigation/root_navigator.dart';
 import '../models/track.dart';
 import '../widgets/material_you_elevated_card.dart';
 import '../widgets/material_you_tonal_button.dart';
@@ -93,9 +94,9 @@ class _MaterialYouHomeScreenState extends State<MaterialYouHomeScreen>
           // Settings button
           MaterialYouTonalIconButton(
             icon: Icons.settings_outlined,
-            onPressed: () => Navigator.push(
+            onPressed: () => pushAboveShell<void>(
               context,
-              MaterialPageRoute(builder: (_) => const ThemedSettingsScreen()),
+              const ThemedSettingsScreen(),
             ),
             tooltip: 'Settings',
           ),

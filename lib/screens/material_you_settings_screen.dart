@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
+import '../core/navigation/root_navigator.dart';
 import '../services/auth_service.dart';
 import '../models/music_source.dart';
 import '../screens/login_screen.dart';
@@ -402,10 +403,7 @@ class MaterialYouSettingsScreen extends StatelessWidget {
       onTap: isLoggedIn
           ? null
           : () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
+              pushAboveShell<void>(context, const LoginScreen());
             },
       padding: const EdgeInsets.all(20),
       child: Row(

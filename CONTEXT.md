@@ -315,9 +315,10 @@ Rebuilt to match the reference app's flow. Read this before touching auth UI.
   - From Home, `_pushGuarded(..., aboveShell: true)` — the flag keeps the
     double-tap debounce and only changes the target navigator. Nine detail-screen
     call sites pass no flag and are unchanged.
-  - `LoginScreen` is ALSO opaque internally, because the frozen Material You
-    settings screen still pushes it inward; that fixes the bleed-through of page
-    content but NOT the nav bar overlay, which is a routing problem.
+  - `LoginScreen` is ALSO opaque internally, so an unpainted WebView never lets
+    the shell through — belt and braces for any future inward push.
+  - Material You was unfrozen for ROUTING ONLY (user approved): its Settings
+    and Login now use `pushAboveShell` too. Its *look* is still frozen.
 - **Status bar inset on the login WebView.** A full-bleed WebView puts
   YouTube's own header (hamburger/logo/"Open App"/search/avatar) under the clock
   and notification icons — two overlapping bars of system chrome. The page is
@@ -401,16 +402,6 @@ its `YouTubeProfile` channels.
 ---
 
 ## KNOWN LIMITATIONS
-
-- **Material You still has two full-screen routes pointing at the wrong
-  navigator** (`ee25374` fixed the glass variant only). Both are in FROZEN
-  files, so they were left alone pending a decision:
-  - `material_you_home_screen.dart:96` → `Navigator.push(... ThemedSettingsScreen)`
-  - `material_you_settings_screen.dart:405` → `Navigator.push(... LoginScreen)`
-  Each is a one-line swap to `pushAboveShell<void>(context, ...)` plus the
-  `core/navigation/root_navigator.dart` import. Nothing about the MY *look*
-  changes; only which navigator the route lands on. If the user is on the MY
-  theme, the nav bar still overlays Settings and Login there.
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
 - `musicImmersiveHeaderRenderer` / `musicDescriptionShelfRenderer`:
