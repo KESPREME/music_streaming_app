@@ -8,11 +8,11 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 583/583 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 623/623 tests green.
 
 > **GATE (current):** `flutter analyze` = **195 issues, zero errors** (195 is the
 > baseline; several commits have moved it DOWN by removing dangling exports).
-> `flutter test` = **583 passing**. Debug APK builds. Treat 195 as the baseline —
+> `flutter test` = **623 passing**. Debug APK builds. Treat 195 as the baseline —
 > a rise means something new was introduced, not that the file grew.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
@@ -22,7 +22,7 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 58
 
 ---
 
-## CURRENT STATE (commit 76fc0c9)
+## CURRENT STATE (commit 7ca553f)
 
 ### Auth / session (c12c63a — the session used to be forgotten every restart)
 `AuthService.init()` had **ZERO call sites**: cookies were written to
@@ -300,7 +300,51 @@ effect is not in the pipeline, which would hang init forever).
 
 ---
 
-## AUTH / ACCOUNTS (2e105a1 + 0d71aba + ee1b98e)
+## ACCOUNT FLOW (c1685b6 + 429e9db + 9b53508 + 4d60b87 + 7ca553f)
+
+Rebuilt to match the reference app's flow. Read this before touching auth UI.
+
+- **Nested-navigator trap.** `MainScreen` hosts a nested `Navigator`
+  (`mainNavigatorKey`) so detail screens keep the tab bar and mini-player up.
+  `Navigator.push(context, ...)` resolves to that NEAREST navigator, so a
+  full-screen page becomes a CHILD of MainScreen and the chrome floats over it.
+  Visible in the login WebView — the only body in the app that does not paint
+  its own background, which is why it was the only place it showed. Use
+  `pushAboveShell()` for auth/account/settings. Detail screens push normally.
+  The Material You settings screen is FROZEN and still pushes Login inward, so
+  `LoginScreen` is opaque internally to cover both variants.
+- **Nothing is captured on sign-in automatically.** Auto-capture on page-finish
+  is a race: the jar settles after the page does. The screen only READS the jar
+  to decide whether to OFFER "Use this profile"; nothing is written until tapped.
+- **Validated before stored.** `AccountIdentityService` signs the candidate jar
+  into a PRIVATE header set, calls `account/account_menu` (20s cap, one retry at
+  750ms), and persists nothing until it passes. Never applies the candidate
+  app-wide first.
+- **Identity** comes only from `account/account_menu` (name/email/avatar) and
+  channels from `account/accounts_list` (pageId + datasyncIdToken). Parsers scan
+  for a RENDERER by name, and find tokens by key name inside `supportedTokens` —
+  a positional read of that list would be a guess about an unordered structure.
+- **GoogleCookieCleaner** expires only Google's identity cookies, per origin, in
+  all THREE domain forms (host-only, `Domain=host`, `Domain=.host`). Not
+  `deleteAllCookies()`, not a server logout. Sign-out leaves the WebView jar alone.
+- **Header avatar replaces the gear** on Home, opening `AccountSwitcherSheet`
+  (glass sheet, `useRootNavigator: true`). Signed out it goes to Settings.
+  `AccountButton` adds vertical-swipe channel cycling with elastic overshoot, and
+  reuses `adjacentIdentity()` which declines to wrap.
+- **Two glass rules**, both learned the hard way:
+  - **NEVER `Opacity` above glass.** A translucent layer isolates the backdrop the
+    lens samples, so the glass goes flat for the duration. Reveal by scale/slide.
+    (The package's own dialog transition is scale-only for this reason.)
+  - **NEVER stretch overscroll under a lens.** A backdrop-filter lens in a
+    scrollable with overscroll renders BLACK at both scroll edges on Android, and
+    we are Android-only. The switcher list is shrink-wrapped + Clamping instead.
+- `Image.network` in this Flutter takes **`errorBuilder`**, not `errorWidget`.
+- **Settings search** is `widgets/settings/settings_search.dart`: index + gate +
+  field, applied to existing groups rather than restructuring the screen. Hidden
+  keywords are the point ("mobile data" finds Cellular Quality). An unregistered
+  row stays VISIBLE — failing open beats holes in the screen.
+
+---
 
 The flat `youtube_cookies` jar is gone. `AuthService` now holds a registry of
 `GoogleAccountSession`, each with domain- and expiry-aware `AuthCookie`s plus
@@ -384,10 +428,19 @@ its `YouTubeProfile` channels.
 | lib/screens/home_screen.dart | HomeScreen + _LowerSections + all section widgets (~1620 lines) |
 | lib/widgets/home_sections.dart | RailCard, ForYouRow, ArtistPortrait, ParallaxArtwork, ParallaxMediaCarousel, EditorialMoodTile, StaggerIn, homeRailTextBlockHeight |
 | lib/providers/music_provider.dart | God-object facade (~3850 lines) — home feed, quick picks, search attribution, playback |
-| lib/services/auth_models.dart | AuthCookie (domain+expiry) / YouTubeProfile / GoogleAccountSession / id derivation / isSigningCookieName |
+| lib/services/auth_models.dart | AuthCookie (domain+expiry) / YouTubeProfile / GoogleAccountSession / AccountIdentity / AccountChannel / id derivation / isSigningCookieName |
 | lib/services/auth_service.dart | Secure multi-account session registry; getHeaders, identityKey, selectIdentity, removeAccount, logout |
 | lib/services/login_session_probe.dart | Pure sign-in rules: cookie construction, coalesce, hasSigningCookie, profileFromYtcfg |
-| lib/screens/account_screen.dart | Account + channel management, add account, remove, sign out |
+| lib/services/account_identity_service.dart | validateAndDescribe: account_menu validation + channels BEFORE persisting |
+| lib/services/innertube/account_parser.dart | Pure parsers for account_menu / accounts_list renderers |
+| lib/services/google_cookie_cleaner.dart | Name-scoped Google cookie expiry, 3 domain forms, never deleteAllCookies |
+| lib/screens/login_screen.dart | WebView sign-in, manual "Use this profile" confirm, honest phases |
+| lib/screens/account_screen.dart | Full account + channel management page |
+| lib/screens/account_switcher_sheet.dart | Header quick-switch sheet (root navigator, no Opacity over glass) |
+| lib/widgets/account_button.dart | Header avatar + vertical-swipe channel cycling |
+| lib/widgets/home_sign_in_prompt.dart | Home signed-out prompt (whole row is the target) |
+| lib/widgets/settings/settings_search.dart | Settings search index + gate + field + empty state |
+| lib/core/navigation/root_navigator.dart | rootNavigatorKey + pushAboveShell() for full-screen surfaces |
 | lib/services/recommendation_service.dart | TrackSignal DB + rankTracks + signalFor/topArtistsForPicks |
 | lib/services/explore/explore_policy.dart | ExplorePolicy: batch/refill constants + discovery-tilt ranking config |
 | lib/services/explore/explore_engine.dart | ExploreEngine: pool mapping onto SHARED DeterministicRanker |
@@ -411,6 +464,9 @@ its `YouTubeProfile` channels.
 | test/auth_channel_identity_test.dart | browseUserContext, identityKey isolation (no cookie leakage) |
 | test/login_session_probe_test.dart | Signing-cookie names, jar coalesce, ytcfg → profile, no-guess rule |
 | test/account_screen_test.dart | Signed-out, unnamed account, channel switch, removal confirm, sign out |
+| test/account_parser_test.dart | account_menu / accounts_list shapes, token order, blank-token trap |
+| test/home_sign_in_prompt_test.dart | Prompt copy, two-line subtitle, whole-row target, cookie-cleaner plan |
+| test/settings_search_test.dart | Index matching, fail-open on unknown row, gate, field, empty state |
 | test/ytm_home_parser_test.dart | Parser fixtures (shelves, identity, types, unsupported) |
 | test/home_presentation_test.dart | Classifier + planner matrix |
 | test/recommendation_engine_test.dart | QuickPicks + SearchFollowupGraph |
@@ -470,6 +526,11 @@ c737dbb nav: GlassTabBar.searchable
 0d71aba auth: channel identity in InnerTube context, identity-scoped caches
 ee1b98e settings: account and channel management screen
 76fc0c9 settings: remove tiles that could only say "coming soon"
+c1685b6 fix(nav): full-screen auth/account/settings routes go above the shell
+429e9db feat(auth): account identity from account_menu, channels from accounts_list
+9b53508 feat(auth): manual profile confirmation before a session is committed
+4d60b87 feat(account): avatar quick-switch, Home sign-in prompt, no opacity over glass
+7ca553f feat(settings): keyword search over the settings list
 ```
 
 ---
