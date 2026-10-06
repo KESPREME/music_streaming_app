@@ -3,17 +3,48 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../models/lyrics_entry.dart';
+import 'lyric_words.dart';
 
 /// Provider for BetterLyrics — Apple Music TTML word and syllable-timed lyrics.
+///
+/// Two endpoints behind one parser, because they answer with the same shape:
+/// the Apple catalogue, and QQ Music's karaoke timings reached through the same
+/// gateway. Portato is worth offering separately rather than as a fallback
+/// inside this one — it is a different catalogue, so a track can be in one and
+/// not the other, and a fallback would hide which one actually answered.
 class BetterLyricsProvider {
   static const String _baseUrl = 'https://lyrics-api.boidu.dev/getLyrics';
+
+  /// QQ Music karaoke timings through the same gateway.
+  static const String portatoUrl = 'https://lyrics-api.boidu.dev/getLyricsPortato';
 
   Future<List<LyricsEntry>?> getLyrics({
     required String title,
     required String artist,
     int? durationMs,
     String? album,
-  }) async {
+  }) =>
+      _fetch(_baseUrl, title, artist, durationMs, album);
+
+  /// QQ Music karaoke timings, per syllable.
+  ///
+  /// Sings the notes rather than the lyrics, so its spans are tighter and more
+  /// numerous than Apple's — which is the whole reason to ask for it.
+  Future<List<LyricsEntry>?> getPortato({
+    required String title,
+    required String artist,
+    int? durationMs,
+    String? album,
+  }) =>
+      _fetch(portatoUrl, title, artist, durationMs, album);
+
+  Future<List<LyricsEntry>?> _fetch(
+    String endpoint,
+    String title,
+    String artist,
+    int? durationMs,
+    String? album,
+  ) async {
     try {
       final cleanTitle = _cleanQuery(title);
       final cleanArtist = _cleanQuery(artist);
@@ -30,7 +61,7 @@ class BetterLyricsProvider {
         queryParams['al'] = album;
       }
 
-      final uri = Uri.parse(_baseUrl).replace(queryParameters: queryParams);
+      final uri = Uri.parse(endpoint).replace(queryParameters: queryParams);
       final response = await http
           .get(uri, headers: {
             'User-Agent':
@@ -77,49 +108,93 @@ class BetterLyricsProvider {
       if (lineTimeMs == null) continue;
       final lineEndMs = _parseTimestampMs(lineEndStr);
 
-      final words = <WordTiming>[];
+      var lyricWords = <LyricWord>[];
       final rawTextBuffer = StringBuffer();
 
       // Check if line contains per-syllable / word spans
       final spanMatches = spanRegex.allMatches(lineContent).toList();
       if (spanMatches.isNotEmpty) {
-        int lastIndex = 0;
+        // Collect the spans as timed runs, spacing intact, and let
+        // wordsFromRuns decide what glues into a word.
+        //
+        // Treating every span as its own word is what this used to do, and it
+        // splits every word in an Apple TTML line: `<span>e</span><span>nough
+        // </span>` is one word "enough" sung over two syllables, and reading it
+        // as the words "e" then "nough" lights up at the wrong times and
+        // cannot interpolate inside either.
+        //
+        // The whitespace BETWEEN spans is carried on the preceding run's raw
+        // text, because that gap is the only thing saying where one word stops.
+        final runs = <TimedRun>[];
+        var lastIndex = 0;
+
         for (int i = 0; i < spanMatches.length; i++) {
           final sMatch = spanMatches[i];
 
-          // Preserve any inter-span characters (such as spaces or punctuation between tags)
+          // Preserve any inter-span characters (spaces or punctuation between
+          // tags) - they are word boundaries.
+          //
+          // Spacing between span i and span i+1 belongs to the END of run i,
+          // because that space is what closes the word run i is part of. Putting
+          // it on the following run instead glues the two words together:
+          // "One</span> <span>tear" became the single word "Onetear".
+          //
+          // Spacing before the FIRST span is the line's own indentation and is
+          // not a boundary at all. Apple serves compact TTML, but a mirror that
+          // indents its markup should not cost the wipe its words.
+          String inter = '';
           if (sMatch.start > lastIndex) {
-            final inter = lineContent.substring(lastIndex, sMatch.start);
-            rawTextBuffer.write(_unescapeXml(_stripXmlTags(inter)));
+            inter = _unescapeXml(_stripXmlTags(
+              lineContent.substring(lastIndex, sMatch.start),
+            ));
+            if (i > 0 && runs.isNotEmpty && inter.isNotEmpty) {
+              final prev = runs.removeLast();
+              runs.add(TimedRun(
+                startMs: prev.startMs,
+                endMs: prev.endMs,
+                raw: prev.raw + inter,
+              ));
+            }
+            rawTextBuffer.write(i == 0 ? inter.trimLeft() : inter);
           }
 
           final sBeginStr = sMatch.group(1);
           final sEndStr = sMatch.group(2);
-          var sText = sMatch.group(3) ?? '';
-          sText = _unescapeXml(_stripXmlTags(sText));
+          final sText = _unescapeXml(_stripXmlTags(sMatch.group(3) ?? ''));
 
           rawTextBuffer.write(sText);
 
           final sTimeMs = _parseTimestampMs(sBeginStr) ?? lineTimeMs;
           final sEnd = _parseTimestampMs(sEndStr) ?? (sTimeMs + 400);
-          final duration = (sEnd - sTimeMs).clamp(50, 8000);
 
-          final trimmedWord = sText.trim();
-          if (trimmedWord.isNotEmpty) {
-            words.add(WordTiming(
-              timeMs: sTimeMs,
-              durationMs: duration,
-              text: trimmedWord,
-            ));
-          }
+          runs.add(TimedRun(
+            startMs: sTimeMs,
+            endMs: sEnd,
+            raw: sText,
+          ));
 
           lastIndex = sMatch.end;
         }
 
+        var tail = '';
         if (lastIndex < lineContent.length) {
-          final trailing = lineContent.substring(lastIndex);
-          rawTextBuffer.write(_unescapeXml(_stripXmlTags(trailing)));
+          tail = _unescapeXml(_stripXmlTags(
+            lineContent.substring(lastIndex),
+          ));
+          rawTextBuffer.write(tail);
         }
+        // Trailing spacing after the last span belongs to that span, for the
+        // same reason inter-span spacing does.
+        if (tail.isNotEmpty && runs.isNotEmpty) {
+          final last = runs.removeLast();
+          runs.add(TimedRun(
+            startMs: last.startMs,
+            endMs: last.endMs,
+            raw: last.raw + tail,
+          ));
+        }
+
+        lyricWords = wordsFromRuns(runs);
       } else {
         // Plain text inside <p>
         rawTextBuffer.write(_unescapeXml(_stripXmlTags(lineContent)));
@@ -130,11 +205,24 @@ class BetterLyricsProvider {
       fullLineText = fullLineText.replaceAll(RegExp(r'[ \t\r\n]+'), ' ').trim();
 
       if (fullLineText.isNotEmpty) {
+        // Both fields are populated. `lyricWords` is the glued two-level model
+        // the renderer reads, and `words` stays filled so anything still
+        // consuming the flat word list keeps working - the renderer prefers
+        // lyricWords and falls back to this.
+        final legacyWords = <WordTiming>[
+          for (final w in lyricWords)
+            WordTiming(
+              timeMs: w.startMs,
+              durationMs: w.endMs > w.startMs ? w.endMs - w.startMs : 400,
+              text: w.text,
+            ),
+        ];
         entries.add(LyricsEntry(
           timeMs: lineTimeMs,
           endMs: lineEndMs,
           text: fullLineText,
-          words: words.isNotEmpty ? words : null,
+          words: legacyWords.isEmpty ? null : legacyWords,
+          lyricWords: lyricWords.isEmpty ? null : lyricWords,
         ));
       }
     }

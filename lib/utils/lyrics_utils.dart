@@ -2,6 +2,7 @@
 
 
 import '../models/lyrics_entry.dart';
+import '../services/lyrics/lyric_words.dart';
 
 /// Utilities for parsing and manipulating lyrics
 class LyricsUtils {
@@ -173,6 +174,7 @@ class LyricsUtils {
         final syllableMatches = _syllableTagRegex.allMatches(rawContent).toList();
         if (syllableMatches.isNotEmpty) {
           final words = <WordTiming>[];
+          var lyricWords = <LyricWord>[];
           final cleanBuffer = StringBuffer();
           for (final sm in syllableMatches) {
             final wordText = sm.group(1) ?? '';
@@ -189,10 +191,17 @@ class LyricsUtils {
             cleanBuffer.write(wordText.trim());
           }
           parsedWords = words;
+          // Word spans carried explicitly, so the wipe interpolates across a
+          // word rather than arriving on its last letter.
+          lyricWords = wordsFromWordTimings([
+            for (final w in words)
+              (timeMs: w.timeMs, durationMs: w.durationMs, text: w.text),
+          ]);
           entries.add(LyricsEntry(
             timeMs: timeMs,
             text: cleanBuffer.toString(),
             words: parsedWords,
+            lyricWords: lyricWords,
           ));
           continue;
         }
@@ -242,6 +251,14 @@ class LyricsUtils {
               timeMs: timeMs,
               text: cleanBuffer.toString(),
               words: parsedWords,
+              lyricWords: wordsFromWordTimings([
+                for (final w in words)
+                  (
+                    timeMs: w.timeMs,
+                    durationMs: w.durationMs,
+                    text: w.text,
+                  ),
+              ]),
             ));
             continue;
           }
@@ -339,13 +356,26 @@ class LyricsUtils {
         }
       }
 
-      enrichedEntries.add(LyricsEntry(
-        timeMs: current.timeMs,
-        text: current.text,
-        endMs: nextTime,
-        words: wordTimings,
-      ));
-    }
+// The lyric words carry the word's own span, so the wipe interpolates across
+        // a word instead of snapping to its end. Built through wordsFromWord-
+        // Timings so this path and the real-timed providers share one shape.
+        final lyricWords = wordsFromWordTimings([
+          for (final w in wordTimings)
+            (
+              timeMs: w.timeMs,
+              durationMs: w.durationMs,
+              text: w.text,
+            ),
+        ]);
+
+        enrichedEntries.add(LyricsEntry(
+          timeMs: current.timeMs,
+          text: current.text,
+          endMs: nextTime,
+          words: wordTimings,
+          lyricWords: lyricWords,
+        ));
+      }
     
     return enrichedEntries;
   }

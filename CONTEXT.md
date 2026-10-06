@@ -8,11 +8,11 @@
 ## PROJECT
 
 **MineMusic** — Flutter music streaming app (YouTube Music client).
-Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 654/654 tests green.
+Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 812/812 tests green.
 
 > **GATE (current):** `flutter analyze` = **195 issues, zero errors** (195 is the
 > baseline; several commits have moved it DOWN by removing dangling exports).
-> `flutter test` = **654 passing**. Debug APK builds. Treat 195 as the baseline —
+> `flutter test` = **812 passing**. Debug APK builds. Treat 195 as the baseline —
 > a rise means something new was introduced, not that the file grew.
 
 - Flutter 3.47.1 / Dart 3.13.1 / Android target (CPH2723 test device, Android 16)
@@ -23,6 +23,225 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 65
 ---
 
 ## CURRENT STATE (commit 7f6777a)
+
+### Lyrics rewrite (UNCOMMITTED - 844 tests, 198 issues / 0 errors, APK builds)
+
+BitChord-parity kinetic lyrics. **Not yet run on a device.**
+
+This pass, on top of the per-word lift work recorded below:
+- **Disc ownership** is no longer a second timer. `LyricsScreen` accepts a
+  `chromeHidden` override; when the embedded player sets it, the two mode discs
+  hide exactly when the scrubber fades and return with it. The stand-alone panel
+  (tests, themed view) still falls back to its own idle timer (`_discsVisible`).
+- **The on-deck line is the sweep.** `now_playing_screen` owns a `LyricClock`,
+  fed from `positionStream` plus a 300ms stall corrector (it must not run a ticker
+  against a still song - the full panel stays cheap the same way). When the
+  resolved line is word-synced, the strip above the scrubber renders
+  `LyricSweptLine` - the same one-line word-by-word wipe - instead of the plain
+  snippet text.
+- **Blur is a tween, not a slice.** `AnimatedBlur` drives the row from the old
+  sigma to the new one over 340ms; previously the sigma changed as a step per
+  currentLine, so every recede and advance of the highlight was a hard edge in
+  the paint.
+- **The source caption is plain text again.** The note-box glyph beside
+  "Lyrics by ..." is removed (`lyrics_outlined` is gone), matching the reference
+  which carries the source without an icon.
+- **Provider sheet** now scrolls its reorderable lists
+  (`NeverScrollableScrollPhysics` -> `ClampingScrollPhysics`, shrinkWrap dropped),
+  `useRootNavigator: false` so a back gesture pops the sheet rather than the
+  shell, and the grabber lets a down-fling at velocity pop the sheet itself.
+- The provider switch resets the panel's list state instead of leaking the
+  previous answer: `_adoptLyrics` adopts by list identity, re-keys the rows and
+  re-derives the focus line from the clock, and `_reconcileClock` runs on BOTH
+  the loading and settled branches - loading no longer suspends the clock.
+
+Gate was 195 issues/0 errors; it nudged to 198 because the provider sheet's three
+pre-existing infos (`onReorder`, const) are still there and two new ones are of
+the same nature. Zero errors throughout.
+
+Latest on top of the summary below: the per-word **lift** is now implemented
+(`word_lift.dart`, `wordFall`, `_wordSpans`, `_liftedSlices` in
+`lyric_swept_line.dart`) and matched to BitChord's arithmetic rather than our own
+constants:
+- rise length is coerced to **[250ms, 700ms]** (a 90ms syllable is NOT allowed
+  to snap), settle is **700ms**, `wordFall` carries the hit-over half and gives a
+  grown letter its handover.
+- The grown word's lift is `rise * wordRiseDp * wordFall` (multiples of the
+  ordinary 2dp sung-word rise), **NOT** a fraction of the font size. That change
+  plus the shared `wordFall` replaced `lyricGrowthLift`/`lyricGrowthBaseFontSize`
+  for the lift itself (`lyricGrowthBaseFontSize` still feeds `em` for lean/shift).
+- Rendering uses a Stack with `clipBehavior: Clip.none`; the headroom is NOT
+  padded in (a per-row height change jitters the list and indents every line -
+  it was the source of a 99,400px Column overflow from a nested Stack of
+  Positioned-only children).
+- `word_lift_test.dart` and `lyrics_provider_switch_test.dart` were written to
+  **fail**: they were verified by temporarily reinstating the buggy math/layout.
+- `LyricsScreen` now adopts the lyric list by identity (`_syncedLyrics`,
+  `_adoptLyrics`) and reconciles the clock in BOTH the loading and normal
+  branches; the loading early-return no longer disables the clock.
+
+```
+lib/models/lyrics_entry.dart
+  WordTiming + LyricWord (syllables flattened; timing lives once, on the WORD)
+  LyricsEntry.lyricWords; timedWords is a late final so it cannot go stale
+lib/services/lyrics/
+  lyric_words.dart        wordsFromRuns - the gluing rules (see below)
+  lyric_clock.dart        local interpolating clock; notifies ONLY the active
+                          line's AnimatedBuilder, never the list
+  lyric_sweep.dart        revealedChars (fractional, not int); focus + scroll
+                          lead; inter-word gap creeps by a fraction per word
+  lyric_timings_codec.dart  timings survive the disk cache
+  lyrics_translation_service.dart  translate + romanize, batched, 2 in
+                          parallel, memory+disk cache, 12s cap per request
+  lrc_red / bini_lyrics(+PaxSenix) / lyrics_plus / unison / musixmatch /
+  genius providers - 12 sources total
+  provider_race.dart        the ask-together / answer-in-order race
+  lyric_growth.dart         GrowingWord + CharGrowth held-note swell (pure Dart)
+  lyric_sub_line.dart       SubLineController: transform under the original,
+                          one mode at a time, close-before-open
+  youtube_music_provider.dart / megalobiz_provider.dart - no-key sources
+lib/widgets/lyric_swept_line.dart   prefix widths cached, CustomClipper,
+                          per-line RepaintBoundary, per-letter held-word overlay,
+                          sub-line row
+lib/widgets/lyrics_mode_discs.dart  the two floating transform discs
+lib/widgets/measure_size.dart      reports a child's laid-out size
+lib/widgets/lyric_providers_sheet.dart  settings mode + live mode
+```
+
+**The gluing rules (`wordsFromRuns`) are the whole ballgame.** BetterLyrics TTML
+emits one run per syllable with *inter-span whitespace attached to the previous
+run*, so `["ネ","こ"]` and `["I"," ","can","'","t"]` must become `ねこ` and
+`I can't`. Naive joining produced `ネ こ` and `I ' t`. Syllables group into words;
+whitespace is a break, not a character. `normalizeSyllables` re-runs it so legacy
+callers stay safe.
+
+**Performance contract (the user's one change):** the position stream must NOT
+rebuild the list. `LyricClock` ticks, but only the active line listens, and only
+while `isAnimating`. List `setState` happens on line-index change only. Pinned by
+`test/lyric_sweep_test.dart` + the widget tests.
+
+**Translation drops word timings ON PURPOSE.** A syllable span indexes into the
+ORIGINAL characters, so re-using it against translated text clips the wrong
+letters. Line timestamps are kept, word spans dropped. A translation is not sung,
+so there is nothing to sync it to: the ORIGINAL stays the timing source and the
+transform is drawn underneath it.
+
+**The lyric panel ends ABOVE the deck — measured, not assumed.** The panel is
+`Positioned.fill` and the deck is an overlay above it; that overlay is load-bearing
+for the shared-element flight, so it is NOT being restructured. The cost is that a
+full-page list does not know the deck exists and scrolls its tail behind the seek
+bar. `MeasureSize` reports the deck's height into a `ValueNotifier`, and
+`LyricsScreen.bottomInset` pads the list by it. Two traps, both hit:
+- A measure that notifies DURING layout makes the caller rebuild, which schedules
+  a frame from inside the frame being painted. Flutter asserts on that. The
+  report is deferred to a post-frame callback.
+- Do NOT name a helper `attached` on a RenderObject. `RenderObject.attached` has
+  framework invariants hanging off it and shadowing it breaks the parent/child
+  assertion the whole tree depends on.
+
+**Translation/romanization is a SUB-LINE, never a replacement.** The word timings
+are spans of characters in the ORIGINAL string, so swapping the line's text for a
+translation makes every span index the wrong letters — the wipe lights words that
+are not being sung. The panel keeps the original; the transform draws beneath it in
+smaller type (`lyric_sub_line.dart`). Reveal: height grows from 0, alpha is
+`progress²`, 460ms open / 260ms close, and the OUTGOING transform is closed before
+the incoming one opens so two scripts never share the gap. The alpha is on the
+text colour, not an `Opacity` widget — that would be a saveLayer per lyric line.
+
+**Two discs, two toggles — not one cycler.** Globe and translate are independent
+toggles: each turns ITS OWN transform on or off, and they exclude each other. A
+cycler makes the most common transition ("I changed my mind") take three taps.
+`aあ` is gone from the player header entirely — in the reference the switchers sit
+with the lyric, not with the star. They FLOAT over the panel foot (a footer row
+cost the lyric a line) and fade after 5s idle, restored by a tap in the lower half
+guarded so it never competes with the list's drag.
+
+**Romanization is `dt=rm` and answers in segment field 3, not 0.** Reading field
+0 returns text that was never romanized — a failure that looks like success
+because the line count still lines up. Requests are POSTed form-encoded: a 3500-char
+payload as a GET query string runs past the ~2000-char URL limit intermediaries
+enforce. A count mismatch is REFUSED, not padded — padding repeats one real line
+across the rest of the song, and the caller cannot detect it.
+
+**Invariant 17 applied to the lyrics reveal.** The lyrics-open transition used
+`Opacity` around a subtree full of glass discs, so the discs went flat for the
+whole transition. Now `Transform.translate` + `Transform.scale`.
+
+**Lyric attribution is honest about being unknown.** `LyricsService.lastSourceProvider`
+is set on every return path and read back from the disk row (`_providerFromName`);
+a name this build no longer has yields null, not `firstWhere(orElse:)` mislabelling
+it as whichever provider is first today. Unknown shows "Lyrics unavailable", never
+a guessed source. The memory cache carries a `_parsedCacheProviders` side table
+for the same reason — it is keyed on title+artist, which says nothing about who
+answered, so without it a memory hit would claim "unknown" for a lyric on screen.
+
+**THE RACE: ask together, ANSWER IN ORDER — do not conflate them.**
+`ProviderRace` (`lib/services/lyrics/provider_race.dart`) is the whole phase-3
+rule, and both halves are load-bearing:
+- *Ask concurrently.* Serial meant a miss cost its own round trip before the
+  next provider was tried; a song with no lyrics anywhere paid the SUM of every
+  timeout.
+- *Consume in priority order.* Reading futures in order and stopping at the first
+  acceptable one is what stops a fast low-priority answer preempting a slow
+  high-priority one. "First to arrive" would hand back line-synced lyrics from
+  LyricsPlus while LRCLIB was still working and would have had word timings.
+Together they mean "wait as long as the best answer takes, then use it".
+- `LyricsVerdict` is THREE-valued (accept / hold / reject). Collapsing `hold` into
+  `accept` shows line-synced lyrics on a word-sync setting; into `reject` it
+  blanks a song that does have lyrics.
+- Genius is `isLazy`: started only when the consumer REACHES it, which means every
+  provider ahead of it already missed — and skipped outright if a fallback is in
+  hand. Asking it eagerly spends a scrape + rate limit on every track.
+- `onSettled(null)` vs `onAbandoned` is not cosmetic. A race loser never said it
+  had no lyrics; reporting it as a miss paints a permanent red cross on sources
+  nobody finished asking, and the listener is then told not to choose them.
+- Dart cannot cancel a Future, so "abandon" = discard the late answer and report
+  it as abandoned. Each provider's own timeout still bounds the request.
+- Manual choice goes through `onlyProvider` (bypasses order, enabled set, BOTH
+  lyrics settings and the cache) rather than mutating the service's order — so
+  picking one source by hand cannot leave priorities rearranged, and cannot
+  return the previous lookup's answer while appearing to satisfy the request.
+
+**The sheet has TWO modes and they must not merge.** `LyricProvidersMode.settings`
+(reorder + toggles, from Settings) is unchanged. `showLive` (from the deck's
+"Lyrics by …" row) shows per-provider status and switches the source. Mixing them
+puts a drag handle next to a spinner. Live rows: `isCurrent` is checked BEFORE
+state — a source whose lyrics came from the disk cache never ran in this lookup,
+so its state is `notFetched` and matching on state alone would show a magnifying
+glass beside the source actually on screen. `ClampingScrollPhysics`, no
+overscroll, per invariant 17.
+
+**Held-note swell (`lyric_growth.dart`) — rare by design.** Each letter of a word
+held long enough runs swell → hold → settle, staggered by `growStagger` so the
+movement travels ALONG the word. Thresholds are STEEP on purpose: a 2-letter word
+needs 1.2s, a 7-letter one needs 200ms × letters, and `earned` is CUBED, so
+anything under a second barely moves. The failure mode of getting this wrong is
+not "too subtle", it is "every word twinkles" and the lyric stops being readable.
+- Letters are indexed by **UTF-16 code unit**, not grapheme cluster, because the
+  renderer positions each letter from caret advances measured per code unit. A
+  grapheme list would sit a character off its glyph — invisible in a screenshot,
+  wrong the moment it moves.
+- Block scripts (CJK, kana, Hangul) and joined scripts (Arabic) are EXCLUDED: they
+  are not independent boxes, so per-letter motion would come apart.
+- The lift reads off the swell (`risePeak = (scale-1)/ceiling * liftPace`) so the
+  two cannot disagree and read as two movements.
+- The overlay lives on a `Stack(clipBehavior: Clip.none)` — a grown glyph is
+  larger than the box it was laid out in, and clipping would shave it as it
+  swells. Overhang is <2dp, well inside the inter-line gap.
+- Letters are only grown once the SWEEP has revealed them. That coupling is pinned:
+  a third of the way through a 6-letter hold, 3 letters have grown — not 6.
+
+**Settings search: registering a row is NOT enough.** The "Motion Artwork &
+Lyrics" card is gated by one `matchesAny`. A row inside it that the gate does not
+name is a row that VANISHES when it is the thing being searched for — which is
+exactly how searching "lyrics" hid Lyric Providers. Registering the three lyric
+rows was necessary AND insufficient; all five ids had to go in the gate.
+`settingsSearchEntries` is public so the test reads the real list — a test that
+copied it would pass forever while the screen drifted.
+
+**`themed_lyrics_screen.dart` is NOT dead** — `material_you_now_playing_screen.dart`
+imports it, and the Material You variant is frozen by invariant 12. An earlier note
+here listed it as dead code; that was wrong.
 
 ### Auth / session (c12c63a — the session used to be forgotten every restart)
 `AuthService.init()` had **ZERO call sites**: cookies were written to
@@ -588,6 +807,15 @@ its `YouTubeProfile` channels.
 |---|---|
 | test/home_convergence_test.dart | SectionIdentity, convergence merge, ratchet sequence, playback routing matrix, semanticSlug 'recent' both ways |
 | test/home_pipeline_test.dart | Composer, quality gate, cache roundtrip, degradation, metadata, quality dims |
+| test/lyric_sweep_test.dart | Fractional reveal, inter-word gap creep, focus/scroll lead, clock drift correction, no full-list rebuild |
+| test/lyrics_provider_race_test.dart | Concurrent ask + priority-ordered consume, three-valued verdict, lazy Genius, settled-vs-abandoned reporting |
+| test/lyric_growth_test.dart | Held-note thresholds per word length, three beats, stagger, decay, lean, script exclusions, no NaN |
+| test/lyric_sub_line_test.dart | The original text is never replaced, timings keep indexing it, reveal collapses to no height, wrong-track transform refused |
+| test/lyrics_panel_bounds_test.dart | MeasureSize reporting + de-jitter + no mid-frame build; the list reserves the deck's height |
+| test/lyric_swept_line_test.dart | Per-line RepaintBoundary isolation, CustomClipper prefix width, alpha/blur readability ladder, no ShaderMask, growth overlay present/absent |
+| test/lyric_syllable_parsing_test.dart | TTML run gluing (Japanese + English apostrophes), enhanced-LRC syllable tags, plain-LRC heuristic |
+| test/lyric_timings_cache_test.dart | Word/syllable timings survive the disk round trip; schema v2 migration |
+| test/lyrics_translation_test.dart | Batching under the char cap, batch-to-reply pairing, short/long reply handling, Latin detection, timestamp preservation, display-mode fallback + stale-answer rejection |
 | test/home_view_mode_test.dart | Store defaults + independence, prefs roundtrip, corrupt-value fallback, toggle semantics/icon, header trailing slot, row-rail height (the gap bug) |
 | test/home_layout_switch_test.dart | Per-frame scale sampling: departing reaches ~0, arriving 0.94→1, BOTH directions, height monotonic (one beat), no overflow, glyph morph |
 | test/auth_session_persistence_test.dart | Secure store, legacy migration, expiry, domain scoping, multi-account, SAPISIDHASH |
@@ -596,7 +824,7 @@ its `YouTubeProfile` channels.
 | test/account_screen_test.dart | Signed-out, unnamed account, channel switch, removal confirm, sign out |
 | test/account_parser_test.dart | account_menu / accounts_list shapes, token order, blank-token trap |
 | test/home_sign_in_prompt_test.dart | Prompt copy, two-line subtitle, whole-row target, cookie-cleaner plan |
-| test/settings_search_test.dart | Index matching, fail-open on unknown row, gate, field, empty state |
+| test/settings_search_test.dart | Index matching, fail-open on unknown row, gate, field, empty state, REAL registry incl. the group-gate bug |
 | test/ytm_home_parser_test.dart | Parser fixtures (shelves, identity, types, unsupported) |
 | test/home_presentation_test.dart | Classifier + planner matrix |
 | test/recommendation_engine_test.dart | QuickPicks + SearchFollowupGraph |
@@ -674,7 +902,19 @@ ee25374 fix(login): consistent route target from Home, and a real status-bar ins
 
 ## NEXT STEPS (if resuming)
 
-0. **Card/list toggle — device verification outstanding.** 7f6777a is unit-tested
+0. **Lyrics — device verification, the one thing left.** Everything above is
+   unit-tested and gated but has never been watched. On CPH2723 check: the wipe
+   keeps up with the singing and no line is drawn under the header discs; the last
+   line of the lyric stops ABOVE the seek bar (the measured bottom inset);
+   the globe appears only for a non-Latin lyric and reports "already in
+   English" rather than vanishing; romanize + translate both land as SUB-LINES
+   and the wipe still tracks the original words; switching one transform off
+   before the other on never shows two scripts at once; the discs fade after 5s
+   and a tap in the lower half brings them back WITHOUT swallowing the scroll;
+   "Lyrics by {source}" replaces the preview snippet and does not appear on the
+   queue page. Then confirm the position stream still does NOT rebuild the list
+   — scroll should stay smooth with a long lyric on screen.
+0. **Card/list toggle - device verification outstanding.** 7f6777a is unit-tested
    but the morph has never been watched on hardware. Install on CPH2723 and
    capture the swap in BOTH directions on all three shelves; check the departing
    body is gone before the arriving one settles, the height moves in one beat,
@@ -761,6 +1001,16 @@ ee25374 fix(login): consistent route target from Home, and a real status-bar ins
   `Motion.springCurve` there — but see invariant 16: `springCurve` is
   `easeOutBack`, which overshoots, so it is WRONG for a state change or layout
   swap. Prefer `Motion.enter`/`exit`/`standard` unless overshoot is the point.
+- **NEVER edit `now_playing_screen.dart` or `lyrics_service.dart` with a scripted
+  `python`/`Select-String` bulk rewrite.** Both were mangled twice this session:
+  one script stripped closing braces it read as separators and left the file
+  unparseable; a later one cut a range by two string anchors and silently removed
+  ~130 lines of unrelated State fields, because the anchor it searched for had
+  moved. Recovery took restoring the region from `git show HEAD:<file>` — which
+  works only for tracked files, and `lib/widgets/lyric_swept_line.dart` was new
+  and had no git copy. **Use the `edit` tool for these files, one exact block at
+  a time**, and re-run `flutter analyze` after every single edit. If a script must
+  be used, assert on every anchor and verify the brace delta before writing.
 - **A probe that cannot fail is worse than no probe.** The first attempt to
   measure the swap read a constant `1.000` and looked clean: it was walking
   `visitAncestorElements` (parent → root) and keeping the LAST match, i.e. the

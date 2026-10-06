@@ -10,6 +10,7 @@ import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
+import 'package:music_streaming_app/widgets/lyric_swept_line.dart';
 import 'package:music_streaming_app/screens/home_screen.dart';
 import 'package:music_streaming_app/services/auth_service.dart';
 import 'package:music_streaming_app/services/home/home_models.dart';
@@ -162,15 +163,30 @@ void main() {
       );
 
       final multilineLyrics = [
-        const LyricsEntry(
+        // Word timings on the first line so the wipe is genuinely exercised.
+        // Without them the line is line-synced only, renders as plain text, and
+        // there is nothing to clip - which is correct behaviour but tests
+        // nothing about the highlight.
+        LyricsEntry(
           timeMs: 0,
           endMs: 10000,
           text: 'Gone a little far this time\nwith something',
+          words: const [
+            WordTiming(timeMs: 0, durationMs: 400, text: 'Gone'),
+            WordTiming(timeMs: 400, durationMs: 400, text: 'a'),
+            WordTiming(timeMs: 800, durationMs: 400, text: 'little'),
+            WordTiming(timeMs: 1200, durationMs: 400, text: 'far'),
+          ],
         ),
-        const LyricsEntry(
+        LyricsEntry(
           timeMs: 10000,
           endMs: 20000,
           text: 'How was I to know this high came rushing',
+          words: const [
+            WordTiming(timeMs: 10000, durationMs: 400, text: 'How'),
+            WordTiming(timeMs: 10400, durationMs: 400, text: 'was'),
+            WordTiming(timeMs: 10800, durationMs: 400, text: 'I'),
+          ],
         ),
       ];
       provider.setTestLyrics(multilineLyrics);
@@ -193,18 +209,43 @@ void main() {
       await tester.pump();
 
       // At position 2s (20% of line 1), line 1 words are highlighting, line 2 words remain inactive
-      provider.setTestPosition(const Duration(seconds: 2));
+      // Drive the clock to the middle of line 1's words (they run 0-1600ms), and let
+      // the correction timer land. At 2s the line is already fully sung and
+      // correctly renders as plain text with nothing to clip.
+      provider.setTestPosition(const Duration(milliseconds: 600));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.byType(LyricsScreen), findsOneWidget);
-      // Active line renders karaoke via ShaderMask (word-by-word wipe)
-      expect(find.byType(ShaderMask), findsWidgets);
 
-      // At position 9.9s (99% of line 1), verify active word index does not jump back to 0
+      // The wipe is a clip over a brighter copy of the same text, NOT a
+      // ShaderMask. This used to assert a ShaderMask was present and called it
+      // "karaoke", but the only ShaderMask in this tree was the vertical
+      // gradient that drove the top and bottom 5% of the list fully
+      // transparent - that is what made the outer lines unreadable, and the
+      // bands it hid were exactly where the header buttons float. Its absence
+      // is the point.
+      expect(find.byType(ShaderMask), findsNothing);
+
+      // The active line carries the sweep, and the sweep is a ClipRect.
+      expect(find.byType(LyricSweptLine), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byType(LyricSweptLine),
+          matching: find.byType(ClipRect),
+        ),
+        findsWidgets,
+        reason: 'the word-by-word wipe is a clip over a brighter copy',
+      );
+
+      // At position 9.9s (99% of line 1), the screen must still be intact and
+      // the first line must not have dropped out.
       provider.setTestPosition(const Duration(milliseconds: 9900));
       await tester.pump();
-      // Line 1 should still be present (rendered as fully-lit Text or still karaoke)
       expect(find.byType(LyricsScreen), findsOneWidget);
+      expect(find.text('Gone a little far this time\nwith something'),
+          findsWidgets);
     });
 
     testWidgets('NowPlaying: Wave tab only toggles lofi and does not switch page; tapping active tab toggles back to album', (tester) async {

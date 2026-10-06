@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:music_streaming_app/screens/settings_screen.dart'
+    show settingsSearchEntries;
 import 'package:music_streaming_app/widgets/settings/settings_search.dart';
 
 void main() {
@@ -77,6 +79,78 @@ void main() {
         const SettingsEntry('playback', ['Auto Queue', 'keep playing']),
       ]);
       expect(i.matches('playback'), isTrue);
+    });
+  });
+
+  // Reads the screen's REAL registry rather than a copy of it.
+  //
+  // The bug this pins was not in the index at all: it was a group whose gate
+  // named only two of the five rows inside it, so searching "lyrics" took the
+  // whole card off the screen - including the Lyric Providers row. A test with a
+  // copied list would have gone on passing while the screen kept the bug.
+  group('the real settings registry', () {
+    SettingsSearchIndex search(String query) =>
+        SettingsSearchIndex(query)..registerAll(settingsSearchEntries);
+
+    test('searching for lyrics keeps the lyric rows on screen', () {
+      final i = search('lyrics');
+      expect(i.matches('playback.syncedLyrics'), isTrue);
+      expect(i.matches('playback.wordSync'), isTrue);
+      expect(i.matches('playback.lyricProviders'), isTrue);
+    });
+
+    test('the words a listener would actually type all reach a lyric row', () {
+      for (final query in [
+        'synced lyrics',
+        'word sync',
+        'syllable',
+        'providers',
+        'timing',
+        'karaoke',
+        'lrc',
+      ]) {
+        final i = search(query);
+        expect(
+          i.matches('playback.syncedLyrics') ||
+              i.matches('playback.wordSync') ||
+              i.matches('playback.lyricProviders'),
+          isTrue,
+          reason: '"$query" reached no lyric row',
+        );
+      }
+    });
+
+    test('the lyric rows are named in the group gate that contains them', () {
+      // The group is a single card, so the gate is `matchesAny`. A row inside it
+      // that the gate does not name is a row that vanishes when it is the thing
+      // being searched for.
+      const groupGate = [
+        'playback.canvas',
+        'playback.blur',
+        'playback.syncedLyrics',
+        'playback.wordSync',
+        'playback.lyricProviders',
+      ];
+      for (final id in groupGate) {
+        final i = search('lyrics');
+        expect(
+          i.matchesAny(groupGate),
+          isTrue,
+          reason: '"$id" is in the gate but a lyrics search takes the card away',
+        );
+      }
+    });
+
+    test('the artwork rows still reach their own card', () {
+      final i = search('canvas video');
+      expect(i.matches('playback.canvas'), isTrue);
+      final bleed = search('bleed artwork');
+      expect(bleed.matches('playback.blur'), isTrue);
+    });
+
+    test('an unregistered id still fails open', () {
+      // The fail-open rule is unchanged and must keep holding.
+      expect(search('anything').matches('never.registered'), isTrue);
     });
   });
 

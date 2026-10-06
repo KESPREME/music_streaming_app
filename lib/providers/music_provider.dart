@@ -818,8 +818,98 @@ for (final track in releases)
       currentLyrics != null && currentLyrics!.isNotEmpty;
   String? get lyricsTrackId => _lyricsTrackId;
 
+  /// Which provider produced the loaded lyric, or null when it is unknown.
+  ///
+  /// Null is a real answer, not a placeholder: it covers a song with no lyric
+  /// and a cache row written before the source was recorded. Callers must show
+  /// something honest for it rather than defaulting to the first provider.
+  LyricsProvider? get lyricsSourceProvider =>
+      _currentLyrics == null || _currentLyrics!.isEmpty
+          ? null
+          : _lyricsService.lastSourceProvider;
+
+  /// The display name for [lyricsSourceProvider], or null when unknown.
+  String? get lyricsSourceName => lyricsSourceProvider?.displayName;
+
+  /// Per-provider progress for the current lookup, for the provider sheet.
+  ///
+  /// Cleared when a lookup starts, because these describe one attempt at one
+  /// track. Carrying them across a track change would show the previous song's
+  /// misses against the new song's providers.
+  final Map<LyricsProvider, ProviderState> _lyricsProviderStates = {};
+
+  Map<LyricsProvider, ProviderState> get lyricsProviderStates =>
+      Map.unmodifiable(_lyricsProviderStates);
+
+  ProviderState lyricsStateOf(LyricsProvider provider) =>
+      _lyricsProviderStates[provider] ?? ProviderState.notFetched;
+
+  /// Clears the per-provider progress and hooks the race's callbacks up.
+  ///
+  /// The service is a singleton, so these are installed once at construction
+  /// rather than per lookup, and the sheet reads the map. [onProviderCancelled]
+  /// resets a losing provider to "not asked" rather than to "no lyrics": it was
+  /// still working when a better answer won, so marking it a miss would tell the
+  /// listener not to choose a source that was never properly asked.
+  void _installLyricsRaceReporting() {
+    _lyricsService.onProviderStarted = (provider) {
+      _lyricsProviderStates[provider] = ProviderState.fetching;
+      _notifyLyrics();
+    };
+    _lyricsService.onProviderResult = (provider, found) {
+      _lyricsProviderStates[provider] =
+          found ? ProviderState.found : ProviderState.notFound;
+      _notifyLyrics();
+    };
+    _lyricsService.onProviderCancelled = (provider) {
+      _lyricsProviderStates.remove(provider);
+      _notifyLyrics();
+    };
+  }
+
+  /// Notifies for provider-sheet progress.
+  ///
+  /// Deliberately a plain [notifyListeners]. It fires several times per lookup as
+  /// providers report, and the listener that cares about that is the live sheet -
+  /// which is a `context.watch` on this provider and rebuilds either way. Splitting
+  /// it into a narrower signal would mean a second ChangeNotifier whose only job
+  /// is to be listened to by one sheet, which is more machinery than the traffic
+  /// is worth.
+  void _notifyLyrics() {
+    notifyListeners();
+  }
+
+  /// Re-runs the lookup against exactly one provider, ignoring the saved order.
+  ///
+  /// For the provider sheet's manual choice. Passed as an argument rather than
+  /// written into the service's order, so choosing one source by hand cannot
+  /// leave the listener's priorities rearranged afterwards.
+  ///
+  /// Skips the cache: the whole point of asking is to get an answer from a
+  /// specific source, and returning the previous lookup's answer from disk would
+  /// ignore the request while reporting success. The track's own cache row is
+  /// then overwritten by whichever provider wins, so a later ordinary fetch
+  /// agrees with what the listener just chose.
+  Future<void> useLyricsProvider(LyricsProvider provider) async {
+    if (_currentTrack == null) return;
+
+    _lyricsProviderStates
+      ..clear()
+      ..[provider] = ProviderState.fetching;
+    notifyListeners();
+    await fetchLyrics(
+      forceRefresh: true,
+      onlyProvider: provider,
+      skipLyricsCache: true,
+    );
+  }
+
   // Method to fetch lyrics
-  Future<void> fetchLyrics({bool forceRefresh = false}) async {
+  Future<void> fetchLyrics({
+    bool forceRefresh = false,
+    LyricsProvider? onlyProvider,
+    bool skipLyricsCache = false,
+  }) async {
     final targetTrack = _currentTrack;
     if (targetTrack == null) return;
     final targetTrackId = targetTrack.id;
@@ -839,6 +929,10 @@ for (final track in releases)
     _lyricsError = null;
     _currentLyrics = null;
     _lyricsTrackId = null;
+    // Cleared here, not per report: these describe ONE attempt at ONE track, so
+    // a stale entry from the previous lookup would claim a provider had already
+    // been asked about this song when it had not.
+    _lyricsProviderStates.clear();
     notifyListeners();
 
     try {
@@ -850,6 +944,13 @@ for (final track in releases)
         artist: targetTrack.artistName,
         durationMs: targetTrack.durationMs ?? _duration.inMilliseconds,
         videoId: targetTrack.source == 'youtube' ? targetTrack.id : null,
+        // Both of these used to be switches in Settings that wrote a pref and
+        // then nothing read it, so turning either off changed nothing at all.
+        // They decide what is fetched, so they have to be passed in.
+        syncedOnly: _syncedLyricsEnabled,
+        prioritizeSyllable: _prioritizeSyllableSync,
+        onlyProvider: onlyProvider,
+        skipCache: skipLyricsCache,
       );
 
       // Verify that neither track nor playback generation changed while fetching
@@ -1026,6 +1127,7 @@ for (final track in releases)
   DateTime? _lastPositionNotify;
   MusicProvider({AccentController? accentController})
       : _accentController = accentController {
+    _installLyricsRaceReporting();
     _paletteService.clearAlbumAccentOnEmptyArt = () {
       _accentController?.setAlbumAccent(null);
     };

@@ -16,20 +16,43 @@ void main() {
 
     test('default providers list has correct order and all are enabled', () {
       final service = LyricsService();
-      expect(service.providerOrder, equals([
-        LyricsProvider.betterLyrics,
-        LyricsProvider.simpMusic,
-        LyricsProvider.kugou,
-        LyricsProvider.lrclib,
+
+      // The Apple syllable mirrors lead, in the order the reference uses, and
+      // Genius is last because it cannot synchronise at all. The reasoning is
+      // recorded on [LyricsService.defaultProviderOrder]; this pins the shape
+      // rather than restating the whole list twice.
+      expect(service.providerOrder, equals(LyricsService.defaultProviderOrder));
+      expect(
+        service.providerOrder.first,
+        LyricsProvider.lrcRed,
+        reason: 'the Apple mirrors lead, lrc.red first',
+      );
+      expect(
+        service.providerOrder.last,
+        LyricsProvider.genius,
+        reason: 'plain text is a fallback, never a lead',
+      );
+
+      // Every provider in the declared order is enabled out of the box.
+      expect(service.enabledProviders, equals(service.providerOrder.toSet()));
+    });
+
+    test('the unsynchronised providers are last', () {
+      final order = LyricsService.defaultProviderOrder;
+      // Nothing that can only produce whole lines may be asked before something
+      // that can synchronise, or the wipe silently degrades for a whole song.
+      for (final unsynced in [
+        LyricsProvider.genius,
         LyricsProvider.youtubeTranscript,
-      ]));
-      expect(service.enabledProviders, containsAll([
-        LyricsProvider.betterLyrics,
-        LyricsProvider.simpMusic,
-        LyricsProvider.kugou,
-        LyricsProvider.lrclib,
-        LyricsProvider.youtubeTranscript,
-      ]));
+      ]) {
+        for (final synced in order.where((p) => p.canWordSync)) {
+          expect(
+            order.indexOf(synced),
+            lessThan(order.indexOf(unsynced)),
+            reason: '$synced must be tried before $unsynced',
+          );
+        }
+      }
     });
 
     test('updateProviderOrder updates and persists custom priority', () async {
@@ -64,36 +87,42 @@ void main() {
 
     test('setProviderEnabled rejects disabling the last remaining provider', () async {
       final service = LyricsService();
-      
-      // Disable 4 out of 5
-      await service.setProviderEnabled(LyricsProvider.betterLyrics, false);
-      await service.setProviderEnabled(LyricsProvider.simpMusic, false);
-      await service.setProviderEnabled(LyricsProvider.kugou, false);
-      await service.setProviderEnabled(LyricsProvider.lrclib, false);
-      
-      expect(service.enabledProviders.length, equals(1));
-      expect(service.enabledProviders.first, equals(LyricsProvider.youtubeTranscript));
 
-      // Attempting to disable the last one should not remove it
-      await service.setProviderEnabled(LyricsProvider.youtubeTranscript, false);
-      expect(service.isProviderEnabled(LyricsProvider.youtubeTranscript), isTrue);
+      // Leave exactly one enabled, whichever it is. Driven off the declared
+      // order rather than a copied list, so adding a provider does not quietly
+      // make this test assert the wrong thing.
+      final order = service.providerOrder;
+      final survivor = order.last;
+      for (final provider in order.where((p) => p != survivor)) {
+        await service.setProviderEnabled(provider, false);
+      }
+
+      expect(service.enabledProviders.length, equals(1));
+      expect(service.enabledProviders.first, equals(survivor));
+
+      // Attempting to disable the last one should not remove it. A lyrics
+      // screen with no source configured cannot fetch anything at all.
+      await service.setProviderEnabled(survivor, false);
+      expect(service.isProviderEnabled(survivor), isTrue);
       expect(service.enabledProviders.length, equals(1));
     });
 
-    test('resetProvidersToDefault restores all 5 in default order and enabled', () async {
+    test('resetProvidersToDefault restores the declared order and enables all',
+        () async {
       final service = LyricsService();
       await service.updateProviderOrder([LyricsProvider.lrclib, LyricsProvider.betterLyrics]);
       await service.setProviderEnabled(LyricsProvider.betterLyrics, false);
 
       await service.resetProvidersToDefault();
-      expect(service.providerOrder, equals([
-        LyricsProvider.betterLyrics,
-        LyricsProvider.simpMusic,
-        LyricsProvider.kugou,
-        LyricsProvider.lrclib,
-        LyricsProvider.youtubeTranscript,
-      ]));
-      expect(service.enabledProviders.length, equals(5));
+      expect(
+        service.providerOrder,
+        equals(LyricsService.defaultProviderOrder),
+      );
+      expect(
+        service.enabledProviders.length,
+        equals(LyricsService.defaultProviderOrder.length),
+      );
+      expect(service.isProviderEnabled(LyricsProvider.betterLyrics), isTrue);
     });
   });
 

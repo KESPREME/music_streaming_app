@@ -12,29 +12,44 @@ class LyricsCacheEntry {
   final bool isSynced;
   final String provider;
   final DateTime cachedAt;
-  
+
+  /// Word and syllable timings, JSON-encoded, or null when the source gave
+  /// none.
+  ///
+  /// Stored beside the line text rather than inside it. Word timings used to be
+  /// flattened away when a track was cached, so a word-synced song came back
+  /// line-synced after a restart and the progressive wipe had nothing to draw
+  /// from until the track had been fetched again. Keeping them means the first
+  /// play of the day already has them.
+  final String? timings;
+
   LyricsCacheEntry({
     required this.key,
     required this.lyrics,
     required this.isSynced,
     required this.provider,
     required this.cachedAt,
+    this.timings,
   });
-  
+
   Map<String, dynamic> toMap() => {
     'key': key,
     'lyrics': lyrics,
     'is_synced': isSynced ? 1 : 0,
     'provider': provider,
     'cached_at': cachedAt.millisecondsSinceEpoch,
+    'timings': timings,
   };
-  
+
   factory LyricsCacheEntry.fromMap(Map<String, dynamic> map) => LyricsCacheEntry(
     key: map['key'] as String,
     lyrics: map['lyrics'] as String,
     isSynced: (map['is_synced'] as int) == 1,
     provider: map['provider'] as String,
     cachedAt: DateTime.fromMillisecondsSinceEpoch(map['cached_at'] as int),
+    // Absent on rows written before the column existed, and null on rows for a
+    // source with no word timings. Both mean "no timings", not a failure.
+    timings: map['timings'] as String?,
   );
   
   /// Check if entry is expired (7 days)
@@ -45,7 +60,7 @@ class LyricsCacheEntry {
 class LyricsCacheDb {
   static const String _dbName = 'lyrics_cache.db';
   static const String _tableName = 'lyrics';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
   
   Database? _database;
   bool _isInitialized = false;
@@ -71,11 +86,23 @@ class LyricsCacheDb {
               cached_at INTEGER NOT NULL
             )
           ''');
-          
+
           // Index for faster lookups
           await db.execute('CREATE INDEX idx_key ON $_tableName(key)');
-          
+
           if (kDebugMode) debugPrint('LyricsCacheDb: Database created');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          // v2 added word/syllable timings. Existing rows are left alone and
+          // simply carry NULL timings, which reads back as "no word timings" -
+          // the same thing they had before. Recreating them would mean refetching
+          // every cached song to get back data we already discarded once.
+          if (oldVersion < 2) {
+            await db.execute(
+              'ALTER TABLE $_tableName ADD COLUMN timings TEXT',
+            );
+            if (kDebugMode) debugPrint('LyricsCacheDb: added timings column');
+          }
         },
       );
       
@@ -118,10 +145,20 @@ class LyricsCacheDb {
     }
   }
   
-  /// Store lyrics in cache
-  Future<void> put(String key, String lyrics, bool isSynced, String provider) async {
+  /// Store lyrics in cache.
+  ///
+  /// [timings] carries the word/syllable payload for this track, or null when
+  /// the source had none. Losing it here is what made a word-synced song come
+  /// back line-synced after a restart.
+  Future<void> put(
+    String key,
+    String lyrics,
+    bool isSynced,
+    String provider, {
+    String? timings,
+  }) async {
     if (!_isInitialized || _database == null) return;
-    
+
     try {
       final entry = LyricsCacheEntry(
         key: key,
@@ -129,6 +166,7 @@ class LyricsCacheDb {
         isSynced: isSynced,
         provider: provider,
         cachedAt: DateTime.now(),
+        timings: timings,
       );
       
       await _database!.insert(

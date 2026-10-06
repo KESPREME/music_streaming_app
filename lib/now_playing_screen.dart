@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../models/track.dart';
+import '../models/lyrics_entry.dart';
 import '../core/perf_trace.dart';
 import '../providers/music_provider.dart';
 import '../services/audio_output_service.dart';
@@ -22,9 +23,12 @@ import '../widgets/apple_player_icons.dart';
 import '../widgets/thin_slider.dart';
 import '../widgets/device_volume_slider.dart';
 import '../widgets/audio_output_sheet.dart';
-import '../widgets/audio_quality_language_sheet.dart';
 import '../widgets/liquid_glass_pill.dart';
+import '../widgets/measure_size.dart';
+import '../widgets/lyric_providers_sheet.dart';
+import '../widgets/lyric_swept_line.dart';
 import '../widgets/scroll_collapse_tracker.dart';
+import '../services/lyrics/lyric_clock.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/in_place_canvas_player.dart';
 import '../screens/lyrics_screen.dart';
@@ -123,6 +127,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   late final Animation<double> _morphAnim;
   bool _isLyricsOpen = false;
 
+  final ValueNotifier<double> _deckExtent = ValueNotifier<double>(0);
+
+
   int _currentTab = -1; // Default: Album mode has no active bottom tab
   bool _isPlayPressed = false;
   double? _draggedPositionSec;
@@ -216,6 +223,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   bool _lyricsChromeHidden = false;
   String? _idleTrackId;
 
+  /// The clock the on-deck lyric line sweeps against. Created once, fed from the
+  /// player's position stream, and stopped when the lyric is absent or the song
+  /// does not move - same guard the full panel uses, so a standing deck does not
+  /// schedule frames forever.
+  LyricClock? _lyricClock;
+  StreamSubscription<Duration>? _lyricPosSub;
+  Timer? _lyricStallTimer;
+  int _lastLyricPosMs = -1;
+  int _lyricStalls = 0;
+
   @override
   void initState() {
     super.initState();
@@ -238,11 +255,59 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     );
   }
 
+  /// Opens the lyrics view. Feed the on-deck sweep clock once provided, and keep
+  /// its anchor honest from the stream - a constant stream runs a ticker for no
+  /// Feed the on-deck sweep clock once provided, and keep it honest from the
+  /// player: the stream re-anchors it per emission; the 300ms corrector is what
+  /// runs a ticker only while the song is actually moving.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    _lyricClock ??= LyricClock(vsync: this);
+    _lyricClock!
+      ..resync(provider.position.inMilliseconds)
+      ..report(provider.position.inMilliseconds, rate: provider.playbackSpeed);
+    _lyricPosSub ??= provider.positionStream.listen((pos) {
+      if (!mounted) return;
+      // Refresh only the sighting anchor: the strip's StreamBuilder reads each
+      // emitted snapshot itself, so we anchor the clock here but must not
+      // rebuild the whole page on the same tick.
+      _lyricClock!.report(pos.inMilliseconds, rate: provider.playbackSpeed);
+    });
+    // Coarse corrector: the stream itself emits unevenly, so this timer is what
+    // actually starts/stops the ticker. Two unchanged readings mean the song is
+    // standing still; the ticker then stops rather than animating a highlight
+    // that cannot advance.
+    _lyricStallTimer ??= Timer.periodic(const Duration(milliseconds: 300), (_) {
+      if (!mounted) return;
+      final reported = provider.position.inMilliseconds;
+      final hasWordSynced =
+          provider.currentLyrics?.any((e) => e.isWordSynced) ?? false;
+      if (reported == _lastLyricPosMs) {
+        _lyricStalls++;
+        if (_lyricStalls >= 2 && _lyricClock!.isRunning) {
+          _lyricClock!.stop();
+        }
+      } else {
+        _lyricStalls = 0;
+        _lastLyricPosMs = reported;
+        if (!_lyricClock!.isRunning && hasWordSynced) {
+          _lyricClock!.start();
+        }
+        _lyricClock!.report(reported, rate: provider.playbackSpeed);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
     _queueMorphController.dispose();
     _lyricsIdleTimer?.cancel();
+    _lyricPosSub?.cancel();
+    _lyricStallTimer?.cancel();
+    _lyricClock?.dispose();
     _morphController.dispose();
     // Performance & Battery Optimization: Pause silent canvas video when NowPlaying screen is dismissed
     CanvasVideoManager.instance.pause();
@@ -498,6 +563,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             _lastAttachedCanvasEnabled != data.animatedCanvasEnabled) {
           _lastAttachedTrackId = currentTrack.id;
           _lastAttachedCanvasEnabled = data.animatedCanvasEnabled;
+          // The sub-line resets ITSELF on a track change: LyricsScreen owns that
+          // controller, because it owns the reveal timers that go with it. Doing
+          // it here as well would need the controller to be lifted into this
+          // State purely so a widget could be told what it already knows from
+          // its own `trackKey`.
           if (data.animatedCanvasEnabled) {
             CanvasVideoManager.instance
                 .attachTrack(currentTrack, isPlaying: isPlaying);
@@ -845,12 +915,18 @@ child: Transform.scale(
                   // One block under both pages, so nothing jumps switching
                   // between them. Hides on queue-scroll-down and on 5s
                   // lyrics idle; any reveal path restores it.
-                  _buildPlayerDeck(
-                    context,
-                    musicProvider,
-                    accentColor,
-                    isPlaying,
-                    currentTrack,
+                  //
+                  // Measured, because the lyric panel above is full-page: without
+                  // this the list scrolls its tail underneath the scrubber.
+                  MeasureSize(
+                    onChange: (size) => _deckExtent.value = size.height,
+                    child: _buildPlayerDeck(
+                      context,
+                      musicProvider,
+                      accentColor,
+                      isPlaying,
+                      currentTrack,
+                    ),
                   ),
                 ],
                   ),
@@ -926,22 +1002,63 @@ child: Transform.scale(
               children: [
                 // ── LAYER 1: Full Kinetic Lyrics View (fades in as t -> 1.0) ──
                 if (_isLyricsOpen || t > 0.001)
-                  Positioned.fill(
-                    child: Opacity(
-                      opacity: t,
+                  // Listens to the measured deck so the list can end above it.
+                  // Without this the lyric's last line sits underneath the
+                  // scrubber, because this panel is full-page and the deck is a
+                  // separate overlay above it.
+                  ValueListenableBuilder<double>(
+                    valueListenable: _deckExtent,
+                    builder: (context, deckExtent, child) => Positioned.fill(
                       child: IgnorePointer(
                         ignoring: t < 0.6,
-                        child: LyricsScreen(
-                          onMinimize: widget.onMinimize,
-                          onReturnToAlbum: _closeLyrics,
-                          onTabTap: _navigateToTab,
-                          isEmbedded: true,
-                          showHeader: false,
-                          // Deck below owns seek/volume now: one set only.
-                          showBottomScrubber: false,
+                      // Revealed by slide and scale, never by Opacity.
+                      //
+                      // This layer contains glass discs. A translucent layer
+                      // between a backdrop-filter lens and its content isolates
+                      // the backdrop the lens samples, so the glass goes flat
+                      // for the whole transition - the discs look like flat grey
+                      // circles while the lyric slides under them. Motion reads
+                      // the arrival just as well without breaking the material.
+                      child: Transform.translate(
+                        offset: Offset(0, 40.0 * (1.0 - t)),
+                        child: Transform.scale(
+                          scale: 0.96 + 0.04 * t,
+                          child:                         LyricsScreen(
+                            onMinimize: widget.onMinimize,
+                            onReturnToAlbum: _closeLyrics,
+                            onTabTap: _navigateToTab,
+                            isEmbedded: true,
+                            showHeader: false,
+                            // Deck below owns seek/volume now: one set only.
+                            showBottomScrubber: false,
+                            // The two mode discs are owned by this deck's idle
+                            // cycle alongside the scrubber, panes and artwork,
+                            // rather than by a private timer inside the panel.
+                            chromeHidden: !(_deckVisible && !_lyricsChromeHidden),
+                            onFavorite: () {
+                              HapticFeedback.lightImpact();
+                              musicProvider.toggleLike(currentTrack);
+                            },
+                            isFavorite: isLiked,
+                            onOptions: () {
+                              HapticFeedback.lightImpact();
+                              GlassOptionsSheet.show(
+                                context,
+                                track: currentTrack,
+                                accentColor: accentColor,
+                              );
+                            },
+                            // Room for the deck below, so the lyric's tail stops
+                            // above the scrubber instead of behind it.
+                            bottomInset: deckExtent,
+                            // Ties the transform to this track, so a slow answer
+                            // cannot land under the next song.
+                            trackKey: currentTrack.id,
+                          ),
                         ),
                       ),
                     ),
+                  ),
                   ),
 
                 // ── LAYER 2 retired into the shared deck below ──
@@ -1073,7 +1190,17 @@ child: Transform.scale(
                   ),
                 ),
 
-                // ── LAYER 5: Action Buttons (Favorite Star, Options, Pronunciation) ──
+                // ── LAYER 5: Action Buttons (Favorite Star, Options) ──
+                //
+                // These stay pinned in the header rather than moving into the
+                // lyric footer. They belong to the TRACK, not to the lyric, so
+                // they have to be reachable from the artwork page as well - and
+                // the footer only exists while the lyric view is up, which would
+                // leave the player page with no way to favourite a song or open
+                // its options at all.
+                //
+                // The lyric list is padded clear of them (see LyricsScreen), so
+                // the two coexist without a line being drawn through a disc.
                 // Favorite Star
                 Positioned(
                   right: lerpDouble(76.0, 58.0, t)!,
@@ -1113,49 +1240,6 @@ child: Transform.scale(
                     },
                   ),
                 ),
-
-                // Pronunciation Button ("aあ")
-                if (t > 0.05)
-                  Positioned(
-                    right: 102.0,
-                    top: statusBarHeight + 34.0,
-                    child: Opacity(
-                      opacity: ((t - 0.25) / 0.75).clamp(0.0, 1.0),
-                      child: Semantics(
-                        label: 'Pronunciation',
-                        button: true,
-                        excludeSemantics: true,
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            AudioQualityLanguageSheet.show(context);
-                          },
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withValues(alpha: 0.12),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.18),
-                                width: 0.6,
-                              ),
-                            ),
-                            child: const Center(
-                              child: Text(
-                                'aあ',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             );
           },
@@ -1165,6 +1249,76 @@ child: Transform.scale(
   }
 
   // ── Real-Time Lyric Preview Snippet (Above Seek Bar matching Screenshot) ─
+
+  /// The row shown under the lyric when the lyric view is open.
+  ///
+  /// Names the provider the words came from. The reference puts this under the
+  /// lyric for the same reason: it is the one piece of information about the
+  /// lyric that the lyric view itself cannot show, and a listener who is looking
+  /// at a machine-translated rendering has a right to know which source it is.
+  Widget _buildLyricSourceRow(
+    BuildContext context,
+    Track track,
+    MusicProvider provider,
+  ) {
+    return Consumer<MusicProvider>(
+      builder: (context, musicProv, _) {
+        final isMatchingTrack = musicProv.lyricsTrackId == track.id;
+        final entries =
+            isMatchingTrack ? musicProv.currentLyrics : null;
+        final source = entries == null || entries.isEmpty
+            ? null
+            : musicProv.lyricsSourceName;
+
+        final label = source == null
+            ? 'Lyrics unavailable'
+            : 'Lyrics by $source';
+        final available = source != null;
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: available
+              ? () {
+                  HapticFeedback.selectionClick();
+                  // The live switcher, not the settings list: tapping the source
+                  // row is asking "show me this song's words from somewhere
+                  // else", which is a request about this track rather than a
+                  // standing preference about the app.
+                  LyricProvidersSheet.showLive(context);
+                }
+              : null,
+          child: Row(
+            children: [
+              // The leading note-box glyph is gone: it sat immediately beside the
+              // source label and gave the caption two typefaces fighting, which is
+              // exactly the unstyled look the reference avoids with a single text
+              // style and no icon. The provider name itself carries the meaning.
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: available ? 0.72 : 0.38),
+                  ),
+                ),
+              ),
+              if (available) ...[
+                const SizedBox(width: 3),
+                Icon(
+                  Icons.unfold_more_rounded,
+                  size: 14,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildLyricPreviewSnippet(
     BuildContext context,
@@ -1180,6 +1334,7 @@ child: Transform.scale(
           builder: (context, snapshot) {
             String displayText = 'Let it breathe';
             bool isInstrumental = true;
+            LyricsEntry? sweptEntry;
 
             final isMatchingTrack = musicProv.lyricsTrackId == activeTrack.id;
 
@@ -1208,6 +1363,9 @@ child: Transform.scale(
                 if (text.isNotEmpty && !line.isMusicalBreak && !isBeforeFirstVocal) {
                   displayText = text;
                   isInstrumental = false;
+                  // BitChord parity: this row is the word-by-word sweep when the
+                  // line has per-word timings, otherwise the plain title only.
+                  if (line.isWordSynced) sweptEntry = line;
                 } else {
                   final pIdx = activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
                   displayText = _lyricsIntroPhrases[pIdx];
@@ -1262,21 +1420,45 @@ child: Transform.scale(
                               ),
                             );
                           },
-                          child: Text(
-                            displayText,
-                            key: ValueKey<String>('${activeTrack.id}:$isInstrumental:$displayText'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: isInstrumental
-                                  ? Colors.white.withValues(alpha: 0.60)
-                                  : Colors.white.withValues(alpha: 0.95),
-                              fontSize: 14.5,
-                              fontWeight:
-                                  isInstrumental ? FontWeight.w500 : FontWeight.w600,
-                              letterSpacing: -0.15,
-                            ),
-                          ),
+                          child: sweptEntry != null && _lyricClock != null
+                              ? LyricSweptLine(
+                                  key: ValueKey<String>(
+                                      '${activeTrack.id}:${sweptEntry.timeMs}'),
+                                  entry: sweptEntry,
+                                  clock: _lyricClock!,
+                                  // The preview is title-sized: the same wipe,
+                                  // drawn small. BitChord uses titleMedium for it.
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: Colors.white.withValues(alpha: 0.95),
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.15,
+                                  ),
+                                  dimColor: Colors.white.withValues(alpha: 0.38),
+                                  isActive: true,
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    _navigateToTab(0);
+                                  },
+                                )
+                              : Text(
+                                  displayText,
+                                  key: ValueKey<String>(
+                                      '${activeTrack.id}:$isInstrumental:$displayText'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: isInstrumental
+                                        ? Colors.white
+                                            .withValues(alpha: 0.60)
+                                        : Colors.white.withValues(alpha: 0.95),
+                                    fontSize: 14.5,
+                                    fontWeight: isInstrumental
+                                        ? FontWeight.w500
+                                        : FontWeight.w600,
+                                    letterSpacing: -0.15,
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1576,6 +1758,11 @@ child: Transform.scale(
   ) {
     final shown = _deckVisible && !_lyricsChromeHidden;
     final bottomPad = MediaQuery.of(context).padding.bottom;
+    // The lyric view is only on the player page. On the queue the deck belongs
+    // to a different screen and must keep its preview snippet, so the swap is
+    // gated on both - otherwise queue and player would disagree about whether a
+    // lyric is being displayed.
+    final lyricsActive = _isLyricsOpen && _currentTab == 0;
     // Size collapses too (not just fade): the page above grows into the
     // freed space, so lyrics go full-page and the queue list goes full
     // length instead of staring at a blank strip. One 300ms shot.
@@ -1604,14 +1791,29 @@ child: Transform.scale(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Real-time lyric preview snippet (tappable into lyrics)
-                    _buildLyricPreviewSnippet(
-                      context,
-                      currentTrack,
-                      musicProvider,
-                    ),
+                    // Real-time lyric preview snippet (tappable into lyrics).
+                    //
+                    // Hidden while the lyrics are open: the full lyric is then
+                    // on screen directly above this deck, so a snippet of the
+                    // same words here is a duplicate of what is already being
+                    // read, and the row's height is better given to the scrubber.
+                    // The provider is named instead, because that is the one
+                    // thing the lyric view cannot show.
+                    if (!lyricsActive)
+                      _buildLyricPreviewSnippet(
+                        context,
+                        currentTrack,
+                        musicProvider,
+                      ),
 
-                    const SizedBox(height: 12),
+                    if (lyricsActive) ...[
+                      _buildLyricSourceRow(
+                        context,
+                        currentTrack,
+                        musicProvider,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
 
                     // Scrubber Bar with timestamps
                     _buildScrubberBar(

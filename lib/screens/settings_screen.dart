@@ -23,17 +23,18 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  /// Current filter. Held here rather than in a search widget so the same query
-  /// can decide which groups render and whether the empty state appears.
-  String _query = '';
-
-  /// Keywords for every row on this screen.
-  ///
-  /// Several entries carry words that are deliberately NOT on the row - "mobile
-  /// data" for Cellular Quality, "sign in" for Account - because those are what
-  /// somebody actually types.
-  static const _entries = <SettingsEntry>[
+/// Keywords for every row on this screen.
+///
+/// Several entries carry words that are deliberately NOT on the row - "mobile
+/// data" for Cellular Quality, "sign in" for Account - because those are what
+/// somebody actually types.
+///
+/// PUBLIC because the registry is the thing worth testing. A test that copied
+/// this list would keep passing while the screen drifted, which is the opposite
+/// of what a test is for: the bug this list actually had was a group gated by
+/// ids nobody had registered, and only a test reading the real list can catch
+/// the next one.
+const List<SettingsEntry> settingsSearchEntries = <SettingsEntry>[
     SettingsEntry('quick.quality', ['Quality', 'bitrate', 'audio']),
     SettingsEntry('quick.lyrics', ['Lyrics', 'providers']),
     SettingsEntry('quick.downloads', ['Downloads', 'offline']),
@@ -49,12 +50,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     SettingsEntry('playback.offline', ['Offline Mode', 'local', 'downloaded only']),
     SettingsEntry('playback.canvas', ['Animated Cover Art', 'canvas video']),
     SettingsEntry('playback.blur', ['Animated Cover Art', 'bleed artwork']),
+    // These three live in the SAME card as the two above, so they have to be
+    // registered AND named in that card's gate. Registering them alone does
+    // nothing: the gate asks `matchesAny`, which only ever sees the ids it was
+    // given, and failing-open inside a group cannot help a group that was already
+    // taken off the screen. That is how searching "lyrics" used to hide the
+    // Lyric Providers row outright.
+    SettingsEntry('playback.syncedLyrics', [
+      'Lyrics',
+      'synced lyrics',
+      'time-synced',
+      'timed lyrics',
+      'karaoke',
+      'timing',
+    ]),
+    SettingsEntry('playback.wordSync', [
+      'Lyrics',
+      'word sync',
+      'syllable',
+      'prioritize syllable lyrics',
+      'apple music timings',
+    ]),
+    SettingsEntry('playback.lyricProviders', [
+      'Lyrics',
+      'lyric providers',
+      'providers',
+      'lrc',
+      'source',
+      'reorder',
+    ]),
     SettingsEntry('data.cache', ['Clear Cache', 'storage', 'free up space']),
   ];
 
+class _SettingsScreenState extends State<SettingsScreen> {
+  /// Current filter. Held here rather than in a search widget so the same query
+  /// can decide which groups render and whether the empty state appears.
+  String _query = '';
+
+
+
   @override
   Widget build(BuildContext context) {
-    final index = SettingsSearchIndex(_query)..registerAll(_entries);
+    final index = SettingsSearchIndex(_query)
+      ..registerAll(settingsSearchEntries);
     final theme = Theme.of(context);
     final musicProvider = context.watch<MusicProvider>();
     final themeProvider = context.watch<ThemeProvider>();
@@ -342,8 +380,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-              // Motion Artwork & Lyrics group
-              if (index.matchesAny(const ['playback.canvas', 'playback.blur']))
+              // Motion Artwork & Lyrics group.
+              //
+              // Gated as a group, so every row in the card has to be named here.
+              // The card is a single visual unit - leaving the lyric rows out of
+              // this list is not a smaller group, it is the whole card gone the
+              // moment somebody searches for lyrics.
+              if (index.matchesAny(const [
+                'playback.canvas',
+                'playback.blur',
+                'playback.syncedLyrics',
+                'playback.wordSync',
+                'playback.lyricProviders',
+              ]))
                 SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -414,9 +463,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           icon: Icons.text_fields_rounded,
                           iconBg: accent.withValues(alpha: 0.18),
                           iconColor: accent,
-                          title: 'Prioritize Word Sync',
+                          title: 'Prioritize syllable lyrics',
+                          // Says what the switch actually DOES, which the old
+                          // wording did not: it keeps searching past a
+                          // line-synced hit for one with word timings, and so
+                          // can make the first lyric arrive later.
                           subtitle:
-                              'Prefer Apple Music syllable sync over line sync',
+                              'Keep searching past a line-synced match for word-level timings',
                           trailing: LiquidSwitch(
                             value: musicProvider.prioritizeSyllableSync,
                             onChanged: (v) =>

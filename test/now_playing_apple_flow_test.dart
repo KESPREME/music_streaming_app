@@ -149,7 +149,7 @@ class TestMusicProvider extends MusicProvider {
   }
 
   @override
-  List<LyricsEntry>? get currentLyrics => const [
+  List<LyricsEntry>? get currentLyrics => [
         LyricsEntry(timeMs: 0, text: 'You live in my dream state'),
         LyricsEntry(timeMs: 15000, text: 'You exist behind my eyelids, my eyelids'),
         LyricsEntry(timeMs: 30000, text: 'Now I do not wanna wake up'),
@@ -238,9 +238,14 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Lyrics tab'));
     await tester.pumpAndSettle();
 
-    // Verify top mini track header in Lyrics page
-    expect(find.bySemanticsLabel('Pronunciation'), findsOneWidget);
-    expect(find.text('aあ'), findsOneWidget);
+    // The two mode discs, floated over the foot of the lyric panel.
+    //
+    // NOT a header control: they are mode switches for the LYRIC, not the track,
+    // which is why they sit with the lyric rather than beside the star and the
+    // overflow menu. There is no "aあ" header button in the reference at all.
+    expect(find.bySemanticsLabel('Show romanized lyrics'), findsOneWidget);
+    expect(find.bySemanticsLabel('Show translated lyrics'), findsOneWidget);
+    expect(find.bySemanticsLabel('Pronunciation'), findsNothing);
 
     // Verify kinetic lyrics (active line uses Text.rich with WidgetSpan)
     expect(find.textContaining('eyelids'), findsWidgets);
@@ -710,7 +715,7 @@ void main() {
 
     // Now in lyrics mode
     expect(find.byType(LyricsScreen), findsOneWidget);
-    expect(find.bySemanticsLabel('Pronunciation'), findsOneWidget);
+    expect(find.bySemanticsLabel('Show translated lyrics'), findsOneWidget);
 
     // Tap the mini album art to return back to album art view
     await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
@@ -780,8 +785,8 @@ void main() {
   test('LyricsService.withInstrumentalGaps: inserts intro break and mid-song breaks', () {
     final rawEntries = [
       LyricsEntry.headEntry,
-      const LyricsEntry(timeMs: 15200, text: 'I wanna be your vacuum cleaner', endMs: 18000),
-      const LyricsEntry(timeMs: 25000, text: 'Breathing in your dust', endMs: 28000),
+      LyricsEntry(timeMs: 15200, text: 'I wanna be your vacuum cleaner', endMs: 18000),
+      LyricsEntry(timeMs: 25000, text: 'Breathing in your dust', endMs: 28000),
     ];
 
     final withGaps = LyricsService.withInstrumentalGaps(rawEntries);

@@ -41,10 +41,24 @@ void main() {
       final entries = BetterLyricsProvider.parseTtml(ttml);
       expect(entries.length, 1);
       expect(entries.first.text, 'Will never let you go');
-      expect(entries.first.words?.length, 6);
+      // Five WORDS, not six spans. "ne" and "ver" carry no space between them,
+      // so they are two syllables of the one word "never" - which is exactly
+      // what this test is named for. Reading them as separate words lit up at
+      // the wrong times and left no syllable detail to interpolate.
+      expect(entries.first.words?.length, 5);
       expect(entries.first.words?.map((w) => w.text).toList(), [
-        'Will', 'ne', 'ver', 'let', 'you', 'go'
+        'Will', 'never', 'let', 'you', 'go'
       ]);
+
+      // And the glued word keeps its two syllables, with the character spans
+      // needed to draw the wipe across them.
+      final never = entries.first.lyricWords!.firstWhere((w) => w.text == 'never');
+      expect(never.syllables.length, 2);
+      expect(never.startMs, 1400);
+      expect(never.endMs, 2100);
+      expect(never.syllables[0].start, 0);
+      expect(never.syllables[1].start, 2);
+      expect(never.syllables[1].end, 5);
     });
 
     test('unescapes XML entities in TTML lines and words', () {
