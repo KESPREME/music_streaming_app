@@ -167,10 +167,15 @@ LyricsProvider.lrcRed ||
   ///
   /// For a host that has stopped answering. Deleting the provider outright would
   /// only mean writing it again if it comes back, which is the situation this is
-  /// for. SimMusic is here because it is keyed on the video id and therefore only
-  /// works when the track genuinely came from YouTube, which is not true of a
-  /// queue built from any other source.
-  bool get isOffered => this != LyricsProvider.simpMusic;
+  /// for.
+  ///
+  /// SimMusic is here because it is keyed on the video id and therefore only works
+  /// when the track genuinely came from YouTube, which is not true of a queue built
+  /// from any other source. Megalobiz is here because it is an HTML scrape whose
+  /// markup has changed before and will again - the reference hides both
+  /// (LyricsSource.kt:87, 108).
+  bool get isOffered =>
+      this != LyricsProvider.simpMusic && this != LyricsProvider.megalobiz;
 }
 
 /// Main lyrics service that orchestrates multiple providers
@@ -195,11 +200,20 @@ class LyricsService {
 /// Genius and the YouTube transcript can only produce whole lines. They are last
 /// because nothing here can synchronise, and showing unsynced words beats showing
 /// nothing only once the synchronised sources have genuinely missed.
+///
+/// EVERY member of [LyricsProvider] must appear here, and there is a test that
+/// says so. Three of them did not: `betterLyricsPortato`, `youtubeMusic` and
+/// `megalobiz` were declared in the enum and in the settings sheet, but never
+/// reached this list - so `_providerOrder` never contained them, the race never
+/// asked them, and the sheet, which lists `_providerOrder`, never showed them. A
+/// provider the user could see and reorder but which no lookup could ever consult
+/// is worse than not offering it.
 static const List<LyricsProvider> defaultProviderOrder = [
   LyricsProvider.lrcRed,
   LyricsProvider.betterLyrics,
   LyricsProvider.biniLyrics,
   LyricsProvider.paxSenix,
+  LyricsProvider.betterLyricsPortato,
   LyricsProvider.lyricsPlus,
   LyricsProvider.simpMusic,
   LyricsProvider.kugou,
@@ -207,6 +221,8 @@ static const List<LyricsProvider> defaultProviderOrder = [
   LyricsProvider.unison,
   LyricsProvider.musixmatch,
   LyricsProvider.youtubeTranscript,
+  LyricsProvider.youtubeMusic,
+  LyricsProvider.megalobiz,
   LyricsProvider.genius,
 ];
 
@@ -366,6 +382,14 @@ static const List<LyricsProvider> defaultProviderOrder = [
       }
     }
     for (final provider in defaultProviderOrder) {
+      // The same filter as the saved list above.
+      //
+      // Without it this loop put straight back everything the first loop had just
+      // dropped: `initialize()` handed `reconcileOrder` a saved order, the method
+      // correctly removed the retired providers, and then re-seeded them from the
+      // default order a few lines later. A returning user kept paying for a scrape
+      // the sheet could not even show them.
+      if (!provider.isOffered) continue;
       if (result.contains(provider)) continue;
       // The nearest declared predecessor that the saved order actually kept.
       LyricsProvider? before;
@@ -407,10 +431,13 @@ static const List<LyricsProvider> defaultProviderOrder = [
         final p = LyricsProvider.values.where((e) => e.name == name).firstOrNull;
         if (p != null && !parsed.contains(p)) parsed.add(p);
       }
-      for (final p in defaultProviderOrder) {
-        if (!parsed.contains(p)) parsed.add(p);
-      }
-      _providerOrder = parsed;
+      // Goes through [reconcileOrder] rather than the inline loop it used to
+      // duplicate. The inline version had no `isOffered` filter, so a provider
+      // retired in this build stayed in a returning user's order, and it appended
+      // providers a new arrival could never reach - which is how
+      // betterLyricsPortato, youtubeMusic and megalobiz ended up declared,
+      // visible in the sheet, and unreachable for everyone.
+      _providerOrder = reconcileOrder(parsed);
     }
 
     final savedEnabled = prefs.getStringList(_enabledPrefKey);
@@ -420,6 +447,8 @@ static const List<LyricsProvider> defaultProviderOrder = [
         final p = LyricsProvider.values.where((e) => e.name == name).firstOrNull;
         if (p != null) parsed.add(p);
       }
+      // Never let a retired provider come back through a saved enabled-set.
+      parsed.removeWhere((p) => !p.isOffered);
       if (parsed.isNotEmpty) {
         _enabledProviders = parsed;
       }
@@ -429,7 +458,19 @@ static const List<LyricsProvider> defaultProviderOrder = [
     if (kDebugMode) debugPrint('LyricsService: Initialized with disk cache and custom providers');
   }
 
-  /// Get parsed lyrics entries with BitChord's syllable/word-first prioritization
+  /// Whether a line-synced hit is held back while the rest of the sources are
+/// still asked, on the chance one carries word or syllable timings.
+///
+/// FALSE by default, matching the reference (`LyricsRepository.kt:95`). Holding
+/// costs a network round trip on every remaining provider for every track, so it
+/// is a choice to make rather than a default to inherit - see
+/// `AppSettings.kt:500-507` for why the reference ships it off.
+///
+/// A NAMED constant rather than a literal at each use site, so the provider, the
+/// service and the test all read the same one and it cannot drift between them.
+static const bool prioritizeSyllableDefault = false;
+
+/// Get parsed lyrics entries with BitChord's syllable/word-first prioritization
   Future<List<LyricsEntry>> getParsedLyrics({
     required String title,
     required String artist,
@@ -438,12 +479,11 @@ static const List<LyricsProvider> defaultProviderOrder = [
     String? album,
     /// When false, a line-synced result is accepted as soon as it arrives.
     ///
-    /// When true (the default), a line-synced hit is held back and the remaining
-    /// sources are still asked, on the chance one of them carries word or
-    /// syllable timings worth the wait. This is the "Prioritize word sync"
-    /// setting, and until it was threaded through here it was a switch that
-    /// wrote a preference and changed nothing.
-    bool prioritizeSyllable = true,
+    /// When true, a line-synced hit is held back and the remaining sources are
+    /// still asked, on the chance one of them carries word or syllable timings
+    /// worth the wait. This is the "Prioritize word sync" setting. See
+    /// [prioritizeSyllableDefault].
+    bool prioritizeSyllable = prioritizeSyllableDefault,
 
     /// When true, an unsynced plain-text result is not accepted.
     ///

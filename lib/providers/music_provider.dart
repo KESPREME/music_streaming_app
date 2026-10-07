@@ -1453,7 +1453,15 @@ for (final track in releases)
       _canvasOverCellular = p.getBool('canvas_over_cellular') ?? false;
       _fullBleedArtwork = p.getBool('full_bleed_artwork') ?? true;
       _syncedLyricsEnabled = p.getBool('synced_lyrics') ?? true;
-      _prioritizeSyllableSync = p.getBool('prioritize_syllable_sync') ?? true;
+      // The same constant the service defaults to, so the value is identical
+      // before and after this line - a field that started `true` while the pref
+      // loaded `false` would answer differently for the first seconds of a cold
+      // start. OFF by default: see LyricsService.prioritizeSyllableDefault.
+      //
+      // An existing install keeps its stored value; this only changes the default.
+      _prioritizeSyllableSync =
+          p.getBool('prioritize_syllable_sync') ??
+              LyricsService.prioritizeSyllableDefault;
       final lofiEnabled = p.getBool('lofiEnabled') ?? false;
       if (lofiEnabled && !_lofi.enabled) {
         _lofi.setEnabled(lofiEnabled);
@@ -3637,7 +3645,13 @@ for (final track in releases)
     await p.setBool('synced_lyrics', value);
   }
 
-  bool _prioritizeSyllableSync = true;
+  /// Whether a line-synced hit is held back while the rest of the sources are
+  /// still asked, on the chance one carries word or syllable timings.
+  ///
+  /// The field default is the same constant the pref load and the service
+  /// parameter default read, so the answer is the same before and after
+  /// `initialize()`.
+  bool _prioritizeSyllableSync = LyricsService.prioritizeSyllableDefault;
   bool get prioritizeSyllableSync => _prioritizeSyllableSync;
   Future<void> setPrioritizeSyllableSync(bool value) async {
     _prioritizeSyllableSync = value;
