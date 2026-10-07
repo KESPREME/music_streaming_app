@@ -24,40 +24,56 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 81
 
 ## CURRENT STATE (commit 7f6777a)
 
-### Lyrics rewrite (UNCOMMITTED - 844 tests, 198 issues / 0 errors, APK builds)
+### Lyrics rewrite (891 tests, 198 issues / 0 errors, APK builds — device pass PENDING)
 
-BitChord-parity kinetic lyrics. **Not yet run on a device.**
+BitChord-parity kinetic lyrics, taken through a six-phase plan in
+`docs/PLAN-lyrics-parity.md`. Read that file first: it records what changed, what
+each change cost, and which items were deliberately NOT done.
 
-This pass, on top of the per-word lift work recorded below:
-- **Disc ownership** is no longer a second timer. `LyricsScreen` accepts a
-  `chromeHidden` override; when the embedded player sets it, the two mode discs
-  hide exactly when the scrubber fades and return with it. The stand-alone panel
-  (tests, themed view) still falls back to its own idle timer (`_discsVisible`).
-- **The on-deck line is the sweep.** `now_playing_screen` owns a `LyricClock`,
-  fed from `positionStream` plus a 300ms stall corrector (it must not run a ticker
-  against a still song - the full panel stays cheap the same way). When the
-  resolved line is word-synced, the strip above the scrubber renders
-  `LyricSweptLine` - the same one-line word-by-word wipe - instead of the plain
-  snippet text.
-- **Blur is a tween, not a slice.** `AnimatedBlur` drives the row from the old
-  sigma to the new one over 340ms; previously the sigma changed as a step per
-  currentLine, so every recede and advance of the highlight was a hard edge in
-  the paint.
-- **The source caption is plain text again.** The note-box glyph beside
-  "Lyrics by ..." is removed (`lyrics_outlined` is gone), matching the reference
-  which carries the source without an icon.
-- **Provider sheet** now scrolls its reorderable lists
-  (`NeverScrollableScrollPhysics` -> `ClampingScrollPhysics`, shrinkWrap dropped),
-  `useRootNavigator: false` so a back gesture pops the sheet rather than the
-  shell, and the grabber lets a down-fling at velocity pop the sheet itself.
-- The provider switch resets the panel's list state instead of leaking the
-  previous answer: `_adoptLyrics` adopts by list identity, re-keys the rows and
-  re-derives the focus line from the clock, and `_reconcileClock` runs on BOTH
-  the loading and settled branches - loading no longer suspends the clock.
+**THE JANK WAS NOT A MISSING ANIMATION.** `_onScroll` read
+`position.isScrollingNotifier` to decide the reader was browsing. Our own
+`animateTo` sets that flag, so every line handover announced itself as a browse —
+cleared the blur, flattened the alpha ladder, and set `_autoScrollEnabled = false`
+for 3500ms. The panel switched its own follow off once per line. Browsing is now
+a FINGER (`ScrollStartNotification.dragDetails != null`), and the resume counts
+from the last scroll activity rather than from one end event.
 
-Gate was 195 issues/0 errors; it nudged to 198 because the provider sheet's three
-pre-existing infos (`onReorder`, const) are still there and two new ones are of
-the same nature. Zero errors throughout.
+**THE DUPLICATION AND THE ORDERING BUG WERE ONE BUG.** The lyric panel was
+painted on the frame the artwork collapse started, translating and scaling in
+*beside* it, with the title and two glass buttons over both. Four layers in one
+frame, lyric text readable through the artwork. Now: 420ms collapse, THEN a
+200ms fade with no transform of its own (`_panelFadeController`). Close reverses
+both stages. The panel's discs are held out of the tree while that alpha is in
+flight, so there is never a lens under a translucent layer (invariant 17).
+
+**THE SCROLL LEADS, IT DOES NOT TRAIL.** `_scrollToCurrentLine` computed the lead
+index into a local and then scrolled to the line already being sung. Now it
+targets the lead line, takes its duration from the gap it covers, and anchors at
+the top of the content — `topAnchorOffset` in `lyric_sweep.dart`, extracted as a
+PURE function so the arithmetic can be pinned without a layout pass.
+
+**The strip above the seek bar** (`lib/widgets/lyric_strip.dart`) has the
+reference's five states as genuinely different facts. It used to collapse all five
+into "an intro phrase", so a song with no lyrics anywhere said *Let it breathe*
+while the row beneath it said **Lyrics unavailable**. One clock, not two: the
+index and the wipe both read `LyricClock`, and the widget rebuilds only when the
+index moves.
+
+**Dead code found and either wired or documented, not left alone:**
+`lyricsDiscFadeIn/Out` (declared, zero references), `reportAlreadyInLanguage`
+(defaulted false, no caller passed it), `TransformButtonState.sameLanguage` (no
+producer), `alreadyInLanguage` (read by nothing), `reconcileOrder` (dead, and
+buggy — it re-added the retired providers it had just filtered).
+
+**Not done, deliberately:** ISRC is not populated — nothing in the codebase has
+one (no Spotify client, no ISRC on any response we parse), and inventing one
+would be a guess; lrc.red's free-text search with a duration tie-breaker is the
+documented mitigation. The `inputtools` romanization retry needs a live request
+to verify. `PAXSENIX_SPOTIFY`/`PAXSENIX_MUSIXMATCH` are out of scope by user
+decision (API key).
+
+Gate: **891 tests**, **198 issues / 0 errors** (identical to the pre-work
+baseline, none in a touched file), debug APK builds.
 
 Latest on top of the summary below: the per-word **lift** is now implemented
 (`word_lift.dart`, `wordFall`, `_wordSpans`, `_liftedSlices` in
@@ -102,10 +118,13 @@ lib/services/lyrics/
   youtube_music_provider.dart / megalobiz_provider.dart - no-key sources
 lib/widgets/lyric_swept_line.dart   prefix widths cached, CustomClipper,
                           per-line RepaintBoundary, per-letter held-word overlay,
-                          sub-line row
+                          sub-line row, rise/glow/maxLines flags, AnimatedLyricRow
+lib/widgets/lyric_strip.dart        the one-line lyric above the seek bar; five
+                          distinct states, one clock, 340ms/0.35 handover
 lib/widgets/lyrics_mode_discs.dart  the two floating transform discs
 lib/widgets/measure_size.dart      reports a child's laid-out size
-lib/widgets/lyric_providers_sheet.dart  settings mode + live mode
+lib/widgets/lyric_providers_sheet.dart  settings mode + live mode, word-sync
+                          preference, drag-edge auto-scroll
 ```
 
 **The gluing rules (`wordsFromRuns`) are the whole ballgame.** BetterLyrics TTML
@@ -812,7 +831,12 @@ its `YouTubeProfile` channels.
 | test/lyric_growth_test.dart | Held-note thresholds per word length, three beats, stagger, decay, lean, script exclusions, no NaN |
 | test/lyric_sub_line_test.dart | The original text is never replaced, timings keep indexing it, reveal collapses to no height, wrong-track transform refused |
 | test/lyrics_panel_bounds_test.dart | MeasureSize reporting + de-jitter + no mid-frame build; the list reserves the deck's height |
-| test/lyric_swept_line_test.dart | Per-line RepaintBoundary isolation, CustomClipper prefix width, alpha/blur readability ladder, no ShaderMask, growth overlay present/absent |
+| test/lyric_swept_line_test.dart | Per-line RepaintBoundary isolation, CustomClipper prefix width, alpha/blur readability ladder, no ShaderMask, growth overlay present/absent, ONE font size/weight for every line, emphasis from scale+alpha, one monotonic spec |
+| test/lyric_scroll_browse_test.dart | A browse is a FINGER: the follow survives its own animation, 600ms/5s exit, no yank-back; the lead bounds, the top-anchor arithmetic, and never sitting behind the voice |
+| test/lyric_morph_test.dart | No lyric layer during the collapse, never two, the fade completes on its own window, the close starts immediately, no disc under the alpha |
+| test/lyric_strip_test.dart | The five strip states, one clock for index and wipe, one row with an ellipsis, no lift or bloom, 340ms/0.35/0.55 |
+| test/lyrics_provider_reachability_test.dart | Every enum member is in the default order or explicitly hidden; order repair; the word-sync default is off |
+| test/lyrics_same_language_test.dart | The script check, the controller state, and the dimmed-but-tappable disc that explains itself |
 | test/lyric_syllable_parsing_test.dart | TTML run gluing (Japanese + English apostrophes), enhanced-LRC syllable tags, plain-LRC heuristic |
 | test/lyric_timings_cache_test.dart | Word/syllable timings survive the disk round trip; schema v2 migration |
 | test/lyrics_translation_test.dart | Batching under the char cap, batch-to-reply pairing, short/long reply handling, Latin detection, timestamp preservation, display-mode fallback + stale-answer rejection |
@@ -896,24 +920,36 @@ ee25374 fix(login): consistent route target from Home, and a real status-bar ins
 44cb1e9 docs: record the route-target flag, the WebView inset rule, and the MY gap
 79fabf6 fix(nav): Material You full-screen routes go above the shell too
 7f6777a feat(home): per-section card/list layouts for the history shelves
+c4f76b9 feat(lyrics): BitChord-parity kinetic lyric engine
+33914fc fix(lyrics): the panel was disabling its own auto-follow
+471bc1e fix(lyrics): split the player morph into two stages
+45c7702 feat(lyrics): the strip has real states and one clock
+86b4efe fix(lyrics): three providers were visible, reorderable and never asked
+4542ebd fix(lyrics): the globe said nothing when it had nothing to do
+f8a3eeb feat(lyrics): the word-sync preference lives next to the list it changes
 ```
 
 ---
 
 ## NEXT STEPS (if resuming)
 
-0. **Lyrics — device verification, the one thing left.** Everything above is
-   unit-tested and gated but has never been watched. On CPH2723 check: the wipe
-   keeps up with the singing and no line is drawn under the header discs; the last
-   line of the lyric stops ABOVE the seek bar (the measured bottom inset);
-   the globe appears only for a non-Latin lyric and reports "already in
-   English" rather than vanishing; romanize + translate both land as SUB-LINES
-   and the wipe still tracks the original words; switching one transform off
-   before the other on never shows two scripts at once; the discs fade after 5s
-   and a tap in the lower half brings them back WITHOUT swallowing the scroll;
-   "Lyrics by {source}" replaces the preview snippet and does not appear on the
-   queue page. Then confirm the position stream still does NOT rebuild the list
-   — scroll should stay smooth with a long lyric on screen.
+0. **Lyrics - device verification, the ONLY thing left.** All of the lyrics work
+   is unit-tested and gated (891 tests, 198/0, APK builds) but has never been
+   watched. On CPH2723, in this order:
+   - auto-scroll keeps up with the singing for a whole verse (Phase 1 - this was
+     the reported jank and the fix is only proven in a widget test)
+   - scroll by hand -> blur clears, every line readable, snaps back ~600ms later
+   - a long lyric's last line is fully above the seek bar
+   - lyric->player: artwork collapses, THEN lyrics fade in. Nothing duplicated,
+     nothing readable through the artwork (Phase 2)
+   - the strip: one line, no lift twitch, word wipe tracks, "Open lyrics" on an
+     unsynced song, "No lyrics found" when there is none
+   - globe on an English lyric -> dimmed, tap explains, no sub-line drawn
+   - scrub the scrubber or drag the volume -> the discs stay up
+   - switch provider -> the panel keeps animating, no freeze
+   - the provider sheet: scroll it, drag a row to the end, tap "Prioritize
+     syllable lyrics"
+   - confirm the position stream still does NOT rebuild the list
 0. **Card/list toggle - device verification outstanding.** 7f6777a is unit-tested
    but the morph has never been watched on hardware. Install on CPH2723 and
    capture the swap in BOTH directions on all three shelves; check the departing
@@ -1017,6 +1053,20 @@ ee25374 fix(login): consistent route target from Home, and a real status-bar ins
   app-root transform, not the local one. When measuring an ancestor property,
   take the FIRST match, and make the test assert something that would actually
   break. That misreading nearly shipped a "fix" that inverted the animation.
+- **A timer armed inside a scroll-notification dispatch never fires under
+  `flutter test`.** It is scheduled outside the binding's fake-async zone. The
+  lyric browse resume was written that way and simply never ended in a test. Count
+  idle time on a tick you already own instead.
+- **Extract pure geometry before pinning it through a layout.** `topAnchorOffset`
+  is two lines of arithmetic that took three widget-test debugging rounds to pin
+  and still only caught the sign error once it was free of the fake clock and the
+  lazy list. The pure version caught my own wrong derivation twice.
+- **`ReorderableListView` owns its ScrollController** and this Flutter version
+  will not take one injected. Capture its `ScrollPosition` from inside
+  `itemBuilder` if you need to drive it.
+- **A `Listener` reports pointer moves without winning the arena.** A
+  `GestureDetector` wrapped around `ReorderableDragStartListener` can win the
+  gesture and stop the reorder from starting at all.
 - **`AnimatedSwitcher` reports the same `AnimationStatus` for both roles** (it
   drives arriving 0→1 and departing 1→0). Do not infer which child you are
   looking at from the animation — carry the role on the child (key compare)

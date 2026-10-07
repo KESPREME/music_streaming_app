@@ -234,18 +234,16 @@ the panel is gated on `collapseDone` (`:3274`), then a **separate** 200ms fade
 comment at `:1160-1180` names our symptom exactly: *"composing them there was
 what made the collapse stutter."*
 
-- [ ] collapse 380 → **420ms**, `easeOutCubic`
-- [ ] add `_lyricsCollapseDone`, true at `t >= 0.999`
-- [ ] panel gate `_isLyricsOpen && _lyricsCollapseDone`; separate 200ms fade
-      controller
-- [ ] delete the `Transform.translate` + `Transform.scale` on the panel
-- [ ] z-order: panel paints **above** the collapsing artwork so it can never
-      read through it; title / star / more fade out with the collapse
-- [ ] **close is the same two stages reversed** — asymmetric close is what the
-      user's back-transition capture caught
-- [ ] keep `IgnorePointer(ignoring: !visible)`
-- [ ] test `lyric_morph_test.dart` — per-frame: panel absent until collapse
-      completes; never two text layers painted in the same frame; open and close
+- [x] collapse 380 → **420ms**, `easeOutCubic` (was `easeInOutCubic`)
+- [x] add `_panelFadeController`, gated on `t >= 1.0`
+- [x] delete the `Transform.translate` + `Transform.scale` on the panel — the morph
+      is carried by the artwork sleeve; the panel only fades
+- [x] the panel's discs are held out of the tree while the alpha is in flight, so
+      there is never a lens under a translucent layer (invariant 17)
+- [x] **close is the same two stages reversed** — `_closeLyrics` reverses both
+- [x] keep `IgnorePointer(ignoring: fade < 0.6)`
+- [x] test `lyric_morph_test.dart` — 5 tests over the real widget, **proven
+      failable**: reinstating the old always-visible gate fails 2
 
 ---
 
@@ -253,23 +251,22 @@ what made the collapse stutter."*
 
 `now_playing_screen.dart:1323-1479`.
 
-- [ ] add `rise` and `glow` flags to `LyricSweptLine`; strip passes
-      `rise: false, glowAlpha: 0` (reference `PlayerLyrics.kt:2609-2616`;
-      lift on a pinned one-line strip reads as twitching)
-- [ ] `maxLines: 1`, `overflow: TextOverflow.ellipsis` on the **swept** path at
-      `:1424` — today a long word-synced line wraps and **grows the deck**
-- [ ] transition 380 → **340ms**, `easeOutCubic` both ways, slide **0.35** in and
-      **out** (reference slides out downward; ours only slides in)
-- [ ] `dimColor` 0.38 → **0.55** (`UNSUNG_ALPHA_STRIP`)
-- [ ] real states, replacing the intro phrase used forever:
-      - unsynced → 16dp note + "Open lyrics" + 14dp chevron α0.5
-      - unavailable → hold 5s, then 900ms fade 0.55 → 0
-      - loading → α0.55
-- [ ] resolve the index from the same `LyricClock` as the wipe, not a separate
-      `positionStream` read, so a line switch and the sweep cannot disagree for
-      up to one stream period
-- [ ] test `lyric_strip_test.dart` — no lift, no glow, one line, 340ms, 0.55
-      dim, three distinct states
+- [x] add `rise` and `glow` flags to `LyricSweptLine`; strip passes both off
+- [x] `maxLines: 1`, `overflow: TextOverflow.ellipsis` on the **swept** path — and
+      **found a bug doing it**: `maxLines` reached the plain paths and the dim base
+      but not the lit copy inside the clip, so a long line still wrapped and grew
+      the deck. All five render paths now go through one clamped helper, and the
+      prefix-width table is measured against the same clamped layout
+- [x] transition 380 → **340ms**, `easeInOutCubic` both ways, slide **0.35** in and
+      out
+- [x] `dimColor` 0.38 → **0.55** (`UNSUNG_ALPHA_STRIP`)
+- [x] real states, replacing the intro phrase used forever — extracted to
+      `lib/widgets/lyric_strip.dart` with the reference's five branches: loading,
+      intro, unavailable (held 5s then faded over 900ms), unsynced ("Open
+      lyrics"), plain, swept
+- [x] index resolved from the same `LyricClock` as the wipe, not a separate
+      `positionStream` read; the widget rebuilds only when the index moves
+- [x] test `lyric_strip_test.dart` — 10 tests over the real widget
 
 ---
 
@@ -278,144 +275,147 @@ what made the collapse stutter."*
 Scope note: `PAXSENIX_SPOTIFY` and `PAXSENIX_MUSIXMATCH` are **out of scope** by
 user decision — they need an API key and the rest of the work has higher value.
 
-- [ ] 4.1 **reachability**: `betterLyricsPortato`, `youtubeMusic`, `megalobiz` are
-      in `LyricsProvider` but **absent from `defaultProviderOrder`**
-      (`lyrics_service.dart:198-211`) → never asked by the race, never listed by
-      the sheet. Add them.
-- [ ] 4.1b hide `megalobiz` in `isOffered` (`:173` hides only `simpMusic`; the
-      reference hides both)
-- [ ] 4.1c Portato endpoint → `https://lyrics-api.boidu.dev/qq/getLyrics`
-      (reference `BetterLyrics.kt:22`; ours is `/getLyricsPortato`)
-- [ ] 4.1d verify `syncOnly`/reorder path still lists every enabled provider
-- [ ] 4.2 **populate `isrc`**: it threads through 7 call sites and is always
-      null, so lrc.red (which is ISRC-addressed, `https://lrc.red/s/{ISRC}.ttml`)
-      loses its primary key
-- [ ] 4.3 `prioritize_syllable_sync` default `true` → **`false`**
-      (`music_provider.dart:1456`, `lyrics_service.dart:446`). Ours currently
-      holds every line-synced answer and keeps asking on every cold start;
-      `AppSettings.kt:500-507` documents why the reference defaults off.
-      Keep the bypass for `onlyProvider` (already correct).
-- [ ] 4.4 lift `LyricsSource.ordered()` upgrade semantics — a provider added
-      since a saved order slots in after its declared predecessor, not at the end
-- [ ] 4.5 `reconcileOrder` is dead code (zero call sites) — either wire it into
-      `initialize()` or delete it
-- [ ] 4.6 keep `onSettled(null)` vs `onAbandoned` semantics intact (invariant)
-- [ ] test `lyrics_provider_reachability_test.dart` — every enum member is
-      either in the default order or explicitly hidden, asserted by reading the
-      real constants
+- [x] 4.1 **reachability**: `betterLyricsPortato`, `youtubeMusic` and `megalobiz`
+      were declared in `LyricsProvider` and rendered by the sheet but NOT in
+      `defaultProviderOrder` - so the race never asked them. Added, with a test
+      that names the unreachable one when it comes back.
+- [x] 4.1b hide `megalobiz` alongside `simpMusic` (`isOffered`)
+- [x] 4.1c Portato endpoint: NOT changed. Ours is `/getLyricsPortato`, the
+      reference is `/qq/getLyrics`. Without a live response from either, changing
+      it is a coin flip dressed as a fix - and the current path is already live
+      in our fork. **Needs a device probe.**
+- [x] 4.2 **populate `isrc`: NOT DONE, DELIBERATELY.** It threads correctly to
+      BiniLyrics and LyricsPlus and is always null, because nothing in the
+      codebase HAS one: there is no Spotify client and no ISRC field on any
+      response we parse. Inventing one would be a guess. lrc.red's free-text
+      search with a duration tie-breaker is the documented mitigation and it
+      works - see `LrcRedProvider.getLyrics:78-81`.
+- [x] 4.3 `prioritize_syllable_sync` default `true` -> **`false`**, as a named
+      constant `LyricsService.prioritizeSyllableDefault` read by the provider,
+      the service parameter and the test, so it cannot drift between them
+- [x] 4.4 `initialize()` now calls `reconcileOrder` instead of re-implementing it
+      inline - **and `reconcileOrder` was itself buggy**: it filtered the saved
+      list for retired providers and then re-seeded them from the default order a
+      few lines later
+- [x] 4.5 a saved enabled-set can no longer bring a retired provider back
+- [x] 4.6 `onSettled(null)` vs `onAbandoned` semantics untouched (invariant)
+- [x] test `lyrics_provider_reachability_test.dart` - 10 tests, **proven
+      failable**: removing `betterLyricsPortato` from the default order fails it
+      by name
 
----
-
-## Phase 5 — Globe / translate
+## Phase 5 - Globe / translate
 
 ### 5.1 The same-language guard was written and never wired
 
-All of these exist and none are reachable in production:
-- `isLatinScript` — `lyrics_translation_service.dart:426`, referenced only by a
-  test
-- `reportAlreadyInLanguage` — `lyric_sub_line.dart:124`; `toggle()` never passes
-  it so the default `false` always wins
-- `alreadyInLanguage` — `lyric_sub_line.dart:179`, read by nothing
-- `TransformButtonState.sameLanguage` — `lyrics_mode_discs.dart:42`; no producer
-- the α0.42 tint and the disabled branch at `lyrics_mode_discs.dart:73,77`
+All of these existed and none were reachable: `isLatinScript` (referenced only
+by a test), `reportAlreadyInLanguage` (defaulted false, no caller passed it),
+`alreadyInLanguage` (read by nothing), `TransformButtonState.sameLanguage` (no
+producer), and the 0.42 tint and disabled branch beside it.
 
-Today, tapping the globe on a Latin lyric sends a request, gets the text back
-unchanged, and renders a sub-line **identical to the original**. No tint, no
-disable, no message.
+The failure was worse than a missing feature: tapping the globe on an English
+lyric sent a request, the endpoint returned the text unchanged, and a sub-line
+appeared UNDERNEATH the original looking identical to it.
 
-Reference: `LyricsTranslation.kt:234` `hasNonLatinLetters` →
-`AlreadyRomanized`; `PlayerLyrics.kt:2791-2794` → toast "These lyrics already
-use Latin characters".
+- [x] 5.1a the check lives in ONE place, `LyricsTranslationService
+      .isAlreadyRomanizable`, read by both the disc and the controller so they
+      cannot disagree. ALL lines must be Latin, not any - one Japanese line among
+      thirty English ones still needs transliterating
+- [x] 5.1b the disc dims to 0.42 and relabels itself
+- [x] 5.1c tapping it SAYS why: "These lyrics already use Latin characters"
+- [x] 5.1d **the disc is NOT disabled by that state.** It was, and that defeated
+      the whole feature - a dim disc that swallows the tap is a dead control and
+      reads as broken rather than as an answer. The reference taps through
+      (`PlayerLyrics.kt:2791-2794`)
+- [x] 5.1e the guard lives in the panel, not in a widget
 
-- [ ] 5.1a produce `sameLanguage` from the lyric text before the request
-- [ ] 5.1b tint the disc α0.42 and disable its tap
-- [ ] 5.1c surface the message (and let it take over the status line)
-- [ ] 5.1d keep the guard **out** of the panel's line list
+### 5.2 Romanization on accented Latin
 
-### 5.2 Latin→native→retry for romanization
+- [x] 5.2a the `inputtools` retry is **NOT DONE.** It needs a live request to
+      verify the round trip and no fixture exists. The fast path (skip when
+      already Latin) is done and is the common case
+- [x] 5.2b / 5.2c depend on 5.2a
 
-Without it, romanization silently no-ops on accented Latin. Reference
-`LyricsTranslation.kt:193-206, 411-458` via
-`https://inputtools.google.com/request`.
+### 5.3 The disc fades were declared and never used
 
-- [ ] 5.2a `predominantlyLatin` check, ≥⅓ survived unchanged → round-trip the
-      payload through Input Tools and re-request
-- [ ] 5.2b keep the first answer unless the retry transforms strictly more
-- [ ] 5.2c unchanged-after-retry is `Unavailable`, **not** `AlreadyRomanized`
-      (the fast check already handles the real no-op)
+- [x] 5.3a `lyricsDiscFadeIn/FadeOut` (220/160ms) had zero references; the
+      disc's alpha snapped with the glyph inside it, on different frames.
+      `TransformDisc` is now stateful and tweens its own alpha
 
-### 5.3 The disc fades are declared and never used
+### 5.4 The 5s idle countdown lost to a held gesture
 
-`lyrics_mode_discs.dart:122-123` declares `lyricsDiscFadeIn` 220ms /
-`lyricsDiscFadeOut` 160ms with **zero** references. `_buildDisc`
-(`lyrics_screen.dart:894-898`) hard-cuts between `TransformDisc` and
-`SizedBox.shrink()`.
+- [x] 5.4a re-key on scrub start AND scrub end
+- [x] 5.4b suspended during a scrub and during a volume drag
+- [x] 5.4c the discs still ride `_deckVisible && !_lyricsChromeHidden`
+      (already correct in Phase 0 - not regressed)
+## Phase 6 - Sheet & settings
 
-- [ ] 5.3a tween the disc's own alpha 0.18 ↔ 0.34 over those durations, and
-      fade presence
+- [x] 6.1 "Prioritize syllable lyrics" moved INTO the sheet beside Reset, in BOTH
+      layouts from one builder - a control that exists in one theme and not the
+      other is missing for whoever uses that one. The Settings row stays so
+      settings search still resolves it
+- [x] 6.2 track-edge auto-scroll while dragging: a 28dp band at 220dp/s. With ten
+      providers the finger ran out of viewport long before the row ran out of
+      finger, so the last provider could not be moved up
+- [x] 6.3 the reorder is committed on drop, not on every intermediate swap
+- [x] 6.4 the last-enabled guard is untouched
 
-### 5.4 The 5s idle timer loses to a scrub
+Implementation notes worth keeping:
 
-Reference `NowPlayingScreen.kt:1119-1124` re-keys on
-`(lyricsOpen, lyricsControlsOpen, scrub.scrubbing, volume.dragging)` and is
-**suppressed** during scrub and volume drag. Ours has neither.
-
-- [ ] 5.4a re-key on scrub start **and** scrub end
-- [ ] 5.4b suppress while scrubbing and while a volume drag is live
-- [ ] 5.4c confirm the discs still ride `_deckVisible && !_lyricsChromeHidden`
-      (this part is already correct — do not regress it)
-
----
-
-## Phase 6 — Sheet & settings
-
-- [ ] 6.1 move "Prioritize syllable lyrics" **into** the provider sheet beside
-      Reset (reference `LyricsSourcesDialog.kt:194`); keep the settings-screen row
-      as the search target so `settings_search.dart` keeps resolving
-- [ ] 6.2 track-edge auto-scroll while dragging a row — with 14 providers the
-      drag cannot reach the ends. Reference: 28dp zone at 220dp/s
-      (`LyricsSourcesDialog.kt:596-597`)
-- [ ] 6.3 commit the reorder on drag **end**, not per intermediate swap
-- [ ] 6.4 last-enabled guard stays (`:103-124`)
+- the list's OWN `ScrollPosition` is captured from inside `itemBuilder` and
+  driven directly. `ReorderableListView` owns its controller and this Flutter
+  version will not take one injected
+- the drag position is observed with a `Listener`, not a `GestureDetector`:
+  `ReorderableDragStartListener` starts the reorder on its own pointer-down, and
+  a GestureDetector here enters the arena, can win it, and the reorder stops
+  starting
 
 ---
 
-## Phase 7 — Tests
+## Phase 7 - Tests
 
-Each file written, then **proven to fail** by temporarily reinstating the bug,
-then restored. A test never derived from the implementation it pins.
+Each file drives the REAL widget or reads the REAL constants. Nothing here
+re-implements the logic it is testing - an earlier draft of the morph test did
+exactly that and would have stayed green while the screen did the wrong thing.
 
-| File | Pins |
-|---|---|
-| `test/lyric_scroll_browse_test.dart` | drag enters browse; 600ms/5s exit; no re-scroll on exit; the auto-scroll survives its own animation |
-| `test/lyric_lead_scroll_test.dart` | the lead line is reached before it is sung; duration equals the run-up gap |
-| `test/lyric_ladder_tween_test.dart` | per-frame alpha crosses 0.7, sigma crosses 1.0, both monotonic, cubic curve |
-| `test/lyric_strip_test.dart` | no lift, no glow, one line, 340ms, 0.55 dim, three distinct states |
-| `test/lyric_morph_test.dart` | per-frame: panel absent until collapse completes; never two text layers in one frame; open and close |
-| `test/lyrics_provider_reachability_test.dart` | every enum member in the default order or explicitly hidden |
-| `test/lyrics_same_language_test.dart` | a Latin lyric yields a disabled, tinted disc and a message |
+| File | Status | Pins |
+|---|---|---|
+| `lyric_scroll_browse_test.dart` | [x] 9 | drag-only browse, 600ms/5s exit, no yank-back, the follow survives its own animation, lead bounds, top anchor arithmetic, never behind the voice |
+| `lyric_morph_test.dart` | [x] 5 | no lyric layer during the collapse, never two, the fade completes, the close starts immediately, no disc under the alpha |
+| `lyric_strip_test.dart` | [x] 10 | 340ms/0.35/0.55, the five states, one clock, one row, no lift |
+| `lyrics_provider_reachability_test.dart` | [x] 10 | every provider in the order or hidden, order repair, the default off |
+| `lyrics_same_language_test.dart` | [x] 10 | script check, the controller state, the dimmed-but-tappable disc, the message |
+| `lyric_ladder_tween_test.dart` | folded in | became three cases in `lyric_swept_line_test.dart`: one font size/weight, emphasis from scale+alpha, one monotonic spec |
+| `lyric_lead_scroll_test.dart` | folded in | became the lead group in `lyric_scroll_browse_test.dart` |
 
-Widget-test gotchas (CONTEXT.md): `GoogleFonts.config.allowRuntimeFetching = false`
-in `setUpAll`; seed platform channels inside `tester.runAsync`; fire-and-forget
-haptics only.
+Proven failable, by temporarily reinstating each bug:
+
+- Phase 1.1 - removing the `dragDetails` null check fails 3
+- Phase 2 - reinstating the old always-visible panel gate fails 2
+- Phase 4 - removing `betterLyricsPortato` from the default order fails by name
+
+Widget-test gotchas (CONTEXT.md): `GoogleFonts.config.allowRuntimeFetching =
+`false` in `setUpAll`; seed platform channels inside `tester.runAsync`;
+fire-and-forget haptics only.
 
 ---
 
-## Phase 8 — Gate + device
+## Phase 8 - Gate + device
 
-- [ ] `flutter test` — all green, ≥ 844
-- [ ] `flutter analyze --no-pub` — no new finding over 198/0
-- [ ] `flutter build apk --debug`
-- [ ] CPH2723 device pass:
+- [x] `flutter test` - **891 green** (was 844)
+- [x] `flutter analyze --no-pub` - **198 issues / 0 errors**, identical to the
+      pre-work baseline, and none of them in a file this work touched
+- [x] `flutter build apk --debug` - builds, 460.8 MB
+- [ ] CPH2723 device pass - **BLOCKED ON THE DEVICE**
       - auto-scroll keeps up with the singing for a whole verse
-      - scroll by hand → blur clears, all lines readable, snaps back after ~600ms
+      - scroll by hand -> blur clears, all lines readable, snaps back after ~600ms
       - a long lyric's last line is fully above the seek bar
-      - lyric→player morph: artwork collapses, then lyrics fade in, nothing
+      - lyric->player morph: artwork collapses, THEN lyrics fade in, nothing
         duplicated, nothing reads through
-      - strip: one line, no lift twitch, word wipe tracks
-      - globe on a Latin lyric → tinted, disabled, "already in Latin characters"
-      - scrub the scrubber → discs stay up
-      - switch provider → panel keeps animating, no freeze
+      - strip: one line, no lift twitch, word wipe tracks, "Open lyrics" on an
+        unsynced song, "No lyrics found" when there is none
+      - globe on an English lyric -> dimmed, tap explains, no sub-line drawn
+      - scrub the scrubber -> the discs stay up
+      - switch provider -> panel keeps animating, no freeze
 - [ ] `CONTEXT.md` updated
 
 ---
@@ -424,37 +424,47 @@ haptics only.
 
 | Phase | Status |
 |---|---|
-| 0 — baseline commit | [x] `c4f76b9` |
-| 1 — motion correctness (1.1–1.6) | [x] |
-| 2 — morph | [ ] |
-| 3 — seek-bar strip | [ ] partial (rise/glow off, maxLines 1, dim 0.55 landed with Phase 1) |
-| 4 — providers | [ ] |
-| 5 — globe / translate | [ ] |
-| 6 — sheet & settings | [ ] |
-| 7 — tests | [ ] partial (browse + lead + ladder shipped with Phase 1) |
-| 8 — gates + device | [ ] |
+| 0 - baseline commit | [x] `c4f76b9` |
+| 1 - motion correctness | [x] `33914fc` |
+| 2 - morph | [x] `471bc1e` |
+| 3 - seek-bar strip | [x] `45c7702` |
+| 4 - providers | [x] `86b4efe` (isrc + inputtools deliberately not done) |
+| 5 - globe / translate | [x] `4542ebd` (inputtools retry not done) |
+| 6 - sheet & settings | [x] `f8a3eeb` |
+| 7 - tests | [x] 47 new tests, three of them proven failable |
+| 8 - gates | [x] tests / analyze / APK. [ ] device |
 
 ## Log
 
-- **Phase 0** — `c4f76b9` baseline. 844 tests, 198/0.
-- **Phase 1.1** — browse is now a finger. The `isScrollingNotifier` listener is
-  gone; the panel was disabling its own auto-follow once per line for 3.5s, which
-  was the reported jank. Resume moved onto the correction tick.
-- **Phase 1.2** — lead line is real, top-anchored, duration = the gap it covers.
-  Two real bugs found on the way: an unbuilt target row made the scroll a silent
-  no-op, and rows were measured against the screen instead of the list.
-  `topAnchorOffset` extracted as a pure function; the pure pin caught my own wrong
-  derivation of it, which the widget test had masked.
-- **Phase 1.3** — one spec (`Cubic(0.41,0,0.12,0.99)`, 400ms) for blur, alpha,
-  scale and scroll via a single `AnimatedLyricRow`. One font size/weight for every
-  line, which removes a per-handover `TextPainter` layout pass.
-- **Phase 1.4** — every word-synced row sweeps, not only the active one.
-- **Phase 1.5** — the panel's `FadeTransition` is gone; it was a 300ms alpha layer
-  over both glass discs (invariant 17).
-- **Phase 1.6** — bottom padding takes the larger of the deck clearance and 80% of
-  the viewport. A first attempt clamped instead of maxing and broke the very case
-  the inset exists for; `lyrics_panel_bounds_test.dart` now pins both directions.
-- **Phase 1 gate** — 856 tests green (844 + 12), `dart analyze` clean on
-  `lyrics_screen.dart`, `lyric_swept_line.dart`, `lyric_sweep.dart`,
-  `now_playing_screen.dart`, `lyric_providers_sheet.dart`. Browse tests proven
-  failable by removing the `dragDetails` null check (3 fail).
+- **Phase 0** - `c4f76b9` baseline. 844 tests, 198/0.
+- **Phase 1** - the jank was not a missing animation, it was the panel disabling
+  its own follow: `isScrollingNotifier` cannot tell a finger from our own scroll,
+  so every handover announced itself as a browse and switched the follow off for
+  3.5s. Two more real bugs fell out: an unbuilt target row made the scroll a
+  silent no-op (every backward seek dropped), and rows were measured against the
+  screen instead of the list. `topAnchorOffset` extracted as a pure function -
+  and the pure pin caught my own wrong derivation of it TWICE, which the widget
+  test had masked both times. Also: one spec for blur/alpha/scale, one font size
+  per line (removing a per-handover TextPainter pass), every word-synced row
+  sweeps, the FadeTransition over the glass discs is gone, and the bottom padding
+  takes the MAXIMUM of the deck clearance and 80% of the viewport.
+- **Phase 2** - the duplication, "a thing comes before another thing" and the
+  lyric-through-artwork capture were one bug: four layers animating in one frame.
+  420ms collapse, THEN a 200ms fade with no transform. Close reverses both.
+- **Phase 3** - the strip had five states collapsed into "an intro phrase", so a
+  song with no lyrics said "Let it breathe" while the row beneath it said
+  "Lyrics unavailable". One clock instead of two, 340ms/0.35 handover, and
+  `maxLines` routed through every render path - which found that a long line was
+  still wrapping and growing the deck.
+- **Phase 4** - three providers were declared, listed and reorderable and never
+  asked. `reconcileOrder` was also re-adding the retired providers it had just
+  filtered out. `prioritize_syllable_sync` now defaults off, as one named
+  constant read by three places.
+- **Phase 5** - the same-language guard existed with no producer. Wiring it found
+  that `sameLanguage` ALSO disabled the tap, so the message would have been
+  unreachable - a dim dead control. The disc now dims and explains. Also: the
+  disc alpha tweens on the durations that were declared for it, and a held scrub
+  or volume drag suspends the 5s countdown.
+- **Phase 6** - the word-sync preference now sits next to the list it changes,
+  in both themes; and dragging a row can reach the end of the list at all.
+

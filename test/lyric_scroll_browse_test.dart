@@ -10,7 +10,6 @@ import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/services/lyrics/lyric_sweep.dart';
-import 'package:music_streaming_app/widgets/lyric_swept_line.dart';
 
 /// THE JANK THIS FILE PINS.
 ///
@@ -112,7 +111,7 @@ _Provider _latched(List<LyricsEntry> lines, {bool playing = true}) {
 Widget _screen(_Provider provider) =>
     ChangeNotifierProvider<MusicProvider>.value(
       value: provider,
-      child: MaterialApp(
+      child: const MaterialApp(
         home: Scaffold(
           body: LyricsScreen(
             isEmbedded: true,
