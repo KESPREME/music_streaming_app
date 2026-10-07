@@ -118,12 +118,55 @@ void main() {
       }
     });
 
-    test('the active line is bolder and larger than its neighbours', () {
+test('one font size and weight for every line', () {
+      // CHANGED DELIBERATELY, and the reason is a cost rather than a look.
+      //
+      // The active line used to be 28dp/w800 and every other line 26dp/w700.
+      // A different font invalidates the row's cached prefix-width table, so
+      // every single handover re-ran a TextPainter layout pass over the whole
+      // line - and the "emphasis" it bought was indistinguishable from the
+      // scale and the alpha ladder, which are free.
+      //
+      // Emphasis now comes from LyricLineStyle.scaleFor and alphaFor. These two
+      // must not drift apart or the cache is invalidated again.
       final active = LyricLineStyle.styleFor(distance: 0, isBrowsing: false, fontBuilder: _stubFont);
       final next = LyricLineStyle.styleFor(distance: 1, isBrowsing: false, fontBuilder: _stubFont);
-      expect(active.fontWeight, FontWeight.w800);
-      expect(next.fontWeight, FontWeight.w700);
-      expect(active.fontSize!, greaterThan(next.fontSize!));
+      final far = LyricLineStyle.styleFor(distance: 7, isBrowsing: false, fontBuilder: _stubFont);
+      expect(active.fontWeight, FontWeight.w700);
+      expect(next.fontWeight, active.fontWeight);
+      expect(far.fontWeight, active.fontWeight);
+      expect(active.fontSize, next.fontSize);
+      expect(active.fontSize, far.fontSize);
+    });
+
+    test('emphasis comes from scale and alpha, not from the font', () {
+      final active = LyricLineStyle.styleFor(distance: 0, isBrowsing: false, fontBuilder: _stubFont);
+      final next = LyricLineStyle.styleFor(distance: 1, isBrowsing: false, fontBuilder: _stubFont);
+      expect(active.color!.a, greaterThan(next.color!.a));
+      expect(LyricLineStyle.scaleFor(distance: 0), 1.0);
+      expect(LyricLineStyle.scaleFor(distance: 1), lessThan(1.0));
+      expect(LyricLineStyle.scaleFor(distance: 6), LyricLineStyle.scaleFor(distance: 1));
+    });
+
+    test('every dimension settles on ONE spec', () {
+      // Blur, alpha and scale moving on three different timings is what makes a
+      // handover read as a blink rather than a settle.
+      expect(LyricLineStyle.lyricSettle, const Duration(milliseconds: 400));
+      expect(LyricLineStyle.lyricEase, isA<Cubic>());
+      expect(
+        LyricLineStyle.lyricEase.transform(0.0),
+        0.0,
+      );
+      expect(LyricLineStyle.lyricEase.transform(1.0), 1.0);
+      // Monotonic: an overshoot here makes the motion finish before the
+      // animation does, which reads as the page jumping early.
+      var previous = -1.0;
+      for (var i = 0; i <= 20; i++) {
+        final v = LyricLineStyle.lyricEase.transform(i / 20);
+        expect(v, greaterThanOrEqualTo(previous));
+        expect(v, lessThanOrEqualTo(1.0));
+        previous = v;
+      }
     });
 
     test('an unsynced line stays readable rather than faded to the floor', () {

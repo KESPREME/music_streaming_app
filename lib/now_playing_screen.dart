@@ -1434,7 +1434,20 @@ child: Transform.scale(
                                     fontWeight: FontWeight.w600,
                                     letterSpacing: -0.15,
                                   ),
-                                  dimColor: Colors.white.withValues(alpha: 0.38),
+                                  dimColor: Colors.white.withValues(alpha: 0.55),
+                                  // The strip is ONE pinned line, so the panel's
+                                  // motion is off here on purpose: a word rising
+                                  // on a fixed row once a second reads as the
+                                  // strip twitching, not as emphasis. Same call as
+                                  // the reference (PlayerLyrics.kt:2616, rise=false).
+                                  rise: false,
+                                  glow: false,
+                                  // Clamped: a wrapped lyric line here would grow
+                                  // the deck, and the deck is the one surface
+                                  // that must never resize under a layout that
+                                  // is supposed to be fixed.
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   isActive: true,
                                   onTap: () {
                                     HapticFeedback.lightImpact();

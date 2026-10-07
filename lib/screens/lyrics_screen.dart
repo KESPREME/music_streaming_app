@@ -1,6 +1,7 @@
 // lib/screens/lyrics_screen.dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utils/app_image_cache.dart';
@@ -105,9 +106,19 @@ class _LyricsScreenState extends State<LyricsScreen>
   final ScrollController _scrollController = ScrollController();
 
 int _currentLineIndex = 0;
+
+  /// True while the reader is dragging the lyric by hand.
+  ///
+  /// This is the "browsing" state: blur goes to zero and the alpha ladder
+  /// flattens, so every line of the song can be read while the finger is down.
+  ///
+  /// It must be a FINGER, never "the list is moving". The old trigger read
+  /// `position.isScrollingNotifier`, which our own `animateScrollBy` also flips -
+  /// so every line handover announced itself as a browse, cleared the blur and
+  /// switched the auto-follow off for the whole resume window. The panel was
+  /// disabling itself once per line. See [_handleScrollNotification].
   bool _isUserScrolling = false;
   bool _autoScrollEnabled = true;
-  Timer? _scrollResumeTimer;
   Timer? _correctTimer;
   StreamSubscription<Duration>? _positionSub;
   late LyricClock _clock;
@@ -192,9 +203,14 @@ int _currentLineIndex = 0;
       _fadeController.forward();
     });
 
-    _scrollController.addListener(_onScroll);
-  }
+    }
 
+  /// No offset listener on purpose.
+  ///
+  /// An earlier version watched `position.isScrollingNotifier` and treated any
+  /// movement as a browse. That is what made the panel's own follow turn the
+  /// browse on once per line. The state is now driven entirely by
+  /// [_handleScrollNotification], which can tell a finger from an animation.
   @override
 void didChangeDependencies() {
     super.didChangeDependencies();
@@ -240,9 +256,7 @@ void didChangeDependencies() {
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _scrollResumeTimer?.cancel();
     _discIdleTimer?.cancel();
     _positionSub?.cancel();
     _correctTimer?.cancel();
@@ -315,29 +329,147 @@ void didChangeDependencies() {
     _currentLineIndex = active < 0 ? 0 : active;
   }
 
-  void _onScroll() {
-    if (!_isUserScrolling &&
-        _scrollController.position.isScrollingNotifier.value) {
-      if (mounted) {
-        setState(() {
-          _isUserScrolling = true;
-          _autoScrollEnabled = false;
-        });
-      }
+/// How long the reader has to be still before the browse gives way.
+  ///
+  /// 600ms is the reference's short answer, used while the singing is still on
+  /// screen. 5s is its fallback, used when the reader has parked the list
+  /// somewhere the song has left - snapping back then is the wrong answer.
+  static const Duration _browseResumeOnScreen = Duration(milliseconds: 600);
+  static const Duration _browseResumeFallback = Duration(seconds: 5);
+
+  /// How often the panel re-reads the player, which is also the tick the browse's
+  /// idle budget is counted on.
+  static const Duration _correctionPeriod = Duration(milliseconds: 250);
+
+  /// How long the reader has been still, counted on [_correctionPeriod].
+  Duration _browseIdleMs = Duration.zero;
+
+  /// The resume window that applies right now.
+  Duration get _browseResumeLimitForCurrentPosition {
+    final lyrics = _lyricsRef;
+    if (lyrics == null || lyrics.isEmpty) return _browseResumeOnScreen;
+    final index = _currentLineIndex;
+    if (index < 0 || index >= _itemKeys.length) return _browseResumeFallback;
+    final box = _itemKeys[index].currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return _browseResumeFallback;
+    final position = box.localToGlobal(Offset.zero);
+    final viewport = _scrollController.hasClients
+        ? _scrollController.position
+        : null;
+    if (viewport == null) return _browseResumeFallback;
+    final onScreen = position.dy >= 0 &&
+        position.dy <= viewport.viewportDimension * 0.8;
+    return onScreen ? _browseResumeOnScreen : _browseResumeFallback;
+  }
+
+  /// Enters the browse state.
+  ///
+  /// Separate from [_handleScrollNotification] so the tick that ends the browse
+  /// and the notification that starts it cannot be confused for one another.
+  void _enterBrowse() {
+    if (_isUserScrolling) return;
+    setState(() {
+      _isUserScrolling = true;
+      _autoScrollEnabled = false;
+    });
+  }
+
+  /// Leaves the browse state.
+  ///
+  /// Deliberately does NOT scroll. The reader moved the list on purpose and half a
+  /// second of stillness is not them changing their mind; yanking them back to the
+  /// singing line is what made the old resume feel like a fight. The next line
+  /// change re-arms the follow.
+  void _exitBrowse() {
+    if (!_isUserScrolling) return;
+    setState(() {
+      _isUserScrolling = false;
+      _autoScrollEnabled = true;
+      _browseIdleMs = Duration.zero;
+    });
+  }
+
+  /// Ends the browse once the finger has been off the glass long enough.
+  /// Arms the end of a browse.
+  ///
+  /// No `isPlaying` guard, and deliberately so. The reference suppresses its own
+  /// resume while paused because a paused panel there still tracks the clock; ours
+  /// cannot - [LyricClock] stops when the song stops moving, so a paused panel has
+  /// nothing to follow and there is nothing to yank the reader back to. The guard
+  /// only ever made the resume refuse to arm.
+  ///
+  /// The idle time is counted on [_correctTimer] rather than in a [Timer] of its
+  /// own. A timer armed from inside a scroll-notification dispatch is scheduled
+  /// outside the binding's fake-async zone, so it does not fire under
+  /// `flutter test` at all - and a resume that cannot be observed is a resume that
+  /// cannot be trusted. One clock, one place, no second timer to leak.
+  void _noteBrowseActivity() {
+    if (!_isUserScrolling) return;
+    _browseIdleMs = Duration.zero;
+  }
+
+  /// Ticks the browse's idle budget down. Called from [_correctTimer].
+  void _advanceBrowseIdle() {
+    if (!_isUserScrolling) {
+      _browseIdleMs = Duration.zero;
+      return;
+    }
+    _browseIdleMs += _correctionPeriod;
+    if (_browseIdleMs < _browseResumeLimitForCurrentPosition) return;
+    _exitBrowse();
+  }
+
+  /// Distinguishes a finger from our own scroll animation.
+  ///
+  /// `dragDetails` is non-null only for a user gesture; a programmatic
+  /// `animateTo` or `jumpTo` dispatches the same notification classes with no
+  /// drag attached. That single null check is the whole difference between "the
+  /// reader is looking around" and "the panel is following the song".
+  ///
+  /// It is declared per concrete class rather than against [ScrollNotification]
+  /// because the field lives on each subclass, not on the base.
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      if (notification.dragDetails == null) return false;
+      _enterBrowse();
+      return false;
     }
 
-    if (_isUserScrolling) {
-      _scrollResumeTimer?.cancel();
-      _scrollResumeTimer = Timer(const Duration(milliseconds: 3500), () {
-        if (mounted) {
-          setState(() {
-            _isUserScrolling = false;
-            _autoScrollEnabled = true;
-            if (_autoScrollEnabled) _scrollToCurrentLine();
-          });
-        }
-      });
-    }
+    // The browse is timed from the LAST SCROLL ACTIVITY, not from one end event.
+    //
+    // Keying it to `ScrollEndNotification` alone meant the whole resume hinged
+    // on a single class arriving: miss it - a physics simulation that ends
+    // quietly, a nested scroll, a gesture the list never won - and the panel
+    // stayed in browsing mode for the rest of the song with every line
+    // unblurred. Re-arming on anything that moves is both simpler and what a
+    // reader expects: stop touching it, and it comes back.
+    if (_isScrollActivity(notification)) _noteBrowseActivity();
+    // Never consume: the list still needs to see every notification of its own.
+    return false;
+  }
+
+  /// Whether [notification] says the finger is still moving the list.
+  static bool _isScrollActivity(ScrollNotification notification) =>
+      notification is ScrollUpdateNotification ||
+      notification is OverscrollNotification ||
+      notification is ScrollEndNotification;
+
+  /// Whether the line being sung is inside the viewport right now.
+  ///
+  /// Decides which resume window applies: the short one is only honest when the
+  /// reader has not parked the list somewhere the singing has left.
+  bool _activeLineVisible() {
+    if (!_scrollController.hasClients) return false;
+    final lyrics = _lyricsRef;
+    if (lyrics == null || lyrics.isEmpty) return true;
+    final index = _currentLineIndex;
+    if (index < 0 || index >= _itemKeys.length) return true;
+    final box = _itemKeys[index].currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return true;
+    final position = box.localToGlobal(Offset.zero);
+    final viewport = _scrollController.position;
+    return position.dy >= viewport.viewportDimension * 0.02 &&
+        position.dy <= viewport.viewportDimension * 0.72;
   }
 
 void _startPositionUpdates() {
@@ -366,8 +498,12 @@ void _startPositionUpdates() {
     // every 16ms for nothing, so the screen never goes idle. Two consecutive
     // corrections with no movement means the song is not advancing, and the
     // clock stops rather than animating a highlight that cannot move.
-    _correctTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+    _correctTimer = Timer.periodic(_correctionPeriod, (_) {
       if (!mounted) return;
+
+      // The browse's idle budget rides this tick rather than a timer of its own.
+      _advanceBrowseIdle();
+
       final reported = provider.position.inMilliseconds;
 
       if (reported == _lastReportedMs) {
@@ -432,46 +568,199 @@ void _startPositionUpdates() {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrentLine());
   }
 
-void _scrollToCurrentLine() {
-    if (_currentLineIndex >= 0 && _currentLineIndex < _itemKeys.length) {
-      final key = _itemKeys[_currentLineIndex];
-      final keyContext = key.currentContext;
-
-      // Leading the singing by a beat rather than following it.
-      //
-      // Scrolling to the line being sung puts it under the singer's mouth and
-      // leaves the reader looking at what just passed. Aiming at the line the
-      // clock is about to reach puts the words being sung where the eye already
-      // is. The lead is bounded by the gap to the next line - see
-      // scrollLeadMs - so a fast passage does not run the verse off the top.
-      final target = _scrollTargetIndex;
-
-      if (keyContext != null) {
-        Scrollable.ensureVisible(
-          keyContext,
-          alignment: 0.32,
-          duration: _lyricScrollDuration,
-          curve: _lyricScrollCurve,
-        );
-        return;
-      }
-
-      final screenHeight = MediaQuery.of(context).size.height;
-      final paddingTop = screenHeight * 0.22;
-      const double estimatedItemHeight = 70.0;
-      final itemTop = paddingTop + (target * estimatedItemHeight);
-      final targetOffset =
-          itemTop - (screenHeight * 0.32) + (estimatedItemHeight / 2);
-
-      _scrollController.animateTo(
-        targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
-        duration: _lyricScrollDuration,
-        curve: _lyricScrollCurve,
-      );
-    }
+/// Moves the list so the line the reader is about to need sits where the eye
+  /// already is.
+  ///
+  /// Two things were wrong here. It scrolled to [_currentLineIndex] - the line
+  /// ALREADY being sung - and computed the lead index into a local that only a
+  /// dead fallback branch read, so the lead never happened. And the duration was
+  /// a fixed 400ms, so the list finished its move at a different moment from the
+  /// silence it was supposed to fill.
+  ///
+  /// Now: target the lead line, take the duration from the gap the move is
+  /// covering, and land the target at the top of the viewport. BitChord anchors
+  /// at `scrollOffset = 0` for the same reason - the line under the singer's
+  /// mouth is the one that has just gone, and the eye wants the one arriving.
+  void _scrollToCurrentLine() {
+    if (!_scrollController.hasClients) return;
+    final target = _scrollTargetIndex;
+    if (target < 0 || target >= _itemKeys.length) return;
+    _animateLineToView(target, 0);
   }
 
-  /// The line the scroll should centre on, which leads the singing.
+  /// How many extra passes [_animateLineToView] may take to land exactly.
+  ///
+  /// A lazy list has not built the rows outside its viewport, so a jump - a
+  /// seek, or anything above the first built row - has no box to measure. One
+  /// estimated pass gets the list close enough that the target builds, and the
+  /// next pass is exact. Two is enough; a third would be a layout loop wearing a
+  /// scroll's clothes.
+  static const int _maxRefinePasses = 2;
+
+  /// Scrolls so [target] lands at the top of the list's content box.
+  ///
+  /// Self-correcting, because "land at the top" is only measurable once the
+  /// row exists. Silently doing nothing when it did not - which is what a plain
+  /// `ensureVisible` on an unbuilt key does - is how a backward seek used to
+  /// leave the list stranded on the wrong verse with nothing to show for it.
+  void _animateLineToView(int target, int pass) {
+    if (!mounted || !_scrollController.hasClients) return;
+
+    final offset = _targetOffsetFor(target);
+    final duration = pass == 0 ? _scrollRunUp : _lyricSettle;
+    if (duration == Duration.zero) {
+      _scrollController.jumpTo(offset);
+      return;
+    }
+
+    // `animateTo` on the offset rather than `ensureVisible` on the context.
+    //
+    // `ensureVisible` composes with whatever animation is already in flight and
+    // resolves the target from the widget's own box, so a handover that arrived
+    // mid-move inherited the previous move's geometry. One offset, one curve,
+    // one duration: the handover reads as a single movement.
+    _scrollController
+        .animateTo(offset, duration: duration, curve: _lyricEase)
+        .whenComplete(() {
+      if (!mounted || pass >= _maxRefinePasses) return;
+      // One frame later, not now: the row only gets laid out - and only gets a
+      // BuildContext - on the next frame's layout pass. Refining in this frame
+      // would measure a row that does not exist yet and give up.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || pass >= _maxRefinePasses) return;
+        if (_itemKeys[target].currentContext == null) return;
+        final exact = _targetOffsetFor(target);
+        if ((exact - _scrollController.offset).abs() > 1.0) {
+          _animateLineToView(target, pass + 1);
+        }
+      });
+    });
+  }
+
+  /// A best guess for where [target] sits, for a row the list has not built.
+  ///
+  /// The mean PITCH - row height plus the gap - of the rows that are laid out,
+  /// times the index. Lyric rows run from one line to three, so this is wrong by
+  /// a row or two, which is exactly why [_animateLineToView] re-measures and
+  /// corrects rather than trusting it.
+  double _estimatedOffsetFor(int target) {
+    final position = _scrollController.position;
+    var pitchTotal = 0.0;
+    var counted = 0;
+    for (final key in _itemKeys) {
+      final box = key.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) continue;
+      pitchTotal += box.size.height + _rowGap;
+      counted++;
+    }
+    final pitch = counted == 0 ? _assumedRowPitch : pitchTotal / counted;
+    return (target * pitch).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+  }
+
+  /// Row pitch used before anything has been measured.
+  ///
+  /// One line of 28dp type at 1.25 line height, plus the row gap.
+  static const double _assumedRowPitch = 63.0;
+
+  /// Offset that puts [target] at the top of the list's own content box.
+  ///
+  /// `ensureVisible`'s `alignment` is a fraction of the VIEWPORT, which is why
+  /// 0.32 looked reasonable and was not: it parked the sung line a third of the
+  /// way down and pushed everything the reader had not reached yet toward the
+  /// bottom edge.
+  /// Offset that puts [target] at the top of the list's own content box.
+  ///
+  /// Falls back to [_estimatedOffsetFor] when the row is not built. Both callers
+  /// are guarded on `mounted`, which is also why this takes an INDEX rather than
+  /// a [BuildContext]: a context cannot cross the animation's async gap.
+  double _targetOffsetFor(int target) {
+    final contextOfItem = _itemKeys[target].currentContext;
+    if (contextOfItem == null) return _estimatedOffsetFor(target);
+    return _topAnchorOffsetFor(contextOfItem);
+  }
+
+  /// Measures [target] against the LIST, not against the screen.
+  ///
+  /// A row's y is measured from the screen, but `pixels` is measured from the
+  /// start of the scrollable's content. Mixing the two leaves the screen's own
+  /// offset - the status bar, and whatever the panel reserves above the list -
+  /// baked into the answer, so every handover landed tens of pixels high and a
+  /// jump landed hundreds. The arithmetic itself is [topAnchorOffset].
+  double _topAnchorOffsetFor(BuildContext contextOfItem) {
+    final box = contextOfItem.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return _scrollController.offset;
+    final row = box.localToGlobal(Offset.zero);
+    final listBox = _listKey.currentContext?.findRenderObject();
+    final listTop =
+        listBox is RenderBox ? listBox.localToGlobal(Offset.zero).dy : 0.0;
+    final viewport = _scrollController.position;
+    return topAnchorOffset(
+      currentPixels: viewport.pixels,
+      rowTopInViewport: row.dy - listTop,
+      topInset: _listTopPadding,
+      minScrollExtent: viewport.minScrollExtent,
+      maxScrollExtent: viewport.maxScrollExtent,
+    );
+  }
+
+  /// The list itself, for measuring rows against it rather than against zero.
+  final GlobalKey _listKey = GlobalKey(debugLabel: 'lyricList');
+
+  /// The top inset the list lays its first row out under.
+  ///
+  /// Kept as a constant beside the padding it describes rather than derived, so
+  /// the anchor and the padding cannot drift apart.
+  static const double _listTopPadding = 56.0;
+
+  /// Fraction of the panel's own height reserved below the last lyric line.
+  ///
+  /// BitChord `PlayerLyrics.kt:1796`.
+  static const double _tailViewportFraction = 0.8;
+
+  /// Vertical margin around every lyric row.
+  ///
+  /// Named here because the offset estimate adds it per row: forgetting it makes
+  /// the estimate short by a row every line, which is most of a screen by the
+  /// bottom of a verse.
+  static const double _rowGap = 28.0;
+
+  /// How long the move to the lead line should take.
+  ///
+  /// The gap it is covering, clamped to [scrollLeadMs]'s bounds. The silence
+  /// between two lines is a held breath in one song and half a verse in another,
+  /// so a fixed duration either rushes the catch-up or drags behind the vocal.
+  /// Zero when the target is already in place, so no animation is started that
+  /// has nothing to do.
+  Duration get _scrollRunUp {
+    if (!_activeLineNeedsScroll) return Duration.zero;
+    final lyrics = _lyricsRef;
+    if (lyrics == null || lyrics.isEmpty) return _lyricSettle;
+    final lead = scrollLeadMs(lyrics, _clock.positionMs);
+    return Duration(milliseconds: lead);
+  }
+
+  /// Whether the lead line is far enough off to be worth animating to.
+  ///
+  /// Within a line's own height the list is already showing it; moving would
+  /// read as a twitch on every single word.
+  bool get _activeLineNeedsScroll {
+    final target = _scrollTargetIndex;
+    if (target < 0 || target >= _itemKeys.length) return false;
+    if (target == _currentLineIndex) {
+      // Same line as last time: only move if it has drifted off screen.
+      return !_activeLineVisible();
+    }
+    return true;
+  }
+
+  /// The line the scroll should land on, which LEADS the singing.
+  ///
+  /// Brightness and motion are deliberately two different indices: the highlight
+  /// must never run ahead of what is actually being sung, but the list may.
+  /// [focusLineIndex] computes the lead with [scrollLeadMs].
   int get _scrollTargetIndex {
     final lyrics = _lyricsRef;
     if (lyrics == null || lyrics.isEmpty) return _currentLineIndex;
@@ -481,12 +770,17 @@ void _scrollToCurrentLine() {
 
   List<LyricsEntry>? _lyricsRef;
 
-  /// Reference easing for lyric motion: a long settle with almost no initial
-  /// acceleration, which keeps a line from snapping into place and then
-  /// creeping. Monotonic - an overshooting curve here makes the scroll finish
-  /// before the animation does, which reads as the page jumping early.
-  static const Curve _lyricScrollCurve = Cubic(0.41, 0.0, 0.12, 0.99);
-  static const Duration _lyricScrollDuration = Duration(milliseconds: 400);
+  /// ONE easing for every lyric motion: blur, alpha, scale, scroll.
+  ///
+  /// BitChord uses the same cubic for all four so a handover reads as one
+  /// movement rather than four things settling at slightly different rates
+  /// (PlayerLyrics.kt:365-368). Monotonic, no overshoot - invariant 16.
+  static const Curve _lyricEase = Cubic(0.41, 0.0, 0.12, 0.99);
+
+  /// How long a lyric dimension takes to settle.
+  ///
+  /// Blur, alpha and scale all move together on this.
+  static const Duration _lyricSettle = Duration(milliseconds: 400);
 
   @override
   Widget build(BuildContext context) {
@@ -813,9 +1107,35 @@ final lyrics = musicProvider.currentLyrics;
     // Readability now comes from the alpha ladder in LyricLineStyle, which has
     // a floor of 0.46, so every line in the song can be read without scrolling
     // and the whole lyric is legible while the user scrolls.
-    return FadeTransition(
-      opacity: _fadeController,
-      child: Stack(
+    //
+    // Revealed by SLIDE and SCALE, never by an alpha layer.
+    //
+    // This panel contains the two glass mode discs. A translucent layer between a
+    // backdrop-filter lens and its content isolates the backdrop the lens
+    // samples, so the discs went flat grey for the whole 300ms of the fade - the
+    // one thing on screen the reader is reaching for. Motion reads the arrival
+    // just as well without breaking the material (invariant 17; the same reason
+    // the reference's panel transition is scale-only).
+    return AnimatedBuilder(
+      animation: _fadeController,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(_fadeController.value);
+        return Transform.translate(
+          offset: Offset(0, 24.0 * (1.0 - t)),
+          child: Transform.scale(
+            scale: 0.98 + 0.02 * t,
+            child: child,
+          ),
+        );
+      },
+      child: LayoutBuilder(
+        // The tail of a long lyric was running off the bottom of the screen:
+        // the list reserved only the deck's own height, so the last line could
+        // never be scrolled fully into view. BitChord reserves 80% of its own
+        // viewport underneath the content for the same reason
+        // (PlayerLyrics.kt:1796) - a reader who has scrolled to the end of a
+        // song should be able to read the last line, not half of it.
+        builder: (context, constraints) => Stack(
         children: [
           Listener(
             // A tap in the LOWER HALF brings the discs back when they are away.
@@ -833,22 +1153,44 @@ final lyrics = musicProvider.currentLyrics;
               if (local.dy < box.size.height / 2) return;
               _revealDiscsOnTap();
             },
-            child: ListView.builder(
-            controller: _scrollController,
-            // The top inset clears the header's glass discs; the bottom one is
-            // the measured player deck, which is an overlay above this screen
-            // and would otherwise swallow the last lines of the lyric.
-            padding: EdgeInsets.fromLTRB(24, 56, 24, 8 + widget.bottomInset),
-            physics: const BouncingScrollPhysics(),
-            itemCount: lyrics.length,
-            itemBuilder: (context, index) {
-              return _buildKineticLyricLine(
-                index,
-                lyrics,
-                accentColor,
-                musicProvider,
-              );
-            },
+            child: NotificationListener<ScrollNotification>(
+              // Scope is the inner list only, so the surrounding page's scrolls
+              // cannot open the browse state on this panel.
+              onNotification: _handleScrollNotification,
+              child: ListView.builder(
+              key: _listKey,
+              controller: _scrollController,
+              // The tail of a long lyric was running off the bottom edge: the
+              // list reserved only the deck's own height, so the last line could
+              // never be scrolled fully into view. BitChord reserves 80% of its
+              // viewport underneath the content (PlayerLyrics.kt:1796).
+              //
+              // It can be taken straight there because ITS deck is a sibling below
+              // the panel in a Column. Ours is an OVERLAY above it, so the two
+              // clearances have to be combined - and combined as a MAXIMUM, not a
+              // clamp: clamping the deck's height to 80% of the panel silently
+              // dropped the seek bar back over the lyric on a short panel, which
+              // is the exact bug the deck inset was added to fix.
+              padding: EdgeInsets.fromLTRB(
+                24,
+                _listTopPadding,
+                24,
+                math.max(
+                  widget.bottomInset + 8,
+                  constraints.maxHeight * _tailViewportFraction,
+                ),
+              ),
+              physics: const BouncingScrollPhysics(),
+              itemCount: lyrics.length,
+              itemBuilder: (context, index) {
+                return _buildKineticLyricLine(
+                  index,
+                  lyrics,
+                  accentColor,
+                  musicProvider,
+                );
+              },
+              ),
             ),
           ),
           // Floated over the foot of the panel rather than placed in a row below
@@ -879,6 +1221,7 @@ final lyrics = musicProvider.currentLyrics;
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1014,6 +1357,9 @@ Widget _buildKineticLyricLine(
           ? Colors.white.withValues(alpha: 0.45)
           : Colors.white.withValues(alpha: 0.3),
       isActive: isCurrentLine,
+      // The browse state comes from here, not from inside the line: this widget
+      // owns the scroll, and a line cannot tell a finger from an animation.
+      isBrowsing: _isUserScrolling,
       onTap: () => _onLineTap(index, lyrics),
       // The transform rides UNDER the original. Swapping the entry's text instead
       // would make every word timing index the wrong characters, because those
@@ -1033,24 +1379,31 @@ Widget _buildKineticLyricLine(
           )
         : swept;
 
-    // Always animated, even through 0: an animated 0.0 keeps the exact same
-    // child and only the sigma tween moves, so a line that crosses its window
-    // comes in at the same blur it leaves with rather than blinking it on the
-    // slice boundary. BitChord tweens the radius over LYRIC_SETTLE_MS.
-    line = AnimatedBlur(
-      sigma: blur,
-      duration: const Duration(milliseconds: 340),
+    // Blur, alpha and scale are all ANIMATED, on one spec, by one controller.
+    //
+    // They used to be read straight off the distance index at build time, so a
+    // handover repainted every row at a new constant: the list blinked between
+    // three states instead of settling into the fourth.
+    line = AnimatedLyricRow(
+      blurSigma: blur,
+      alpha: LyricLineStyle.alphaFor(
+        distance: delta,
+        isBrowsing: _isUserScrolling,
+        isSynced: entry.isWordSynced,
+      ),
+      scale: LyricLineStyle.scaleFor(distance: delta),
+      style: baseStyle,
       child: line,
     );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 14.0),
-        child: line,
-      ),
-    );
-  }
+return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: _rowGap / 2),
+          child: line,
+        ),
+      );
+    }
 
   Widget _buildBottomMiniPlayerScrubber(
     BuildContext context,

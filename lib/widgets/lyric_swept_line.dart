@@ -59,6 +59,11 @@ class LyricSweptLine extends StatefulWidget {
     required this.dimColor,
     required this.isActive,
     this.onTap,
+    this.rise = true,
+    this.glow = true,
+    this.isBrowsing = false,
+    this.maxLines,
+    this.overflow = TextOverflow.clip,
     this.subLineProvider,
     this.subLineStyle,
     this.subLineListenable,
@@ -77,6 +82,32 @@ class LyricSweptLine extends StatefulWidget {
   final bool isActive;
 
   final VoidCallback? onTap;
+
+  /// Whether the sung word RISES while it is being sung.
+  ///
+  /// True only in the full panel. BitChord passes `rise = false` to the strip and
+  /// the sub-row for the same reason (PlayerLyrics.kt:2289-2292, 2616): on a
+  /// single pinned line the movement stops reading as emphasis and starts
+  /// reading as the strip twitching once a second.
+  final bool rise;
+
+  /// Whether a held note swells its letters and blooms.
+  ///
+  /// Panel only, for the same reason as [rise].
+  final bool glow;
+
+  /// Whether the reader is dragging the list.
+  ///
+  /// Everything is drawn static and unblurred while this is true, so the words
+  /// under a moving finger are whole rather than half-wiped.
+  final bool isBrowsing;
+
+  /// Clamps the line to this many rows. One for the seek-bar strip - a wrapped
+  /// line there grows the deck, which is the one surface that must never resize
+  /// itself.
+  final int? maxLines;
+
+  final TextOverflow overflow;
 
   /// The transformed line drawn beneath this one, or null.
   ///
@@ -230,13 +261,27 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
     return 1;
   }
 
-  /// The line itself: swept when it is the one being sung, plain otherwise.
+  /// The line itself.
+  ///
+  /// Swept whenever the SOURCE carries word timings, not only while this line is
+  /// the one being sung. A line that has been sung closes up as it recedes, so
+  /// the panel reads as one continuous light travelling through the song; a
+  /// version that snapped a receding line to fully-lit made every handover a jump.
+  ///
+  /// BitChord does exactly this (`PlayerLyrics.kt:2297`), with one exception:
+  /// while the reader is browsing by hand every line is drawn static, so the
+  /// text under a moving finger is legible instead of half-wiped.
   Widget _buildPrimary() {
     final entry = widget.entry;
-    final sweepable = widget.isActive && entry.isWordSynced;
+    final sweepable = entry.isWordSynced && !_isBrowsing;
 
     if (!sweepable) {
-      return Text(entry.text, style: widget.style);
+      return Text(
+        entry.text,
+        style: widget.style,
+        maxLines: widget.maxLines,
+        overflow: widget.overflow,
+      );
     }
 
     return LayoutBuilder(
@@ -249,6 +294,12 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
       },
     );
   }
+
+  /// True while the reader is dragging the list by hand.
+  ///
+  /// Fed by the panel, not discovered here: this widget has no view of the
+  /// scroll. Pass false and every word-synced line sweeps.
+  bool get _isBrowsing => widget.isBrowsing;
 
   /// The transform, revealed downward out from behind the original.
   ///
@@ -363,7 +414,7 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
           child: Text(entry.text, style: widget.style),
         ),
         ..._liftedSlices(entry, now),
-        ..._heldWordGrowth(entry, revealed, now),
+        ...(widget.glow ? _heldWordGrowth(entry, revealed, now) : const []),
       ],
     );
   }
@@ -383,6 +434,7 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
   /// nothing coloured. Two different questions, both need answering.
   List<Widget> _liftedSlices(LyricsEntry entry, int now) {
     final words = entry.timedWords;
+    if (!widget.rise) return const [];
     if (words.isEmpty || _wordSpans.isEmpty) return const [];
 
     final out = <Widget>[];
@@ -556,6 +608,26 @@ TextStyle _defaultLyricFont(double fontSize, FontWeight weight) =>
 class LyricLineStyle {
   const LyricLineStyle._();
 
+  /// ONE easing and ONE duration for every lyric dimension.
+  ///
+  /// Blur, alpha, scale and scroll all move on the same cubic, so a handover
+  /// reads as one movement rather than four things settling at slightly
+  /// different rates. It is monotonic with almost no initial acceleration, which
+  /// keeps a line from snapping into place and then creeping - an overshooting
+  /// curve here makes the motion finish before the animation does, which reads
+  /// as the page jumping early (invariant 16).
+  ///
+  /// BitChord's `LYRIC_EASING` / `LYRIC_SETTLE_MS`
+  /// (PlayerLyrics.kt:367-368), read here rather than approximated.
+  static const Curve lyricEase = Cubic(0.41, 0.0, 0.12, 0.99);
+  static const Duration lyricSettle = Duration(milliseconds: 400);
+
+  /// Scale of a line that is not the active one.
+  ///
+  /// Tweened on the same spec as the blur so a line recedes and returns as one
+  /// movement. BitChord `INACTIVE_SCALE` (PlayerLyrics.kt:337).
+  static const double inactiveScale = 0.98;
+
   /// Alpha by distance from the active line, symmetric in both directions.
   ///
   /// The floor of 0.46 is the important part: a line never fades to invisible,
@@ -599,7 +671,29 @@ class LyricLineStyle {
   }) =>
       isBrowsing ? 0.0 : blurForDistance(distance.abs());
 
+  /// The alpha a line [distance] from the active one sits at.
+  static double alphaFor({
+    required int distance,
+    required bool isBrowsing,
+    required bool isSynced,
+  }) =>
+      isBrowsing
+          ? browsingAlpha
+          : (isSynced ? alphaForDistance(distance) : unsyncedAlpha);
+
+  /// The scale a line [distance] from the active one sits at.
+  static double scaleFor({required int distance}) =>
+      distance == 0 ? 1.0 : inactiveScale;
+
   /// The style for a line [distance] from the active one.
+  ///
+  /// ONE font size and ONE weight for every line.
+  ///
+  /// This used to hand the active line 28dp/w800 and every other line 26dp/w700,
+  /// which looked like emphasis and cost something real: the font change
+  /// invalidates the row's cached prefix-width table, so every handover
+  /// re-ran a [TextPainter] layout pass over the whole line. Emphasis now comes
+  /// from [scaleFor] and the alpha ladder, which are free.
   static TextStyle styleFor({
     required int distance,
     required bool isBrowsing,
@@ -608,19 +702,142 @@ class LyricLineStyle {
     double height = 1.25,
     LyricFontBuilder? fontBuilder,
   }) {
-    final isActive = distance == 0;
-
-    // Browsing overrides the ladder entirely.
-    final alpha = isBrowsing
-        ? browsingAlpha
-        : (isSynced ? alphaForDistance(distance) : unsyncedAlpha);
-
     final font = fontBuilder ?? _defaultLyricFont;
-    return font(isActive ? fontSize : fontSize - 2,
-            isActive ? FontWeight.w800 : FontWeight.w700)
-        .copyWith(
+    return font(fontSize, FontWeight.w700).copyWith(
       height: height,
-      color: Colors.white.withValues(alpha: isActive ? 1.0 : alpha),
+      color: Colors.white.withValues(
+        alpha: alphaFor(
+          distance: distance,
+          isBrowsing: isBrowsing,
+          isSynced: isSynced,
+        ),
+      ),
+    );
+  }
+}
+
+/// ONE tween for every dimension of a lyric row.
+  ///
+  /// Blur, text alpha and scale all cross-fade together on
+  /// [LyricLineStyle.lyricEase] over [LyricLineStyle.lyricSettle], so a line that
+  /// recedes dims, blurs and settles as one movement. BitChord runs three
+  /// separate `animateXAsState` calls with the identical spec for exactly this
+  /// reason (`PlayerLyrics.kt:1849-2001`).
+  ///
+  /// Alpha and scale used to STEP - they were read straight off the distance
+  /// index at build time, so a handover repainted every row at a new constant and
+/// the list looked like it blinked between three states.
+  ///
+  /// The tween runs from the previously rendered value to the new one, so a
+  /// handover that arrives mid-settle continues from where it was instead of
+  /// snapping. One controller rather than three, because three controllers on
+  /// the same row would finish at three slightly different moments.
+  class AnimatedLyricRow extends StatefulWidget {
+  const AnimatedLyricRow({
+    super.key,
+    required this.blurSigma,
+    required this.alpha,
+    required this.scale,
+    required this.style,
+    required this.child,
+    this.duration = LyricLineStyle.lyricSettle,
+  });
+
+  final double blurSigma;
+  final double alpha;
+  final double scale;
+  final TextStyle style;
+  final Widget child;
+  final Duration duration;
+
+  @override
+  State<AnimatedLyricRow> createState() => _AnimatedLyricRowState();
+}
+
+class _AnimatedLyricRowState extends State<AnimatedLyricRow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  );
+
+  late double _fromBlur = widget.blurSigma;
+  late double _fromAlpha = widget.alpha;
+  late double _fromScale = widget.scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimatedLyricRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final t = _controller.value;
+    if (oldWidget.blurSigma == widget.blurSigma &&
+        oldWidget.alpha == widget.alpha &&
+        oldWidget.scale == widget.scale) {
+      return;
+    }
+    // Continue from what is on screen, not from where the old target was: a
+    // handover arriving 120ms into a 400ms settle must not jump.
+    _fromBlur = _lerp(_fromBlur, widget.blurSigma, t);
+    _fromAlpha = _lerp(_fromAlpha, widget.alpha, t);
+    _fromScale = _lerp(_fromScale, widget.scale, t);
+    _controller.forward(from: 0);
+  }
+
+  static double _lerp(double from, double to, double t) =>
+      t >= 1.0 ? to : from + (to - from) * t;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = LyricLineStyle.lyricEase.transform(_controller.value);
+        final sigma = _lerp(_fromBlur, widget.blurSigma, t);
+        final alpha = _lerp(_fromAlpha, widget.alpha, t);
+        final scale = _lerp(_fromScale, widget.scale, t);
+
+        // The alpha rides the DEFAULT text style rather than an [Opacity] widget.
+        //
+        // An Opacity here would allocate a saveLayer per lyric row - thirty of
+        // them for a full song - inside a list that is already rebuilding on a
+        // clock. `Text` resolves against DefaultTextStyle, so this reaches every
+        // Text in the subtree by one inherited-notify instead of thirty rebuilds
+        // of our own, and the sub-row's smaller type follows it for free.
+        final style = widget.style.copyWith(
+          color: (widget.style.color ?? Colors.white).withValues(alpha: alpha),
+        );
+
+        Widget row = DefaultTextStyle.merge(
+          style: style,
+          child: Transform.scale(
+            // Anchored to the row's own left edge, matching the reference's
+            // `TransformOrigin(alignEnd ? 1f : 0f, 0.5f)`. Scaling about the centre
+            // of a full-width row walks the words sideways as they recede, which
+            // reads as the text drifting rather than settling.
+            alignment: Alignment.centerLeft,
+            scale: scale,
+            child: child,
+          ),
+        );
+
+        if (sigma <= 0.01) return row;
+        return ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+          child: row,
+        );
+      },
+      child: widget.child,
     );
   }
 }
@@ -638,7 +855,7 @@ class AnimatedBlur extends StatefulWidget {
     super.key,
     required this.sigma,
     required this.child,
-    this.duration = const Duration(milliseconds: 340),
+    this.duration = LyricLineStyle.lyricSettle,
   });
 
   final double sigma;
@@ -687,7 +904,7 @@ class _AnimatedBlurState extends State<AnimatedBlur>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final t = Curves.easeInOut.transform(_controller.value);
+        final t = LyricLineStyle.lyricEase.transform(_controller.value);
         final v = _from + (widget.sigma - _from) * t;
         _current = v;
         if (v <= 0.01) return widget.child;

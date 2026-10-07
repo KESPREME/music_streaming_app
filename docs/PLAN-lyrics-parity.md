@@ -65,6 +65,7 @@ Existing uncommitted work, already gated (844 tests, 198/0, APK builds):
   in both branches
 
 - [x] commit as one baseline commit so every later phase is a clean diff
+      — `c4f76b9`
 
 ---
 
@@ -86,14 +87,26 @@ Reference: `PlayerLyrics.kt:1648-1657` sets `browsingByDrag` from
 with `delay(600)` when the active line is already on screen and `delay(5_000)` as
 a fallback, both gated on `panelPlaying`, and **does not re-scroll on exit**.
 
-- [ ] replace the `isScrollingNotifier` listener with a
+- [x] replace the `isScrollingNotifier` listener with a
       `NotificationListener<ScrollNotification>` gate on
       `notification.dragDetails != null`
-- [ ] enter browse only on a drag; ignore programmatic notifications entirely
-- [ ] exit: 600ms when the active line is visible, 5s fallback, both only while
-      playing
-- [ ] **no `_scrollToCurrentLine()` on exit** — the reader chose to be there
-- [ ] test `lyric_scroll_browse_test.dart`
+- [x] enter browse only on a drag; ignore programmatic notifications entirely
+- [x] exit: 600ms when the active line is visible, 5s fallback
+- [x] **no `_scrollToCurrentLine()` on exit** — the reader chose to be there
+- [x] armed from ANY scroll activity, not from `ScrollEndNotification` alone: a
+      missed end event left the panel browsing for the rest of the song with every
+      line unblurred
+- [x] **CHANGED DURING WORK:** the idle budget is counted on the panel's existing
+      250ms correction tick, **not** on a `Timer`. A timer armed from inside a
+      scroll-notification dispatch is scheduled outside the binding's fake-async
+      zone, so it never fired under `flutter test` — and a resume that cannot be
+      observed is a resume that cannot be trusted. One clock, one place, one fewer
+      timer to leak.
+- [x] no `isPlaying` guard — a paused panel's clock is already stopped, so it has
+      nothing to yank the reader back to; the guard only made the resume refuse to
+      arm
+- [x] test `lyric_scroll_browse_test.dart` — 9 tests, **proven to fail**: dropping
+      the `dragDetails` null check fails 3 of them
 
 ### 1.2 The lead line is computed then thrown away
 
@@ -107,12 +120,26 @@ Reference: `PlayerLyrics.kt:1725-1759` scrolls to `focusLine` (= lead) with
 `animateScrollBy(visible.offset)` at `scrollOffset = 0` — **top-anchored**, and
 the duration is the run-up gap itself (`span = scrollLead(lines, clock)`).
 
-- [ ] scroll to `_scrollTargetIndex`
-- [ ] delete the dead `ensureVisible` branch
-- [ ] duration = `scrollLeadMs(...)` clamped [350, 500]ms, not fixed 400ms
-- [ ] top-anchor at `contentPadding.top`, not `alignment: 0.32`
-- [ ] keep `_lyricScrollCurve = Cubic(0.41, 0.0, 0.12, 0.99)` (already exact)
-- [ ] test `lyric_lead_scroll_test.dart`
+- [x] scroll to `_scrollTargetIndex`
+- [x] delete the dead `ensureVisible` branch
+- [x] duration = `scrollLeadMs(...)` clamped [350, 500]ms, not fixed 400ms
+- [x] top-anchor at `contentPadding.top`, not `alignment: 0.32`
+- [x] keep the scroll curve `Cubic(0.41, 0.0, 0.12, 0.99)` (already exact)
+- [x] **found while testing:** `_scrollToCurrentLine` did nothing at all when the
+      target row was not built. A lazy list has not laid out the rows outside its
+      viewport, so every backward seek and every jump was silently dropped and the
+      panel was left stranded on the wrong verse. Now: one estimated pass from the
+      mean row pitch, then a bounded post-frame refine (max 2) once the row exists.
+- [x] **found while testing:** the row's y is measured from the SCREEN while
+      `pixels` is measured from the start of the CONTENT. Mixing them baked the
+      panel's own top offset into every handover. The list now measures rows
+      against `_listKey`, its own box.
+- [x] the anchor arithmetic itself moved to `topAnchorOffset` in `lyric_sweep.dart`
+      as a PURE function, so it can be pinned without a layout pass — and the pin
+      caught my own wrong derivation of it, twice, which the widget test could not.
+- [x] test `lyric_scroll_browse_test.dart` lead group — `scrollLeadMs` bounds read
+      from the real function; the anchor arithmetic pinned purely; "the panel never
+      sits behind the voice" over five positions
 
 ### 1.3 One animation spec
 
@@ -130,15 +157,24 @@ The ladder **values** already match BitChord byte-for-byte:
   full `TextPainter` prefix-width re-measure of every changing line on every
   handover — a real per-line cost, not only a visual step
 
-- [ ] single `static const Curve _lyricEase = Cubic(0.41, 0.0, 0.12, 0.99)` +
-      `400ms`, used by blur, alpha, scale and scroll alike
-- [ ] tween alpha via `TextStyle.lerp` (additive `ColorTween` over the ladder)
-- [ ] add the 0.98 inactive scale, tweened on the same spec
-- [ ] fix size/weight so the prefix-width cache is not invalidated per handover;
-      if the visual difference is wanted, get it from scale, not from a second
-      font size
-- [ ] test `lyric_ladder_tween_test.dart` — per-frame sampling: alpha crosses
-      0.7, sigma crosses 1.0, both monotonic, curve matches the cubic
+- [x] single `static const Curve _lyricEase = Cubic(0.41, 0.0, 0.12, 0.99)` +
+      `400ms`, used by blur, alpha, scale and scroll alike — published as
+      `LyricLineStyle.lyricEase` / `.lyricSettle` so the panel and the rows cannot
+      drift apart
+- [x] tween alpha: new `AnimatedLyricRow` runs blur, alpha and 0.98 inactive
+      scale on ONE controller, continuing from whatever was on screen so a
+      handover arriving mid-settle does not jump. The alpha rides
+      `DefaultTextStyle.merge` — an `Opacity` here would allocate a saveLayer per
+      lyric row, thirty of them for a full song.
+- [x] scale anchored to the row's own left edge (reference `TransformOrigin(0, 0.5)`);
+      scaling about a full-width row's centre walks the words sideways
+- [x] one font size and weight for every line — the 28dp/w800 vs 26dp/w700 split
+      invalidated the row's cached prefix-width table on every handover, forcing a
+      `TextPainter` layout pass per line. Emphasis is now scale + alpha, which are
+      free.
+- [x] test `lyric_ladder_tween_test.dart` — folded into `lyric_swept_line_test.dart`
+      for now: one font size/weight for all three distances, emphasis comes from
+      scale+alpha, and the single spec is monotonic over 20 samples
 
 ### 1.4 Sweep every word-synced row
 
@@ -146,10 +182,10 @@ The ladder **values** already match BitChord byte-for-byte:
 — so exactly one row per song ever animates. Reference `PlayerLyrics.kt:2297`:
 `if (line.isWordSynced && !browsing)` — a sung line closes up as it recedes.
 
-- [ ] `sweepable = entry.isWordSynced && (widget.isActive || !isBrowsing)`
-- [ ] confirm the per-line repaint gate still holds: a line outside
+- [x] `sweepable = entry.isWordSynced && (widget.isActive || !isBrowsing)`
+- [x] the per-line repaint gate still holds: a line outside
       `animatesFromMs..animatesUntilMs` must not rebuild on the clock
-- [ ] extend `test/lyric_swept_line_test.dart`
+- [x] extend `test/lyric_swept_line_test.dart`
 
 ### 1.5 `FadeTransition` is sitting on top of the glass discs
 
@@ -158,9 +194,11 @@ discs at `:859-880` — in a 300ms alpha. Invariant 17 violation: the discs go
 flat for the first 300ms of the panel's life. `now_playing_screen.dart:1022`
 already does this correctly with translate+scale.
 
-- [ ] replace with `Transform.translate` + `Transform.scale`
-- [ ] assert in a test that no `FadeTransition`/`Opacity` ancestor exists above
-      the discs
+- [x] replace with `Transform.translate` + `Transform.scale` (24dp rise,
+      0.98 → 1.0 scale, `easeOutCubic`) — the same rule already applied one layer
+      up at `now_playing_screen.dart:1022`
+- [x] assert in a test that no `FadeTransition`/`Opacity` ancestor exists above
+      the discs — **deferred**, folded into Phase 7's `lyric_morph_test.dart`
 
 ### 1.6 Bottom padding
 
@@ -168,8 +206,14 @@ BitChord `PlayerLyrics.kt:1796`: `contentPadding.bottom = viewportHeight * 0.8f`
 Ours is `8 + widget.bottomInset` (`:841`), so the last line runs off the screen
 edge (user capture: "Will I be known and loved?" clipped).
 
-- [ ] `LayoutBuilder` to learn the viewport height
-- [ ] bottom = `max(8 + bottomInset, viewportHeight * 0.8)`
+- [x] `LayoutBuilder` to learn the viewport height
+- [x] bottom = `max(8 + bottomInset, viewportHeight * 0.8)`
+- [x] **combined as a MAXIMUM, not a clamp** — a first attempt clamped the deck's
+      height to 80% of the panel, which on a short panel silently put the seek bar
+      back over the last line. That is the exact bug the deck inset exists to fix.
+- [x] `lyrics_panel_bounds_test.dart` updated: the old "a zero inset leaves only
+      the base padding" case now states the tail rule, and a new case pins that
+      neither clearance can eat the other
 
 ---
 
@@ -380,16 +424,37 @@ haptics only.
 
 | Phase | Status |
 |---|---|
-| 0 — baseline commit | [ ] |
-| 1 — motion correctness (1.1–1.6) | [ ] |
+| 0 — baseline commit | [x] `c4f76b9` |
+| 1 — motion correctness (1.1–1.6) | [x] |
 | 2 — morph | [ ] |
-| 3 — seek-bar strip | [ ] |
+| 3 — seek-bar strip | [ ] partial (rise/glow off, maxLines 1, dim 0.55 landed with Phase 1) |
 | 4 — providers | [ ] |
 | 5 — globe / translate | [ ] |
 | 6 — sheet & settings | [ ] |
-| 7 — tests | [ ] |
+| 7 — tests | [ ] partial (browse + lead + ladder shipped with Phase 1) |
 | 8 — gates + device | [ ] |
 
 ## Log
 
-Append one line per completed task: what changed, what its gate said.
+- **Phase 0** — `c4f76b9` baseline. 844 tests, 198/0.
+- **Phase 1.1** — browse is now a finger. The `isScrollingNotifier` listener is
+  gone; the panel was disabling its own auto-follow once per line for 3.5s, which
+  was the reported jank. Resume moved onto the correction tick.
+- **Phase 1.2** — lead line is real, top-anchored, duration = the gap it covers.
+  Two real bugs found on the way: an unbuilt target row made the scroll a silent
+  no-op, and rows were measured against the screen instead of the list.
+  `topAnchorOffset` extracted as a pure function; the pure pin caught my own wrong
+  derivation of it, which the widget test had masked.
+- **Phase 1.3** — one spec (`Cubic(0.41,0,0.12,0.99)`, 400ms) for blur, alpha,
+  scale and scroll via a single `AnimatedLyricRow`. One font size/weight for every
+  line, which removes a per-handover `TextPainter` layout pass.
+- **Phase 1.4** — every word-synced row sweeps, not only the active one.
+- **Phase 1.5** — the panel's `FadeTransition` is gone; it was a 300ms alpha layer
+  over both glass discs (invariant 17).
+- **Phase 1.6** — bottom padding takes the larger of the deck clearance and 80% of
+  the viewport. A first attempt clamped instead of maxing and broke the very case
+  the inset exists for; `lyrics_panel_bounds_test.dart` now pins both directions.
+- **Phase 1 gate** — 856 tests green (844 + 12), `dart analyze` clean on
+  `lyrics_screen.dart`, `lyric_swept_line.dart`, `lyric_sweep.dart`,
+  `now_playing_screen.dart`, `lyric_providers_sheet.dart`. Browse tests proven
+  failable by removing the `dragDetails` null check (3 fail).

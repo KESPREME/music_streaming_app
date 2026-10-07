@@ -181,6 +181,38 @@ int scrollLeadMs(List<LyricsEntry> entries, int positionMs) {
   return gap.clamp(minLead, maxLead);
 }
 
+/// Where the list has to scroll for a given lyric row to sit at its top inset.
+///
+/// Pure geometry, kept beside [scrollLeadMs] because it is the same kind of rule
+/// and belongs to the same place: the panel owns the timing, this file owns the
+/// arithmetic.
+///
+/// The old call was `ensureVisible(alignment: 0.32)` - a FRACTION OF THE
+/// VIEWPORT - which parked the sung line a third of the way down the screen and
+/// pushed everything not yet sung toward the bottom edge. BitChord anchors at
+/// `scrollOffset = 0` (PlayerLyrics.kt:1742, 1759).
+///
+/// Derivation, once: a row's screen position is `topInset - pixels + cum(row)`,
+/// and `cum(row) = pixels + rowTop - topInset`, so the pixels that put it back on
+/// the inset ARE `cum(row)` = `pixels + rowTop - topInset`.
+///
+/// The order matters in a way that is easy to get backwards. Scrolling DOWN
+/// moves content UP, so a row sitting 300px BELOW the inset needs MORE scroll,
+/// not less: at `pixels = 400` a row at `rowTop = 356` wants `700`. Reading it
+/// the other way scrolls the list away from its own target.
+double topAnchorOffset({
+  required double currentPixels,
+  required double rowTopInViewport,
+  required double topInset,
+  required double minScrollExtent,
+  required double maxScrollExtent,
+}) {
+  final raw = currentPixels + rowTopInViewport - topInset;
+  if (raw < minScrollExtent) return minScrollExtent;
+  if (raw > maxScrollExtent) return maxScrollExtent;
+  return raw;
+}
+
 /// Convenience: the line the auto-scroll should centre on, leading the singing.
 int focusLineIndex(List<LyricsEntry> entries, int positionMs) {
   if (entries.isEmpty) return -1;

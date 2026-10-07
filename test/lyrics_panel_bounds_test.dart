@@ -223,16 +223,44 @@ void main() {
       await tester.pumpWidget(_screen(bottomInset: 420));
       await tester.pump();
 
+      // The deck's clearance WINS over the viewport tail allowance here: 428 > the
+      // panel's 80%. Combined as a maximum, not a clamp - clamping the deck down
+      // to 80% of a short panel silently put the seek bar back over the lyric,
+      // which is the bug this inset was added to fix.
       expect(_listPadding(tester).bottom, greaterThanOrEqualTo(420));
     });
 
-    testWidgets('a zero inset leaves only the base padding', (tester) async {
+    testWidgets('with no deck, reserves the viewport tail instead', (tester) async {
+      // CHANGED DELIBERATELY. This used to assert "only the base 8dp, not a
+      // deck's worth" - correct for the rule then in force, which only knew about
+      // the deck. It does not know about the TAIL: the last line of a long lyric
+      // was running off the bottom edge with nothing to scroll it into view.
+      //
+      // BitChord reserves 80% of its own viewport under the content
+      // (PlayerLyrics.kt:1796). Ours can be taken straight from there because the
+      // deck is an overlay rather than a sibling.
       await tester.pumpWidget(_screen());
       await tester.pump();
 
-      // The base 8dp, not a deck's worth: a lyrics screen with nothing above it
-      // must not reserve room for one.
-      expect(_listPadding(tester).bottom, lessThan(24));
+      // Measured off the LIST, not off LyricsScreen: the screen's own box is
+      // taller than the list it hands its remaining height to, and the fraction
+      // is of the list's viewport.
+      final viewport = tester.getSize(find.byType(ListView)).height;
+      expect(_listPadding(tester).bottom, closeTo(viewport * 0.8, 1));
+    });
+
+    testWidgets('the tail allowance never eats the deck clearance', (tester) async {
+      // The two clearances are combined as a MAXIMUM. A clamp would take the
+      // smaller of the two on a short panel, which is precisely when the seek bar
+      // is most likely to be sitting over the last line.
+      await tester.pumpWidget(_screen(bottomInset: 420));
+      await tester.pump();
+      final viewport = tester.getSize(find.byType(ListView)).height;
+      final tail = viewport * 0.8;
+
+      final bottom = _listPadding(tester).bottom;
+      expect(bottom, greaterThanOrEqualTo(420));
+      expect(bottom, greaterThanOrEqualTo(tail));
     });
 
     testWidgets('the top still clears the header discs', (tester) async {
