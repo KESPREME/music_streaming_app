@@ -226,6 +226,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _openLyrics();
   }
   Timer? _lyricsIdleTimer;
+
+  /// A held gesture that suspends the lyrics idle countdown.
+  ///
+  /// Named for what it protects rather than where it comes from, because the
+  /// scrubber and the volume slider both set it and both mean the same thing: the
+  /// reader is holding something, and five seconds of holding is not stillness.
+  bool _isVolumeDragging = false;
   bool _lyricsChromeHidden = false;
   String? _idleTrackId;
 
@@ -451,8 +458,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   // words own the screen. Any tap/scroll/track change calls
   // _pokeLyricsIdle to reveal + restart. One-shot timer, lyrics-only,
   // so there is no background cost anywhere else.
+  //
+  // Scrubbing and dragging the volume SUSPEND it rather than being activity:
+  // those are held gestures, and a reader holding the scrubber to find a line
+  // should not have the discs disappear under their finger because the gesture
+  // outlasted five seconds. The reference keys its own timer on
+  // `(lyricsOpen, lyricsControlsOpen, scrub.scrubbing, volume.dragging)` and
+  // refuses to count those two (NowPlayingScreen.kt:1119-1124).
   void _startLyricsIdle() {
     _cancelLyricsIdle();
+    if (_isScrubbing || _isVolumeDragging) return;
     final provider = Provider.of<MusicProvider>(context, listen: false);
     _idleTrackId = provider.currentTrack?.id ?? widget.track.id;
     _lyricsIdleTimer = Timer(_kLyricsIdleTimeout, () {
@@ -475,6 +490,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       setState(() => _lyricsChromeHidden = false);
     }
     _startLyricsIdle();
+  }
+
+  /// A held gesture that must not cost the reader the discs.
+  ///
+  /// Called at the start AND the end of a scrub or a volume drag. The end matters
+  /// as much as the start: without it the countdown would resume from whenever
+  /// the drag began, so a long drag would put the discs away the instant it
+  /// finished.
+  void _setHeldGesture(bool active) {
+    if (active == _isVolumeDragging) return;
+    _isVolumeDragging = active;
+    if (!mounted) return;
+    if (active) {
+      _lyricsIdleTimer?.cancel();
+      _lyricsIdleTimer = null;
+      if (_lyricsChromeHidden) setState(() => _lyricsChromeHidden = false);
+    } else if (_isLyricsOpen) {
+      _startLyricsIdle();
+    }
   }
 
   void _toggleLyrics() {
@@ -1483,6 +1517,7 @@ child: Transform.scale(
                   _isScrubbing = true;
                   _draggedPositionSec = currentSec;
                 });
+                _setHeldGesture(true);
               },
               onValueChange: (val) {
                 setState(() {
@@ -1499,6 +1534,8 @@ child: Transform.scale(
                   _isScrubbing = false;
                   _draggedPositionSec = null;
                 });
+                // Re-arms from here, not from wherever the drag began.
+                _setHeldGesture(false);
               },
             ),
             Transform.translate(
@@ -1634,18 +1671,20 @@ child: Transform.scale(
               activeHeight: 11.0,
               activeColor: Colors.white,
               inactiveColor: Colors.white.withValues(alpha: 0.24),
-              onDragStart: () {
-                setState(() {
-                  _isScrubbing = true;
-                });
-              },
-              onDragEnd: () {
-                setState(() {
-                  _isScrubbing = false;
-                });
-              },
+onDragStart: () {
+                  setState(() {
+                    _isScrubbing = true;
+                  });
+                  _setHeldGesture(true);
+                },
+                onDragEnd: () {
+                  setState(() {
+                    _isScrubbing = false;
+                  });
+                  _setHeldGesture(false);
+                },
+              ),
             ),
-          ),
           const SizedBox(width: 10),
           Icon(
             Icons.volume_up_rounded,

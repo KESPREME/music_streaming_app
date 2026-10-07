@@ -69,6 +69,17 @@ class SubLineController extends ChangeNotifier implements SubLineReveal {
   List<String>? _lines;
   String? _trackKey;
   String? _pendingTrackKey;
+  bool _alreadyInLanguage = false;
+
+  /// Set when the last request could not have produced anything new, so the disc
+  /// can say so instead of pretending to be working.
+  ///
+  /// Named after the STATE rather than the action: the reference distinguishes
+  /// `AlreadyRomanized` from `Unavailable` (`LyricsTranslation.kt:64`) because
+  /// they deserve different words. "These lyrics already use Latin characters"
+  /// is a fact about the song; "translation failed" is a fault of ours, and
+  /// conflating them tells the reader their lyrics are in the wrong script.
+  bool get alreadyInLanguage => _alreadyInLanguage;
 
   SubLineMode get mode => _mode;
 
@@ -121,7 +132,6 @@ class SubLineController extends ChangeNotifier implements SubLineReveal {
     required String trackKey,
     required List<String> sourceLines,
     required String targetLanguage,
-    bool reportAlreadyInLanguage = false,
   }) async {
     if (mode == SubLineMode.original) {
       _apply(SubLineMode.original);
@@ -135,6 +145,20 @@ class SubLineController extends ChangeNotifier implements SubLineReveal {
 
     final transform = transformFor(mode);
     if (transform == null) return;
+
+    // Decided BEFORE the request, so the disc can be right immediately and the
+    // round trip is never spent on an answer that cannot differ from the original.
+    //
+    // Was written and never wired: `reportAlreadyInLanguage` defaulted to false
+    // and no caller passed it, so `_alreadyInLanguage` could only ever be false
+    // and the whole guard - plus the disc tint and the message that hang off it -
+    // was unreachable.
+    if (transform == LyricsTransform.romanize &&
+        LyricsTranslationService.isAlreadyRomanizable(sourceLines)) {
+      _alreadyInLanguage = true;
+      notifyListeners();
+      return;
+    }
 
     _busy = true;
     _pendingTrackKey = trackKey;
@@ -156,9 +180,6 @@ class SubLineController extends ChangeNotifier implements SubLineReveal {
         // Nothing usable. The original stays exactly as it is, which is the
         // point of this design - a failed transform costs a sub-line, not the
         // lyric.
-        if (reportAlreadyInLanguage) {
-          _alreadyInLanguage = true;
-        }
         return;
       }
 
@@ -174,10 +195,9 @@ class SubLineController extends ChangeNotifier implements SubLineReveal {
     }
   }
 
-  /// Set once when a transform came back empty because the text was already in
-  /// the requested script. Drives the "already in English" message.
-  bool _alreadyInLanguage = false;
-  bool get alreadyInLanguage => _alreadyInLanguage;
+  /// Set once when a transform could not have produced anything new, because the
+  /// text was already in the requested script. Drives the "already in English"
+  /// message.
 
   /// Drops the transform because the track changed.
   ///

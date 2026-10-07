@@ -47,7 +47,7 @@ enum TransformButtonState {
 /// Sized and tinted to the reference: 34dp, a white disc at 0.18 alpha rising to
 /// 0.34 when active, a 19dp glyph, and a 16dp spinner that REPLACES the glyph
 /// rather than sitting beside it.
-class TransformDisc extends StatelessWidget {
+class TransformDisc extends StatefulWidget {
   const TransformDisc({
     super.key,
     required this.icon,
@@ -64,7 +64,38 @@ class TransformDisc extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
+  State<TransformDisc> createState() => _TransformDiscState();
+}
+
+class _TransformDiscState extends State<TransformDisc> {
+  late double _discAlpha = widget.active ? 0.34 : 0.18;
+
+  @override
+  void didUpdateWidget(covariant TransformDisc oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active == widget.active) return;
+    // The disc's own alpha moves on its own spec, rather than snapping with the
+    // glyph.
+    //
+    // It used to be read straight off `active` at build time, which meant the
+    // disc and the icon inside it changed on different frames - and both
+    // `lyricsDiscFadeIn` and `lyricsDiscFadeOut` were declared below for exactly
+    // this and referenced zero times. The reference tweens this on the disc's
+    // default spring (`PlayerLyrics.kt:1258, 1309`); a short tween is close
+    // enough and cannot overshoot.
+    setState(() {
+      _discAlpha = widget.active ? 0.34 : 0.18;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final icon = widget.icon;
+    final semanticLabel = widget.semanticLabel;
+    final state = widget.state;
+    final active = widget.active;
+    final onTap = widget.onTap;
+
     // 0.42 is the "there is nothing to do here" tint and is deliberately dimmer
     // than the idle 0.78: a romanization of an English lyric is still a button,
     // because hiding it makes the feature undiscoverable, but tapping it should
@@ -74,8 +105,15 @@ class TransformDisc extends StatelessWidget {
       _ when active => Colors.white,
       _ => Colors.white.withValues(alpha: 0.78),
     };
-    final disabled = state == TransformButtonState.sameLanguage || onTap == null;
-    final discAlpha = active ? 0.34 : 0.18;
+
+    // NOT disabled by `sameLanguage`.
+    //
+    // It was, and that defeated the whole feature: the disc went dim AND stopped
+    // responding, so tapping it did nothing at all - a silently dead control,
+    // which reads as broken rather than as an answer. The reference taps through
+    // and shows the message (`PlayerLyrics.kt:2791-2794`). Dimming is the signal
+    // that there is nothing to do; tapping is how the reader finds out WHAT.
+    final disabled = onTap == null;
 
     return Semantics(
       button: true,
@@ -88,26 +126,31 @@ class TransformDisc extends StatelessWidget {
             ? null
             : () {
                 HapticFeedback.selectionClick();
-                onTap!();
+                onTap();
               },
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: discAlpha),
-          ),
-          child: Center(
-            child: state == TransformButtonState.loading
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.7,
-                      valueColor: AlwaysStoppedAnimation(tint),
-                    ),
-                  )
-                : Icon(icon, size: 19, color: tint),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: _discAlpha),
+          duration: _discAlpha > 0.18 ? lyricsDiscFadeIn : lyricsDiscFadeOut,
+          curve: Curves.easeOut,
+          builder: (context, alpha, _) => Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: alpha),
+            ),
+            child: Center(
+              child: state == TransformButtonState.loading
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.7,
+                        valueColor: AlwaysStoppedAnimation(tint),
+                      ),
+                    )
+                  : Icon(icon, size: 19, color: tint),
+            ),
           ),
         ),
       ),

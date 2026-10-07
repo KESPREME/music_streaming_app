@@ -240,10 +240,18 @@ void main() {
 
     // The two mode discs, floated over the foot of the lyric panel.
     //
-    // NOT a header control: they are mode switches for the LYRIC, not the track,
+// NOT a header control: they are mode switches for the LYRIC, not the track,
     // which is why they sit with the lyric rather than beside the star and the
-    // overflow menu. There is no "aあ" header button in the reference at all.
-    expect(find.bySemanticsLabel('Show romanized lyrics'), findsOneWidget);
+    // overflow menu. There is no "a?" header button in the reference at all.
+    //
+    // The globe's label is honest about THIS lyric: it is English, so there is
+    // nothing to romanize and the disc says so rather than inviting a tap that
+    // could only echo the original back.
+    expect(
+      find.bySemanticsLabel('These lyrics already use Latin characters'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Show romanized lyrics'), findsNothing);
     expect(find.bySemanticsLabel('Show translated lyrics'), findsOneWidget);
     expect(find.bySemanticsLabel('Pronunciation'), findsNothing);
 

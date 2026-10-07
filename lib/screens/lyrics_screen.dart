@@ -14,6 +14,7 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../models/lyrics_entry.dart';
 import '../services/lyrics/lyric_sub_line.dart';
+import '../services/lyrics/lyrics_translation_service.dart';
 import '../services/lyrics/lyric_clock.dart';
 import '../services/lyrics/lyric_sweep.dart';
 import '../widgets/lyric_swept_line.dart';
@@ -1239,16 +1240,42 @@ final lyrics = musicProvider.currentLyrics;
     } else if (!_discsVisible) {
       return const SizedBox.shrink();
     }
+
+    // The globe is pointless on a lyric that is already Latin, and saying so is
+    // better than a disc that spins, returns the identical text and renders a
+    // sub-line indistinguishable from the original above it.
+    //
+    // Decided from the LYRIC rather than from the last tap, so the disc is right
+    // the moment it appears rather than after a round trip. The check and the
+    // controller use the same function, so the two cannot disagree.
+    final alreadyLatin = mode == SubLineMode.romanized && _lyricIsLatinScript;
+
     return TransformDisc(
       icon: icon,
-      semanticLabel: semanticLabel,
+      semanticLabel: alreadyLatin
+          ? 'These lyrics already use Latin characters'
+          : semanticLabel,
       state: _subController.isBusy
           ? TransformButtonState.loading
-          : _subController.shownMode == mode
-              ? TransformButtonState.ready
-              : TransformButtonState.idle,
+          : alreadyLatin
+              ? TransformButtonState.sameLanguage
+              : _subController.shownMode == mode
+                  ? TransformButtonState.ready
+                  : TransformButtonState.idle,
       active: _subController.shownMode == mode,
       onTap: () => _onDiscTap(mode),
+    );
+  }
+
+  /// Whether every lyric line is already in Latin script.
+  ///
+  /// Read from the same source the controller reads, so a track change and a
+  /// provider switch both update it without a second cache to keep in step.
+  bool get _lyricIsLatinScript {
+    final entries = _lyricsRef;
+    if (entries == null || entries.isEmpty) return false;
+    return LyricsTranslationService.isAlreadyRomanizable(
+      entries.map((e) => e.text).toList(),
     );
   }
 
@@ -1257,13 +1284,47 @@ final lyrics = musicProvider.currentLyrics;
     final track = widget.trackKey;
     if (entries == null || track == null || track.isEmpty) return;
 
+    if (mode == SubLineMode.romanized && _lyricIsLatinScript) {
+      // TELL the reader rather than doing nothing. A disc that silently refuses a
+      // tap is indistinguishable from a broken one, and this is a fact about
+      // their song that they can act on.
+      HapticFeedback.selectionClick();
+      _showTransformMessage('These lyrics already use Latin characters');
+      return;
+    }
+
     await _subController.toggle(
       mode,
       trackKey: track,
       sourceLines: entries.map((e) => e.text).toList(),
       targetLanguage: widget.translationLanguage ?? Platform.localeName,
     );
-    if (mounted) setState(() {});
+    if (!mounted) return;
+
+    if (_subController.alreadyInLanguage) {
+      _showTransformMessage('These lyrics already use Latin characters');
+    }
+    setState(() {});
+  }
+
+  /// Says one thing about the transform, once.
+  ///
+  /// A snackbar rather than a new panel: this is a confirmation about a tap the
+  /// reader just made, and the reference treats it as a transient message too
+  /// (`PlayerLyrics.kt:2791-2794`) - it takes over the status line rather than
+  /// becoming a state the panel has to hold.
+  void _showTransformMessage(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   Widget _buildCountdownDots(int remainingMs, Color accentColor) {

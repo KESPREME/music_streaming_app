@@ -109,6 +109,17 @@ class LyricsTranslationService {
   }) async {
     if (lines.isEmpty) return null;
 
+    // Romanizing text that is already Latin cannot produce anything the reader
+    // does not have on screen. Decided HERE rather than in the caller, because the
+    // endpoint will happily echo the original back and the caller cannot tell a
+    // genuine no-op from a translation that happened to be identical.
+    //
+    // Reference `LyricsTranslation.kt:234`: `hasNonLatinLetters` over every code
+    // point, then `AlreadyRomanized` - a distinct outcome, not a null.
+    if (kind == LyricsTransform.romanize && isAlreadyRomanizable(lines)) {
+      return null;
+    }
+
     final cacheKey = _key(kind, targetLanguage, lines);
     final cached = await _readCache(cacheKey, lines.length);
     if (cached != null) return cached;
@@ -431,6 +442,27 @@ class LyricsTranslationService {
       return false;
     }
     return true;
+  }
+
+  /// Whether every line is already Latin, so romanization has nothing to do.
+  ///
+  /// ALL of them, not any: a lyric is a single artefact and one Japanese line
+  /// among thirty English ones still needs transliterating. Reporting the whole
+  /// song as already-romanized because most of it is would leave that one line
+  /// wrong with no way back.
+  ///
+  /// Public because the disc needs the answer BEFORE the tap resolves, to tint and
+  /// disable itself the moment the reader looks at it rather than after a round
+  /// trip. Two callers, one rule.
+  static bool isAlreadyRomanizable(List<String> lines) {
+    var anyText = false;
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      anyText = true;
+      if (!isLatinScript(line)) return false;
+    }
+    // All blank: nothing to romanize, and nothing worth reporting as a miss.
+    return anyText;
   }
 
   /// Clears every cached transform.
