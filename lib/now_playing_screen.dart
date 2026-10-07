@@ -125,6 +125,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   late final PageController _pageController;
   late final AnimationController _morphController;
   late final Animation<double> _morphAnim;
+
+  /// Stage two of the morph: the lyric panel's own fade.
+  ///
+  /// Separate from [_morphController] because an `animateFloatAsState` created at
+  /// the moment its target turns true starts AT that target and has nothing to
+  /// animate - which is why the reference declares its panel fade above both
+  /// panels (NowPlayingScreen.kt:1181-1193).
+  late final AnimationController _panelFadeController;
   bool _isLyricsOpen = false;
 
   final ValueNotifier<double> _deckExtent = ValueNotifier<double>(0);
@@ -246,14 +254,47 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     );
     _morphController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
+      duration: _morphCollapseDuration,
     );
     _morphAnim = CurvedAnimation(
       parent: _morphController,
-      curve: Curves.easeInOutCubic,
-      reverseCurve: Curves.easeInOutCubic,
+      curve: _morphEase,
+      reverseCurve: _morphEase,
+    );
+
+    // Stage two. The lyric panel arrives AFTER the artwork has finished
+    // collapsing into the header, over its own short fade.
+    //
+    // It used to be painted from the frame the collapse started, while the
+    // artwork, the title and the two glass buttons were still moving over it.
+    // That is what the reported "a thing comes before another thing" was: three
+    // layers animating at once, with the lyric text reading through the artwork
+    // on its way past. The reference gates the panel on the collapse being
+    // complete and gives it a separate 200ms fade, with no transform of its own
+    // (NowPlayingScreen.kt:1160-1196, 3274-3293) - its own comment names the
+    // stutter we had.
+    _panelFadeController = AnimationController(
+      vsync: this,
+      duration: _morphPanelFadeDuration,
     );
   }
+
+  /// How long the artwork takes to collapse into the header.
+  ///
+  /// 420ms, the reference's `animatedCollapse`
+  /// (NowPlayingScreen.kt:1127-1131).
+  static const Duration _morphCollapseDuration = Duration(milliseconds: 420);
+
+  /// How long the lyric panel takes to fade in once the collapse is done.
+  static const Duration _morphPanelFadeDuration =
+      Duration(milliseconds: 200);
+
+  /// One monotonic easing for the whole morph.
+  ///
+  /// No overshoot (invariant 16): an easeOutBack here makes the artwork clear its
+  /// target at ~60% of the clock and unwind for the rest, which reads as arriving
+  /// early.
+  static const Curve _morphEase = Curves.easeOutCubic;
 
   /// Opens the lyrics view. Feed the on-deck sweep clock once provided, and keep
   /// its anchor honest from the stream - a constant stream runs a ticker for no
@@ -309,6 +350,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _lyricStallTimer?.cancel();
     _lyricClock?.dispose();
     _morphController.dispose();
+    _panelFadeController.dispose();
     // Performance & Battery Optimization: Pause silent canvas video when NowPlaying screen is dismissed
     CanvasVideoManager.instance.pause();
     super.dispose();
@@ -343,12 +385,43 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       // Hold the mini. Page 0 already draws its header at the landed rect, so
       // holding the morph at 1 makes the swap invisible.
       _morphController.value = 1.0;
+      _panelFadeController.value = 1.0;
     } else {
-      _morphController.forward();
+      unawaited(_openWithPanelFade());
     }
     _startLyricsIdle();
     // Battery & CPU Optimization: Pause video canvas decoding while lyrics screen covers the viewport
     CanvasVideoManager.instance.pause();
+  }
+
+  /// Collapses the artwork, then fades the lyric panel in on top of the result.
+  ///
+  /// Two stages, strictly ordered. It used to be one stage: the panel was
+  /// painted from the frame the collapse started, translating and scaling in
+  /// beside a moving artwork with the title and two glass buttons over both.
+  /// That is what the reported "a thing comes before another thing" was - three
+  /// movements in one frame - and what the reported duplication was: lyric text
+  /// readable through the artwork on the way past.
+  ///
+  /// The reference does the same split and explains why (NowPlayingScreen.kt
+  /// :1160-1196, 3274-3293): *"composing the panel on the frame the collapse
+  /// starts put the heaviest composition of the screen on top of the one
+  /// animation the eye is following, and it read as the open stuttering."*
+  ///
+  /// Close is the same two stages reversed by [_closeLyrics], so the return trip
+  /// is not a different animation from the outward one.
+  Future<void> _openWithPanelFade() async {
+    _panelFadeController.value = 0;
+    final collapsed = _morphController.forward();
+    try {
+      await collapsed;
+    } catch (_) {
+      // TickerCanceled: a close overtook this one. The panel is on its way out;
+      // there is nothing to fade in.
+      return;
+    }
+    if (!mounted || !_isLyricsOpen) return;
+    _panelFadeController.forward();
   }
 
   void _closeLyrics({bool silent = false}) {
@@ -363,6 +436,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     // hand the same header to the queue page.
     if (!silent) {
       _morphController.reverse();
+      _panelFadeController.reverse();
     }
     _cancelLyricsIdle();
     // Resume video canvas playback immediately upon returning to player
@@ -993,15 +1067,25 @@ child: Transform.scale(
         final totalW = constraints.maxWidth;
 
         return AnimatedBuilder(
-          animation: _morphAnim,
+          // Both stages. The morph drives the artwork; the panel fade drives the
+          // lyric. Reading both in one builder keeps them in the same frame
+          // without letting either own the other's timing.
+          animation: Listenable.merge([_morphAnim, _panelFadeController]),
           builder: (context, _) {
             final t = _morphAnim.value;
+            final fade = _panelFadeController.value;
+
+            // The panel exists only once the artwork has LANDED. Not scaled up
+            // from 0.96, not slid in from below: the morph is carried by the
+            // artwork shrinking into the header as a shared element, and the
+            // lyric simply fades onto the finished frame.
+            final panelVisible = (_isLyricsOpen && t >= 1.0) ||
+                (_panelFadeController.isAnimating || fade > 0.001);
 
             return Stack(
               clipBehavior: Clip.none,
               children: [
-                // ── LAYER 1: Full Kinetic Lyrics View (fades in as t -> 1.0) ──
-                if (_isLyricsOpen || t > 0.001)
+                if (panelVisible)
                   // Listens to the measured deck so the list can end above it.
                   // Without this the lyric's last line sits underneath the
                   // scrubber, because this panel is full-page and the deck is a
@@ -1010,20 +1094,24 @@ child: Transform.scale(
                     valueListenable: _deckExtent,
                     builder: (context, deckExtent, child) => Positioned.fill(
                       child: IgnorePointer(
-                        ignoring: t < 0.6,
-                      // Revealed by slide and scale, never by Opacity.
+                        ignoring: fade < 0.6,
+                      // Revealed by ALPHA alone, and that is safe here because
+                      // this layer is only ON SCREEN once the artwork has landed.
                       //
-                      // This layer contains glass discs. A translucent layer
-                      // between a backdrop-filter lens and its content isolates
-                      // the backdrop the lens samples, so the glass goes flat
-                      // for the whole transition - the discs look like flat grey
-                      // circles while the lyric slides under them. Motion reads
-                      // the arrival just as well without breaking the material.
-                      child: Transform.translate(
-                        offset: Offset(0, 40.0 * (1.0 - t)),
-                        child: Transform.scale(
-                          scale: 0.96 + 0.04 * t,
-                          child:                         LyricsScreen(
+                      // It was previously a translate + scale running beside the
+                      // artwork collapse, which put a moving lyric behind a moving
+                      // artwork with the title and the glass buttons over both -
+                      // three movements in one frame, and the lyric readable
+                      // through the artwork on the way past.
+                      //
+                      // An Opacity is not used while the discs exist: a translucent layer above a
+                      // backdrop lens makes the glass go flat for the duration
+                      // (invariant 17). They are kept OUT of the tree until this
+                      // fade has landed - see the `chromeHidden` below - so there
+                      // is never a lens mid-fade to flatten.
+                      child: Opacity(
+                        opacity: fade,
+                        child:                         LyricsScreen(
                             onMinimize: widget.onMinimize,
                             onReturnToAlbum: _closeLyrics,
                             onTabTap: _navigateToTab,
@@ -1034,7 +1122,14 @@ child: Transform.scale(
                             // The two mode discs are owned by this deck's idle
                             // cycle alongside the scrubber, panes and artwork,
                             // rather than by a private timer inside the panel.
-                            chromeHidden: !(_deckVisible && !_lyricsChromeHidden),
+                            //
+                            // While the panel's own fade is still running they are
+                            // hidden outright: this layer is an alpha, and an alpha
+                            // above a backdrop lens makes the glass go flat
+                            // (invariant 17). They are glass, and they belong to the
+                            // landed frame.
+                            chromeHidden: fade < 1.0 ||
+                                !(_deckVisible && !_lyricsChromeHidden),
                             onFavorite: () {
                               HapticFeedback.lightImpact();
                               musicProvider.toggleLike(currentTrack);
@@ -1058,7 +1153,6 @@ child: Transform.scale(
                         ),
                       ),
                     ),
-                  ),
                   ),
 
                 // ── LAYER 2 retired into the shared deck below ──
