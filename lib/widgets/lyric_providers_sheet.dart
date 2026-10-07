@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -18,6 +19,32 @@ import 'liquid_switch.dart';
 /// somewhere else instead" - a one-off, showing what the lookup actually just
 /// did. Mixing them puts a reorder handle next to a spinner and makes both
 /// unreadable.
+/// Reports where a drag handle's finger is, without claiming the gesture.
+///
+/// `ReorderableDragStartListener` starts the reorder on its own; this only
+/// observes. A [Listener] rather than a [GestureDetector] on purpose - a
+/// GestureDetector here would enter the arena and can win it, and the reorder
+/// would stop starting.
+class _DragPositionReporter extends StatelessWidget {
+  const _DragPositionReporter({
+    required this.onMove,
+    required this.onEnd,
+    required this.child,
+  });
+
+  final void Function(Offset globalPosition) onMove;
+  final VoidCallback onEnd;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Listener(
+        onPointerMove: (event) => onMove(event.position),
+        onPointerUp: (_) => onEnd(),
+        onPointerCancel: (_) => onEnd(),
+        child: child,
+      );
+}
+
 enum LyricProvidersMode { settings, live }
 
 /// Modal sheet for customizing lyric provider priority order and enabled sources.
@@ -86,6 +113,73 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
   void _loadProviders() {
     _providers = List.from(_lyricsService.providerOrder);
     _enabled = Set.from(_lyricsService.enabledProviders);
+  }
+
+  final GlobalKey<State<StatefulWidget>> _reorderListKey = GlobalKey();
+
+  /// The list being reordered, captured when a row builds inside it.
+  ///
+  /// Driving the list's OWN position rather than injecting a ScrollController:
+  /// `ReorderableListView` owns its controller, and reaching in from outside
+  /// means fighting it for the same scroll activity.
+  ScrollPosition? _reorderPosition;
+
+  Ticker? _edgeTicker;
+  double _edgeSpeed = 0;
+
+  /// How close to an edge a dragged row has to be before the list moves.
+  static const double _edgeZone = 28.0;
+
+  /// List travel per second while the finger is inside the band.
+  ///
+  /// Constant rather than proportional to how far into the band it is: a list
+  /// that accelerates under a still finger is hard to aim with, and the band's
+  /// only job is to say "there is more this way".
+  ///
+  /// The reference does the same (`LyricsSourcesDialog.kt:596-597`), and it is
+  /// what makes the last row reachable at all - with ten providers the finger
+  /// runs out of list long before the row runs out of finger.
+  static const double _edgeSpeedPerSecond = 220.0;
+
+  /// Moves the list under a finger held near its edge.
+  void _updateEdgeScroll(Offset globalPosition) {
+    final position = _reorderPosition;
+    if (position == null || !position.hasPixels) return;
+    final context = position.context;
+    final render = context.notificationContext?.findRenderObject();
+    if (render is! RenderBox) return;
+
+    final local = render.globalToLocal(globalPosition);
+    final height = render.size.height;
+    final speed = local.dy - _edgeZone < 0
+        ? -_edgeSpeedPerSecond
+        : height - local.dy - _edgeZone < 0
+            ? _edgeSpeedPerSecond
+            : 0.0;
+
+    if (speed == _edgeSpeed) return;
+    _edgeSpeed = speed;
+    if (_edgeSpeed == 0) {
+      _edgeTicker?.dispose();
+      _edgeTicker = null;
+    } else {
+      _edgeTicker ??= Ticker(_onEdgeTick)..start();
+    }
+  }
+
+  void _stopEdgeScroll() {
+    if (_edgeSpeed == 0) return;
+    _edgeSpeed = 0;
+    _edgeTicker?.dispose();
+    _edgeTicker = null;
+  }
+
+  void _onEdgeTick(Duration elapsed) {
+    final position = _reorderPosition;
+    if (position == null || !position.hasPixels || _edgeSpeed == 0) return;
+    final next = (position.pixels + _edgeSpeed * elapsed.inMicroseconds / 1e6)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (next != position.pixels) position.jumpTo(next);
   }
 
   void _onReorder(int oldIndex, int newIndex) {
@@ -504,13 +598,24 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+),
+            ],
+          ),
+          const SizedBox(height: 12),
 
-              // Reorderable list
-              Flexible(
+          // The word-sync preference, HERE rather than only in Settings.
+          //
+          // It is a property of how this list is consulted, so it belongs next to
+          // the list - and the reference puts it inside its sources dialog
+          // (`LyricsSourcesDialog.kt:194`). A reader who has just spent effort
+          // ordering these ten sources is exactly the person deciding whether to
+          // spend more network time per track to get better timings, and the
+          // Settings copy cannot see the list it is talking about.
+          _buildPrioritizeRow(context, accentColor),
+          const SizedBox(height: 16),
+
+          // Reorderable list
+          Flexible(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
@@ -523,6 +628,7 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
                       ),
                     ),
                     child: ReorderableListView.builder(
+                      key: _reorderListKey,
                       physics: const ClampingScrollPhysics(),
                       itemCount: _providers.length,
                       onReorder: _onReorder,
@@ -533,6 +639,8 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
                         child: child,
                       ),
                       itemBuilder: (context, index) {
+                        _reorderPosition ??=
+                            Scrollable.maybeOf(context)?.position;
                         final provider = _providers[index];
                         final isEnabled = _enabled.contains(provider);
 
@@ -552,17 +660,27 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
                           child: Row(
                             children: [
                               // Drag Handle
-                              ReorderableDragStartListener(
-                                index: index,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 12),
-                                  child: Icon(
-                                    Icons.drag_indicator_rounded,
-                                    color: Colors.white.withValues(alpha: 0.4),
-                                    size: 22,
+ReorderableDragStartListener(
+                                  index: index,
+                                  // Feeds the edge scroll: the finger's position
+                                  // is what tells the list whether there is more
+                                  // this way. Without it, dragging the last row
+                                  // up is impossible - the finger reaches the top
+                                  // of the viewport long before the row does.
+                                  child: _DragPositionReporter(
+                                    onMove: _updateEdgeScroll,
+                                    onEnd: _stopEdgeScroll,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 12),
+                                      child: Icon(
+                                        Icons.drag_indicator_rounded,
+                                        color:
+                                            Colors.white.withValues(alpha: 0.4),
+                                        size: 22,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
 
                               // Provider Details
                               Expanded(
@@ -637,6 +755,70 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
     );
   }
 
+  /// "Prioritize syllable lyrics", shared by both sheet layouts.
+  ///
+  /// One builder for both, because a control that exists in one theme and not the
+  /// other is a control that is missing for whoever uses that theme.
+  Widget _buildPrioritizeRow(
+    BuildContext context,
+    Color accentColor, {
+    bool materialYou = false,
+  }) {
+    final provider = Provider.of<MusicProvider>(context, listen: false);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: () => provider.setPrioritizeSyllableSync(
+        !provider.prioritizeSyllableSync,
+      ),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Prioritize syllable lyrics',
+                    style: materialYou
+                        ? MaterialYouTypography.titleMedium(
+                            colorScheme.onSurface,
+                          )
+                        : GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Keep searching past a line-synced match for word-level '
+                    'timings',
+                    style: materialYou
+                        ? MaterialYouTypography.bodySmall(
+                            colorScheme.onSurfaceVariant,
+                          )
+                        : GoogleFonts.plusJakartaSans(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 12,
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Switch(
+              value: provider.prioritizeSyllableSync,
+              onChanged: (v) => provider.setPrioritizeSyllableSync(v),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMaterialYouLayout(BuildContext context, Color accentColor) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -696,25 +878,37 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
                 ],
               ),
               const SizedBox(height: 16),
+              _buildPrioritizeRow(
+                context,
+                colorScheme.primary,
+                materialYou: true,
+              ),
               Flexible(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: ReorderableListView.builder(
-                    physics: const ClampingScrollPhysics(),
-                    itemCount: _providers.length,
-                    onReorder: _onReorder,
-                    itemBuilder: (context, index) {
-                      final provider = _providers[index];
-                      final isEnabled = _enabled.contains(provider);
+                      key: _reorderListKey,
+                      physics: const ClampingScrollPhysics(),
+                      itemCount: _providers.length,
+                      onReorder: _onReorder,
+                      itemBuilder: (context, index) {
+                        _reorderPosition ??=
+                            Scrollable.maybeOf(context)?.position;
+                        final provider = _providers[index];
+                        final isEnabled = _enabled.contains(provider);
 
-                      return ListTile(
+                        return ListTile(
                         key: ValueKey(provider),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                        leading: ReorderableDragStartListener(
-                          index: index,
-                          child: Icon(Icons.drag_indicator_rounded,
-                              color: colorScheme.onSurfaceVariant),
-                        ),
+leading: ReorderableDragStartListener(
+                            index: index,
+                            child: _DragPositionReporter(
+                              onMove: _updateEdgeScroll,
+                              onEnd: _stopEdgeScroll,
+                              child: Icon(Icons.drag_indicator_rounded,
+                                  color: colorScheme.onSurfaceVariant),
+                            ),
+                          ),
                         title: Text(
                           provider.displayName,
                           style: TextStyle(
@@ -746,3 +940,4 @@ class _LyricProvidersSheetState extends State<LyricProvidersSheet> {
     );
   }
 }
+
