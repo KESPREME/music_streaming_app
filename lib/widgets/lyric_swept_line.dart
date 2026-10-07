@@ -144,6 +144,8 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
   String _measuredText = '';
   TextStyle? _measuredStyle;
   double _measuredWidth = -1;
+  int? _measuredMaxLines;
+  TextOverflow? _measuredOverflow;
 
   @override
   void dispose() {
@@ -152,10 +154,37 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
     super.dispose();
   }
 
+  /// The line as a single clamped [Text].
+  ///
+  /// One place, so the clamp cannot be applied to the plain paths and forgotten
+  /// on the swept one. It WAS: `maxLines` reached the early returns and the dim
+  /// base, but not the lit copy inside the clip - so the seek-bar strip, whose
+  /// whole reason for setting it is that it may not resize the deck, wrapped to
+  /// two rows and pushed the scrubber down the screen for a long lyric line.
+  Text _text(Color color) => Text(
+        widget.entry.text,
+        style: widget.style.copyWith(color: color),
+        maxLines: widget.maxLines,
+        overflow: widget.overflow,
+      );
+
+  /// The painted line, clamped, so measurement matches what is on screen.
+  ///
+  /// The prefix-width table has to be measured against the SAME layout the widget
+  /// paints. Measuring an unclamped line while painting a clamped one puts the
+  /// wipe's boundary in the wrong place - the cut lands short of the word it is
+  /// lighting.
+  TextSpan _spanForMeasurement() => TextSpan(
+        text: widget.entry.text,
+        style: widget.style,
+      );
+
   void _ensureMeasured(double availableWidth) {
     if (_measuredText == widget.entry.text &&
         _measuredStyle == widget.style &&
         _measuredWidth == availableWidth &&
+        _measuredMaxLines == widget.maxLines &&
+        _measuredOverflow == widget.overflow &&
         _prefixWidths.length == widget.entry.text.length + 1) {
       return;
     }
@@ -167,12 +196,19 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
       _measuredText = text;
       _measuredStyle = widget.style;
       _measuredWidth = availableWidth;
+      _measuredMaxLines = widget.maxLines;
+      _measuredOverflow = widget.overflow;
       return;
     }
 
     final painter = TextPainter(
-      text: TextSpan(text: text, style: widget.style),
+      text: _spanForMeasurement(),
       textDirection: TextDirection.ltr,
+      // Matches the painted Text so the caret advances line up with what the
+      // reader sees, including the ellipsis on a clamped line.
+      maxLines: widget.maxLines,
+      ellipsis:
+          widget.overflow == TextOverflow.ellipsis ? '…' : null,
     )..layout(maxWidth: availableWidth);
 
     // Walking the caret gives the advance at every character boundary, which
@@ -190,6 +226,8 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
     _measuredText = text;
     _measuredStyle = widget.style;
     _measuredWidth = availableWidth;
+    _measuredMaxLines = widget.maxLines;
+    _measuredOverflow = widget.overflow;
   }
 
   /// Where each timed word sits in [text] as a `(start, end)` span, or null
@@ -276,12 +314,7 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
     final sweepable = entry.isWordSynced && !_isBrowsing;
 
     if (!sweepable) {
-      return Text(
-        entry.text,
-        style: widget.style,
-        maxLines: widget.maxLines,
-        overflow: widget.overflow,
-      );
+      return _text(widget.style.color ?? Colors.white);
     }
 
     return LayoutBuilder(
@@ -361,7 +394,7 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
       untilMs: entry.animatesUntilMs,
     );
     if (!animating) {
-      return Text(entry.text, style: widget.style);
+      return _text(widget.style.color ?? Colors.white);
     }
 
     final length = entry.text.length;
@@ -370,10 +403,10 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
     final revealed =
         revealedChars(entry, now).clamp(0.0, length.toDouble()).round();
     if (revealed <= 0) {
-      return Text(entry.text, style: widget.style.copyWith(color: widget.dimColor));
+      return _text(widget.dimColor);
     }
     if (revealed >= length) {
-      return Text(entry.text, style: widget.style);
+      return _text(widget.style.color ?? Colors.white);
     }
 
     // ONE Stack for the whole line.
@@ -390,7 +423,7 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
             ? _prefixWidths.last
             : 0.0;
     if (litWidth <= 0) {
-      return Text(entry.text, style: widget.style.copyWith(color: widget.dimColor));
+      return _text(widget.dimColor);
     }
 
     // NO headroom padding, deliberately.
@@ -408,10 +441,10 @@ class _LyricSweptLineState extends State<LyricSweptLine> {
     return Stack(
       clipBehavior: Clip.none,
       children: <Widget>[
-        Text(entry.text, style: widget.style.copyWith(color: widget.dimColor)),
+        _text(widget.dimColor),
         ClipRect(
           clipper: _LeftWidthClipper(litWidth),
-          child: Text(entry.text, style: widget.style),
+          child: _text(widget.style.color ?? Colors.white),
         ),
         ..._liftedSlices(entry, now),
         ...(widget.glow ? _heldWordGrowth(entry, revealed, now) : const []),

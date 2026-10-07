@@ -10,7 +10,6 @@ import 'package:video_player/video_player.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../models/track.dart';
-import '../models/lyrics_entry.dart';
 import '../core/perf_trace.dart';
 import '../providers/music_provider.dart';
 import '../services/audio_output_service.dart';
@@ -26,7 +25,7 @@ import '../widgets/audio_output_sheet.dart';
 import '../widgets/liquid_glass_pill.dart';
 import '../widgets/measure_size.dart';
 import '../widgets/lyric_providers_sheet.dart';
-import '../widgets/lyric_swept_line.dart';
+import '../widgets/lyric_strip.dart';
 import '../widgets/scroll_collapse_tracker.dart';
 import '../services/lyrics/lyric_clock.dart';
 import '../widgets/stagger_in.dart';
@@ -34,7 +33,6 @@ import '../widgets/in_place_canvas_player.dart';
 import '../screens/lyrics_screen.dart';
 import '../screens/queue_screen.dart';
 import '../utils/color_utils.dart';
-import '../utils/lyrics_utils.dart';
 import '../utils/image_quality_utils.dart';
 
 /// Full-screen Now Playing experience matching Apple Music / Muzo liquid glass UI/UX
@@ -235,7 +233,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   /// player's position stream, and stopped when the lyric is absent or the song
   /// does not move - same guard the full panel uses, so a standing deck does not
   /// schedule frames forever.
-  LyricClock? _lyricClock;
+  ///
+  /// Non-null from `initState` rather than from `didChangeDependencies`: the
+  /// strip's build reads it, and a `late` field the analyzer cannot prove is set
+  /// would either need an assertion or a second ticker to stand in for it.
+  late final LyricClock _lyricClock;
   StreamSubscription<Duration>? _lyricPosSub;
   Timer? _lyricStallTimer;
   int _lastLyricPosMs = -1;
@@ -248,6 +250,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     // Both share ONE deck below (lyric line, scrubber, transport, volume,
     // pill, output), so nothing jumps geometry switching between them.
     _pageController = PageController(initialPage: 0);
+    _lyricClock = LyricClock(vsync: this);
     _queueMorphController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 380),
@@ -305,8 +308,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final provider = Provider.of<MusicProvider>(context, listen: false);
-    _lyricClock ??= LyricClock(vsync: this);
-    _lyricClock!
+    _lyricClock
       ..resync(provider.position.inMilliseconds)
       ..report(provider.position.inMilliseconds, rate: provider.playbackSpeed);
     _lyricPosSub ??= provider.positionStream.listen((pos) {
@@ -314,7 +316,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       // Refresh only the sighting anchor: the strip's StreamBuilder reads each
       // emitted snapshot itself, so we anchor the clock here but must not
       // rebuild the whole page on the same tick.
-      _lyricClock!.report(pos.inMilliseconds, rate: provider.playbackSpeed);
+      _lyricClock.report(pos.inMilliseconds, rate: provider.playbackSpeed);
     });
     // Coarse corrector: the stream itself emits unevenly, so this timer is what
     // actually starts/stops the ticker. Two unchanged readings mean the song is
@@ -327,16 +329,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           provider.currentLyrics?.any((e) => e.isWordSynced) ?? false;
       if (reported == _lastLyricPosMs) {
         _lyricStalls++;
-        if (_lyricStalls >= 2 && _lyricClock!.isRunning) {
-          _lyricClock!.stop();
+        if (_lyricStalls >= 2 && _lyricClock.isRunning) {
+          _lyricClock.stop();
         }
       } else {
         _lyricStalls = 0;
         _lastLyricPosMs = reported;
-        if (!_lyricClock!.isRunning && hasWordSynced) {
-          _lyricClock!.start();
+        if (!_lyricClock.isRunning && hasWordSynced) {
+          _lyricClock.start();
         }
-        _lyricClock!.report(reported, rate: provider.playbackSpeed);
+        _lyricClock.report(reported, rate: provider.playbackSpeed);
       }
     });
   }
@@ -348,7 +350,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _lyricsIdleTimer?.cancel();
     _lyricPosSub?.cancel();
     _lyricStallTimer?.cancel();
-    _lyricClock?.dispose();
+    _lyricClock.dispose();
     _morphController.dispose();
     _panelFadeController.dispose();
     // Performance & Battery Optimization: Pause silent canvas video when NowPlaying screen is dismissed
@@ -1422,163 +1424,22 @@ child: Transform.scale(
     return Consumer<MusicProvider>(
       builder: (context, musicProv, _) {
         final activeTrack = musicProv.currentTrack ?? track;
-        return StreamBuilder<Duration>(
-          stream: musicProv.positionStream,
-          initialData: musicProv.position,
-          builder: (context, snapshot) {
-            String displayText = 'Let it breathe';
-            bool isInstrumental = true;
-            LyricsEntry? sweptEntry;
+        final isMatchingTrack = musicProv.lyricsTrackId == activeTrack.id;
+        final phraseIndex =
+            activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
 
-            final isMatchingTrack = musicProv.lyricsTrackId == activeTrack.id;
-
-            if (musicProv.isLoadingLyrics || !isMatchingTrack) {
-              final idx = activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
-              displayText = _lyricsIntroPhrases[idx];
-              isInstrumental = true;
-            } else if (musicProv.hasSyncedLyrics &&
-                musicProv.currentLyrics != null &&
-                musicProv.currentLyrics!.isNotEmpty) {
-              final lyrics = musicProv.currentLyrics!;
-              final posMs = _draggedPositionSec != null
-                  ? _draggedPositionSec!.toInt()
-                  : (snapshot.data?.inMilliseconds ?? musicProv.position.inMilliseconds);
-              final idx = LyricsUtils.findCurrentLineIndex(lyrics, posMs);
-
-              if (idx >= 0 && idx < lyrics.length) {
-                final line = lyrics[idx];
-                final text = line.text.trim();
-                final firstVocalIdx = lyrics.indexWhere(
-                  (e) => e.text.trim().isNotEmpty && !e.isMusicalBreak,
-                );
-                final isBeforeFirstVocal = firstVocalIdx >= 0 &&
-                    (idx < firstVocalIdx || posMs < lyrics[firstVocalIdx].timeMs);
-
-                if (text.isNotEmpty && !line.isMusicalBreak && !isBeforeFirstVocal) {
-                  displayText = text;
-                  isInstrumental = false;
-                  // BitChord parity: this row is the word-by-word sweep when the
-                  // line has per-word timings, otherwise the plain title only.
-                  if (line.isWordSynced) sweptEntry = line;
-                } else {
-                  final pIdx = activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
-                  displayText = _lyricsIntroPhrases[pIdx];
-                  isInstrumental = true;
-                }
-              } else {
-                final pIdx = activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
-                displayText = _lyricsIntroPhrases[pIdx];
-                isInstrumental = true;
-              }
-            } else {
-              final idx = activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
-              displayText = _lyricsIntroPhrases[idx];
-              isInstrumental = true;
-            }
-
-            return Semantics(
-              label: 'Current lyric: $displayText. Tap to open full lyrics.',
-              button: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _navigateToTab(0);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-                  child: Row(
-                    children: [
-                      if (isInstrumental) ...[
-                        Icon(
-                          Icons.music_note_rounded,
-                          size: 16,
-                          color: Colors.white.withValues(alpha: 0.65),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 380),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0.0, 0.28),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: sweptEntry != null && _lyricClock != null
-                              ? LyricSweptLine(
-                                  key: ValueKey<String>(
-                                      '${activeTrack.id}:${sweptEntry.timeMs}'),
-                                  entry: sweptEntry,
-                                  clock: _lyricClock!,
-                                  // The preview is title-sized: the same wipe,
-                                  // drawn small. BitChord uses titleMedium for it.
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: Colors.white.withValues(alpha: 0.95),
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -0.15,
-                                  ),
-                                  dimColor: Colors.white.withValues(alpha: 0.55),
-                                  // The strip is ONE pinned line, so the panel's
-                                  // motion is off here on purpose: a word rising
-                                  // on a fixed row once a second reads as the
-                                  // strip twitching, not as emphasis. Same call as
-                                  // the reference (PlayerLyrics.kt:2616, rise=false).
-                                  rise: false,
-                                  glow: false,
-                                  // Clamped: a wrapped lyric line here would grow
-                                  // the deck, and the deck is the one surface
-                                  // that must never resize under a layout that
-                                  // is supposed to be fixed.
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  isActive: true,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    _navigateToTab(0);
-                                  },
-                                )
-                              : Text(
-                                  displayText,
-                                  key: ValueKey<String>(
-                                      '${activeTrack.id}:$isInstrumental:$displayText'),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: isInstrumental
-                                        ? Colors.white
-                                            .withValues(alpha: 0.60)
-                                        : Colors.white.withValues(alpha: 0.95),
-                                    fontSize: 14.5,
-                                    fontWeight: isInstrumental
-                                        ? FontWeight.w500
-                                        : FontWeight.w600,
-                                    letterSpacing: -0.15,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        size: 20,
-                        color: Colors.white.withValues(alpha: 0.50),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
+        return LyricStrip(
+          lyrics: isMatchingTrack ? musicProv.currentLyrics : null,
+          clock: _lyricClock,
+          introPhrase: _lyricsIntroPhrases[phraseIndex],
+          isLoading: musicProv.isLoadingLyrics,
+          hasLyrics: musicProv.hasSyncedLyrics,
+          positionOverrideMs: _draggedPositionSec != null
+              ? _draggedPositionSec!.toInt() * 1000
+              : null,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _navigateToTab(0);
           },
         );
       },
