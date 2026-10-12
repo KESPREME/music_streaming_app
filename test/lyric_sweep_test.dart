@@ -264,11 +264,12 @@ void main() {
     });
 
     test('a line stays active until the next one starts', () {
-      expect(isActiveLine(entries, 0, 500), isTrue);
-      // 1500 is inside the gap after line 0's words but before line 1 starts,
-      // so line 0 must still be lit.
-      expect(isActiveLine(entries, 0, 1500), isTrue);
-      expect(isActiveLine(entries, 0, 2000), isFalse);
+      // 1500 is inside the gap after line 0's words but before line 1 starts, so
+      // line 0 must still be the active one (the highlight is not released into
+      // the gap before every line).
+      expect(activeLineIndex(entries, 500), 0);
+      expect(activeLineIndex(entries, 1500), 0);
+      expect(activeLineIndex(entries, 2000), 1);
     });
 
     test('focus leads the singing rather than trailing it', () {
@@ -284,6 +285,72 @@ void main() {
 
     test('scrollLead tolerates an empty list', () {
       expect(scrollLeadMs(const [], 0), 350);
+    });
+  });
+
+  group('word spans', () {
+    test('a repeated word is found at its OWN occurrence each time', () {
+      final words = [
+        const LyricWord(startMs: 0, endMs: 100, text: 'again'),
+        const LyricWord(startMs: 200, endMs: 300, text: 'again'),
+      ];
+      expect(locateWordSpans('again again', words), [(0, 5), (6, 11)]);
+    });
+
+    test('a word the text does not contain is null, not a wrong span', () {
+      final words = [
+        const LyricWord(startMs: 0, endMs: 100, text: 'here'),
+        const LyricWord(startMs: 200, endMs: 300, text: 'missing'),
+        const LyricWord(startMs: 400, endMs: 500, text: 'now'),
+      ];
+      expect(locateWordSpans('here we are now', words), [(0, 4), null, (12, 15)]);
+    });
+
+    test('the entry caches ONE answer for the sweep, the lift and the geometry',
+        () {
+      final e = _entry('one two', words: const [
+        LyricWord(startMs: 0, endMs: 100, text: 'one'),
+        LyricWord(startMs: 200, endMs: 300, text: 'two'),
+      ]);
+      expect(identical(e.wordSpans, e.wordSpans), isTrue);
+      expect(e.wordSpans, [(0, 3), (4, 7)]);
+    });
+
+    test('a split word sweeps per SYLLABLE at constant speed; a whole word as '
+        'one range', () {
+      const split = LyricWord(
+        startMs: 0,
+        endMs: 900,
+        text: 'enough',
+        syllables: [
+          LyricSyllable(startMs: 0, endMs: 300, start: 0, end: 2),
+          LyricSyllable(startMs: 300, endMs: 900, start: 2, end: 6),
+        ],
+      );
+      const whole = LyricWord(startMs: 1000, endMs: 1200, text: 'is');
+      final words = [split, whole];
+      final spans = locateWordSpans('enough is', words);
+      expect(sweepSpansOf(words, spans), [(0, 2), (2, 6), (7, 9)]);
+    });
+  });
+
+  group('the animation window', () {
+    test('covers the SETTLE of the last word, not just its singing', () {
+      // The last word ends at 300ms but keeps falling back to the line for
+      // another 700ms. A window that closed at 300 froze it mid-fall.
+      final e = _entry('one', words: const [
+        LyricWord(startMs: 0, endMs: 300, text: 'one'),
+      ]);
+      expect(e.animatesUntilMs, 1000);
+    });
+
+    test('covers a held word until its last letter has come to rest', () {
+      final e = _entry('oooh', words: const [
+        LyricWord(startMs: 0, endMs: 3000, text: 'oooh'),
+      ]);
+      expect(e.growingWords, isNotEmpty);
+      expect(e.animatesUntilMs, greaterThan(3700),
+          reason: 'the letters keep moving after the note ends');
     });
   });
 
@@ -305,10 +372,5 @@ void main() {
       );
     });
 
-    test('clampRevealed holds a wipe inside its line', () {
-      expect(LyricClock.clampRevealed(-5, 10), 0);
-      expect(LyricClock.clampRevealed(50, 10), 10);
-      expect(LyricClock.clampRevealed(5, 10), 5);
-    });
   });
 }

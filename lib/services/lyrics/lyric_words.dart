@@ -330,3 +330,57 @@ List<LyricWord> wordsFromWordTimings(
   }
   return words;
 }
+
+/// Where each timed word sits in [text], as a `(start, end)` character span, or
+/// null where it could not be found.
+///
+/// THE ONE SPAN FINDER. The sweep, the lift, the held-word swell and the
+/// geometry all need to know which characters a word covers, and they used to
+/// find out three different ways - two of which disagreed about repeated words
+/// and trimmed whitespace, so the clip and the lift could light different
+/// letters of the same line. Everything now reads this.
+///
+/// Located by WALKING the text with a search, not by summing word lengths: the
+/// line text carries separators the words do not, and a source's word timings
+/// are not obliged to tile it. Walking (rather than searching from the start)
+/// is also what makes a line that repeats a word ("again, again") light each
+/// occurrence in its own turn. Mirrors BitChord's `LyricLine.wordSpans`.
+List<(int, int)?> locateWordSpans(String text, List<LyricWord> words) {
+  final out = List<(int, int)?>.filled(words.length, null);
+  var cursor = 0;
+  for (var i = 0; i < words.length; i++) {
+    final needle = words[i].text.trim();
+    if (needle.isEmpty) continue;
+    final at = text.indexOf(needle, cursor);
+    if (at < 0) continue;
+    out[i] = (at, at + needle.length);
+    cursor = at + needle.length;
+  }
+  return out;
+}
+
+/// The ranges the sweep moves across at CONSTANT speed: each syllable of a
+/// split word, otherwise the whole word.
+///
+/// A glyph-by-glyph interpolation runs fast over an "i" and slow over an "m",
+/// because a character is a unit of count and not of width. Interpolating across
+/// a syllable's pixel width instead is what makes a held syllable draw
+/// evenly (BitChord `LyricLine.sweepSpans`, `horizontalAt`).
+List<(int, int)> sweepSpansOf(List<LyricWord> words, List<(int, int)?> spans) {
+  final out = <(int, int)>[];
+  for (var i = 0; i < words.length && i < spans.length; i++) {
+    final span = spans[i];
+    if (span == null) continue;
+    final word = words[i];
+    if (word.syllables.length > 1) {
+      for (final s in word.syllables) {
+        final a = span.$1 + s.start;
+        final b = span.$1 + s.end;
+        if (b > a && b <= span.$2) out.add((a, b));
+      }
+    } else {
+      out.add(span);
+    }
+  }
+  return out;
+}

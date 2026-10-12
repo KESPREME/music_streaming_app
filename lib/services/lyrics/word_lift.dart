@@ -119,19 +119,6 @@ double wordFall(List<LyricWord> words, int index, int positionMs) {
   return liftHeight(word.endMs - word.startMs) * _smooth(falling);
 }
 
-/// Index of the word under [positionMs], or -1 when none is.
-///
-/// Read once per frame so the caller can decide whether there is anything to
-/// animate at all without walking every word twice.
-int activeWordAt(List<LyricWord> words, int positionMs) {
-  for (var i = 0; i < words.length; i++) {
-    if (positionMs >= words[i].startMs && positionMs <= words[i].endMs) {
-      return i;
-    }
-  }
-  return -1;
-}
-
 /// Ease in and out of the ends, so the lift has no corners on it.
 double _smooth(double fraction) =>
     fraction * fraction * (3.0 - 2.0 * fraction);

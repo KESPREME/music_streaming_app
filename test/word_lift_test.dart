@@ -6,6 +6,17 @@ import 'package:music_streaming_app/services/lyrics/word_lift.dart';
 LyricWord _word(String text, int startMs, int endMs) =>
     LyricWord(startMs: startMs, endMs: endMs, text: text);
 
+/// The index of the word under [positionMs], or -1.
+///
+/// Test scaffolding only: the renderer iterates every word and asks
+/// [wordLiftPx] for each, so it never needs to find "the" active word. It used
+/// to live in the library with no caller.
+int activeWordAt(List<LyricWord> words, int positionMs) {
+  for (var i = 0; i < words.length; i++) {
+    if (positionMs >= words[i].startMs && positionMs <= words[i].endMs) return i;
+  }
+  return -1;
+}
 void main() {
   group('the lift itself', () {
     final w = _word('golden', 1000, 2000);

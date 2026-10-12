@@ -20,9 +20,14 @@
 import 'dart:math' as math;
 
 import '../../models/lyrics_entry.dart';
-import 'lyric_words.dart';
+import 'lyric_words.dart' show LyricWord;
 
 /// Characters revealed in [entry] at [positionMs].
+///
+/// FRACTIONAL, never rounded. A caller that rounded this (the old renderer did)
+/// snaps the wipe to whole glyphs - 10-15px steps at lyric size - and a held
+/// note then draws as a staircase. The renderer interpolates between character
+/// edges instead.
 double revealedChars(LyricsEntry entry, int positionMs) {
   final text = entry.text;
   if (text.isEmpty) return 0;
@@ -33,60 +38,57 @@ double revealedChars(LyricsEntry entry, int positionMs) {
     return positionMs >= entry.timeMs ? text.length.toDouble() : 0;
   }
 
-  var offset = 0;
+  // The spans are found ONCE per entry and shared with the renderer, so the
+  // wipe and the lift can never disagree about which letters a word covers.
+  final spans = entry.wordSpans;
+
   for (var i = 0; i < words.length; i++) {
     final word = words[i];
-    final start = _indexOfWord(text, word.text, offset);
-    if (start < 0) {
-      offset += word.text.length;
-      continue;
-    }
-    final end = start + word.text.length;
+    final span = spans[i];
+    // A word the text does not contain (a provider's text and timing disagree)
+    // is skipped rather than mis-clipped.
+    if (span == null) continue;
+    final (start, end) = span;
 
     if (positionMs < word.startMs) return start.toDouble();
     if (positionMs < word.endMs) {
-      return (start + _charsSungInWord(word, positionMs)).toDouble();
+      return start + _charsSungInWord(word, positionMs, end - start);
     }
 
     // Past this word. If there is a next one, fill the gap over the pause.
-    if (i + 1 < words.length) {
-      final next = words[i + 1];
-      if (positionMs < next.startMs) {
-        final gapStart = _indexOfWord(text, next.text, end);
-        final target = gapStart < 0 ? end : gapStart;
-        final pause = math.max(1, next.startMs - word.endMs);
+    var next = i + 1;
+    while (next < words.length && spans[next] == null) {
+      next++;
+    }
+    if (next < words.length) {
+      if (positionMs < words[next].startMs) {
+        final target = spans[next]!.$1;
+        final pause = math.max(1, words[next].startMs - word.endMs);
         final through = (positionMs - word.endMs) / pause;
-        return (end + through * (target - end)).toDouble();
+        return end + through * (target - end);
       }
     }
-
-    offset = end;
   }
 
   return text.length.toDouble();
 }
 
-/// How much of [word] has been sung at [positionMs].
+/// How many of [word]'s characters have been sung at [positionMs].
 ///
 /// Within a syllable this is proportional. Between syllables the previous
 /// syllable's slice is held, which is what keeps a source that times only
 /// whole words from stuttering at its own word boundaries.
 ///
-/// A word with no syllables interpolates across its OWN span. That case is not
-/// hypothetical: [LyricWord] is a plain immutable value, so a word built
-/// directly rather than through [wordsFromRuns] carries no syllables at all.
-/// Interpolating across the word's timing here is what keeps such a word
-/// drawing gradually instead of snapping whole, which is the stutter the
-/// fractional count exists to prevent.
-double _charsSungInWord(LyricWord word, int positionMs) {
+/// [length] is the word's span in the line, which can differ from its text when
+/// a source padded it; the result is scaled to it.
+double _charsSungInWord(LyricWord word, int positionMs, int length) {
   final syllables = word.syllables;
 
   if (syllables.isEmpty) {
     final span = math.max(1, word.endMs - word.startMs);
-    final through = ((positionMs - word.startMs) / span)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    return through * word.text.length;
+    final through =
+        ((positionMs - word.startMs) / span).clamp(0.0, 1.0).toDouble();
+    return through * length;
   }
 
   for (final syllable in syllables) {
@@ -96,33 +98,15 @@ double _charsSungInWord(LyricWord word, int positionMs) {
     if (positionMs < syllable.endMs) {
       final span = syllable.length;
       if (span <= 0) return syllable.start.toDouble();
-      final through =
-          (positionMs - syllable.startMs) / math.max(1, syllable.endMs - syllable.startMs);
+      final through = (positionMs - syllable.startMs) /
+          math.max(1, syllable.endMs - syllable.startMs);
       return (syllable.start + through * span)
           .clamp(syllable.start.toDouble(), syllable.end.toDouble())
           .toDouble();
     }
   }
-  return word.text.length.toDouble();
+  return length.toDouble();
 }
-
-/// Where [word] starts in [text], searched from [from].
-///
-/// Walking rather than searching matters: a line that repeats a word ("again,
-/// again") would otherwise light every occurrence at once. Returns -1 when the
-/// word cannot be found at all, which happens when a provider's text and its
-/// timing disagree, and the caller then moves on rather than mis-clipping.
-int _indexOfWord(String text, String word, int from) {
-  if (word.isEmpty) return from;
-  final at = text.indexOf(word, from < 0 ? 0 : from);
-  if (at >= 0) return at;
-  // Some providers trim or normalise whitespace, so the exact string may not
-  // appear. Fall back to the first occurrence at or before the walk position so
-  // the line still progresses instead of stalling forever.
-  final any = text.indexOf(word);
-  return any >= 0 && any <= from ? any : -1;
-}
-
 /// The active line at [positionMs], or -1 when none has started.
 ///
 /// Linear, like the rest of the lookup path here: a song has tens to hundreds
@@ -138,24 +122,6 @@ int activeLineIndex(List<LyricsEntry> entries, int positionMs) {
     }
   }
   return active;
-}
-
-/// Whether [entry] is the one that should be lit at [positionMs].
-///
-/// A line stays active until the next one starts, rather than only while its
-/// own words are being sung. Releasing it the instant its last word ends would
-/// drop the highlight into the gap before every line.
-bool isActiveLine(List<LyricsEntry> entries, int index, int positionMs) {
-  if (index < 0 || index >= entries.length) return false;
-  final start = entries[index].timeMs;
-  if (positionMs < start) return false;
-
-  for (var i = index + 1; i < entries.length; i++) {
-    if (entries[i].timeMs > positionMs) break;
-    // Another line has begun; this one is done.
-    if (i > index) return false;
-  }
-  return true;
 }
 
 /// How far the auto-scroll should lead the singing, in milliseconds.

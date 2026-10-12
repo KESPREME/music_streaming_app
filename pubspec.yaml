@@ -61,6 +61,11 @@ flutter:
   assets:
     - assets/images/
     - assets/po_token.html
+    # Plus Jakarta Sans, bundled so google_fonts resolves it from the asset
+    # bundle instead of fetching at runtime (OFL-1.1, licence alongside). Fetching
+    # meant the lyric lines re-laid out mid-sweep when the face arrived, and
+    # offline there was no face at all. Names are the ones google_fonts looks up.
+    - assets/google_fonts/
 
 dev_dependencies:
   flutter_test:

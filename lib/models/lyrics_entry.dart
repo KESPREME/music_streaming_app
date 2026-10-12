@@ -1,7 +1,9 @@
 // lib/models/lyrics_entry.dart
 // Data model for synced lyrics
 
+import '../services/lyrics/lyric_growth.dart';
 import '../services/lyrics/lyric_words.dart';
+import '../services/lyrics/word_lift.dart' show liftRiseMs;
 
 /// Represents word or syllable-level timing for karaoke sync
 class WordTiming {
@@ -102,16 +104,46 @@ class LyricsEntry implements Comparable<LyricsEntry> {
           ? timedWords.first.startMs
           : timeMs;
 
+  /// Where each timed word sits in [text], found once.
+  ///
+  /// The single answer to "which characters is this word", shared by the sweep,
+  /// the lift, the held-word swell and the geometry (see [locateWordSpans]).
+  late final List<(int, int)?> wordSpans = locateWordSpans(text, timedWords);
+
+  /// The ranges the wipe crosses at constant speed. See [sweepSpansOf].
+  late final List<(int, int)> sweepSpans = sweepSpansOf(timedWords, wordSpans);
+
+  /// The held words on this line that earn the letter-by-letter swell.
+  ///
+  /// Empty for almost every line, which is the point: the common case costs one
+  /// scan at first use and nothing per frame.
+  late final List<GrowingWord> growingWords = growingWordsOf(timedWords);
+
   /// Last moment this line has anything to animate.
   ///
   /// Drives the per-line repaint gate: a line outside its own window must not
-  /// rebuild on a 60Hz clock, or isolating the sweep buys nothing.
-  int get animatesUntilMs {
+  /// repaint on a 60Hz clock, or isolating the sweep buys nothing.
+  ///
+  /// It has to cover the SETTLE as well as the singing. A word keeps falling
+  /// back to the line for [liftRiseMs] after it ends, and a held word's letters
+  /// keep moving until they come to rest; a window that closed at the last
+  /// word's end froze both mid-motion and the line then jumped the rest of the
+  /// way on the next repaint. BitChord: nimatesUntilMs = max(endMs,
+  /// lastWord.end + 700, growing.restsAt) (LyricLine.kt).
+  late final int animatesUntilMs = _computeAnimatesUntilMs();
+
+  int _computeAnimatesUntilMs() {
     if (timedWords.isEmpty) return endMs ?? timeMs;
     final last = timedWords.last;
     final wordsEnd = last.endMs > timeMs ? last.endMs : timeMs;
     final lineEnd = endMs ?? wordsEnd;
-    return wordsEnd > lineEnd ? wordsEnd : lineEnd;
+    var until = wordsEnd > lineEnd ? wordsEnd : lineEnd;
+    final settled = wordsEnd + liftRiseMs.round();
+    if (settled > until) until = settled;
+    for (final word in growingWords) {
+      if (word.restsAtMs > until) until = word.restsAtMs;
+    }
+    return until;
   }
 
   @override
