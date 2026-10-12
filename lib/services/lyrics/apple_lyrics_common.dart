@@ -7,13 +7,18 @@
 // are identical once fetched, so the search and TTML parsing live here and each
 // provider contributes only its lookup.
 
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import '../../models/lyrics_entry.dart';
 import 'better_lyrics_provider.dart';
+import 'lyrics_http.dart';
+
+/// How a TTML document is downloaded.
+///
+/// The lead's lookup passes one that remembers what it has fetched, so lrc.red
+/// and Bini - whose `lyricsUrl` points at the very same `lrc.red/s/{ISRC}.ttml`
+/// file - do not download it twice. Null means the source's own client.
+typedef DocumentFetcher = Future<String?> Function(String url);
 
 /// A track being looked up in an Apple-style lyrics mirror.
 class AppleLyricsQuery {
@@ -48,27 +53,27 @@ class AppleLyricsQuery {
 
 /// Shared HTTP + TTML plumbing for the Apple mirrors.
 abstract class AppleLyricsSource {
-  static const Duration _timeout = Duration(seconds: 8);
-  static const String _userAgent =
-      'MusicStreamingApp/1.0.0 (lyrics; +https://github.com/)';
+  AppleLyricsSource({LyricsHttp? http}) : _http = http ?? LyricsHttp.shared;
 
-  final http.Client _client = http.Client();
+  final LyricsHttp _http;
+
+  /// The shared client, for subclasses that make requests of their own.
+  @protected
+  LyricsHttp get lyricsHttp => _http;
 
   /// Fetches and parses a TTML document, or null when it is unusable.
-  Future<List<LyricsEntry>?> fetchTtml(String url) async {
+  ///
+  /// [get] replaces the download when supplied, so a caller that already holds
+  /// - or is already fetching - the document can hand it over. Parsing is the
+  /// same either way.
+  Future<List<LyricsEntry>?> fetchTtml(
+    String url, {
+    DocumentFetcher? get,
+  }) async {
     try {
-      final response = await _client
-          .get(Uri.parse(url), headers: _headers)
-          .timeout(_timeout);
-      if (response.statusCode != 200) return null;
-      if (response.bodyBytes.isEmpty) return null;
-
-      // Served as XML, sometimes with a UTF-8 BOM or a leading comment.
-      final body = _stripPreamble(response.bodyBytes);
-      if (body.trim().isEmpty) return null;
-
-      final entries = BetterLyricsProvider.parseTtml(body);
-      return entries.isEmpty ? null : entries;
+      final body = await (get ?? _download)(url);
+      if (body == null) return null;
+      return parseTtmlDocument(body);
     } catch (e) {
       // Every one of these mirrors is a volunteer host. A failure here is
       // expected, not exceptional: the racing layer moves on to the next.
@@ -79,18 +84,33 @@ abstract class AppleLyricsSource {
     }
   }
 
-  Map<String, String> get _headers => const {
-        'User-Agent': _userAgent,
-        'Accept': 'application/xml, text/xml, */*',
-      };
+  Future<String?> _download(String url) => _http.getText(
+        url,
+        headers: const {'Accept': 'application/xml, text/xml, */*'},
+      );
 
-  /// Decodes bytes as UTF-8 and removes anything before the root element.
+  /// A TTML document parsed, or null when it is not one or holds no lines.
+  ///
+  /// Pure: no request is made, so it is what a test (or a caller that already
+  /// has the body) uses.
+  List<LyricsEntry>? parseTtmlDocument(String body) => parseTtmlBody(body);
+
+  /// [parseTtmlDocument] without needing an instance.
+  static List<LyricsEntry>? parseTtmlBody(String body) {
+    // Served as XML, sometimes with a UTF-8 BOM or a leading comment.
+    final text = _stripPreamble(body);
+    if (text.trim().isEmpty) return null;
+    final entries = BetterLyricsProvider.parseTtml(text);
+    return entries.isEmpty ? null : entries;
+  }
+
+  /// Removes anything before the root element.
   ///
   /// A document that does not start at `<tt` parses to nothing at all, and a
   /// stray BOM makes the first `<` miss, which looks exactly like an empty
   /// lyric rather than a malformed one.
-  static String _stripPreamble(List<int> bytes) {
-    var text = utf8.decode(bytes, allowMalformed: true);
+  static String _stripPreamble(String body) {
+    var text = body;
     final rootIndex = text.indexOf('<tt');
     if (rootIndex > 0) {
       text = text.substring(rootIndex);
@@ -107,8 +127,15 @@ abstract class AppleLyricsSource {
   /// Three seconds, matching the reference. A cover running twenty seconds
   /// longer is a different recording and must not borrow these timings - that is
   /// how a song ends up with the right words at the wrong moments.
+  ///
+  /// An UNKNOWN duration (on either side, or a non-positive one) cannot veto:
+  /// there is nothing to compare, and the reference counts the distance as 0
+  /// then (`LrcRed.kt` `best()`). Refusing every candidate for a local file
+  /// with no length tag would make this source useless to it.
   static bool durationMatches(int? candidateSec, int? wantedSec) {
-    if (candidateSec == null || wantedSec == null) return false;
+    if (candidateSec == null || wantedSec == null || wantedSec <= 0) {
+      return true;
+    }
     return (candidateSec - wantedSec).abs() <= durationToleranceSeconds;
   }
 

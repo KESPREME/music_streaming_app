@@ -1,21 +1,46 @@
 // lib/services/lyrics/lrclib_provider.dart
-// LrcLib API integration - free lyrics database
+// LRCLIB - a free, key-less, community lyrics database.
+//
+// Port of `LrcLib.kt`. Two calls, in order:
+//
+//   get     exact signature (artist + title + duration)
+//   search  fuzzy, when `get` misses - YouTube titles carry noise the exact
+//           endpoint will not match
+//
+// This provider returns SYNCED lyrics or nothing. Plain lyrics are a different
+// product (no timings at all), so a record that has only those is a miss here:
+// it would otherwise be handed to the synced parser and rendered as if every
+// line began at 0:00.
+//
+// WHAT WAS WRONG BEFORE
+//
+//   * No timeout: a hung connection held the whole lookup open.
+//   * `get` accepted a record with only plain lyrics, and the search fell back
+//     to `results.first` - whichever record happened to be first, synced or not,
+//     with any duration.
+//   * The search picked the closest duration only when a duration was known,
+//     and otherwise took the first hit blindly.
 
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+
 import 'package:flutter/foundation.dart';
 
-/// LrcLib API provider for synced lyrics
-/// API Documentation: https://lrclib.net/docs
+import 'lyrics_http.dart';
+
+/// LRCLIB provider for synced lyrics.
+/// API documentation: https://lrclib.net/docs
 class LrcLibProvider {
+  LrcLibProvider({LyricsHttp? http}) : _http = http ?? LyricsHttp.shared;
+
+  final LyricsHttp _http;
+
   static const String _baseUrl = 'https://lrclib.net';
-  static const String _userAgent =
-      'MusicStreamingApp/1.0.0 (https://github.com/example)';
 
-  final http.Client _httpClient = http.Client();
-
-  /// Get synced lyrics for a track
-  /// Returns LRC formatted lyrics or null if not found
+  /// Synced (LRC) lyrics for a track, or null when nothing synced is published.
+  ///
+  /// [album] is accepted for compatibility and deliberately not sent: YouTube's
+  /// album name rarely matches LRCLIB's spelling, and `get` treats a mismatch
+  /// as a miss. At most two requests are made.
   Future<String?> getLyrics({
     required String title,
     required String artist,
@@ -23,214 +48,118 @@ class LrcLibProvider {
     String? album,
   }) async {
     try {
-      // First try exact match with duration
-      if (durationSeconds != null) {
-        final exactResult = await _getExactMatch(
-          title: title,
-          artist: artist,
-          duration: durationSeconds,
-          album: album,
-        );
-        if (exactResult != null) return exactResult;
-      }
+      final wanted = durationSeconds != null && durationSeconds > 0
+          ? durationSeconds
+          : null;
 
-      // Fall back to search
-      return await _searchLyrics(
-        title: title,
-        artist: artist,
-        duration: durationSeconds,
-      );
+      final exact = await _exactMatch(title, artist, wanted);
+      if (exact != null) return exact;
+
+      return await _bestSearchHit(title, artist, wanted);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('LrcLibProvider: Error getting lyrics: $e');
-      }
+      if (kDebugMode) debugPrint('LrcLibProvider: Error getting lyrics: $e');
       return null;
     }
   }
 
-  /// Try to get exact match using the /api/get endpoint
-  Future<String?> _getExactMatch({
-    required String title,
-    required String artist,
-    required int duration,
-    String? album,
-  }) async {
+  /// `/api/get`, accepted only if it carries synced lyrics.
+  Future<String?> _exactMatch(String title, String artist, int? seconds) async {
+    final body = await _http.getText(_url('/api/get', {
+      'track_name': title,
+      'artist_name': artist,
+      if (seconds != null) 'duration': seconds.toString(),
+    }));
+    if (body == null) return null;
+    return syncedFrom(body);
+  }
+
+  /// The `syncedLyrics` of a `get` response, or null if blank or absent.
+  @visibleForTesting
+  static String? syncedFrom(String body) {
     try {
-      final params = {
-        'track_name': title,
-        'artist_name': artist,
-        'duration': duration.toString(),
-      };
-      if (album != null && album.isNotEmpty) {
-        params['album_name'] = album;
-      }
-
-      final uri =
-          Uri.parse('$_baseUrl/api/get').replace(queryParameters: params);
-
-      final response = await _httpClient.get(
-        uri,
-        headers: {
-          'User-Agent': _userAgent,
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        // Prefer synced lyrics
-        final syncedLyrics = data['syncedLyrics'] as String?;
-        if (syncedLyrics != null && syncedLyrics.isNotEmpty) {
-          return syncedLyrics;
-        }
-        // Fall back to plain lyrics
-        return data['plainLyrics'] as String?;
-      }
-
-      return null;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('LrcLibProvider: Exact match failed: $e');
-      }
+      final json = jsonDecode(body);
+      if (json is! Map) return null;
+      return _blankToNull(json['syncedLyrics']);
+    } catch (_) {
       return null;
     }
   }
 
-  /// Search for lyrics using the /api/search endpoint
-  Future<String?> _searchLyrics({
-    required String title,
-    required String artist,
-    int? duration,
-  }) async {
+  /// `/api/search`, then the closest-length hit that has synced lyrics.
+  Future<String?> _bestSearchHit(
+      String title, String artist, int? seconds) async {
     final results = await _search(title: title, artist: artist);
-
-    if (results.isEmpty) return null;
-
-    // Find best match
-    LrcLibResult? bestMatch;
-
-    if (duration != null) {
-      // Find closest duration match
-      int bestDiff = 999999;
-      for (final result in results) {
-        final diff = (result.duration - duration).abs();
-        if (diff < bestDiff && result.syncedLyrics != null) {
-          bestDiff = diff;
-          bestMatch = result;
-        }
-      }
-
-      // Also try string similarity for title matching
-      if (bestMatch == null) {
-        for (final result in results) {
-          if (_stringSimilarity(result.trackName, title) > 0.8 &&
-              result.syncedLyrics != null) {
-            bestMatch = result;
-            break;
-          }
-        }
-      }
-    }
-
-    // Fall back to first result with synced lyrics
-    bestMatch ??= results.firstWhere(
-      (r) => r.syncedLyrics != null && r.syncedLyrics!.isNotEmpty,
-      orElse: () => results.first,
-    );
-
-    return bestMatch.syncedLyrics ?? bestMatch.plainLyrics;
+    return pickBest(results, seconds)?.syncedLyrics;
   }
 
-  /// Search the LrcLib API
+  /// Of [results], only those with non-blank synced lyrics; of those, the one
+  /// whose length is nearest [wantedSeconds]; the earliest wins a tie. With no
+  /// known length the first synced hit is taken.
+  ///
+  /// Never a record without synced lyrics, whatever its position.
+  @visibleForTesting
+  static LrcLibResult? pickBest(
+      List<LrcLibResult> results, int? wantedSeconds) {
+    LrcLibResult? best;
+    var bestDistance = 1 << 30;
+    for (final result in results) {
+      if (_blankToNull(result.syncedLyrics) == null) continue;
+      if (wantedSeconds == null) return result;
+      final distance = (result.duration - wantedSeconds).abs();
+      if (distance < bestDistance) {
+        best = result;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  /// Search the LRCLIB API.
   Future<List<LrcLibResult>> _search({
     required String title,
     String? artist,
   }) async {
+    final body = await _http.getText(_url('/api/search', {
+      'track_name': title,
+      if (artist != null && artist.isNotEmpty) 'artist_name': artist,
+    }));
+    if (body == null) return const <LrcLibResult>[];
+    return parseSearch(body);
+  }
+
+  /// The hits in a `search` response; entries that are not records are skipped.
+  @visibleForTesting
+  static List<LrcLibResult> parseSearch(String body) {
     try {
-      final params = <String, String>{
-        'track_name': title,
-      };
-      if (artist != null && artist.isNotEmpty) {
-        params['artist_name'] = artist;
-      }
-
-      final uri =
-          Uri.parse('$_baseUrl/api/search').replace(queryParameters: params);
-
-      if (kDebugMode) {
-        debugPrint('LrcLibProvider: Searching: $uri');
-      }
-
-      final response = await _httpClient.get(
-        uri,
-        headers: {
-          'User-Agent': _userAgent,
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode != 200) {
-        if (kDebugMode) {
-          debugPrint('LrcLibProvider: Search failed: ${response.statusCode}');
-        }
-        return [];
-      }
-
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((item) => LrcLibResult.fromJson(item)).toList();
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('LrcLibProvider: Search error: $e');
-      }
-      return [];
+      final json = jsonDecode(body);
+      if (json is! List) return const <LrcLibResult>[];
+      return [
+        for (final item in json)
+          if (item is Map) LrcLibResult.fromJson(item.cast<String, dynamic>()),
+      ];
+    } catch (_) {
+      return const <LrcLibResult>[];
     }
   }
 
-  /// Calculate string similarity (Levenshtein-based)
-  double _stringSimilarity(String s1, String s2) {
-    final a = s1.toLowerCase().trim();
-    final b = s2.toLowerCase().trim();
+  static String? _blankToNull(Object? value) =>
+      value is String && value.trim().isNotEmpty ? value : null;
 
-    if (a == b) return 1.0;
-    if (a.isEmpty || b.isEmpty) return 0.0;
-
-    final distance = _levenshteinDistance(a, b);
-    final maxLength = a.length > b.length ? a.length : b.length;
-
-    return 1.0 - (distance / maxLength);
+  // %20 for a space, as the reference's HTTP client writes it.
+  static String _url(String path, Map<String, String> query) {
+    final q = query.entries
+        .map((e) =>
+            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    return '$_baseUrl$path?$q';
   }
 
-  /// Calculate Levenshtein distance
-  int _levenshteinDistance(String s1, String s2) {
-    if (s1.isEmpty) return s2.length;
-    if (s2.isEmpty) return s1.length;
-
-    List<int> v0 = List.generate(s2.length + 1, (i) => i);
-    List<int> v1 = List.filled(s2.length + 1, 0);
-
-    for (int i = 0; i < s1.length; i++) {
-      v1[0] = i + 1;
-
-      for (int j = 0; j < s2.length; j++) {
-        final cost = s1[i] == s2[j] ? 0 : 1;
-        v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost]
-            .reduce((a, b) => a < b ? a : b);
-      }
-
-      final temp = v0;
-      v0 = v1;
-      v1 = temp;
-    }
-
-    return v0[s2.length];
-  }
-
-  void dispose() {
-    _httpClient.close();
-  }
+  /// Nothing to release: requests go through the app-wide [LyricsHttp].
+  /// Kept so existing callers need not change.
+  void dispose() {}
 }
 
-/// Result from LrcLib API
+/// Result from the LRCLIB API.
 class LrcLibResult {
   final int id;
   final String trackName;
@@ -252,15 +181,25 @@ class LrcLibResult {
 
   factory LrcLibResult.fromJson(Map<String, dynamic> json) {
     return LrcLibResult(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      trackName: json['trackName'] ?? json['name'] ?? '',
-      artistName: json['artistName'] ?? '',
-      albumName: json['albumName'],
-      // Live bug: lrclib sometimes returns duration as double —
-      // `type 'double' is not a subtype of type 'int'`.
-      duration: (json['duration'] as num?)?.toInt() ?? 0,
-      syncedLyrics: json['syncedLyrics'],
-      plainLyrics: json['plainLyrics'],
+      id: _int(json['id']) ?? 0,
+      trackName: _string(json['trackName']) ?? _string(json['name']) ?? '',
+      artistName: _string(json['artistName']) ?? '',
+      albumName: _string(json['albumName']),
+      // LRCLIB reports fractional seconds, and omits the field on some records;
+      // a missing one is 0, as the reference reads it.
+      duration: _int(json['duration']) ?? 0,
+      syncedLyrics: _string(json['syncedLyrics']),
+      plainLyrics: _string(json['plainLyrics']),
     );
+  }
+
+  static String? _string(Object? v) => v is String ? v : null;
+
+  static int? _int(Object? v) {
+    if (v is num) return v.toInt();
+    if (v is String) {
+      return int.tryParse(v.trim()) ?? double.tryParse(v.trim())?.toInt();
+    }
+    return null;
   }
 }

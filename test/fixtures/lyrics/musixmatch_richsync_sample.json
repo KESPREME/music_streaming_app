@@ -1,0 +1,13 @@
+{
+  "_comment": "HAND-WRITTEN, not captured: token.get on apic.musixmatch.com answered an nginx 403 from the capture machine (egress geolocated to an Amazon datacentre), so no live richsync could be fetched. Shape follows Musixmatch.kt RichSyncEntry: [{ts,te,l:[{c,o}],x}] inside message.body.richsync.richsync_body.",
+  "message": {
+    "header": {
+      "status_code": 200
+    },
+    "body": {
+      "richsync": {
+        "richsync_body": "[{\"ts\":12.0,\"te\":16.0,\"l\":[{\"c\":\"We're\",\"o\":0.0},{\"c\":\" \",\"o\":0.375},{\"c\":\"on\",\"o\":0.5},{\"c\":\" \",\"o\":0.75},{\"c\":\"the\",\"o\":0.875},{\"c\":\" \",\"o\":1.125},{\"c\":\"border\",\"o\":1.25},{\"c\":\"line\",\"o\":1.75}],\"x\":\"We're on the borderline\"},{\"ts\":18.0,\"te\":18.0,\"l\":[],\"x\":\"(instrumental)\"},{\"ts\":20.25,\"te\":23.0,\"l\":[{\"c\":\"Out\",\"o\":0.5},{\"c\":\" \",\"o\":0.75},{\"c\":\"of\",\"o\":0.25},{\"c\":\" \",\"o\":1.0},{\"c\":\"order\",\"o\":1.25}],\"x\":\"Out of order\"}]"
+      }
+    }
+  }
+}

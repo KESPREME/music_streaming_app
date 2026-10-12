@@ -2540,10 +2540,12 @@ class InnerTubeService {
             ?['transcriptCueRenderer'];
         if (cue == null) continue;
 
-        final startMs = cue['startOffsetMs'] as int? ?? 0;
-        final text = (cue['cue']?['simpleText'] as String? ?? '')
-            .replaceAll('♪', '')
-            .trim();
+        // YouTube sends the offset as a numeric STRING ("12340"), which a bare
+        // `as int?` throws on - so the whole transcript was lost to the catch
+        // below. A cue with no readable offset cannot be placed; skip it.
+        final startMs = _transcriptMs(cue['startOffsetMs']);
+        if (startMs == null) continue;
+        final text = _transcriptCueText(cue['cue']).replaceAll('♪', '').trim();
 
         if (text.isEmpty) continue;
 
@@ -2565,6 +2567,34 @@ class InnerTubeService {
       return null;
     }
   }
+
+  /// A transcript offset, whether YouTube sent a number or a numeric string.
+  static int? _transcriptMs(Object? value) {
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final text = value.trim();
+      return int.tryParse(text) ?? double.tryParse(text)?.toInt();
+    }
+    return null;
+  }
+
+  /// The text of a transcript cue: `simpleText`, or the `runs[].text` joined.
+  static String _transcriptCueText(Object? cue) {
+    if (cue is! Map) return '';
+    final simple = cue['simpleText'];
+    if (simple is String) return simple;
+    final runs = cue['runs'];
+    if (runs is List) {
+      return runs
+          .map((run) => run is Map && run['text'] is String ? run['text'] : '')
+          .join();
+    }
+    return '';
+  }
+
+  @visibleForTesting
+  String? parseTranscriptForTest(Map<String, dynamic> data) =>
+      _parseTranscript(data);
 
   /// Get suggestions/recommendations for a track. Feeds AutoPlay with
   /// YouTube Music's official "RDAMVM" radio mix.

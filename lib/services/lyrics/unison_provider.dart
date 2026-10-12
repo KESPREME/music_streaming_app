@@ -1,70 +1,101 @@
 // lib/services/lyrics/unison_provider.dart
-// Unison - a multi-catalogue mirror answering TTML, LRC or plain text.
+// Unison - a community-submitted lyrics database answering TTML, LRC or plain
+// text.
+//
+// Port of `Unison.kt`.
+//
+// Every other source here is a window onto somebody's catalogue; this one
+// carries what people have uploaded, so it occasionally has a track none of the
+// others do and its coverage is thin everywhere else. Entries are voted on and
+// the response says so (`confidence`, `voteCount`); none of it is acted on - a
+// fresh submission is `confidence: "low"` with no votes at all, so refusing
+// those would refuse nearly the whole database, and the alternative to a
+// lightly-voted entry is usually no lyrics rather than better ones.
+//
+// WIRE SHAPE
+//
+//   GET https://unison.boidu.dev/lyrics?song=&artist=&album=&duration=<s>
+//   {"success":true,"data":{"lyrics":"<tt ...>","format":"ttml"|"lrc",
+//     "syncType":"richsync"|"wordsync"|"linesync"|"plain", ...}}
+//
+// The previous version looked for a top-level `ttml` / `syncedLyrics` /
+// `lyrics`, none of which this host sends, and invented 3-second steps for
+// unsynced text. Plain text is now stamped 0 like every other unsynced source,
+// which is how the panel knows to scroll it by hand rather than follow it.
 
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import '../../models/lyrics_entry.dart';
-import 'better_lyrics_provider.dart';
 import '../../utils/lyrics_utils.dart';
+import 'better_lyrics_provider.dart';
+import 'lyrics_http.dart';
+import 'lyrics_url.dart';
 
 class UnisonProvider {
-  static const String _endpoint = 'https://unison.boidu.dev/lyrics';
-  static const Duration _timeout = Duration(seconds: 8);
+  UnisonProvider({LyricsHttp? http}) : _http = http ?? LyricsHttp.shared;
 
-  final http.Client _client = http.Client();
+  static const String _endpoint = 'https://unison.boidu.dev/lyrics';
+
+  final LyricsHttp _http;
 
   Future<List<LyricsEntry>?> getLyrics({
     required String title,
     required String artist,
     int? durationMs,
+    String? album,
   }) async {
+    final params = <String, String>{'song': title, 'artist': artist};
+    if (album != null && album.trim().isNotEmpty) params['album'] = album;
+    if (durationMs != null) {
+      final seconds = (durationMs / 1000).round();
+      if (seconds > 0) params['duration'] = '$seconds';
+    }
+
+    final body = await _http.getText(buildLyricsUrl(_endpoint, params));
+    if (body == null) return null;
+    return parseBody(body);
+  }
+
+  /// Lyrics in a raw response body, or null for anything unusable.
+  static List<LyricsEntry>? parseBody(String body) {
     try {
-      final params = <String, String>{'song': title, 'artist': artist};
-      if (durationMs != null && durationMs > 0) {
-        params['duration'] = '${(durationMs / 1000).round()}';
-      }
-
-      final uri = Uri.parse(_endpoint).replace(queryParameters: params);
-      final response = await _client.get(uri, headers: const {
-        'User-Agent': 'MusicStreamingApp/1.0.0 (lyrics)',
-        'Accept': 'application/json',
-      }).timeout(_timeout);
-
-      if (response.statusCode != 200) return null;
-      final decoded = jsonDecode(response.body);
+      final decoded = jsonDecode(body);
       if (decoded is! Map) return null;
       return parse(decoded.map((k, v) => MapEntry(k.toString(), v)));
     } catch (e) {
-      if (kDebugMode) debugPrint('UnisonProvider: request failed: $e');
+      if (kDebugMode) debugPrint('UnisonProvider: answer unreadable: $e');
       return null;
     }
   }
 
-  /// Parses whichever of the three shapes this host answered with.
-  ///
-  /// TTML is preferred because it carries the timings; the caller treats a
-  /// line-synced answer as a fallback rather than a win.
+  /// Lyrics in a decoded response: `{"success":true,"data":{...}}`.
   static List<LyricsEntry>? parse(Map<String, dynamic> body) {
-    final ttml = body['ttml'];
-    if (ttml is String && ttml.contains('<tt')) {
-      final entries = BetterLyricsProvider.parseTtml(ttml);
-      if (entries.isNotEmpty) return entries;
-    }
+    if (body['success'] != true) return null;
+    final data = body['data'];
+    if (data is! Map) return null;
+    return linesOf(data.map((k, v) => MapEntry(k.toString(), v)));
+  }
 
-    final synced = body['syncedLyrics'] ?? body['lrc'];
-    if (synced is String && synced.trim().isNotEmpty) {
-      final entries = parseLrc(synced);
-      if (entries.isNotEmpty) return entries;
-    }
+  /// The three shapes, told apart by what the entry says it is.
+  static List<LyricsEntry>? linesOf(Map<String, dynamic> data) {
+    final text = data['lyrics'];
+    if (text is! String || text.trim().isEmpty) return null;
+    final format = data['format'];
+    final syncType = data['syncType'];
 
-    final plain = body['lyrics'] ?? body['plainLyrics'];
-    if (plain is String && plain.trim().isNotEmpty) {
-      return parsePlain(plain);
+    final List<LyricsEntry> lines;
+    if (format is String && format.toLowerCase() == 'ttml') {
+      lines = BetterLyricsProvider.parseTtml(text);
+    } else if (syncType is String && syncType.toLowerCase() == 'plain') {
+      lines = parsePlain(text);
+    } else {
+      // Word stamps and line stamps are both "lrc" here; LyricsUtils reads
+      // either, and an enhanced file is still one.
+      lines = parseLrc(text);
     }
-    return null;
+    return lines.any((l) => l.text.trim().isNotEmpty) ? lines : null;
   }
 
   /// LRC parsing, delegated to [LyricsUtils] rather than re-implemented.
@@ -73,33 +104,14 @@ class UnisonProvider {
   /// word-timing forms. A second parser here would be a second opinion, and two
   /// parsers that disagree is how the same song shows different words depending
   /// on which provider happened to answer.
-  static List<LyricsEntry> parseLrc(String lrc) =>
-      LyricsUtils.parseLrc(lrc);
+  static List<LyricsEntry> parseLrc(String lrc) => LyricsUtils.parseLrc(lrc);
 
-  static List<LyricsEntry> parsePlain(String plain) {
-    final entries = <LyricsEntry>[];
-    var time = 0;
-    for (final raw in plain.split('\n')) {
-      final line = raw.trim();
-      if (line.isEmpty) continue;
-      // A leading "[00:12.34]" is a timestamp even in a "plain" body.
-      final stamp = RegExp(r'^\[(\d+):(\d+[.:]?\d*)\]').firstMatch(line);
-      var text = line;
-      if (stamp != null) {
-        final m = int.tryParse(stamp.group(1)!) ?? 0;
-        final s = double.tryParse(
-              (stamp.group(2) ?? '0').replaceAll(':', '.'),
-            ) ??
-            0;
-        // Milliseconds are an int on LyricsEntry; truncating here rather than
-        // storing a double keeps the rounding identical to every other parser.
-        time = ((m * 60 + s) * 1000).round();
-        text = line.substring(stamp.end).trim();
-      }
-      if (text.isEmpty) continue;
-      entries.add(LyricsEntry(timeMs: time, text: text));
-      time += 3000;
-    }
-    return entries;
-  }
+  /// Lyrics with no timing: one line each, all stamped 0.
+  ///
+  /// Nothing is invented. A fixed step per line would pass for timing, and the
+  /// panel would follow it - scrolling to the wrong line every time.
+  static List<LyricsEntry> parsePlain(String plain) => <LyricsEntry>[
+        for (final raw in const LineSplitter().convert(plain))
+          if (raw.trim().isNotEmpty) LyricsEntry(timeMs: 0, text: raw.trim()),
+      ];
 }

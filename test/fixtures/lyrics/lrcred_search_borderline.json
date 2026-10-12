@@ -1,0 +1,74 @@
+{
+  "hits": [
+    {
+      "isrc": "AUUM71900956",
+      "title": "Borderline",
+      "artist": "Tame Impala",
+      "album": "The Slow Rush",
+      "year": 2019,
+      "duration": 237.8,
+      "cover": "https://lrc.red/s/AUUM71900956.webp",
+      "color": "#a01708"
+    },
+    {
+      "isrc": "AUUM72000403",
+      "title": "Borderline (Blood Orange Remix)",
+      "artist": "Tame Impala",
+      "album": "The Slow Rush B-Sides & Remixes",
+      "year": 2020,
+      "duration": 437.933,
+      "cover": "https://lrc.red/s/AUUM72000403.webp",
+      "color": "#9a1c0f"
+    },
+    {
+      "isrc": "US23A8492413",
+      "title": "Borderline (Westend Remix) [Mixed]",
+      "artist": "Tame Impala",
+      "album": "Fitness: Gym, May 2024 (DJ Mix)",
+      "year": 2024,
+      "duration": 285.025,
+      "cover": "https://lrc.red/s/US23A8492413.webp",
+      "color": "#e18a58"
+    },
+    {
+      "isrc": "US23A9490980",
+      "title": "Borderline (Westend Edit) [Mixed]",
+      "artist": "Tame Impala",
+      "album": "Fitness: Ride, November 2024 (DJ Mix)",
+      "year": 2024,
+      "duration": 265.825,
+      "cover": "https://lrc.red/s/US23A9490980.webp",
+      "color": "#f628d2"
+    },
+    {
+      "isrc": "US23A1946479",
+      "title": "Borderline (Mixed)",
+      "artist": "Tame Impala",
+      "album": "Summertime Sounds 2022 (DJ Mix)",
+      "year": 2022,
+      "duration": 138.875,
+      "cover": "https://lrc.red/s/US23A1946479.webp",
+      "color": "#380bed"
+    },
+    {
+      "isrc": "US23A1919011",
+      "title": "Borderline (K, LeMaestro Remix) [Mixed]",
+      "artist": "Tame Impala",
+      "album": "NYE 2022 (DJ Mix)",
+      "year": 2021,
+      "duration": 165.915,
+      "cover": "https://lrc.red/s/US23A1919011.webp"
+    },
+    {
+      "isrc": "AUUM71900573",
+      "title": "Borderline (Radio Edit)",
+      "artist": "Tame Impala",
+      "album": "The Bright Side Of The Road (Vol. 6)",
+      "year": 2019,
+      "duration": 237.617,
+      "cover": "https://lrc.red/s/AUUM71900573.webp",
+      "color": "#fcf002"
+    }
+  ],
+  "next": null
+}

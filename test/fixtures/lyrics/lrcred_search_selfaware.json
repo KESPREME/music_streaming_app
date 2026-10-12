@@ -1,0 +1,33 @@
+{
+  "hits": [
+    {
+      "isrc": "QZHN52696246",
+      "title": "Self Aware",
+      "artist": "Temper City",
+      "album": "Self Aware - Single",
+      "year": 2026,
+      "duration": 180.741,
+      "cover": "https://lrc.red/s/QZHN52696246.webp",
+      "color": "#e30a0a"
+    },
+    {
+      "isrc": "QT6FL2683991",
+      "title": "self aware",
+      "artist": "rexlity",
+      "album": "self aware - Single",
+      "year": 2026,
+      "duration": 132.5,
+      "cover": "https://lrc.red/s/QT6FL2683991.webp"
+    },
+    {
+      "isrc": "QT3F72636123",
+      "title": "Self Aware",
+      "artist": "Ondefind",
+      "album": "Self Aware - Single",
+      "year": 2026,
+      "duration": 181.543,
+      "cover": "https://lrc.red/s/QT3F72636123.webp"
+    }
+  ],
+  "next": null
+}

@@ -1,9 +1,8 @@
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-
 import '../../models/lyrics_entry.dart';
 import 'lyric_words.dart';
+import 'lyrics_http.dart';
+import 'lyrics_url.dart';
+import 'provider_lyrics.dart';
 
 /// Provider for BetterLyrics — Apple Music TTML word and syllable-timed lyrics.
 ///
@@ -12,75 +11,112 @@ import 'lyric_words.dart';
 /// gateway. Portato is worth offering separately rather than as a fallback
 /// inside this one — it is a different catalogue, so a track can be in one and
 /// not the other, and a fallback would hide which one actually answered.
+///
+/// The answer is read through [ProviderLyrics.parse] rather than from a literal
+/// `ttml` key: Portato's body is `{"lyrics":"<?xml ... <QrcInfos>..."}`, and the
+/// next host to change its envelope should not cost a provider.
 class BetterLyricsProvider {
+  BetterLyricsProvider({LyricsHttp? http}) : _http = http ?? LyricsHttp.shared;
+
   static const String _baseUrl = 'https://lyrics-api.boidu.dev/getLyrics';
 
   /// QQ Music karaoke timings through the same gateway.
-  static const String portatoUrl = 'https://lyrics-api.boidu.dev/getLyricsPortato';
+  ///
+  /// This was `/getLyricsPortato`, which does not exist; the route is
+  /// `/qq/getLyrics` (`BetterLyrics.kt`).
+  static const String portatoUrl = 'https://lyrics-api.boidu.dev/qq/getLyrics';
 
+  final LyricsHttp _http;
+
+  /// Apple Music TTML, per syllable where the catalogue has it.
+  ///
+  /// THE ALBUM IS NOT SENT AT FIRST. Probed live 2026-10-12, and stable across
+  /// repeated calls:
+  ///
+  ///   Borderline / Tame Impala / 237 s
+  ///     without `al`           Word timing, 60 lines, 359 spans, 3:57.8
+  ///     `al=The Slow Rush`     LINE timing, 60 lines, 0 spans, 4:33.3  <- worse
+  ///   Self Aware / Temper City / 180 s
+  ///     without `al`           LINE timing, 49 lines, 0 spans, 2:52.7 (wrong cut)
+  ///     `al=Self Aware - Single`  WORD timing, 46 lines, 287 spans, 3:00.7
+  ///
+  /// So `al` cuts both ways: it can swap a word-timed answer for a line-timed
+  /// one of a different length, and it can find the word-timed answer the plain
+  /// query misses. Neither "always" nor "never" is right, so the plain query
+  /// goes first and the album is only tried - within the same 6s budget - when
+  /// that answer is not word-timed. A word-timed answer is never replaced.
   Future<List<LyricsEntry>?> getLyrics({
     required String title,
     required String artist,
     int? durationMs,
     String? album,
-  }) =>
-      _fetch(_baseUrl, title, artist, durationMs, album);
+  }) async {
+    final started = DateTime.now();
+    final plain = await _fetch(_baseUrl, title, artist, durationMs, null);
+    if (_isWordTimed(plain)) return plain;
+    if (album == null || album.trim().isEmpty) return plain;
+
+    // The album is a second chance, not a second full deadline: whatever the
+    // first request left of the shared budget (a floor keeps it worth sending).
+    final left = LyricsHttp.requestTimeout - DateTime.now().difference(started);
+    final withAlbum = await _fetch(
+      _baseUrl,
+      title,
+      artist,
+      durationMs,
+      album,
+      timeout: left < _minRetry ? _minRetry : left,
+    );
+    return _isWordTimed(withAlbum) ? withAlbum : (plain ?? withAlbum);
+  }
+
+  static const Duration _minRetry = Duration(seconds: 1);
 
   /// QQ Music karaoke timings, per syllable.
   ///
   /// Sings the notes rather than the lyrics, so its spans are tighter and more
   /// numerous than Apple's — which is the whole reason to ask for it.
+  ///
+  /// [album] is accepted so callers need not special-case this provider, but it
+  /// is NOT sent: this route answers any request carrying `al=` with a 401
+  /// (probed live 2026-10-12 with the correct album for two different tracks),
+  /// where the same request without it answers 200.
   Future<List<LyricsEntry>?> getPortato({
     required String title,
     required String artist,
     int? durationMs,
     String? album,
   }) =>
-      _fetch(portatoUrl, title, artist, durationMs, album);
+      _fetch(portatoUrl, title, artist, durationMs, null);
+
+  static bool _isWordTimed(List<LyricsEntry>? entries) =>
+      entries != null && entries.any((e) => e.isWordSynced);
 
   Future<List<LyricsEntry>?> _fetch(
     String endpoint,
     String title,
     String artist,
     int? durationMs,
-    String? album,
-  ) async {
-    try {
-      final cleanTitle = _cleanQuery(title);
-      final cleanArtist = _cleanQuery(artist);
-      if (cleanTitle.isEmpty || cleanArtist.isEmpty) return null;
+    String? album, {
+    Duration timeout = LyricsHttp.requestTimeout,
+  }) async {
+    final cleanTitle = _cleanQuery(title);
+    final cleanArtist = _cleanQuery(artist);
+    if (cleanTitle.isEmpty || cleanArtist.isEmpty) return null;
 
-      final queryParams = <String, String>{
-        's': cleanTitle,
-        'a': cleanArtist,
-      };
-      if (durationMs != null && durationMs > 0) {
-        queryParams['d'] = (durationMs ~/ 1000).toString();
-      }
-      if (album != null && album.isNotEmpty) {
-        queryParams['al'] = album;
-      }
-
-      final uri = Uri.parse(endpoint).replace(queryParameters: queryParams);
-      final response = await http
-          .get(uri, headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          })
-          .timeout(const Duration(seconds: 4));
-
-      if (response.statusCode != 200) return null;
-      final json = jsonDecode(response.body);
-      if (json is! Map<String, dynamic>) return null;
-
-      final ttml = json['ttml'] as String?;
-      if (ttml == null || ttml.isEmpty) return null;
-
-      return parseTtml(ttml);
-    } catch (e) {
-      if (kDebugMode) debugPrint('BetterLyricsProvider: lookup failed: $e');
-      return null;
+    final params = <String, String>{'s': cleanTitle, 'a': cleanArtist};
+    if (durationMs != null) {
+      final seconds = durationMs ~/ 1000;
+      if (seconds > 0) params['d'] = '$seconds';
     }
+    if (album != null && album.trim().isNotEmpty) params['al'] = album;
+
+    final body = await _http.getText(
+      buildLyricsUrl(endpoint, params),
+      timeout: timeout,
+    );
+    if (body == null) return null;
+    return ProviderLyrics.parse(body);
   }
 
   /// Parses Apple Music TTML with per-syllable / per-word timings into [LyricsEntry]
