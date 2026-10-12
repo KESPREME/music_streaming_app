@@ -25,7 +25,6 @@
 // words when nobody asked for it is one more thing between a reader and them.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// What a transform button can be in.
 enum TransformButtonState {
@@ -41,6 +40,14 @@ enum TransformButtonState {
   /// Asked, and the text was already in the requested script.
   sameLanguage,
 }
+
+/// Whether a disc is lit: its transform is on, or being fetched.
+///
+/// The reference lights the disc while the request is in flight as well
+/// (`active = showing || state is Loading`), so the spinner sits on the bright
+/// disc and the tap is acknowledged at once instead of after the round trip.
+bool transformDiscLit({required bool active, required TransformButtonState state}) =>
+    active || state == TransformButtonState.loading;
 
 /// The 34dp disc both buttons are drawn on.
 ///
@@ -68,12 +75,18 @@ class TransformDisc extends StatefulWidget {
 }
 
 class _TransformDiscState extends State<TransformDisc> {
-  late double _discAlpha = widget.active ? 0.34 : 0.18;
+  bool get _lit =>
+      transformDiscLit(active: widget.active, state: widget.state);
+
+  late double _discAlpha = _lit ? 0.34 : 0.18;
 
   @override
   void didUpdateWidget(covariant TransformDisc oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.active == widget.active) return;
+    if (transformDiscLit(active: oldWidget.active, state: oldWidget.state) ==
+        _lit) {
+      return;
+    }
     // The disc's own alpha moves on its own spec, rather than snapping with the
     // glyph.
     //
@@ -84,7 +97,7 @@ class _TransformDiscState extends State<TransformDisc> {
     // default spring (`PlayerLyrics.kt:1258, 1309`); a short tween is close
     // enough and cannot overshoot.
     setState(() {
-      _discAlpha = widget.active ? 0.34 : 0.18;
+      _discAlpha = _lit ? 0.34 : 0.18;
     });
   }
 
@@ -93,7 +106,7 @@ class _TransformDiscState extends State<TransformDisc> {
     final icon = widget.icon;
     final semanticLabel = widget.semanticLabel;
     final state = widget.state;
-    final active = widget.active;
+    final lit = _lit;
     final onTap = widget.onTap;
 
     // 0.42 is the "there is nothing to do here" tint and is deliberately dimmer
@@ -102,7 +115,7 @@ class _TransformDiscState extends State<TransformDisc> {
     // not look like it will do something.
     final tint = switch (state) {
       TransformButtonState.sameLanguage => Colors.white.withValues(alpha: 0.42),
-      _ when active => Colors.white,
+      _ when lit => Colors.white,
       _ => Colors.white.withValues(alpha: 0.78),
     };
 
@@ -122,12 +135,11 @@ class _TransformDiscState extends State<TransformDisc> {
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: disabled
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                onTap();
-              },
+        // No haptic HERE. Whether a tap earns feedback depends on what it did - a
+        // tap on a disc that is already loading does nothing and must be silent,
+        // and a successful toggle has its own - so `SubLineController` decides.
+        // This used to buzz on every tap, including the ignored ones.
+        onTap: disabled ? null : onTap,
         child: TweenAnimationBuilder<double>(
           tween: Tween<double>(end: _discAlpha),
           duration: _discAlpha > 0.18 ? lyricsDiscFadeIn : lyricsDiscFadeOut,

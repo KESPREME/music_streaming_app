@@ -502,7 +502,7 @@ void main() {
     expect(find.text('Queue'), findsNothing);
   });
 
-  testWidgets('lyrics chrome hides after 5s idle and returns on tap',
+  testWidgets('lyrics chrome hides after 5s idle and returns on a lower-half tap',
       (tester) async {
     final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
     final theme = GlassTheme.build(AccentColors.peach).copyWith(
@@ -532,12 +532,26 @@ void main() {
 
     expect(deckShown(), isTrue);
     await tester.pump(const Duration(seconds: 5));
-    await tester.pump(const Duration(milliseconds: 400));
+    // The hide is a 420ms size animation, so the deck stays in the tree until it
+    // lands: the first pump starts the ticker, the second runs it out.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(deckShown(), isFalse);
 
+    // A tap in the TOP half brings nothing back. Reveal is a decision (a
+    // lower-half tap, a scroll back the other way), not a side effect of any
+    // pointer touching the glass; the old "every pointer-down un-hides" flickered
+    // the controls back in on the touch that started a scroll to hide them.
     await tester.tapAt(const Offset(200, 200));
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(deckShown(), isFalse);
+
+    // The lower half does.
+    await tester.tapAt(const Offset(200, 700));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(deckShown(), isTrue);
+    await tester.pump(const Duration(milliseconds: 500));
   });
 
   testWidgets('queue scroll collapses the deck and back up reveals it',

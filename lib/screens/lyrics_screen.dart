@@ -15,6 +15,8 @@
 //   * following the song: the active line, and the scroll that leads it
 //   * browsing: a finger on the list stops the follow and flattens the ladders
 //   * the ladders: each row's alpha / blur / scale by distance, on one spec
+//   * the fan-out: rows below the line being scrolled to trail the list a beat
+//     (`lyric_stagger.dart`), driven only by our own scroll
 //   * the two mode discs (romanize / translate) and the sub-lines they reveal
 //
 // WHAT IT DOES NOT OWN
@@ -25,7 +27,6 @@
 //   * how a line is drawn. That is `LyricLine`, one render object per line.
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,10 +41,12 @@ import '../services/lyrics/lyric_sub_line.dart';
 import '../services/lyrics/lyric_sweep.dart';
 import '../services/lyrics/lyrics_translation_service.dart';
 import '../utils/color_utils.dart';
+import '../widgets/lyric_caption.dart';
 import '../widgets/lyric_line/animated_lyric_row.dart';
 import '../widgets/lyric_line/lyric_gap_dots.dart';
 import '../widgets/lyric_line/lyric_line.dart';
 import '../widgets/lyric_line/lyric_line_style.dart';
+import '../widgets/lyric_line/lyric_stagger.dart';
 import '../widgets/lyric_line/lyric_sub_line_view.dart';
 import '../widgets/lyric_line/lyric_typography.dart';
 import '../widgets/lyric_line/lyrics_skeleton.dart';
@@ -64,6 +67,7 @@ class LyricsScreen extends StatefulWidget {
     this.translationLanguage,
     this.clock,
     this.discsVisible,
+    this.onTransformStatusChanged,
   });
 
   final VoidCallback? onMinimize;
@@ -79,7 +83,7 @@ class LyricsScreen extends StatefulWidget {
   /// can never be painted under this one.
   final String? trackKey;
 
-  /// Language the translation targets. Null falls back to the platform locale.
+  /// Language the translation targets. Null follows the 	ranslation_language`n  /// setting, then the device's base language, then n.
   final String? translationLanguage;
 
   /// The clock to follow. The player passes the ONE it shares with the seek-bar
@@ -94,6 +98,15 @@ class LyricsScreen extends StatefulWidget {
   /// already gone away. Null means "no caller opinion": the panel falls back to
   /// a local idle timer, which is what the stand-alone screen uses.
   final bool? discsVisible;
+
+  /// Told when what the panel is doing to the words changes: translating,
+  /// romanizing, or showing one of them.
+  ///
+  /// The player's caption under the lyric says it. The panel owns the transform
+  /// (it owns the reveal timers that go with it), so it PUBLISHES the little the
+  /// caption needs rather than the player reaching into it. Called only when the
+  /// status actually changes, never from inside a build.
+  final ValueChanged<LyricTransformStatus>? onTransformStatusChanged;
 
   @override
   State<LyricsScreen> createState() => _LyricsScreenState();
@@ -142,6 +155,13 @@ class _LyricsScreenState extends State<LyricsScreen>
   Timer? _browseTimer;
   Duration _browseIdleMs = Duration.zero;
 
+  // ── The fan-out ────────────────────────────────────────────────────────────
+
+  /// Holds the rows below the line being scrolled to a beat behind the list as
+  /// it moves (see `lyric_stagger.dart`). Driven only by OUR scroll - a finger
+  /// never starts it, and a finger that arrives ends it.
+  late final LyricStagger _stagger = LyricStagger(vsync: this);
+
   // ── Sub-lines ──────────────────────────────────────────────────────────────
 
   final SubLineController _subController = SubLineController();
@@ -160,6 +180,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     _ownsClock = widget.clock == null;
     _clock = widget.clock ?? LyricClock(vsync: this);
     _subController.addListener(_onSubLineChanged);
+    _subController.addListener(_publishTransformStatus);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _checkLyrics();
@@ -194,6 +215,7 @@ class _LyricsScreenState extends State<LyricsScreen>
       // be handed the very same list object.
       _syncedLyrics = null;
       _placedForTrack = null;
+      _stagger.cancel();
       // No fetch here: the provider fetches lyrics itself on every track change.
       // This used to force-refresh on top of that, which bypassed both caches and
       // asked every source a second time for each song.
@@ -237,9 +259,11 @@ class _LyricsScreenState extends State<LyricsScreen>
     _syncClockListener(false);
     _browseTimer?.cancel();
     _discIdleTimer?.cancel();
+    _stagger.dispose();
     _scrollController.dispose();
     _subController
       ..removeListener(_onSubLineChanged)
+      ..removeListener(_publishTransformStatus)
       ..dispose();
     _feed?.dispose();
     if (_ownsClock) _clock.dispose();
@@ -261,6 +285,9 @@ class _LyricsScreenState extends State<LyricsScreen>
     } else if (!enabled && _listeningToClock) {
       _clock.removeListener(_onClockTick);
       _listeningToClock = false;
+      // Hidden: the ticker driving the fan-out is muted with the rest of the
+      // panel, so a run left open would resume part-way when the panel returns.
+      _stagger.cancel();
     }
   }
 
@@ -268,6 +295,56 @@ class _LyricsScreenState extends State<LyricsScreen>
 
   void _onSubLineChanged() {
     if (_subController.shownMode == SubLineMode.original) _subEntries.clear();
+  }
+
+  // ── What the caption says about the transform ─────────────────────────────
+
+  LyricTransformStatus _publishedStatus = LyricTransformStatus.none;
+
+  /// The transform state as the caption wants it: in flight first, then what the
+  /// reader asked to see, in the order the caption itself reads them.
+  ///
+  /// "Shown" is the mode REQUESTED, not the one still folding away: the caption
+  /// answers the tap at once, as the disc beside it does.
+  LyricTransformStatus _transformStatus() {
+    final c = _subController;
+    switch (c.loadingMode) {
+      case SubLineMode.translated:
+        return const LyricTransformStatus(LyricTransformPhase.translating);
+      case SubLineMode.romanized:
+        return const LyricTransformStatus(LyricTransformPhase.romanizing);
+      case SubLineMode.original:
+      case null:
+        break;
+    }
+    if (c.mode == SubLineMode.translated &&
+        c.status(SubLineMode.translated) == SubLineStatus.ready) {
+      return LyricTransformStatus(
+        LyricTransformPhase.translated,
+        language: c.targetLanguage,
+      );
+    }
+    if (c.mode == SubLineMode.romanized &&
+        c.status(SubLineMode.romanized) == SubLineStatus.ready) {
+      return const LyricTransformStatus(LyricTransformPhase.romanized);
+    }
+    return LyricTransformStatus.none;
+  }
+
+  /// Tells the caller when the status CHANGES. The controller notifies on every
+  /// frame of a 460ms reveal; the caption cares about four distinct moments.
+  ///
+  /// Delivered a microtask later, not now: the controller also notifies from
+  /// `didUpdateWidget` (a track change resets it), which is inside a build, and a
+  /// listener that rebuilds the caption from there is a setState during build.
+  void _publishTransformStatus() {
+    final next = _transformStatus();
+    if (next == _publishedStatus) return;
+    _publishedStatus = next;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      widget.onTransformStatusChanged?.call(next);
+    });
   }
 
   void _checkLyrics() {
@@ -303,6 +380,9 @@ class _LyricsScreenState extends State<LyricsScreen>
     if (identical(_syncedLyrics, lyrics)) return;
     _syncedLyrics = lyrics;
     _subEntries.clear();
+    // Rows are about to mean different lines (new heights, a new lead line); the
+    // fan-out is indexed by row, so a run left over would shift the wrong ones.
+    _stagger.cancel();
     _ensureKeys(lyrics?.length ?? 0);
 
     final active = lyrics == null || lyrics.isEmpty
@@ -337,6 +417,8 @@ class _LyricsScreenState extends State<LyricsScreen>
   /// rows around it exist.
   void _jumpToCurrent({int pass = 0}) {
     if (!mounted || !_scrollController.hasClients) return;
+    // A placement is not a handover: nothing is travelling, so nothing fans out.
+    if (pass == 0) _stagger.cancel();
     final target = _scrollTargetIndex;
     if (target < 0 || target >= _itemKeys.length) return;
     final position = _scrollController.position;
@@ -452,6 +534,9 @@ class _LyricsScreenState extends State<LyricsScreen>
 
   void _enterBrowse() {
     if (_isUserScrolling) return;
+    // The finger owns the list now. A fan-out still running would keep pulling
+    // rows around under it for a few hundred ms, so it ends here.
+    _stagger.cancel();
     _browseIdleMs = Duration.zero;
     _browseTimer?.cancel();
     _browseTimer = Timer.periodic(_browsePeriod, (_) => _advanceBrowseIdle());
@@ -560,24 +645,19 @@ class _LyricsScreenState extends State<LyricsScreen>
   }
 
   /// How long the move to the lead line should take: the gap it is covering,
-  /// clamped to [scrollLeadMs]'s bounds. Zero when the target is already in
-  /// place, so no animation is started that has nothing to do.
+  /// clamped to [scrollLeadMs]'s bounds.
+  ///
+  /// Never zero. It used to be zero when `_activeLineNeedsScroll` said the lead
+  /// line was already on screen, and a zero duration meant `jumpTo` - so at every
+  /// line change, where the lead line IS the line just entered and is always on
+  /// screen, the list hard-cut one line instead of gliding. "Already in place" is
+  /// a question about the OFFSET (see [_animateLineToView]), not about whether the
+  /// row is visible: a row one line below the anchor is visible and still has a
+  /// line to travel.
   Duration get _scrollRunUp {
-    if (!_activeLineNeedsScroll) return Duration.zero;
     final lyrics = _lyricsRef;
     if (lyrics == null || lyrics.isEmpty) return LyricLineStyle.lyricSettle;
     return Duration(milliseconds: scrollLeadMs(lyrics, _clock.positionMs));
-  }
-
-  /// Whether the lead line is far enough off to be worth animating to.
-  ///
-  /// Within a line's own height the list is already showing it; moving would
-  /// read as a twitch on every single word.
-  bool get _activeLineNeedsScroll {
-    final target = _scrollTargetIndex;
-    if (target < 0 || target >= _itemKeys.length) return false;
-    if (target == _currentLineIndex) return !_focusRowVisible();
-    return true;
   }
 
   /// Moves the list so the line the reader is about to need sits where the eye
@@ -599,24 +679,48 @@ class _LyricsScreenState extends State<LyricsScreen>
   void _animateLineToView(int target, int pass) {
     if (!mounted || !_scrollController.hasClients) return;
 
+    // A new handover supersedes the last one's fan-out, and does so BEFORE
+    // anything is measured: `_targetOffsetFor` reads row positions through
+    // `localToGlobal`, which includes the paint shift, so a row still held back
+    // by the previous run would be measured where it is drawn rather than where
+    // it is laid out and the new target would be off by the shift. The cost is a
+    // snap of whatever the last run had left, which is at most a few px unless
+    // two lines arrive inside one handover.
+    //
+    // Passes 1 and 2 are the correction after a run, not a handover: they leave
+    // the tail of it alone.
+    if (pass == 0) _stagger.cancel();
+
     final offset = _targetOffsetFor(target);
+    // Already there: nothing to animate. Judged by the offset the list would
+    // travel to, within a pixel - the only honest "nothing to do".
+    if ((offset - _scrollController.offset).abs() < 1.0) return;
     final duration = pass == 0 ? _scrollRunUp : LyricLineStyle.lyricSettle;
-    if (duration == Duration.zero) {
-      _scrollController.jumpTo(offset);
-      return;
-    }
 
     // `animateTo` on the offset rather than `ensureVisible` on the context: one
     // offset, one curve, one duration, so a handover reads as a single movement
     // instead of composing with whatever animation was already in flight.
-    _scrollController
-        .animateTo(offset, duration: duration, curve: LyricLineStyle.lyricEase)
-        .whenComplete(() {
-      if (!mounted || pass >= _maxRefinePasses) return;
+    final fanOut = pass == 0 ? _fanOutFor(target, offset, duration) : null;
+    final scroll = _scrollController.animateTo(
+      offset,
+      duration: duration,
+      curve: LyricLineStyle.lyricEase,
+    );
+    // On the same frame as the scroll, so both tickers share a time base and the
+    // rows are on the list's own curve.
+    if (fanOut != null) _stagger.start(fanOut);
+
+    scroll.whenComplete(() {
+      if (!mounted) return;
+      if (fanOut != null) _endFanOutIfCutShort(fanOut);
+      if (pass >= _maxRefinePasses) return;
       // One frame later: the row only gets laid out - and only gets a context -
       // on the next frame's layout pass.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || pass >= _maxRefinePasses) return;
+        // The reader took the list in the meantime. Correcting now would
+        // `animateTo` out from under their finger and hand them back to the song.
+        if (_isUserScrolling) return;
         if (target >= _itemKeys.length ||
             _itemKeys[target].currentContext == null) {
           return;
@@ -627,6 +731,54 @@ class _LyricsScreenState extends State<LyricsScreen>
         }
       });
     });
+  }
+
+  /// The slack between a scroll ending and the fan-out clock reading its
+  /// duration, in ms. A frame and a half: both are the same ticker time, this is
+  /// only rounding.
+  static const double _fanOutSlackMs = 24.0;
+
+  /// The fan-out that goes with a move to [target], or null when there should be
+  /// none.
+  ///
+  /// None when motion is reduced; when the target row has not been built (the
+  /// distance is a guess, and a run sized on a guess is a run that over- or
+  /// under-shoots); and when the move is a seek across the song rather than a
+  /// handover to the next line - a stretch of more than a viewport would hold
+  /// rows hundreds of px behind a list that is already gone.
+  LyricScrollRun? _fanOutFor(int target, double offset, Duration duration) {
+    if (MediaQuery.disableAnimationsOf(context)) return null;
+    if (target >= _itemKeys.length ||
+        _itemKeys[target].currentContext == null) {
+      return null;
+    }
+    final position = _scrollController.position;
+    // The distance the list will actually travel: `animateTo` is aimed at
+    // `offset`, but the extents bound where it can arrive.
+    final destination = offset
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    final delta = destination - position.pixels;
+    if (delta.abs() < 1.0 || delta.abs() > position.viewportDimension) {
+      return null;
+    }
+    return LyricScrollRun(
+      focusIndex: target,
+      delta: delta,
+      durationMs: duration.inMilliseconds,
+    );
+  }
+
+  /// Ends [run] if the scroll it describes stopped before it should have.
+  ///
+  /// The scroll's future completes when its activity ends, whatever ended it. A
+  /// normal end is at or after the run's duration; an earlier one means
+  /// something took the list - a touch that stopped it dead, a jump, a newer
+  /// move. With the list frozen mid-way the rows would otherwise finish a fan-out
+  /// the list never made. A newer run is none of this one's business.
+  void _endFanOutIfCutShort(LyricScrollRun run) {
+    if (!identical(_stagger.run, run)) return;
+    if (_stagger.elapsedMs < run.durationMs - _fanOutSlackMs) _stagger.cancel();
   }
 
   /// A best guess for where [target] sits, for a row the list has not built: the
@@ -841,10 +993,8 @@ class _LyricsScreenState extends State<LyricsScreen>
                 visible: _discsShown,
                 child: _buildDisc(
                   icon: Icons.language_rounded,
-                  semanticLabel:
-                      _subController.shownMode == SubLineMode.romanized
-                          ? 'Show original script'
-                          : 'Show romanized lyrics',
+                  semanticLabel: 'Show romanized lyrics',
+                  activeSemanticLabel: 'Show original script',
                   mode: SubLineMode.romanized,
                 ),
               ),
@@ -856,10 +1006,8 @@ class _LyricsScreenState extends State<LyricsScreen>
                 visible: _discsShown,
                 child: _buildDisc(
                   icon: Icons.translate_rounded,
-                  semanticLabel:
-                      _subController.shownMode == SubLineMode.translated
-                          ? 'Show original lyrics'
-                          : 'Show translated lyrics',
+                  semanticLabel: 'Show translated lyrics',
+                  activeSemanticLabel: 'Show original lyrics',
                   mode: SubLineMode.translated,
                 ),
               ),
@@ -881,10 +1029,13 @@ class _LyricsScreenState extends State<LyricsScreen>
   LyricsEntry? _subEntryAt(int index) {
     if (_subController.shownMode == SubLineMode.original) return null;
     if (_subController.progress <= 0) return null;
-    final lines = _subController.lines;
     final current = _lyricsRef;
-    if (lines == null || current == null) return null;
-    if (lines.length != current.length) return null;
+    if (current == null) return null;
+    // Null unless the transform on hand was made for THIS lyric - by content, not
+    // by length: two providers' versions of a song often have the same number of
+    // lines, and a sub-line under the wrong words is a lie with a UI attached.
+    final lines = _subController.linesFor(current);
+    if (lines == null) return null;
     if (index < 0 || index >= lines.length) return null;
     final text = lines[index];
     if (text.trim().isEmpty) return null;
@@ -922,16 +1073,20 @@ class _LyricsScreenState extends State<LyricsScreen>
 
     if (entry.isMusicalBreak) {
       final next = index + 1 < lyrics.length ? lyrics[index + 1].timeMs : null;
-      return KeyedSubtree(
-        key: key,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: LyricGapDots(
-            clock: _clock,
-            startMs: entry.timeMs,
-            endMs: next ?? entry.timeMs + 4000,
-            active: delta == 0,
-            alpha: alpha,
+      return LyricStaggerShift(
+        stagger: _stagger,
+        index: index,
+        child: KeyedSubtree(
+          key: key,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: LyricGapDots(
+              clock: _clock,
+              startMs: entry.timeMs,
+              endMs: next ?? entry.timeMs + 4000,
+              active: delta == 0,
+              alpha: alpha,
+            ),
           ),
         ),
       );
@@ -942,7 +1097,10 @@ class _LyricsScreenState extends State<LyricsScreen>
         : LyricTypography.unsynced();
     final isActive = isSynced && delta == 0;
 
-    return GestureDetector(
+    // Every row that draws anything is held in a LyricStaggerShift (below): the
+    // fan-out is by index, so a gap row that sat still between two rows that
+    // moved would be run over by the one above it.
+    final row = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: isSynced ? () => _onLineTap(index, lyrics) : null,
       child: Padding(
@@ -992,6 +1150,7 @@ class _LyricsScreenState extends State<LyricsScreen>
         ),
       ),
     );
+    return LyricStaggerShift(stagger: _stagger, index: index, child: row);
   }
 
   // ── The two mode discs ─────────────────────────────────────────────────────
@@ -999,71 +1158,127 @@ class _LyricsScreenState extends State<LyricsScreen>
   Widget _buildDisc({
     required IconData icon,
     required String semanticLabel,
+    required String activeSemanticLabel,
     required SubLineMode mode,
   }) {
-    // The globe is pointless on a lyric that is already Latin, and saying so is
-    // better than a disc that spins, returns the identical text and renders a
-    // sub-line indistinguishable from the original above it. Decided from the
-    // LYRIC rather than from the last tap, so the disc is right the moment it
-    // appears; the check and the controller use the same function.
-    final alreadyLatin = mode == SubLineMode.romanized && _lyricIsLatinScript;
-
     return ListenableBuilder(
       listenable: _subController,
-      builder: (context, _) => TransformDisc(
-        icon: icon,
-        semanticLabel: alreadyLatin
-            ? 'These lyrics already use Latin characters'
-            : semanticLabel,
-        state: _subController.isBusy
-            ? TransformButtonState.loading
-            : alreadyLatin
-                ? TransformButtonState.sameLanguage
-                : _subController.shownMode == mode
-                    ? TransformButtonState.ready
-                    : TransformButtonState.idle,
-        active: _subController.shownMode == mode,
-        onTap: () => _onDiscTap(mode),
-      ),
+      builder: (context, _) {
+        _reconcileSubLine();
+
+        final status = _subController.status(mode);
+        // The globe is pointless on a lyric that is already Latin, and saying so
+        // is better than a disc that spins, returns the identical text and renders
+        // a sub-line indistinguishable from the original above it. Decided from
+        // the LYRIC rather than from the last tap, so the disc is right the moment
+        // it appears; the controller applies the same rule on the tap.
+        final alreadyLatin = mode == SubLineMode.romanized && _lyricIsLatinScript;
+        final nothingToDo = alreadyLatin || status == SubLineStatus.sameLanguage;
+        // Lit by the transform REQUESTED, not the one still folding away: the disc
+        // answers the tap at once.
+        final showing = _subController.mode == mode;
+
+        return TransformDisc(
+          icon: icon,
+          semanticLabel: alreadyLatin
+              ? 'These lyrics already use Latin characters'
+              : status == SubLineStatus.sameLanguage
+                  ? 'Already in ${LyricsTranslationService.languageName(_subController.targetLanguage)}'
+                  : showing
+                      ? activeSemanticLabel
+                      : semanticLabel,
+          // Per disc: only the transform in flight spins. One flag for both made
+          // the OTHER disc spin too, and invited a tap on it that raced the first.
+          state: status == SubLineStatus.loading
+              ? TransformButtonState.loading
+              : nothingToDo
+                  ? TransformButtonState.sameLanguage
+                  : showing
+                      ? TransformButtonState.ready
+                      : TransformButtonState.idle,
+          active: showing,
+          onTap: () => _onDiscTap(mode),
+        );
+      },
     );
+  }
+
+  /// Drops the transform if the lyric it was made for has been replaced.
+  ///
+  /// A provider switch changes the words under the same track, so the track key
+  /// never notices; and a sub-line made for the old words, painted under the new
+  /// ones, is a translation of a different lyric. Compared by content, so a
+  /// refetch that returns the same words keeps what the reader asked for.
+  ///
+  /// Deferred to after the frame: this is called while the discs build, and the
+  /// controller notifies.
+  void _reconcileSubLine() {
+    final entries = _lyricsRef;
+    if (entries == null || _subController.matchesLyrics(entries)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Asked again: a tap in the meantime may already have adopted the new
+      // lyric, and resetting THEN would cancel the request it just started.
+      final latest = _lyricsRef;
+      if (latest != null && !_subController.matchesLyrics(latest)) {
+        _subController.onSourceChanged();
+      }
+    });
   }
 
   /// Whether every lyric line is already in Latin script.
   bool get _lyricIsLatinScript {
     final entries = _lyricsRef;
     if (entries == null || entries.isEmpty) return false;
-    return LyricsTranslationService.isAlreadyRomanizable(
-      entries.map((e) => e.text).toList(),
-    );
+    return LyricsTranslationService.entriesAreLatin(entries);
   }
 
   Future<void> _onDiscTap(SubLineMode mode) async {
-    final entries = _lyricsRef;
+    if (_lyricsRef == null) return;
     final track = widget.trackKey;
-    if (entries == null || track == null || track.isEmpty) return;
+    if (track == null || track.isEmpty) return;
 
-    if (mode == SubLineMode.romanized && _lyricIsLatinScript) {
-      // TELL the reader rather than doing nothing. A disc that silently refuses a
-      // tap is indistinguishable from a broken one.
-      HapticFeedback.selectionClick();
-      _showTransformMessage('These lyrics already use Latin characters');
-      return;
-    }
+    // Read on every tap, so a change in Settings takes effect without a restart;
+    // the caller's explicit language wins. The device fallback is a BASE language
+    // (`en`), not `Platform.localeName` (`en_US`), which was sent as `tl=en_US`.
+    final language = widget.translationLanguage ??
+        await LyricsTranslationService.instance.targetLanguage();
+    if (!mounted) return;
+    // Re-read: the lyric may have been replaced while the setting was read.
+    final entries = _lyricsRef;
+    if (entries == null) return;
 
-    await _subController.toggle(
+    final outcome = await _subController.toggle(
       mode,
       trackKey: track,
-      sourceLines: entries.map((e) => e.text).toList(),
-      targetLanguage: widget.translationLanguage ?? Platform.localeName,
+      sourceLines: [for (final entry in entries) entry.text],
+      targetLanguage: language,
     );
     if (!mounted) return;
 
-    if (_subController.alreadyInLanguage) {
-      _showTransformMessage('These lyrics already use Latin characters');
+    // TELL the reader rather than doing nothing. A disc that silently refuses a
+    // tap is indistinguishable from a broken one.
+    switch (outcome) {
+      case SubLineTap.sameLanguage:
+        _showTransformMessage(
+          mode == SubLineMode.romanized
+              ? 'These lyrics already use Latin characters'
+              : 'Already in ${LyricsTranslationService.languageName(language)}',
+        );
+      case SubLineTap.unavailable:
+        _showTransformMessage(
+          mode == SubLineMode.romanized
+              ? 'Romanization is unavailable for these lyrics'
+              : 'Translation is unavailable right now',
+        );
+      case SubLineTap.shown ||
+            SubLineTap.hidden ||
+            SubLineTap.ignored ||
+            SubLineTap.superseded ||
+            SubLineTap.empty:
+        break;
     }
-    setState(() {});
   }
-
   /// A snackbar rather than a new panel: this is a confirmation about a tap the
   /// reader just made, and the reference treats it as a transient message too
   /// (`PlayerLyrics.kt:2791-2794`).

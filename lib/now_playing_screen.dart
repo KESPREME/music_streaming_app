@@ -23,7 +23,9 @@ import '../widgets/thin_slider.dart';
 import '../widgets/device_volume_slider.dart';
 import '../widgets/audio_output_sheet.dart';
 import '../widgets/liquid_glass_pill.dart';
+import '../widgets/lyric_caption.dart';
 import '../widgets/lyric_providers_sheet.dart';
+import '../widgets/lower_half_tap.dart';
 import '../widgets/lyric_strip.dart';
 import '../widgets/scroll_collapse_tracker.dart';
 import '../services/lyrics/lyric_clock.dart';
@@ -148,7 +150,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   // the queue list and the lyrics body share one threshold language, so a
   // collapse works the same whether words or rows are scrolling.
   final ScrollCollapseTracker _queueCollapse = ScrollCollapseTracker();
-  final ScrollCollapseTracker _lyricsCollapse = ScrollCollapseTracker();
+  // The lyric panel's dialect: direction only - 20dp one way hides, 20dp the other
+  // way reveals, and the tally resets when the finger changes its mind.
+  final ScrollCollapseTracker _lyricsCollapse =
+      ScrollCollapseTracker.directional();
 
   // Queue shared-element morph (lyrics-mini language, rects mirrored from
   // _buildMainPlayerPage layers 3-4): the album flies to the top-left 46px
@@ -161,10 +166,39 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   bool _queueMorphOpen = false;
   int _queueMorphGen = 0;
 
-  // Shared-deck visibility (BitChord SlidingPlayerDeck parity): the deck
-  // hides when scrolled down and returns on scroll up. Combined with the
-  // lyrics idle flag, either one hides the deck.
-  bool _deckVisible = true;
+  // ONE answer to "are the controls on screen": the deck AND the mode discs read
+  // it, and every way of hiding or revealing them writes it through
+  // _setControlsShown - the 5s lyrics idle, a finger scrolling the lyric, a tap
+  // in the lower half of the panel, the queue list's scroll, a new track.
+  //
+  // It was two flags (a scroll flag and an idle flag) ANDed together. That let
+  // the deck come back from an idle hide while a scroll still held it away, and
+  // let the discs and the deck disagree about which of them had won. Two ways to
+  // hide something is one more than the something can be asked about.
+  bool _controlsShown = true;
+
+  // The deck's reveal: its size, 420ms fastOutSlowIn (BitChord SlidingPlayerDeck,
+  // NowPlayingScreen.kt:451). One value owns both the pixels and the space the
+  // deck takes, so the page above it grows and shrinks in step with it. SIZE,
+  // never alpha: the deck is a liquid-glass pill, and a translucent layer over a
+  // backdrop lens flattens it for the whole fade (invariant 1).
+  late final AnimationController _deckController;
+  late final Animation<double> _deckSize;
+
+  // The rise: a 24dp slide up from below, which stands in for the fade the
+  // reference gives the deck when it comes back. Its own controller, because
+  // returning to the main view snaps the deck to full height (the artwork is
+  // flying to a rect derived from the page height, and a deck still growing
+  // under it would move the destination mid-flight) and still wants to arrive
+  // gently.
+  late final AnimationController _deckRiseController;
+  static const double _kDeckRise = 24.0;
+  static const Duration _kDeckRevealDuration = Duration(milliseconds: 420);
+  static const Duration _kDeckReturnRiseDuration = Duration(milliseconds: 700);
+
+  /// What the lyric panel says it is doing to the words, for the caption.
+  final ValueNotifier<LyricTransformStatus> _transformStatus =
+      ValueNotifier<LyricTransformStatus>(LyricTransformStatus.none);
 
   // Lyrics idle chrome (BitChord 5s rule): while lyrics are open and the
   // finger has been still for 5s, the bottom chrome fades and the words
@@ -234,7 +268,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   /// scrubber and the volume slider both set it and both mean the same thing: the
   /// reader is holding something, and five seconds of holding is not stillness.
   bool _isVolumeDragging = false;
-  bool _lyricsChromeHidden = false;
   String? _idleTrackId;
 
   /// The clock the on-deck lyric line sweeps against. Created once, fed from the
@@ -285,6 +318,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       vsync: this,
       duration: _morphPanelFadeDuration,
     );
+
+    // The deck starts shown and settled. reverseCurve is the curve mirrored, so
+    // hiding is eased in ITS direction (fast away, slow to land) rather than
+    // replaying the reveal backwards; neither overshoots (invariant 16).
+    _deckController = AnimationController(
+      vsync: this,
+      duration: _kDeckRevealDuration,
+      value: 1.0,
+    );
+    _deckSize = CurvedAnimation(
+      parent: _deckController,
+      curve: Curves.fastOutSlowIn,
+      reverseCurve: Curves.fastOutSlowIn.flipped,
+    );
+    _deckRiseController = AnimationController(
+      vsync: this,
+      duration: _kDeckRevealDuration,
+      value: 1.0,
+    );
   }
 
   /// How long the artwork takes to collapse into the header.
@@ -332,6 +384,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _lyricClock.dispose();
     _morphController.dispose();
     _panelFadeController.dispose();
+    _deckController.dispose();
+    _deckRiseController.dispose();
+    _transformStatus.dispose();
     // Performance & Battery Optimization: Pause silent canvas video when NowPlaying screen is dismissed
     CanvasVideoManager.instance.pause();
     super.dispose();
@@ -360,6 +415,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     setState(() {
       _isLyricsOpen = true;
       _currentTab = 0;
+      // Opening always brings the controls with it (BitChord openLyrics sets
+      // lyricsControlsOpen = true in the same breath): a deck left hidden by a
+      // queue scroll must not greet the reader with a panel and nothing to
+      // reach.
+      _applyControlsShown(true);
     });
 
     if (silent || fromQueue) {
@@ -412,6 +472,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       _isLyricsOpen = false;
       // Properly restore tab indicator to motion canvas (1) if enabled, otherwise album mode (-1)
       _currentTab = provider.animatedCanvasEnabled ? 1 : -1;
+      // The controls are on screen outside the lyric view, always. If the reader
+      // had put them away, they come back at FULL height at once and rise into
+      // place: the artwork is about to grow into a rect derived from the page
+      // height, and a deck still growing under it would move that destination
+      // mid-flight. (BitChord snaps the deck to full height and fades it in; the
+      // fade is the slide here, because nothing translucent may sit over the
+      // glass.)
+      _applyControlsShown(true, snap: !_controlsShown);
     });
     // A silent close keeps the mini in place because the caller is about to
     // hand the same header to the queue page.
@@ -432,10 +500,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     }
   }
 
-  // Lyrics idle chrome: 5s of stillness hides the bottom chrome so the
-  // words own the screen. Any tap/scroll/track change calls
-  // _pokeLyricsIdle to reveal + restart. One-shot timer, lyrics-only,
-  // so there is no background cost anywhere else.
+  // Lyrics idle: 5s of stillness puts the controls away so the words own the
+  // screen. One-shot timer, lyrics-only, so there is no background cost
+  // anywhere else.
+  //
+  // THE COUNTDOWN ONLY EVER HIDES. It restarts on activity (_pokeLyricsIdle) and
+  // on every reveal, and it is not running at all while the controls are away -
+  // so a touch on a hidden panel cannot bring them back by accident. Reveal is a
+  // decision (a lower-half tap, a scroll back the other way), taken in
+  // _setControlsShown. It used to be a side effect of restarting the timer:
+  // every pointer-down un-hid the chrome, so "scroll up to hide" flickered the
+  // controls back in on the touch that started the scroll.
   //
   // Scrubbing and dragging the volume SUSPEND it rather than being activity:
   // those are held gestures, and a reader holding the scrubber to find a line
@@ -445,29 +520,69 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   // refuses to count those two (NowPlayingScreen.kt:1119-1124).
   void _startLyricsIdle() {
     _cancelLyricsIdle();
+    if (!_isLyricsOpen || !_controlsShown) return;
     if (_isScrubbing || _isVolumeDragging) return;
     final provider = Provider.of<MusicProvider>(context, listen: false);
     _idleTrackId = provider.currentTrack?.id ?? widget.track.id;
     _lyricsIdleTimer = Timer(_kLyricsIdleTimeout, () {
       if (!mounted || !_isLyricsOpen) return;
-      setState(() => _lyricsChromeHidden = true);
+      _setControlsShown(false);
     });
   }
 
+  /// Stops the countdown. Does NOT reveal anything: it is called on the way out
+  /// of the lyric view and at the top of every restart.
   void _cancelLyricsIdle() {
     _lyricsIdleTimer?.cancel();
     _lyricsIdleTimer = null;
-    if (_lyricsChromeHidden && mounted) {
-      setState(() => _lyricsChromeHidden = false);
-    }
   }
 
+  /// Activity: restart the countdown. A no-op while the controls are away.
   void _pokeLyricsIdle() {
     if (!_isLyricsOpen) return;
-    if (_lyricsChromeHidden && mounted) {
-      setState(() => _lyricsChromeHidden = false);
-    }
     _startLyricsIdle();
+  }
+
+  /// THE way to show or hide the controls (the deck and the mode discs).
+  ///
+  /// [snap] jumps the deck to full height instead of growing it; the rise still
+  /// plays. Only for returning to the main view, where the artwork's flight is
+  /// aimed at a rect that depends on the deck's height.
+  void _setControlsShown(bool shown, {bool snap = false}) {
+    if (!mounted) return;
+    if (shown == _controlsShown && !snap) return;
+    setState(() => _applyControlsShown(shown, snap: snap));
+  }
+
+  /// [_setControlsShown] without the setState, for callers already inside one.
+  void _applyControlsShown(bool shown, {bool snap = false}) {
+    final wasShown = _controlsShown;
+    _controlsShown = shown;
+    if (shown) {
+      // Rise only from fully away. Revealed part-way through a hide, the content
+      // is already on screen and continues from where it is; restarting the rise
+      // from 24dp down would pop it.
+      final fromAway = _deckController.isDismissed;
+      if (snap) {
+        _deckController.value = 1.0;
+      } else if (!wasShown) {
+        _deckController.forward();
+      }
+      if (snap || (!wasShown && fromAway)) {
+        _deckRiseController
+          ..value = 0.0
+          ..animateTo(
+            1.0,
+            duration: snap ? _kDeckReturnRiseDuration : _kDeckRevealDuration,
+            curve: Curves.fastOutSlowIn,
+          );
+      }
+      // A reveal restarts the countdown, the way the reference's effect re-keys.
+      if (_isLyricsOpen) _startLyricsIdle();
+    } else {
+      _cancelLyricsIdle();
+      _deckController.reverse();
+    }
   }
 
   /// A held gesture that must not cost the reader the discs.
@@ -483,7 +598,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (active) {
       _lyricsIdleTimer?.cancel();
       _lyricsIdleTimer = null;
-      if (_lyricsChromeHidden) setState(() => _lyricsChromeHidden = false);
     } else if (_isLyricsOpen) {
       _startLyricsIdle();
     }
@@ -507,10 +621,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final provider = Provider.of<MusicProvider>(context, listen: false);
     setState(() {
       _currentTab = provider.animatedCanvasEnabled ? 1 : -1;
-      _deckVisible = true;
     });
+    // _closeLyrics brings the controls back itself (snapped, if they were away);
+    // outside the lyric view there is nothing to put away in the first place.
     if (_isLyricsOpen) {
       _closeLyrics();
+    } else {
+      _setControlsShown(true);
     }
     if (_pageController.hasClients &&
         (_pageController.page ?? 0).round() != 0) {
@@ -636,7 +753,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           _idleTrackId = currentTrack.id;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (!_deckVisible) setState(() => _deckVisible = true);
+            _setControlsShown(true);
             _pokeLyricsIdle();
           });
         }
@@ -869,7 +986,9 @@ child: Transform.scale(
                       if (_currentTab == 3) {
                         return _queueCollapse.handle(n, _onDeckCollapse);
                       }
-                      if (_isLyricsOpen) {
+                      // Vertical only: the pager's own horizontal drag is a
+                      // scroll too, and its pixels are not reading-on.
+                      if (_isLyricsOpen && n.metrics.axis == Axis.vertical) {
                         return _lyricsCollapse.handle(n, _onDeckCollapse);
                       }
                       return false;
@@ -901,7 +1020,7 @@ child: Transform.scale(
                         _queueCollapse.reset();
                         _lyricsCollapse.reset();
                         setState(() {
-                          _deckVisible = true;
+                          _applyControlsShown(true);
                           if (page == 0) {
                             if (_queueMorphOpen) {
                               // Manual swipe home: snap the held header shut
@@ -1124,24 +1243,34 @@ child: Transform.scale(
                           // landed anyway so they do not fade in twice.
                           child: Opacity(
                             opacity: fade,
-                            child: LyricsScreen(
-                              onMinimize: widget.onMinimize,
-                              onReturnToAlbum: _closeLyrics,
-                              onTabTap: _navigateToTab,
-                              isEmbedded: true,
-                              showHeader: false,
-                              // Deck below owns seek/volume: one set only.
-                              showBottomScrubber: false,
-                              // The ONE clock, shared with the seek-bar strip.
-                              clock: _lyricClock,
-                              // The discs belong to the controls: they arrive with
-                              // the deck and leave with it, on this one decision.
-                              discsVisible: fade >= 1.0 &&
-                                  _deckVisible &&
-                                  !_lyricsChromeHidden,
-                              // Ties the transform to this track, so a slow answer
-                              // cannot land under the next song.
-                              trackKey: currentTrack.id,
+                            // A tap in the lower half brings the controls back
+                            // when they are away. Raw pointer events, so it never
+                            // competes with a lyric row's seek or the list's drag.
+                            child: LowerHalfTap(
+                              enabled: _isLyricsOpen && !_controlsShown,
+                              onTap: () => _setControlsShown(true),
+                              child: LyricsScreen(
+                                onMinimize: widget.onMinimize,
+                                onReturnToAlbum: _closeLyrics,
+                                onTabTap: _navigateToTab,
+                                isEmbedded: true,
+                                showHeader: false,
+                                // Deck below owns seek/volume: one set only.
+                                showBottomScrubber: false,
+                                // The ONE clock, shared with the seek-bar strip.
+                                clock: _lyricClock,
+                                // The discs belong to the controls: they arrive
+                                // with the deck and leave with it, on this one
+                                // decision.
+                                discsVisible: fade >= 1.0 && _controlsShown,
+                                // The caption under the lyric says what the panel
+                                // is doing to the words.
+                                onTransformStatusChanged: (status) =>
+                                    _transformStatus.value = status,
+                                // Ties the transform to this track, so a slow
+                                // answer cannot land under the next song.
+                                trackKey: currentTrack.id,
+                              ),
                             ),
                           ),
                         ),
@@ -1353,54 +1482,29 @@ child: Transform.scale(
         final isMatchingTrack = musicProv.lyricsTrackId == track.id;
         final entries =
             isMatchingTrack ? musicProv.currentLyrics : null;
-        final source = entries == null || entries.isEmpty
-            ? null
-            : musicProv.lyricsSourceName;
+        final hasLyrics = entries != null && entries.isNotEmpty;
 
-        final label = source == null
-            ? 'Lyrics unavailable'
-            : 'Lyrics by $source';
-        final available = source != null;
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: available
-              ? () {
-                  HapticFeedback.selectionClick();
-                  // The live switcher, not the settings list: tapping the source
-                  // row is asking "show me this song's words from somewhere
-                  // else", which is a request about this track rather than a
-                  // standing preference about the app.
-                  LyricProvidersSheet.showLive(context);
-                }
-              : null,
-          child: Row(
-            children: [
-              // The leading note-box glyph is gone: it sat immediately beside the
-              // source label and gave the caption two typefaces fighting, which is
-              // exactly the unstyled look the reference avoids with a single text
-              // style and no icon. The provider name itself carries the meaning.
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: available ? 0.72 : 0.38),
-                  ),
-                ),
-              ),
-              if (available) ...[
-                const SizedBox(width: 3),
-                Icon(
-                  Icons.unfold_more_rounded,
-                  size: 14,
-                  color: Colors.white.withValues(alpha: 0.5),
-                ),
-              ],
-            ],
+        // The panel owns the transform, so it tells us what it is doing; the
+        // caption only decides what to SAY (LyricCaption.resolve, in priority
+        // order: work in flight, the transform on screen, the source, a miss, a
+        // lookup still running).
+        return ValueListenableBuilder<LyricTransformStatus>(
+          valueListenable: _transformStatus,
+          builder: (context, transform, _) => LyricCaptionText(
+            data: LyricCaption.resolve(
+              transform: transform,
+              hasLyrics: hasLyrics,
+              source: hasLyrics ? musicProv.lyricsSourceName : null,
+              loading: musicProv.isLoadingLyrics,
+            ),
+            onTap: () {
+              HapticFeedback.selectionClick();
+              // The live switcher, not the settings list: tapping the caption is
+              // asking "show me this song's words from somewhere else", which is
+              // a request about this track rather than a standing preference
+              // about the app.
+              LyricProvidersSheet.showLive(context);
+            },
           ),
         );
       },
@@ -1702,17 +1806,16 @@ onDragStart: () {
   // Queue-list scroll drives the shared deck (BitChord collapsePlayerOnScroll
   // parity): list scrolling down hides the deck, scrolling back up reveals
   // it. State-gated so a fling settling produces no rebuild storm.
-  void _onDeckCollapse(bool hide) {
-    if (hide == !_deckVisible) return;
-    setState(() => _deckVisible = !hide);
-  }
+  void _onDeckCollapse(bool hide) => _setControlsShown(!hide);
 
   // Shared player deck (BitChord SlidingPlayerDeck parity): lyric line,
   // scrubber, transport, volume, mode pill, output - ONE block measured at
   // its natural height and pinned under both pages. Same geometry on player
   // and queue, so switching screens never moves a control by a pixel.
-  // Visibility is the AND of the queue-scroll flag and the lyrics idle
-  // flag; either hides with a 300ms fade + short rise, any reveal restores.
+  // Visibility is _controlsShown: the one answer the discs read as well. It is
+  // revealed by SIZE and SLIDE, never alpha - the deck holds the liquid-glass
+  // pill, and a translucent layer over a backdrop lens flattens it for the whole
+  // fade (invariant 1).
   Widget _buildPlayerDeck(
     BuildContext context,
     MusicProvider musicProvider,
@@ -1720,28 +1823,18 @@ onDragStart: () {
     bool isPlaying,
     Track currentTrack,
   ) {
-    final shown = _deckVisible && !_lyricsChromeHidden;
+    final shown = _controlsShown;
     final bottomPad = MediaQuery.of(context).padding.bottom;
     // The lyric view is only on the player page. On the queue the deck belongs
     // to a different screen and must keep its preview snippet, so the swap is
     // gated on both - otherwise queue and player would disagree about whether a
     // lyric is being displayed.
     final lyricsActive = _isLyricsOpen && _currentTab == 0;
-    // Size collapses too (not just fade): the page above grows into the
-    // freed space, so lyrics go full-page and the queue list goes full
-    // length instead of staring at a blank strip. One 300ms shot.
-    return ClipRect(
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        alignment: Alignment.topCenter,
-        child: shown
-            ? AnimatedOpacity(
-                key: const Key('npPlayerDeck'),
-        opacity: shown ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        child: IgnorePointer(
+    // The deck itself, built once per parent rebuild. The transition below only
+    // sizes, clips and slides it; it never re-builds it per frame.
+    final deck = IgnorePointer(
+          key: const Key('npPlayerDeck'),
+          // Untouchable from the first frame of a hide, not the last.
           ignoring: !shown,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1776,7 +1869,7 @@ onDragStart: () {
                         currentTrack,
                         musicProvider,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                     ],
 
                     // Scrubber Bar with timestamps
@@ -1833,10 +1926,34 @@ onDragStart: () {
               ),
             ],
           ),
-        ),
-      )
-            : const SizedBox.shrink(),
-      ),
+        );
+
+    // SizeTransition rather than AnimatedSize: the size is DRIVEN by the deck
+    // controller, so a reveal can be reversed mid-flight from where it is, and
+    // the page above (the Expanded in this column) grows and shrinks in step.
+    // Top alignment pins the deck's top edge: a hide slides the controls down
+    // and out, not away from under the panel.
+    return AnimatedBuilder(
+      animation: _deckController,
+      child: deck,
+      builder: (context, child) {
+        // Gone once fully hidden, as it was before: a hidden deck builds no
+        // scrubber, no strip and no pill.
+        if (_deckController.isDismissed) return const SizedBox.shrink();
+        return SizeTransition(
+          sizeFactor: _deckSize,
+          alignment: Alignment.topCenter,
+          child: AnimatedBuilder(
+            animation: _deckRiseController,
+            child: child,
+            builder: (context, child) => Transform.translate(
+              key: const Key('npPlayerDeckRise'),
+              offset: Offset(0.0, _kDeckRise * (1.0 - _deckRiseController.value)),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1881,7 +1998,7 @@ onDragStart: () {
     setState(() {
       _queueMorphOpen = true;
       _currentTab = 3;
-      _deckVisible = true;
+      _applyControlsShown(true);
     });
 if (_pageController.hasClients) _pageController.jumpToPage(1);
     if (miniLanded) {
@@ -1909,7 +2026,7 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
     final provider = Provider.of<MusicProvider>(context, listen: false);
     setState(() {
       _currentTab = provider.animatedCanvasEnabled ? 1 : -1;
-      _deckVisible = true;
+      _applyControlsShown(true);
     });
     PerfTrace.mark('queue-morph-close');
     unawaited(_queueMorphController.reverse().then((_) {

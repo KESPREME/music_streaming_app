@@ -67,10 +67,24 @@ class LyricStrip extends StatefulWidget {
     this.isLoading = false,
     this.hasLyrics = false,
     this.positionOverrideMs,
+    this.displayLines,
   });
 
   /// The lyric for the current track, or null while it is being fetched.
   final List<LyricsEntry>? lyrics;
+
+  /// The text to show INSTEAD of each line of [lyrics], when a translation or
+  /// romanization is the active mode; null to show the originals.
+  ///
+  /// BitChord's strip reads `displayedLyrics`, so turning a translation on
+  /// changes the strip over the seek bar as well as the panel. Parallel to
+  /// [lyrics]; ignored unless the lengths match, because text from another lyric
+  /// under this one's timing is worse than the original. The wipe still follows
+  /// the ORIGINAL line's timing (a translation has none of its own).
+  ///
+  /// Take it from `SubLineController.displayedLinesFor(lyrics)`, which also
+  /// refuses lines that were made for a different lyric.
+  final List<String>? displayLines;
 
   /// The player's clock: the single source of truth for both line and wipe.
   final LyricClock clock;
@@ -190,22 +204,36 @@ class _LyricStripState extends State<LyricStrip> {
   }
 
   /// Everything the current position resolves to, in one place.
-  ({LyricStripState state, LyricsEntry? entry, String text}) _resolve() {
+  ///
+  /// [timing] is the ORIGINAL line when [entry] is a translation of it: the wipe
+  /// follows the original's words, because the translation has none.
+  ({LyricStripState state, LyricsEntry? entry, String text, LyricsEntry? timing})
+      _resolve() {
     if (widget.isLoading) {
-      return (state: LyricStripState.loading, entry: null, text: '');
+      return (state: LyricStripState.loading, entry: null, text: '', timing: null);
     }
     if (_showUnavailable) {
-      return (state: LyricStripState.unavailable, entry: null, text: '');
+      return (
+        state: LyricStripState.unavailable,
+        entry: null,
+        text: '',
+        timing: null,
+      );
     }
 
     final lyrics = widget.lyrics;
     if (lyrics == null || lyrics.isEmpty) {
-      return (state: LyricStripState.loading, entry: null, text: '');
+      return (state: LyricStripState.loading, entry: null, text: '', timing: null);
     }
     // Timed means a line has a stamp OR words with their own. (A lyric whose first
     // line sits at 0ms is still timed if anything after it is.)
     if (!lyrics.any((e) => e.timeMs > 0 || e.isWordSynced)) {
-      return (state: LyricStripState.unsynced, entry: null, text: '');
+      return (
+        state: LyricStripState.unsynced,
+        entry: null,
+        text: '',
+        timing: null,
+      );
     }
 
     final index = _index;
@@ -214,6 +242,7 @@ class _LyricStripState extends State<LyricStrip> {
         state: LyricStripState.intro,
         entry: null,
         text: widget.introPhrase,
+        timing: null,
       );
     }
 
@@ -231,12 +260,30 @@ class _LyricStripState extends State<LyricStrip> {
         state: LyricStripState.intro,
         entry: null,
         text: widget.introPhrase,
+        timing: null,
       );
     }
-    if (line.isWordSynced) {
-      return (state: LyricStripState.swept, entry: line, text: text);
+
+    // The active mode's text, when there is one for THIS line. The state is the
+    // original's: a word-synced original still sweeps, in step, under a
+    // translation.
+    final display = widget.displayLines;
+    final shown = display != null &&
+            display.length == lyrics.length &&
+            display[index].trim().isNotEmpty
+        ? display[index].trim()
+        : null;
+    final state =
+        line.isWordSynced ? LyricStripState.swept : LyricStripState.plain;
+    if (shown != null && shown != text) {
+      return (
+        state: state,
+        entry: LyricsEntry(timeMs: line.timeMs, endMs: line.endMs, text: shown),
+        text: shown,
+        timing: line.isWordSynced ? line : null,
+      );
     }
-    return (state: LyricStripState.plain, entry: line, text: text);
+    return (state: state, entry: line, text: text, timing: null);
   }
 
   @override
@@ -268,7 +315,12 @@ class _LyricStripState extends State<LyricStrip> {
   }
 
   Widget _body(
-    ({LyricStripState state, LyricsEntry? entry, String text}) resolved,
+    ({
+      LyricStripState state,
+      LyricsEntry? entry,
+      String text,
+      LyricsEntry? timing,
+    }) resolved,
   ) {
     switch (resolved.state) {
       case LyricStripState.loading:
@@ -317,6 +369,7 @@ class _LyricStripState extends State<LyricStrip> {
           key: ValueKey<String>('lyric-strip:$_index|${entry.text}'),
           child: LyricLine(
             entry: entry,
+            timingSource: resolved.timing,
             clock: widget.clock,
             style: LyricTypography.strip(),
             // A single pinned line has nothing behind it for the eye to compare

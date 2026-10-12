@@ -68,6 +68,7 @@ Widget _host({
   bool isLoading = false,
   bool hasLyrics = true,
   int? positionOverrideMs,
+  List<String>? displayLines,
 }) =>
     MaterialApp(
       home: Scaffold(
@@ -80,6 +81,7 @@ Widget _host({
             isLoading: isLoading,
             hasLyrics: hasLyrics,
             positionOverrideMs: positionOverrideMs,
+            displayLines: displayLines,
             onTap: () {},
           ),
         ),
@@ -357,6 +359,101 @@ void main() {
       expect(_line(tester).glow, isFalse);
       expect(_line(tester).feather, isFalse);
       expect(_line(tester).tailAlpha, stripUnsungAlpha);
+    });
+  });
+
+  group('the strip shows the active mode\'s text', () {
+    // BitChord's strip reads `displayedLyrics`: turning a translation on changes
+    // the line over the seek bar as well as the panel, and turning it off puts
+    // the original back. Ours only ever read the originals.
+    List<String> translated(List<LyricsEntry> lyric) =>
+        [for (final e in lyric) 'T: ${e.text}'];
+
+    testWidgets('a translation replaces the text of the current line',
+        (tester) async {
+      final lyric = _lineSyncedLyric();
+      clock.reset(5000); // line 2
+      await tester.pumpWidget(
+        _host(lyrics: lyric, clock: clock, displayLines: translated(lyric)),
+      );
+      await tester.pump();
+
+      expect(_line(tester).entry.text, 'T: line 2 here');
+      expect(find.bySemanticsLabel(RegExp('T: line 2 here')), findsOneWidget);
+    });
+
+    testWidgets('and removing it puts the original back', (tester) async {
+      final lyric = _lineSyncedLyric();
+      clock.reset(5000);
+      await tester.pumpWidget(
+        _host(lyrics: lyric, clock: clock, displayLines: translated(lyric)),
+      );
+      await tester.pump();
+      await tester.pumpWidget(_host(lyrics: lyric, clock: clock));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(_line(tester).entry.text, 'line 2 here');
+    });
+
+    testWidgets('a word-synced original keeps sweeping, in step, under it',
+        (tester) async {
+      final lyric = _syncedLyric();
+      clock.reset(1000);
+      await tester.pumpWidget(
+        _host(lyrics: lyric, clock: clock, displayLines: translated(lyric)),
+      );
+      await tester.pump();
+
+      final line = _line(tester);
+      expect(line.entry.text, 'T: line 1 here');
+      expect(line.timingSource, same(lyric.first),
+          reason: 'a translation has no word timings of its own, so it follows '
+              'the original proportionally - as the panel\'s sub-line does');
+    });
+
+    testWidgets('text for a different lyric is ignored', (tester) async {
+      // Lines made for another provider's version of the song, a different
+      // length: showing them under this lyric's timing would be worse than the
+      // original.
+      final lyric = _lineSyncedLyric();
+      clock.reset(5000);
+      await tester.pumpWidget(
+        _host(lyrics: lyric, clock: clock, displayLines: const ['one', 'two']),
+      );
+      await tester.pump();
+
+      expect(_line(tester).entry.text, 'line 2 here');
+    });
+
+    testWidgets('a blank translated line falls back to the original',
+        (tester) async {
+      final lyric = _lineSyncedLyric();
+      clock.reset(5000);
+      final lines = translated(lyric)..[1] = '  ';
+      await tester.pumpWidget(
+        _host(lyrics: lyric, clock: clock, displayLines: lines),
+      );
+      await tester.pump();
+
+      expect(_line(tester).entry.text, 'line 2 here');
+    });
+
+    testWidgets('the intro phrase is still the intro phrase', (tester) async {
+      final lyric = [
+        for (var i = 0; i < 3; i++)
+          LyricsEntry(
+            timeMs: 6000 + i * 4000,
+            endMs: 6000 + i * 4000 + 3000,
+            text: 'line ${i + 1} here',
+          ),
+      ];
+      clock.reset(1000);
+      await tester.pumpWidget(
+        _host(lyrics: lyric, clock: clock, displayLines: translated(lyric)),
+      );
+      await tester.pump();
+
+      expect(find.text('Let it breathe'), findsOneWidget);
     });
   });
 }
