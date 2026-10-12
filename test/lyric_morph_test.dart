@@ -8,6 +8,7 @@ import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/now_playing_screen.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
+import 'package:music_streaming_app/widgets/lyrics_mode_discs.dart';
 
 /// THE MORPH THIS FILE PINS.
 ///
@@ -179,10 +180,12 @@ void main() {
       expect(_panelOpacity(tester), 1.0, reason: 'and fully arrived after it');
     });
 
-    testWidgets('the close is the same two stages, reversed', (tester) async {
-      // An asymmetric close is what the back-gesture capture caught: the lyric
-      // vanished on its own schedule while the artwork was still collapsing back
-      // out, so the two arrived at different moments going each way.
+    testWidgets('on close the panel goes FIRST and at once, then the artwork '
+        'grows back', (tester) async {
+      // BitChord hides the panel the instant `lyricsOpen` goes false and only then
+      // expands the sleeve (NowPlayingScreen.kt:3274). Reversing both together -
+      // which this used to do - left the lyric painted UNDER the artwork as it
+      // expanded: "lyrics not gone before the artwork comes".
       final provider = _Provider(_lyric());
       await tester.pumpWidget(_screen(provider));
       await tester.pump();
@@ -191,43 +194,90 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
       await tester.pump();
 
-      // Collapse then fade, sampled a frame at a time: a single 700ms pump
-      // advances the clock but runs only ONE frame, so the panel could not
-      // finish arriving inside it.
       var arrived = false;
       for (var i = 0; i < 20 && !arrived; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         arrived = _panelOpacity(tester) == 1.0;
       }
       expect(arrived, isTrue, reason: 'the panel must fully arrive');
-      final openOpacity = _panelOpacity(tester);
 
       // Close it the way a reader does: tap the artwork again.
       await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
       await tester.pump();
 
-      // The panel must start coming down immediately, not wait for the collapse.
-      await tester.pump(const Duration(milliseconds: 80));
-      final closing = _panelOpacity(tester);
-      expect(closing, isNotNull, reason: 'still fading out');
-      expect(closing, lessThan(openOpacity!),
-          reason: 'the lyric must start leaving with the artwork, or the two '
-              'travel at different speeds in opposite directions');
+      // The very next frame: no lyric on screen at all.
+      expect(_lyricLayersInTree(tester), 0,
+          reason: 'the panel must be gone before the artwork starts to grow');
 
-      for (var i = 0; i < 30; i++) {
+      // And it stays gone for the whole of the artwork's return.
+      for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 30));
-        expect(_lyricLayersInTree(tester), lessThanOrEqualTo(1),
-            reason: 'close frame $i');
+        expect(_lyricLayersInTree(tester), 0, reason: 'close frame $i');
       }
-      expect(_lyricLayersInTree(tester), 0, reason: 'gone when it should be');
+    });
+
+    testWidgets('the panel is kept after its first open, so re-opening is '
+        'free', (tester) async {
+      final provider = _Provider(_lyric());
+      await tester.pumpWidget(_screen(provider));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      Future<void> toggle() async {
+        await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
+        for (var i = 0; i < 24; i++) {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
+      }
+
+      await toggle(); // open
+      expect(_lyricLayersInTree(tester), 1);
+      final first = tester.state(find.byType(LyricsScreen));
+
+      await toggle(); // close
+      expect(_lyricLayersInTree(tester), 0, reason: 'hidden');
+      expect(find.byType(LyricsScreen, skipOffstage: false), findsOneWidget,
+          reason: 'but still mounted, so opening it again builds nothing new');
+
+      await toggle(); // re-open
+      expect(_lyricLayersInTree(tester), 1);
+      expect(identical(tester.state(find.byType(LyricsScreen)), first), isTrue,
+          reason: 'the very same State: no first-frame build on re-open');
+    });
+
+    testWidgets('a hidden panel is not on the clock', (tester) async {
+      final provider = _Provider(_lyric());
+      await tester.pumpWidget(_screen(provider));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
+      for (var i = 0; i < 24; i++) {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      await tester.tap(find.byKey(const ValueKey('now_playing_album_art')));
+      for (var i = 0; i < 24; i++) {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+
+      // The kept panel sits in a muted TickerMode, so its lines drop off the clock
+      // and nothing schedules a frame for a screen nobody can see.
+      final mode = tester.widget<TickerMode>(
+        find
+            .ancestor(
+              of: find.byType(LyricsScreen, skipOffstage: false),
+              matching: find.byType(TickerMode, skipOffstage: false),
+            )
+            .first,
+      );
+      expect(mode.enabled, isFalse);
     });
   });
-
   group('the discs never sit under a translucent layer', () {
-    // Invariant 17. The panel is faded with an Opacity and it holds the two glass
-    // mode discs - so while that fade is in flight they must not be in the tree at
-    // all. A lens with an alpha above it samples an isolated backdrop and renders
-    // flat grey for the whole duration.
+    // The panel is faded with an Opacity and the mode discs live inside it. They
+    // are flat translucent circles, not glass, so a layer above them cannot flatten
+    // anything - but they are held back until the panel has LANDED regardless, or
+    // they would fade in twice: once with the panel and once on their own.
     testWidgets('no disc while the panel is still faded', (tester) async {
       final provider = _Provider(_lyric());
       await tester.pumpWidget(_screen(provider));
@@ -241,11 +291,13 @@ void main() {
         await tester.pump(const Duration(milliseconds: 40));
         final opacity = _panelOpacity(tester);
         if (opacity == null) continue;
+        final reveal = tester.widget<LyricsDiscReveal>(
+          find.byType(LyricsDiscReveal).first,
+        );
         expect(
-          find.byIcon(Icons.language_rounded).evaluate().isNotEmpty,
+          reveal.visible,
           opacity >= 1.0,
-          reason: 'at opacity $opacity the globe disc must be absent: a lens '
-              'under a translucent layer goes flat',
+          reason: 'at opacity $opacity the discs must still be held back',
         );
       }
     });

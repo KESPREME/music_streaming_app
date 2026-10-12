@@ -23,11 +23,11 @@ import '../widgets/thin_slider.dart';
 import '../widgets/device_volume_slider.dart';
 import '../widgets/audio_output_sheet.dart';
 import '../widgets/liquid_glass_pill.dart';
-import '../widgets/measure_size.dart';
 import '../widgets/lyric_providers_sheet.dart';
 import '../widgets/lyric_strip.dart';
 import '../widgets/scroll_collapse_tracker.dart';
 import '../services/lyrics/lyric_clock.dart';
+import '../services/lyrics/lyric_clock_feed.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/in_place_canvas_player.dart';
 import '../screens/lyrics_screen.dart';
@@ -133,7 +133,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   late final AnimationController _panelFadeController;
   bool _isLyricsOpen = false;
 
-  final ValueNotifier<double> _deckExtent = ValueNotifier<double>(0);
+  /// Set the first time the lyric panel is wanted; it is kept mounted after.
+  bool _panelWarm = false;
 
 
   int _currentTab = -1; // Default: Album mode has no active bottom tab
@@ -245,10 +246,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   /// strip's build reads it, and a `late` field the analyzer cannot prove is set
   /// would either need an assertion or a second ticker to stand in for it.
   late final LyricClock _lyricClock;
-  StreamSubscription<Duration>? _lyricPosSub;
-  Timer? _lyricStallTimer;
-  int _lastLyricPosMs = -1;
-  int _lyricStalls = 0;
+  LyricClockFeed? _lyricFeed;
 
   @override
   void initState() {
@@ -315,39 +313,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final provider = Provider.of<MusicProvider>(context, listen: false);
-    _lyricClock
-      ..resync(provider.position.inMilliseconds)
-      ..report(provider.position.inMilliseconds, rate: provider.playbackSpeed);
-    _lyricPosSub ??= provider.positionStream.listen((pos) {
-      if (!mounted) return;
-      // Refresh only the sighting anchor: the strip's StreamBuilder reads each
-      // emitted snapshot itself, so we anchor the clock here but must not
-      // rebuild the whole page on the same tick.
-      _lyricClock.report(pos.inMilliseconds, rate: provider.playbackSpeed);
-    });
-    // Coarse corrector: the stream itself emits unevenly, so this timer is what
-    // actually starts/stops the ticker. Two unchanged readings mean the song is
-    // standing still; the ticker then stops rather than animating a highlight
-    // that cannot advance.
-    _lyricStallTimer ??= Timer.periodic(const Duration(milliseconds: 300), (_) {
-      if (!mounted) return;
-      final reported = provider.position.inMilliseconds;
-      final hasWordSynced =
-          provider.currentLyrics?.any((e) => e.isWordSynced) ?? false;
-      if (reported == _lastLyricPosMs) {
-        _lyricStalls++;
-        if (_lyricStalls >= 2 && _lyricClock.isRunning) {
-          _lyricClock.stop();
-        }
-      } else {
-        _lyricStalls = 0;
-        _lastLyricPosMs = reported;
-        if (!_lyricClock.isRunning && hasWordSynced) {
-          _lyricClock.start();
-        }
-        _lyricClock.report(reported, rate: provider.playbackSpeed);
-      }
-    });
+    // ONE clock for the whole player, fed here and nowhere else: the lyric panel
+    // and the seek-bar strip both follow it, so the line that switches and the
+    // line that sweeps can never disagree. (There used to be a second clock
+    // inside the panel, a stall detector that stopped this one on a guess, and a
+    // timer to restart it.) It only ticks while something is listening, so a
+    // standing deck costs no frames.
+    _lyricFeed ??= LyricClockFeed(clock: _lyricClock, provider: provider)
+      ..start();
   }
 
   @override
@@ -355,8 +328,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _pageController.dispose();
     _queueMorphController.dispose();
     _lyricsIdleTimer?.cancel();
-    _lyricPosSub?.cancel();
-    _lyricStallTimer?.cancel();
+    _lyricFeed?.dispose();
     _lyricClock.dispose();
     _morphController.dispose();
     _panelFadeController.dispose();
@@ -443,9 +415,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     });
     // A silent close keeps the mini in place because the caller is about to
     // hand the same header to the queue page.
+    //
+    // Close is NOT the open reversed. The panel goes first and at once, THEN the
+    // artwork grows back: BitChord hides the panel the instant `lyricsOpen` goes
+    // false (NowPlayingScreen.kt:3274) and only then expands the sleeve. Reversing
+    // both together left the lyric painted under the artwork as it expanded -
+    // "lyrics not gone before the artwork comes" - the open's bug run backwards.
     if (!silent) {
+      _panelFadeController.value = 0;
       _morphController.reverse();
-      _panelFadeController.reverse();
     }
     _cancelLyricsIdle();
     // Resume video canvas playback immediately upon returning to player
@@ -1026,17 +1004,15 @@ child: Transform.scale(
                   // between them. Hides on queue-scroll-down and on 5s
                   // lyrics idle; any reveal path restores it.
                   //
-                  // Measured, because the lyric panel above is full-page: without
-                  // this the list scrolls its tail underneath the scrubber.
-                  MeasureSize(
-                    onChange: (size) => _deckExtent.value = size.height,
-                    child: _buildPlayerDeck(
-                      context,
-                      musicProvider,
-                      accentColor,
-                      isPlaying,
-                      currentTrack,
-                    ),
+                  // A sibling BELOW the pages in this column, not an overlay: the
+                  // lyric panel's area ends where the deck begins, so it needs no
+                  // measured inset.
+                  _buildPlayerDeck(
+                    context,
+                    musicProvider,
+                    accentColor,
+                    isPlaying,
+                    currentTrack,
                   ),
                 ],
                   ),
@@ -1117,80 +1093,61 @@ child: Transform.scale(
             // lyric simply fades onto the finished frame.
             final panelVisible = (_isLyricsOpen && t >= 1.0) ||
                 (_panelFadeController.isAnimating || fade > 0.001);
+            if (panelVisible) _panelWarm = true;
 
             return Stack(
               clipBehavior: Clip.none,
               children: [
-                if (panelVisible)
-                  // Listens to the measured deck so the list can end above it.
-                  // Without this the lyric's last line sits underneath the
-                  // scrubber, because this panel is full-page and the deck is a
-                  // separate overlay above it.
-                  ValueListenableBuilder<double>(
-                    valueListenable: _deckExtent,
-                    builder: (context, deckExtent, child) => Positioned.fill(
-                      child: IgnorePointer(
-                        ignoring: fade < 0.6,
-                      // Revealed by ALPHA alone, and that is safe here because
-                      // this layer is only ON SCREEN once the artwork has landed.
-                      //
-                      // It was previously a translate + scale running beside the
-                      // artwork collapse, which put a moving lyric behind a moving
-                      // artwork with the title and the glass buttons over both -
-                      // three movements in one frame, and the lyric readable
-                      // through the artwork on the way past.
-                      //
-                      // An Opacity is not used while the discs exist: a translucent layer above a
-                      // backdrop lens makes the glass go flat for the duration
-                      // (invariant 17). They are kept OUT of the tree until this
-                      // fade has landed - see the `chromeHidden` below - so there
-                      // is never a lens mid-fade to flatten.
-                      child: Opacity(
-                        opacity: fade,
-                        child:                         LyricsScreen(
-                            onMinimize: widget.onMinimize,
-                            onReturnToAlbum: _closeLyrics,
-                            onTabTap: _navigateToTab,
-                            isEmbedded: true,
-                            showHeader: false,
-                            // Deck below owns seek/volume now: one set only.
-                            showBottomScrubber: false,
-                            // The two mode discs are owned by this deck's idle
-                            // cycle alongside the scrubber, panes and artwork,
-                            // rather than by a private timer inside the panel.
-                            //
-                            // While the panel's own fade is still running they are
-                            // hidden outright: this layer is an alpha, and an alpha
-                            // above a backdrop lens makes the glass go flat
-                            // (invariant 17). They are glass, and they belong to the
-                            // landed frame.
-                            chromeHidden: fade < 1.0 ||
-                                !(_deckVisible && !_lyricsChromeHidden),
-                            onFavorite: () {
-                              HapticFeedback.lightImpact();
-                              musicProvider.toggleLike(currentTrack);
-                            },
-                            isFavorite: isLiked,
-                            onOptions: () {
-                              HapticFeedback.lightImpact();
-                              GlassOptionsSheet.show(
-                                context,
-                                track: currentTrack,
-                                accentColor: accentColor,
-                              );
-                            },
-                            // Room for the deck below, so the lyric's tail stops
-                            // above the scrubber instead of behind it.
-                            bottomInset: deckExtent,
-                            // Ties the transform to this track, so a slow answer
-                            // cannot land under the next song.
-                            trackKey: currentTrack.id,
+                // The panel is built the first time it is wanted and then KEPT,
+                // hidden, so opening it costs no first frame: BitChord pre-composes
+                // it for the same reason (NowPlayingScreen.kt, prewarm). Hidden it
+                // is offstage, its tickers are muted (so its lines drop off the
+                // clock and nothing schedules a frame for it), and it takes no
+                // touches.
+                if (_panelWarm)
+                  Positioned.fill(
+                    child: Offstage(
+                      offstage: !panelVisible,
+                      child: TickerMode(
+                        enabled: panelVisible,
+                        child: IgnorePointer(
+                          ignoring: fade < 0.6,
+                          // Revealed by ALPHA alone, and that is safe because this
+                          // layer is only ON SCREEN once the artwork has landed:
+                          // no moving artwork, title or glass button is beneath it.
+                          // (It used to translate and scale in beside the collapse,
+                          // three movements in one frame, the lyric readable
+                          // through the artwork on the way past.)
+                          //
+                          // The mode discs are NOT glass, so this alpha cannot
+                          // flatten anything; they are held back until it has
+                          // landed anyway so they do not fade in twice.
+                          child: Opacity(
+                            opacity: fade,
+                            child: LyricsScreen(
+                              onMinimize: widget.onMinimize,
+                              onReturnToAlbum: _closeLyrics,
+                              onTabTap: _navigateToTab,
+                              isEmbedded: true,
+                              showHeader: false,
+                              // Deck below owns seek/volume: one set only.
+                              showBottomScrubber: false,
+                              // The ONE clock, shared with the seek-bar strip.
+                              clock: _lyricClock,
+                              // The discs belong to the controls: they arrive with
+                              // the deck and leave with it, on this one decision.
+                              discsVisible: fade >= 1.0 &&
+                                  _deckVisible &&
+                                  !_lyricsChromeHidden,
+                              // Ties the transform to this track, so a slow answer
+                              // cannot land under the next song.
+                              trackKey: currentTrack.id,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-
                 // ── LAYER 2 retired into the shared deck below ──
 
 

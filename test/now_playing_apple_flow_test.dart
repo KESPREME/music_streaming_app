@@ -15,6 +15,7 @@ import 'package:music_streaming_app/services/lyrics/lyrics_service.dart';
 import 'package:music_streaming_app/services/canvas_resolution_service.dart';
 import 'package:music_streaming_app/services/canvas_video_manager.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
+import 'package:music_streaming_app/widgets/lyric_line/lyric_line.dart';
 import 'package:music_streaming_app/screens/queue_screen.dart';
 import 'package:music_streaming_app/widgets/apple_player_icons.dart';
 
@@ -255,12 +256,16 @@ void main() {
     expect(find.bySemanticsLabel('Show translated lyrics'), findsOneWidget);
     expect(find.bySemanticsLabel('Pronunciation'), findsNothing);
 
-    // Verify kinetic lyrics (active line uses Text.rich with WidgetSpan)
-    expect(find.textContaining('eyelids'), findsWidgets);
-    expect(find.textContaining('dream state'), findsWidgets);
+    // Lyric lines are drawn by one render object each, not by Text widgets, so
+    // they are found by the line they carry.
+    Finder lyric(String contains) => find.byWidgetPredicate(
+          (w) => w is LyricLine && w.entry.text.contains(contains),
+        );
+    expect(lyric('eyelids'), findsWidgets);
+    expect(lyric('dream state'), findsWidgets);
 
     // Tap a lyric line to seek
-    await tester.tap(find.textContaining('wake up').first);
+    await tester.tap(lyric('wake up').first);
     await tester.pump();
     expect(provider.position.inMilliseconds, 30000);
   });

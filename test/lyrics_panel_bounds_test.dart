@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import 'package:music_streaming_app/models/lyrics_entry.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
-import 'package:music_streaming_app/widgets/measure_size.dart';
+import 'package:music_streaming_app/widgets/lyrics_mode_discs.dart';
 
 /// Minimal provider carrying a synced lyric and nothing else.
 ///
@@ -37,7 +39,7 @@ class _LyricsProvider extends MusicProvider {
   Stream<Duration> get positionStream => const Stream<Duration>.empty();
 
   @override
-  bool get isPlaying => true;
+  bool get isPlaying => false;
 
   @override
   bool get isLoadingLyrics => false;
@@ -50,31 +52,21 @@ class _LyricsProvider extends MusicProvider {
 }
 
 List<LyricsEntry> _lyric() => [
-      LyricsEntry(
-        timeMs: 0,
-        endMs: 2000,
-        text: 'so here I am once again',
-        words: const [
-          WordTiming(timeMs: 0, durationMs: 500, text: 'so'),
-          WordTiming(timeMs: 500, durationMs: 500, text: 'here'),
-          WordTiming(timeMs: 1000, durationMs: 500, text: 'I'),
-          WordTiming(timeMs: 1500, durationMs: 500, text: 'am'),
-        ],
-      ),
-      LyricsEntry(
-        timeMs: 2000,
-        endMs: 4000,
-        text: 'again feel no good',
-        words: const [
-          WordTiming(timeMs: 2000, durationMs: 500, text: 'again'),
-          WordTiming(timeMs: 2500, durationMs: 500, text: 'feel'),
-          WordTiming(timeMs: 3000, durationMs: 500, text: 'no'),
-          WordTiming(timeMs: 3500, durationMs: 500, text: 'good'),
-        ],
-      ),
+      for (var i = 0; i < 12; i++)
+        LyricsEntry(
+          timeMs: i * 2000,
+          endMs: i * 2000 + 1800,
+          text: 'line number ${i + 1}',
+          words: [
+            WordTiming(timeMs: i * 2000, durationMs: 600, text: 'line'),
+            WordTiming(timeMs: i * 2000 + 600, durationMs: 600, text: 'number'),
+            WordTiming(timeMs: i * 2000 + 1200, durationMs: 600, text: '${i + 1}'),
+          ],
+        ),
     ];
 
-Widget _screen({double bottomInset = 0}) => ChangeNotifierProvider<MusicProvider>.value(
+Widget _screen({bool? discsVisible}) =>
+    ChangeNotifierProvider<MusicProvider>.value(
       value: _LyricsProvider(_lyric()),
       child: MaterialApp(
         home: Scaffold(
@@ -82,7 +74,7 @@ Widget _screen({double bottomInset = 0}) => ChangeNotifierProvider<MusicProvider
             isEmbedded: true,
             showHeader: false,
             showBottomScrubber: false,
-            bottomInset: bottomInset,
+            discsVisible: discsVisible,
           ),
         ),
       ),
@@ -101,175 +93,164 @@ EdgeInsets _listPadding(WidgetTester tester) {
 }
 
 void main() {
-  group('MeasureSize', () {
-    testWidgets('reports the child size after layout', (tester) async {
-      final sizes = <Size>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Center(
-            child: SizedBox(
-              height: 240,
-              width: 100,
-              child: MeasureSize(
-                onChange: sizes.add,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
+  setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
-      expect(sizes, isNotEmpty);
-      expect(sizes.last.height, 240);
-      expect(sizes.last.width, 100);
-    });
+  group('the lyric panel ends where the deck begins', () {
+    // Inside the player this panel is the page ABOVE the deck - a sibling in a
+    // column - so its area already stops at the deck. It used to be handed the
+    // deck's height as well and reserve it a second time, which pushed the
+    // globe/translate discs a deck-height up off the bottom.
 
-    testWidgets('does not re-report an unchanged size', (tester) async {
-      // A re-report here schedules a frame per rebuild, so the page never goes
-      // idle. That is why the measurement de-jitters before it reports.
-      final sizes = <Size>[];
-      Widget tree() => MaterialApp(
-            home: Center(
-              child: SizedBox(
-                height: 240,
-                width: 100,
-                child: MeasureSize(
-                  onChange: sizes.add,
-                  child: const SizedBox.expand(),
-                ),
-              ),
-            ),
-          );
-
-      await tester.pumpWidget(tree());
-      await tester.pump();
-      final afterFirst = sizes.length;
-      expect(afterFirst, greaterThan(0));
-
-      await tester.pumpWidget(tree());
-      await tester.pump();
-
-      expect(sizes.length, afterFirst);
-    });
-
-    testWidgets('reports a real change', (tester) async {
-      final sizes = <Size>[];
-      Widget tree(double height) => MaterialApp(
-            home: Center(
-              child: SizedBox(
-                height: height,
-                width: 100,
-                child: MeasureSize(
-                  onChange: sizes.add,
-                  child: const SizedBox.expand(),
-                ),
-              ),
-            ),
-          );
-
-      await tester.pumpWidget(tree(240));
-      await tester.pump();
-      await tester.pumpWidget(tree(360));
-      await tester.pump();
-
-      expect(sizes.last.height, 360);
-    });
-
-    testWidgets('a reporting child does not schedule a build mid-frame',
-        (tester) async {
-      // The failure this guards against is subtle and fatal: notifying straight
-      // from layout makes the caller rebuild, which schedules a frame from
-      // inside the frame being painted.
-      //
-      // The builder deliberately does NOT feed the measured value back into the
-      // measured subtree's own size - that is a genuine layout loop, not the
-      // property under test, and it would fail for reasons of its own.
-      final seen = <double>[];
-      final notifier = ValueNotifier<double>(0);
-      addTearDown(notifier.dispose);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SizedBox(
-            height: 200,
-            child: MeasureSize(
-              onChange: (size) => notifier.value = size.height,
-              child: ValueListenableBuilder<double>(
-                valueListenable: notifier,
-                builder: (context, value, _) {
-                  seen.add(value);
-                  return const SizedBox.expand();
-                },
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-
-      expect(tester.takeException(), isNull);
-      // Reported at all, after the frame rather than during it.
-      expect(seen, isNotEmpty);
-    });
-  });
-
-  group('the lyric panel clears the deck', () {
-    testWidgets('reserves the measured deck height at the foot', (tester) async {
-      // THE BUG THIS PINS: the lyric list is full-page while the player deck is
-      // an overlay above it, so with no inset the last lines of every lyric
-      // scrolled underneath the seek bar.
-      await tester.pumpWidget(_screen(bottomInset: 420));
-      await tester.pump();
-
-      // The deck's clearance WINS over the viewport tail allowance here: 428 > the
-      // panel's 80%. Combined as a maximum, not a clamp - clamping the deck down
-      // to 80% of a short panel silently put the seek bar back over the lyric,
-      // which is the bug this inset was added to fix.
-      expect(_listPadding(tester).bottom, greaterThanOrEqualTo(420));
-    });
-
-    testWidgets('with no deck, reserves the viewport tail instead', (tester) async {
-      // CHANGED DELIBERATELY. This used to assert "only the base 8dp, not a
-      // deck's worth" - correct for the rule then in force, which only knew about
-      // the deck. It does not know about the TAIL: the last line of a long lyric
-      // was running off the bottom edge with nothing to scroll it into view.
-      //
+    testWidgets('the only bottom clearance is the viewport tail', (tester) async {
       // BitChord reserves 80% of its own viewport under the content
-      // (PlayerLyrics.kt:1796). Ours can be taken straight from there because the
-      // deck is an overlay rather than a sibling.
+      // (PlayerLyrics.kt:1796) so a reader at the end of the song can read the
+      // last line rather than half of it. There is no deck term on top of that.
       await tester.pumpWidget(_screen());
       await tester.pump();
 
-      // Measured off the LIST, not off LyricsScreen: the screen's own box is
-      // taller than the list it hands its remaining height to, and the fraction
-      // is of the list's viewport.
       final viewport = tester.getSize(find.byType(ListView)).height;
       expect(_listPadding(tester).bottom, closeTo(viewport * 0.8, 1));
     });
 
-    testWidgets('the tail allowance never eats the deck clearance', (tester) async {
-      // The two clearances are combined as a MAXIMUM. A clamp would take the
-      // smaller of the two on a short panel, which is precisely when the seek bar
-      // is most likely to be sitting over the last line.
-      await tester.pumpWidget(_screen(bottomInset: 420));
-      await tester.pump();
-      final viewport = tester.getSize(find.byType(ListView)).height;
-      final tail = viewport * 0.8;
-
-      final bottom = _listPadding(tester).bottom;
-      expect(bottom, greaterThanOrEqualTo(420));
-      expect(bottom, greaterThanOrEqualTo(tail));
-    });
-
-    testWidgets('the top still clears the header discs', (tester) async {
-      // Star and options are pinned in the player header, so the first lines of
-      // a song scroll up beside them rather than under them.
+    testWidgets('the sung line is anchored well below the top edge, with the '
+        'line before it peeking in above', (tester) async {
       await tester.pumpWidget(_screen());
       await tester.pump();
 
-      expect(_listPadding(tester).top, greaterThanOrEqualTo(48));
+      expect(_listPadding(tester).top, greaterThanOrEqualTo(96));
+    });
+
+    testWidgets('the text sits in BitChord\'s 30dp gutter', (tester) async {
+      await tester.pumpWidget(_screen());
+      await tester.pump();
+
+      // 18 list padding + 6 inside the row = 24; the row's own 6 above the
+      // paint headroom makes the text start at 30 from the edge.
+      final padding = _listPadding(tester);
+      expect(padding.left, 18);
+      expect(padding.right, 18);
+    });
+
+    testWidgets('a line is not cut by a hard edge: the top and bottom 28dp '
+        'dissolve', (tester) async {
+      await tester.pumpWidget(_screen());
+      await tester.pump();
+
+      final mask = tester.widget<ShaderMask>(
+        find.ancestor(
+          of: find.byType(ListView),
+          matching: find.byType(ShaderMask),
+        ),
+      );
+      expect(mask.blendMode, BlendMode.dstIn,
+          reason: 'the mask multiplies the list by the gradient');
+
+      // The gradient is opaque in the middle and clear at both ends, over 28dp.
+      final height = tester.getSize(find.byType(ListView)).height;
+      final shader = mask.shaderCallback(Rect.fromLTWH(0, 0, 100, height));
+      expect(shader, isNotNull);
+    });
+
+    testWidgets('nothing translucent sits above the discs', (tester) async {
+      // The fade is an offscreen layer. Whatever is under it is composited into
+      // it - and a backdrop lens under a translucent layer goes flat. The discs
+      // are outside it.
+      await tester.pumpWidget(_screen(discsVisible: true));
+      await tester.pump();
+
+      expect(
+        find.ancestor(
+          of: find.byType(TransformDisc),
+          matching: find.byType(ShaderMask),
+        ),
+        findsNothing,
+      );
+    });
+  });
+
+  group('the globe and translate discs', () {
+    testWidgets('sit 12dp above the panel\'s own bottom - no deck inset',
+        (tester) async {
+      await tester.pumpWidget(_screen(discsVisible: true));
+      await tester.pump();
+
+      final listBox = tester.getRect(find.byType(ListView));
+      final discs = tester.widgetList(find.byType(TransformDisc)).length;
+      expect(discs, 2);
+
+      for (final disc in find.byType(TransformDisc).evaluate()) {
+        final rect = tester.getRect(find.byWidget(disc.widget));
+        expect(listBox.bottom - rect.bottom, closeTo(12, 1),
+            reason: 'at the panel foot - not a deck-height up the screen');
+      }
+      // One at each side, in the text gutter.
+      final rects = [
+        for (final d in find.byType(TransformDisc).evaluate())
+          tester.getRect(find.byWidget(d.widget)),
+      ]..sort((a, b) => a.left.compareTo(b.left));
+      expect(rects.first.left, closeTo(listBox.left + 24, 1));
+      expect(rects.last.right, closeTo(listBox.right - 24, 1));
+    });
+
+    testWidgets('the caller decides when they show', (tester) async {
+      await tester.pumpWidget(_screen(discsVisible: false));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final reveal =
+          tester.widget<LyricsDiscReveal>(find.byType(LyricsDiscReveal).first);
+      expect(reveal.visible, isFalse);
+      // Hidden means untouchable too, not just transparent.
+      final ignore = tester.widget<IgnorePointer>(
+        find
+            .descendant(
+              of: find.byType(LyricsDiscReveal).first,
+              matching: find.byType(IgnorePointer),
+            )
+            .first,
+      );
+      expect(ignore.ignoring, isTrue);
+
+      await tester.pumpWidget(_screen(discsVisible: true));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        tester.widget<LyricsDiscReveal>(find.byType(LyricsDiscReveal).first).visible,
+        isTrue,
+      );
+    });
+
+    testWidgets('they fade and scale with the controls, not pop', (tester) async {
+      await tester.pumpWidget(_screen(discsVisible: false));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      Widget with0(bool visible) => ChangeNotifierProvider<MusicProvider>.value(
+            value: _LyricsProvider(_lyric()),
+            child: MaterialApp(
+              home: Scaffold(
+                body: LyricsScreen(
+                  isEmbedded: true,
+                  showHeader: false,
+                  showBottomScrubber: false,
+                  discsVisible: visible,
+                ),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(with0(true));
+      await tester.pump(const Duration(milliseconds: 80));
+      final fade = tester.renderObject<RenderAnimatedOpacity>(
+        find
+            .descendant(
+              of: find.byType(LyricsDiscReveal).first,
+              matching: find.byType(AnimatedOpacity),
+            )
+            .first,
+      );
+      expect(fade.opacity.value, inExclusiveRange(0.0, 1.0),
+          reason: '80ms into a 220ms arrival the disc is part-way, not popped');
+      expect(lyricsDiscFadeIn, const Duration(milliseconds: 220));
+      expect(lyricsDiscFadeOut, const Duration(milliseconds: 160));
+      await tester.pump(const Duration(milliseconds: 300));
     });
   });
 }

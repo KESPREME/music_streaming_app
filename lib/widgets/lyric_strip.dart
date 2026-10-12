@@ -1,18 +1,23 @@
+// lib/widgets/lyric_strip.dart
+// The one-line lyric above the seek bar.
+//
+// BitChord `CurrentLyricStrip` (`PlayerLyrics.kt:509`).
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../models/lyrics_entry.dart';
 import '../services/lyrics/lyric_clock.dart';
 import '../services/lyrics/lyric_sweep.dart';
-import 'lyric_swept_line.dart';
+import 'lyric_line/lyric_line.dart';
+import 'lyric_line/lyric_typography.dart';
 
 /// What the strip above the seek bar is currently saying.
 ///
 /// The reference has five branches and they are genuinely different facts, not
-/// flavours of one state (PlayerLyrics.kt:2492-2681). Ours used to collapse all
-/// five into "an intro phrase", which meant a song with no lyrics anywhere
+/// flavours of one state (`PlayerLyrics.kt:2492-2681`). Ours used to collapse
+/// all five into "an intro phrase", which meant a song with no lyrics anywhere
 /// cheerfully displayed *Let it breathe* for the whole track while the row
 /// underneath said **Lyrics unavailable**. Two truths, one line.
 enum LyricStripState {
@@ -25,11 +30,11 @@ enum LyricStripState {
   /// The lookup finished with nothing. Held, then fades out entirely.
   unavailable,
 
-  /// Lyrics exist but carry no timings, so there is nothing to sweep and nothing
-  /// to follow. Offers the way in instead of pretending.
+  /// Lyrics exist but NO line carries a timestamp, so there is nothing to follow.
+  /// Offers the way in instead of pretending.
   unsynced,
 
-  /// A plain line-synced line, drawn as text.
+  /// A line-synced line: the whole line, in one colour.
   plain,
 
   /// A word-synced line, drawn as the sweep.
@@ -38,18 +43,20 @@ enum LyricStripState {
 
 /// The one-line lyric that sits above the seek bar.
 ///
-/// BitChord's `CurrentLyricStrip` (PlayerLyrics.kt:509). Three decisions in here
-/// that are load-bearing, and all three were wrong before:
+/// Load-bearing decisions, each of which was wrong before:
 ///
-/// * **One clock.** The index came off `positionStream` (≈200ms cadence) while the
-///   wipe came off `LyricClock`. Two clocks means the line that switches and the
-///   line that sweeps can disagree for up to a stream period. Here both read
-///   [clock], and the widget only rebuilds when the INDEX moves.
-/// * **No lift, no bloom.** The reference passes `rise = false` and
-///   `glowAlpha = 0` for exactly this widget (`:2616`, `:2334`): on a single
-///   pinned line a word rising once a second reads as the strip twitching.
+/// * **One clock.** Both the line that switches and the wipe inside it read
+///   [clock], and this widget rebuilds only when the INDEX moves. The sweep
+///   itself is a render object that listens to the clock on its own, so a
+///   60Hz tick never rebuilds anything here.
+/// * **No lift, no bloom, no soft edge.** The reference passes `rise = false`
+///   and no glow for exactly this widget: on a single pinned line a word
+///   rising once a second reads as the strip twitching.
 /// * **One line.** Clamped to one row with an ellipsis. This sits in the deck,
-///   which must never resize itself under a layout that is supposed to be fixed.
+///   which must never resize itself.
+/// * **"Unsynced" means NO TIMESTAMPS, not "no word timings".** It used to mean
+///   the latter, so every ordinary line-synced (LRC) song showed "Open lyrics"
+///   instead of its current line.
 class LyricStrip extends StatefulWidget {
   const LyricStrip({
     super.key,
@@ -65,7 +72,7 @@ class LyricStrip extends StatefulWidget {
   /// The lyric for the current track, or null while it is being fetched.
   final List<LyricsEntry>? lyrics;
 
-  /// The panel's clock. The single source of truth for both the line and the wipe.
+  /// The player's clock: the single source of truth for both line and wipe.
   final LyricClock clock;
 
   /// Shown before the first vocal line.
@@ -88,10 +95,11 @@ class LyricStrip extends StatefulWidget {
 
 class _LyricStripState extends State<LyricStrip> {
   int _index = -1;
-  bool _isAnimated = false;
+  bool _listening = false;
 
   /// True once the lookup has come back empty, so the strip can hold and fade.
   bool _showUnavailable = false;
+  double _unavailableOpacity = 0.55;
   Timer? _unavailableTimer;
 
   /// How long "no lyrics" is held before it fades.
@@ -100,100 +108,85 @@ class _LyricStripState extends State<LyricStrip> {
   /// How long the fade itself takes.
   static const Duration _unavailableFade = Duration(milliseconds: 900);
 
-  double _unavailableOpacity = 0.55;
-
-  /// The unresolved-to-dismissed timer for the unavailable state.
-  Timer? _unavailableFadeTimer;
-
   @override
   void initState() {
     super.initState();
-    widget.clock.addListener(_onClock);
-    _resolveIndex();
+    _resolveIndex(notify: false);
+    _reconcileAvailability(notify: false);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listens to the clock only while its subtree is live; a strip in a route
+    // that is not current must not hold the frame loop up.
+    _syncListener(TickerMode.valuesOf(context).enabled);
   }
 
   @override
   void didUpdateWidget(covariant LyricStrip oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.clock != widget.clock) {
+    if (oldWidget.clock != widget.clock && _listening) {
       oldWidget.clock.removeListener(_onClock);
       widget.clock.addListener(_onClock);
-      _resolveIndex(force: true);
-      return;
     }
-    _reconcileAvailability();
+    _resolveIndex(notify: false);
+    _reconcileAvailability(notify: false);
   }
 
   @override
   void dispose() {
-    widget.clock.removeListener(_onClock);
+    _syncListener(false);
     _unavailableTimer?.cancel();
-    _unavailableFadeTimer?.cancel();
     super.dispose();
   }
 
-  /// The clock ticks about sixty times a second. Rebuilding the strip on every
-  /// tick would rebuild a Row that is almost always showing the same words; the
-  /// index is the only thing worth rebuilding for.
-  void _onClock() {
-    _resolveIndex();
+  void _syncListener(bool enabled) {
+    if (enabled && !_listening) {
+      widget.clock.addListener(_onClock);
+      _listening = true;
+      _resolveIndex();
+    } else if (!enabled && _listening) {
+      widget.clock.removeListener(_onClock);
+      _listening = false;
+    }
   }
 
-  void _resolveIndex({bool force = false}) {
+  void _onClock() => _resolveIndex();
+
+  /// The clock ticks about sixty times a second; the index moves about once every
+  /// few seconds. Only the index is worth rebuilding for.
+  void _resolveIndex({bool notify = true}) {
     final lyrics = widget.lyrics;
-    if (lyrics == null || lyrics.isEmpty) {
-      if (force || _index != -1) setState(() => _index = -1);
-      _reconcileAvailability();
-      return;
+    var next = -1;
+    if (lyrics != null && lyrics.isNotEmpty) {
+      final position = widget.positionOverrideMs ?? widget.clock.positionMs;
+      next = activeLineIndex(lyrics, position);
     }
-    final override = widget.positionOverrideMs;
-    final positionMs =
-        override ?? widget.clock.positionMs;
-    final next = activeLineIndex(lyrics, positionMs);
-    if (next == _index && !force) return;
-    if (mounted) setState(() => _index = next);
+    if (next == _index) return;
+    _index = next;
+    if (notify && mounted) setState(() {});
   }
 
   /// Drives the hold-then-fade of "no lyrics".
   ///
   /// A strip that empties the instant the answer arrives looks like a glitch; the
   /// reference holds it for five seconds so a slow lookup is not reported as a
-  /// miss (PlayerLyrics.kt:2641-2668).
-  void _reconcileAvailability() {
+  /// miss (`PlayerLyrics.kt:2641-2668`). The fade is an implicit animation: one
+  /// timer for the hold, none for the fade.
+  void _reconcileAvailability({bool notify = true}) {
     final unavailable = !widget.isLoading && !widget.hasLyrics;
     if (unavailable == _showUnavailable) return;
 
     _unavailableTimer?.cancel();
-    _unavailableFadeTimer?.cancel();
-
-    if (unavailable) {
-      _showUnavailable = true;
-      _unavailableOpacity = 0.55;
+    _showUnavailable = unavailable;
+    _unavailableOpacity = 0.55;
+    if (notify && mounted) setState(() {});
+    if (!unavailable) return;
+    _unavailableTimer = Timer(_unavailableHold, () {
       if (!mounted) return;
-      setState(() {});
-      _unavailableTimer = Timer(_unavailableHold, () {
-        if (!mounted) return;
-        _unavailableFadeTimer = Timer.periodic(
-          const Duration(milliseconds: 16),
-          (timer) {
-            if (!mounted) {
-              timer.cancel();
-              return;
-            }
-            setState(() {
-              _unavailableOpacity -= 16 / _unavailableFade.inMilliseconds;
-            });
-            if (_unavailableOpacity <= 0) {
-              timer.cancel();
-              _showUnavailable = false;
-            }
-          },
-        );
-      });
-    } else {
-      _showUnavailable = false;
-      if (mounted) setState(() {});
-    }
+      setState(() => _unavailableOpacity = 0.0);
+    });
   }
 
   /// Everything the current position resolves to, in one place.
@@ -208,6 +201,11 @@ class _LyricStripState extends State<LyricStrip> {
     final lyrics = widget.lyrics;
     if (lyrics == null || lyrics.isEmpty) {
       return (state: LyricStripState.loading, entry: null, text: '');
+    }
+    // Timed means a line has a stamp OR words with their own. (A lyric whose first
+    // line sits at 0ms is still timed if anything after it is.)
+    if (!lyrics.any((e) => e.timeMs > 0 || e.isWordSynced)) {
+      return (state: LyricStripState.unsynced, entry: null, text: '');
     }
 
     final index = _index;
@@ -235,10 +233,6 @@ class _LyricStripState extends State<LyricStrip> {
         text: widget.introPhrase,
       );
     }
-
-    if (!widget.hasSyncedLyricsAnywhere) {
-      return (state: LyricStripState.unsynced, entry: null, text: '');
-    }
     if (line.isWordSynced) {
       return (state: LyricStripState.swept, entry: line, text: text);
     }
@@ -248,7 +242,6 @@ class _LyricStripState extends State<LyricStrip> {
   @override
   Widget build(BuildContext context) {
     final resolved = _resolve();
-    _isAnimated = resolved.state == LyricStripState.swept;
 
     return Semantics(
       label: switch (resolved.state) {
@@ -259,119 +252,83 @@ class _LyricStripState extends State<LyricStrip> {
             'Tap to open full lyrics.',
         LyricStripState.unavailable => 'No lyrics found for this song.',
         LyricStripState.loading => 'Looking for lyrics.',
-        LyricStripState.intro =>
-          'No words yet. Tap to open full lyrics.',
+        LyricStripState.intro => 'No words yet. Tap to open full lyrics.',
       },
       button: true,
+      excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-          child: _isAnimated
-              ? AnimatedBuilder(
-                  // Only the WIPE animates here, and it animates on the clock -
-                  // not on a switcher, because the line does not change when the
-                  // words inside it do.
-                  animation: widget.clock,
-                  builder: (context, _) => _body(resolved),
-                )
-              : _body(resolved),
+          child: _body(resolved),
         ),
       ),
     );
   }
 
-  Widget _body(({LyricStripState state, LyricsEntry? entry, String text}) resolved) {
+  Widget _body(
+    ({LyricStripState state, LyricsEntry? entry, String text}) resolved,
+  ) {
     switch (resolved.state) {
       case LyricStripState.loading:
-        return _plain(
+        return _status(
           key: const ValueKey('lyric-strip-loading'),
           text: widget.introPhrase,
           alpha: 0.55,
-          weight: FontWeight.w500,
           glyph: Icons.music_note_rounded,
         );
 
       case LyricStripState.unavailable:
-        return Opacity(
+        return AnimatedOpacity(
           key: const ValueKey('lyric-strip-unavailable'),
-          opacity: _unavailableOpacity.clamp(0.0, 1.0),
-          child: _plain(
-            text: 'No lyrics found',
-            alpha: 0.55,
-            weight: FontWeight.w500,
-          ),
+          opacity: _unavailableOpacity,
+          duration: _unavailableFade,
+          curve: Curves.easeOut,
+          child: _status(text: 'No lyrics found', alpha: 1.0),
         );
 
       case LyricStripState.unsynced:
-        // No timings, so there is nothing to sweep and nothing to follow. Say so
-        // and offer the way in, rather than showing words that will never light.
-        return Row(
+        // No timestamps anywhere, so there is nothing to follow. Say so and offer
+        // the way in, rather than showing words that will never move.
+        return _status(
           key: const ValueKey('lyric-strip-unsynced'),
-          children: [
-            const Icon(
-              Icons.music_note_rounded,
-              size: 16,
-              color: Colors.white54,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Open lyrics',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -0.15,
-                ),
-              ),
-            ),
-          ],
+          text: 'Open lyrics',
+          alpha: 0.55,
+          glyph: Icons.music_note_rounded,
+          chevron: true,
         );
 
       case LyricStripState.intro:
-        return _plain(
+        return _status(
           key: ValueKey<String>('lyric-strip-intro:${resolved.text}'),
           text: resolved.text,
           alpha: 0.60,
-          weight: FontWeight.w500,
           glyph: Icons.music_note_rounded,
         );
 
       case LyricStripState.plain:
-        return _animatedLine(
-          key: ValueKey<String>('lyric-strip-plain:${resolved.entry!.timeMs}'),
-          child: Text(
-            resolved.text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: _style(alpha: 0.95, weight: FontWeight.w600),
-          ),
-        );
-
       case LyricStripState.swept:
+        final entry = resolved.entry!;
         return _animatedLine(
-          key: ValueKey<String>('lyric-strip-swept:${resolved.entry!.timeMs}'),
-          child: LyricSweptLine(
-            entry: resolved.entry!,
+          // Keyed on WHAT the line is, not when it starts: a provider switch that
+          // hands over the same words at a slightly different stamp must not
+          // slide the line out and the same line back in.
+          key: ValueKey<String>('lyric-strip:$_index|${entry.text}'),
+          child: LyricLine(
+            entry: entry,
             clock: widget.clock,
-            style: _style(alpha: 0.95, weight: FontWeight.w600),
-            dimColor: Colors.white.withValues(alpha: stripUnsungAlpha),
-            // The strip is ONE pinned line, so the panel's motion is off here on
-            // purpose: a word rising on a fixed row once a second reads as the
-            // strip twitching, not as emphasis. Same call as the reference
-            // (PlayerLyrics.kt:2616, rise = false).
+            style: LyricTypography.strip(),
+            // A single pinned line has nothing behind it for the eye to compare
+            // against, so its unsung part keeps more of its own colour.
+            tailAlpha: stripUnsungAlpha,
+            // Off on purpose; see the class doc.
             rise: false,
             glow: false,
-            // Clamped: a wrapped lyric line here would grow the deck, and the
-            // deck is the one surface that must never resize itself.
+            feather: false,
+            // Clamped: a wrapped lyric line here would grow the deck.
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            isActive: true,
-            onTap: widget.onTap,
+            ellipsis: true,
           ),
         );
     }
@@ -380,37 +337,49 @@ class _LyricStripState extends State<LyricStrip> {
   /// The line-to-line handover.
   ///
   /// 340ms both ways, sliding 35% of the strip's own height in AND out, with the
-  /// outgoing line travelling downward (PlayerLyrics.kt:2584-2627). Ours slid in
-  /// 28% and did not slide out at all, so a handover read as the new line fading
-  /// up through a stationary old one.
-  Widget _animatedLine({required Key key, required Widget child}) =>
-      AnimatedSwitcher(
-        duration: stripHandoverDuration,
-        switchInCurve: Curves.easeInOutCubic,
-        switchOutCurve: Curves.easeInOutCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.0, stripSlideFraction),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
+  /// outgoing line travelling the other way (`PlayerLyrics.kt:2584-2627`). The
+  /// clip is what keeps a travelling line from painting outside its row.
+  Widget _animatedLine({required Key key, required Widget child}) => ClipRect(
+        child: AnimatedSwitcher(
+          duration: stripHandoverDuration,
+          switchInCurve: Curves.fastOutSlowIn,
+          switchOutCurve: Curves.fastOutSlowIn,
+          transitionBuilder: (child, animation) {
+            // One builder serves both roles, and an AnimatedSwitcher reports the
+            // same animation status for both, so the role cannot be read from the
+            // animation (invariant 3). It is carried on the child instead: the
+            // line that IS the current key enters from below; any other is on its
+            // way out and leaves upward. (The builder is a fresh closure every
+            // build, which is what makes the switcher re-run it for the outgoing
+            // child with the up-to-date key.)
+            final incoming = child.key == key;
+            final begin = incoming
+                ? const Offset(0.0, stripSlideFraction)
+                : const Offset(0.0, -stripSlideFraction);
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(begin: begin, end: Offset.zero)
+                    .animate(animation),
+                child: child,
+              ),
+            );
+          },
+          layoutBuilder: (current, previous) => Stack(
+            alignment: Alignment.centerLeft,
+            children: <Widget>[...previous, if (current != null) current],
           ),
+          child: KeyedSubtree(key: key, child: child),
         ),
-        layoutBuilder: (current, previous) => Stack(
-          alignment: Alignment.centerLeft,
-          children: <Widget>[...previous, if (current != null) current],
-        ),
-        child: child,
       );
 
-  Widget _plain({
+  /// A status line: an optional note, text, an optional chevron.
+  Widget _status({
     required String text,
     required double alpha,
-    required FontWeight weight,
     Key? key,
     IconData? glyph,
+    bool chevron = false,
   }) =>
       Row(
         key: key,
@@ -424,24 +393,25 @@ class _LyricStripState extends State<LyricStrip> {
               text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: _style(alpha: alpha, weight: weight),
+              style: LyricTypography.strip().copyWith(
+                color: Colors.white.withValues(alpha: alpha),
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
+          if (chevron)
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
         ],
-      );
-
-  TextStyle _style({required double alpha, required FontWeight weight}) =>
-      GoogleFonts.plusJakartaSans(
-        color: Colors.white.withValues(alpha: alpha),
-        fontSize: 14.5,
-        fontWeight: weight,
-        letterSpacing: -0.15,
       );
 }
 
 /// Alpha of the part of the strip that has not been sung yet.
 ///
-/// `UNSUNG_ALPHA_STRIP` (PlayerLyrics.kt:153). Distinct from the panel's 0.45: a
+/// `UNSUNG_ALPHA_STRIP` (`PlayerLyrics.kt:153`). Distinct from the panel's 0.45: a
 /// single pinned line has nothing behind it for the eye to compare against, so it
 /// needs more of its own colour to stay readable.
 const double stripUnsungAlpha = 0.55;
@@ -453,16 +423,3 @@ const Duration stripHandoverDuration = Duration(milliseconds: 340);
 ///
 /// `it * 0.35f` on both sides of the reference's `AnimatedContent`.
 const double stripSlideFraction = 0.35;
-
-extension _HasSyncedLyrics on LyricStrip {
-  /// Whether ANY line in the lyric carries timings.
-  ///
-  /// Decides between "unsynced" and "swept": a line with no timings anywhere on
-  /// the song will never light up, and offering a static line that pretends to be
-  /// following along is worse than saying it is not timed.
-  bool get hasSyncedLyricsAnywhere {
-    final lyrics = this.lyrics;
-    if (lyrics == null) return false;
-    return lyrics.any((e) => e.isWordSynced);
-  }
-}

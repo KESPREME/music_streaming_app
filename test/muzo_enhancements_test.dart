@@ -10,7 +10,7 @@ import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
-import 'package:music_streaming_app/widgets/lyric_swept_line.dart';
+import 'package:music_streaming_app/widgets/lyric_line/lyric_line.dart';
 import 'package:music_streaming_app/screens/home_screen.dart';
 import 'package:music_streaming_app/services/auth_service.dart';
 import 'package:music_streaming_app/services/home/home_models.dart';
@@ -219,35 +219,35 @@ void main() {
 
       expect(find.byType(LyricsScreen), findsOneWidget);
 
-      // The wipe is a clip over a brighter copy of the same text, NOT a
-      // ShaderMask. This used to assert a ShaderMask was present and called it
-      // "karaoke", but the only ShaderMask in this tree was the vertical
-      // gradient that drove the top and bottom 5% of the list fully
-      // transparent - that is what made the outer lines unreadable, and the
-      // bands it hid were exactly where the header buttons float. Its absence
-      // is the point.
-      expect(find.byType(ShaderMask), findsNothing);
+      // The only ShaderMask is the dissolve at the top and bottom 28dp of the list
+      // (BitChord `fadingEdges`). The sweep itself is NOT a mask: it is a clip per
+      // visual row over a brighter copy of the same text, drawn by one render
+      // object.
+      expect(find.byType(ShaderMask), findsOneWidget);
 
-      // The active line carries the sweep, and the sweep is a ClipRect.
-      expect(find.byType(LyricSweptLine), findsWidgets);
-      expect(
-        find.descendant(
-          of: find.byType(LyricSweptLine),
-          matching: find.byType(ClipRect),
-        ),
-        findsWidgets,
-        reason: 'the word-by-word wipe is a clip over a brighter copy',
-      );
+      // Exactly one line is the active one, and it is the one carrying the soft
+      // leading edge.
+      expect(find.byType(LyricLine), findsWidgets);
+      final active = tester
+          .widgetList<LyricLine>(find.byType(LyricLine))
+          .where((l) => l.feather)
+          .toList();
+      expect(active.length, 1);
+      expect(active.single.entry.isWordSynced, isTrue,
+          reason: 'the word-by-word wipe is a clip over a brighter copy');
 
       // At position 9.9s (99% of line 1), the screen must still be intact and
       // the first line must not have dropped out.
       provider.setTestPosition(const Duration(milliseconds: 9900));
       await tester.pump();
       expect(find.byType(LyricsScreen), findsOneWidget);
-      expect(find.text('Gone a little far this time\nwith something'),
-          findsWidgets);
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is LyricLine &&
+            w.entry.text == 'Gone a little far this time\nwith something'),
+        findsWidgets,
+      );
     });
-
     testWidgets('NowPlaying: Wave tab only toggles lofi and does not switch page; tapping active tab toggles back to album', (tester) async {
       final provider = MockMusicProvider(
         initialTrack: sampleTrack(),

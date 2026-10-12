@@ -10,6 +10,7 @@ import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/services/lyrics/lyric_sweep.dart';
+import 'package:music_streaming_app/widgets/lyric_line/lyric_line.dart';
 
 /// THE JANK THIS FILE PINS.
 ///
@@ -30,6 +31,14 @@ class _Provider extends MusicProvider {
   final bool playing;
 
   final StreamController<Duration> _positions =
+      StreamController<Duration>.broadcast();
+
+  /// Announced jumps, as the real `seekTo` announces them. Without this the
+  /// panel's clock would treat a seek as a glitch in the player's readings and
+  /// hold it back until a second reading confirmed it - which is correct for a
+  /// real player, that never stops reporting, and wrong for a test that sends
+  /// one reading.
+  final StreamController<Duration> _seeks =
       StreamController<Duration>.broadcast();
   Duration _position = const Duration(seconds: 30);
 
@@ -74,14 +83,21 @@ class _Provider extends MusicProvider {
   /// Moves the song on and announces it.
   void seek(Duration to) {
     _position = to;
+    _seeks.add(to);
     _positions.add(to);
   }
 
-  void closeStream() => _positions.close();
+  @override
+  Stream<Duration> get seekEvents => _seeks.stream;
+
+  void closeStream() {
+    _positions.close();
+    _seeks.close();
+  }
 
   @override
   void dispose() {
-    _positions.close();
+    closeStream();
     super.dispose();
   }
 }
@@ -130,48 +146,55 @@ Widget _screen(_Provider provider) =>
 ///
 /// Read from the RENDERED tree rather than from the ladder function: what is
 /// being pinned is what reaches the screen.
-bool _blurIsLifted(WidgetTester tester) =>
-    find.descendant(
-      of: find.byType(LyricsScreen),
-      matching: find.byType(ImageFiltered),
-    ).evaluate().isEmpty;
+bool _blurIsLifted(WidgetTester tester) => find
+    .descendant(of: find.byType(LyricsScreen), matching: find.byType(LyricLine))
+    .evaluate()
+    .every((e) => (e.widget as LyricLine).blurSigma < 0.0001);
+
+/// The text of a lyric row, and where it sits.
+Iterable<({int index, double dy})> _rows(WidgetTester tester) sync* {
+  for (final element in find
+      .descendant(of: find.byType(ListView), matching: find.byType(LyricLine))
+      .evaluate()) {
+    final line = element.widget as LyricLine;
+    final match = RegExp(r'^line (\d+) here$').firstMatch(line.entry.text);
+    if (match == null) continue;
+    yield (
+      index: int.parse(match.group(1)!) - 1,
+      dy: tester.getTopLeft(find.byWidget(line)).dy,
+    );
+  }
+}
 
 ScrollController _listController(WidgetTester tester) =>
     tester.widget<ListView>(find.byType(ListView)).controller!;
 
-/// The index of the lyric row sitting at the TOP of the list's viewport.
+/// The index of the lyric row the list is ANCHORED on: the one whose top sits
+/// closest to the list's top inset.
 ///
 /// Found by geometry rather than by asking which index we expected: a lazy list
-/// has not built the rows outside its viewport, so `find.text('line N here')`
-/// only answers for rows that exist, and hard-coding an index would silently
-/// assert against whatever happened to be built.
+/// has not built the rows outside its viewport, so hard-coding an index would
+/// silently assert against whatever happened to be built.
 ///
-/// Rows ABOVE the viewport are excluded even when they are built - Flutter keeps
-/// a cache extent above the top edge, so those rows have real boxes sitting at
-/// negative y. Picking the smallest y without that filter returns the row before
-/// the target and every anchor assertion reads a full row-pitch short.
-int _topmostVisibleLineIndex(WidgetTester tester) {
-  final finder = find.descendant(
-    of: find.byType(ListView),
-    matching: find.byType(Text),
-  );
+/// Not "the topmost visible row": the list deliberately leaves the line BEFORE
+/// the anchored one peeking in above it (fading under the top edge), as the
+/// reference does, so the topmost row is one earlier than the one being aimed at.
+int _anchoredLineIndex(WidgetTester tester) {
   final listTop = tester.getTopLeft(find.byType(ListView)).dy;
-  var topmostDy = double.infinity;
-  var topmostIndex = -1;
-  for (final element in finder.evaluate()) {
-    final text = element.widget as Text;
-    final match = RegExp(r'^line (\d+) here$').firstMatch(text.data ?? '');
-    if (match == null) continue;
-    final dy = tester.getTopLeft(find.byWidget(text)).dy;
-    if (dy < listTop - 1) continue;
-    if (dy < topmostDy) {
-      topmostDy = dy;
-      topmostIndex = int.parse(match.group(1)!) - 1;
+  var best = double.infinity;
+  var bestIndex = -1;
+  for (final row in _rows(tester)) {
+    final distance = (row.dy - listTop - _inset).abs();
+    if (distance < best) {
+      best = distance;
+      bestIndex = row.index;
     }
   }
-  return topmostIndex;
+  return bestIndex;
 }
 
+/// The list's top inset: where the anchored row sits.
+const double _inset = 96;
 /// Pumps long enough for a handover to settle under ANY spec in play.
 ///
 /// Several frames, not one long one. The panel's follow is driven by a 250ms
@@ -206,6 +229,8 @@ void main() {
 
       await tester.drag(find.byType(ListView), const Offset(0, -220));
       await tester.pump();
+      // The ladder settles on the lyric spec (400ms) rather than snapping.
+      await tester.pump(const Duration(milliseconds: 450));
 
       expect(_blurIsLifted(tester), isTrue,
           reason: 'while a finger is down every line comes up to meet the '
@@ -248,7 +273,10 @@ void main() {
 
     testWidgets('the browse ends without yanking the reader back',
         (tester) async {
-      final provider = _latched(_lyric());
+      // PAUSED, so the only thing that can move the list is the resume itself. A
+      // playing song reaches its next line during the wait and the panel then
+      // legitimately follows it ("the next line change re-arms the follow").
+      final provider = _latched(_lyric(), playing: false);
       await tester.pumpWidget(_screen(provider));
       await _settle(tester);
 
@@ -354,21 +382,21 @@ void main() {
           topAnchorOffset(
             currentPixels: pixels,
             rowTopInViewport: rowTop,
-            topInset: 56,
+            topInset: 96,
             minScrollExtent: 0,
             maxScrollExtent: 10000,
           );
 
       // A row sitting on the top inset must need no movement at all.
-      expect(anchor(pixels: 400, rowTop: 56), 400);
+      expect(anchor(pixels: 400, rowTop: 96), 400);
 
       // A row 300px BELOW the inset needs 300px MORE scroll. Scrolling down moves
       // content up, so "further down the screen" means "further along the
       // content". Getting this backwards scrolls the list away from its target.
-      expect(anchor(pixels: 400, rowTop: 356), 700);
+      expect(anchor(pixels: 400, rowTop: 396), 700);
 
       // A row 100px ABOVE the inset needs 100px LESS scroll.
-      expect(anchor(pixels: 400, rowTop: -44), 300);
+      expect(anchor(pixels: 400, rowTop: -4), 300);
 
       // Clamped, so a handover past either end cannot throw the list.
       expect(anchor(pixels: 0, rowTop: -900), 0);
@@ -395,7 +423,7 @@ void main() {
       for (final at in <int>[11500, 20000, 28000, 35000, 43500]) {
         await _seekAndSettle(tester, provider, at);
 
-        final topmost = _topmostVisibleLineIndex(tester);
+        final topmost = _anchoredLineIndex(tester);
         expect(topmost, greaterThanOrEqualTo(0), reason: 'no rows built at $at');
 
         final sung = activeLineIndex(_lyric(), at);
@@ -420,14 +448,13 @@ void main() {
 
       await _seekAndSettle(tester, provider, 43500);
 
-      final topmost = _topmostVisibleLineIndex(tester);
-      final top =
-          tester.getTopLeft(find.text('line ${topmost + 1} here')).dy;
+      final topmost = _anchoredLineIndex(tester);
+      final top = _rows(tester).firstWhere((r) => r.index == topmost).dy;
       final listTop = tester.getTopLeft(find.byType(ListView)).dy;
 
-      // 56dp is the list's own top inset; the top row lands on it. The row is
-      // keyed inside its margin, so allow for the 14dp above it.
-      expect(top - listTop, closeTo(56, 20),
+      // 96dp is the list's own top inset (BitChord's lyric box, which begins well
+      // below its header); the anchored row lands on it.
+      expect(top - listTop, closeTo(96, 8),
           reason: 'top-anchored: the row the list is resting on sits at the '
               'list\'s top inset, not at the old 0.32 viewport fraction');
     });

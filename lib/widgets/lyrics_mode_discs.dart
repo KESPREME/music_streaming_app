@@ -164,3 +164,45 @@ const Duration lyricsDiscIdleTimeout = Duration(seconds: 5);
 /// How long the discs take to arrive and to leave.
 const Duration lyricsDiscFadeIn = Duration(milliseconds: 220);
 const Duration lyricsDiscFadeOut = Duration(milliseconds: 160);
+/// Fades and scales a disc in and out with the player's controls.
+///
+/// The discs belong to the controls: they arrive with the deck and leave with it,
+/// on one decision (see `now_playing_screen.dart`), not on a timer of their own.
+/// Before this they popped in and out with no animation, a beat apart from a
+/// deck that slid over 300ms, so they read as appearing "when the controls hide".
+///
+/// An alpha is safe HERE and nowhere near the deck: a disc is a flat translucent
+/// circle, not a backdrop lens, so there is no glass for a translucent layer to
+/// flatten.
+class LyricsDiscReveal extends StatelessWidget {
+  const LyricsDiscReveal({
+    super.key,
+    required this.visible,
+    required this.child,
+  });
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = visible ? lyricsDiscFadeIn : lyricsDiscFadeOut;
+    return IgnorePointer(
+      ignoring: !visible,
+      child: ExcludeSemantics(
+        excluding: !visible,
+        child: AnimatedScale(
+          scale: visible ? 1.0 : 0.92,
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          child: AnimatedOpacity(
+            opacity: visible ? 1.0 : 0.0,
+            duration: duration,
+            curve: Curves.easeOut,
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
