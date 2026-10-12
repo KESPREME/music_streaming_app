@@ -1123,6 +1123,17 @@ for (final track in releases)
   bool get isLofiEnabled => _lofi.enabled;
   Stream<Duration> get positionStream => _audioService.onPositionChanged;
 
+  /// Every seek the APP makes (a scrub, a line tap, skip-to-start), as the
+  /// position it landed on.
+  ///
+  /// The lyric clock needs to be told a jump is on purpose: the player's own
+  /// readings cannot distinguish a seek from a glitch, and only an announced
+  /// jump may move the words backwards. Deliberately independent of the audio
+  /// service so it exists before, and without, a player.
+  final StreamController<Duration> _seekEvents =
+      StreamController<Duration>.broadcast();
+  Stream<Duration> get seekEvents => _seekEvents.stream;
+
   // --- Initialization & Setup ---
   DateTime? _lastPositionNotify;
   MusicProvider({AccentController? accentController})
@@ -3663,6 +3674,7 @@ for (final track in releases)
   Future<void> seekTo(Duration position) async {
     if (_isCasting) {
       await _castService.seek(position.inSeconds.toDouble());
+      if (!_seekEvents.isClosed) _seekEvents.add(position);
       return;
     }
     if (_currentTrack == null) return;
@@ -3673,6 +3685,7 @@ for (final track in releases)
     try {
       await _audioService.seekTo(clamped);
       _position = clamped;
+      if (!_seekEvents.isClosed) _seekEvents.add(clamped);
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Error seeking.';
@@ -5794,6 +5807,7 @@ for (final track in releases)
     }
     _audioSubscriptions.clear();
     _notifyDebouncer?.cancel();
+    unawaited(_seekEvents.close());
 
     _audioService.dispose();
     _lyricsService.dispose();
