@@ -1,5 +1,8 @@
 # PLAN — Lyrics parity with BitChord
 
+> **SUPERSEDED by `docs/PLAN-lyrics-v2.md` (2026-10-12).** Several items below are
+> marked done but were disproven on device; see v2's root-cause ledger.
+
 Source of truth: user field report + screenshot diff
 (`C:\Users\nipun\Downloads\Mobile Devices\bitchord and minemusic lyric screen differences.zip`,
 extracted `C:\Users\nipun\AppData\Local\Temp\opencode\shots`).
