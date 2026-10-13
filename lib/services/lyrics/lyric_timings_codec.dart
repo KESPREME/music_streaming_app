@@ -162,3 +162,55 @@ List<LyricsEntry> attachTimings(
   }
   return out;
 }
+
+final RegExp _cachedLine = RegExp(r'^\[(\d+):(\d{1,2})\.(\d{2,3})\](.*)$');
+
+/// Rebuilds the lines the cache stored, one for one, and re-attaches [timings].
+///
+/// WHY THIS IS NOT `LyricsUtils.parseLrc` + [attachTimings]
+///
+/// The positional timings are only valid against the SAME list of lines they
+/// were encoded from. `parseLrc` is not a faithful inverse of how the cache
+/// writes: it prepends its own head entry, so it always returned one line more
+/// than was stored, [attachTimings] saw a count mismatch, and (correctly, for
+/// its contract) threw the timings away. Every word-synced song therefore came
+/// back from disk line-synced, which is the exact bug the timings column was
+/// added to fix. It also re-ran credit stripping on lines that had already been
+/// cleaned, and could drop a lyric that merely looked like a credit.
+///
+/// This reads each stored `[mm:ss.xx]text` line as it is - the empty head
+/// included - so the counts agree by construction.
+List<LyricsEntry> decodeCachedLyrics(String lrc, String? timings) {
+  final lines = <(int, String)>[];
+  for (final raw in lrc.split('\n')) {
+    final line = raw.endsWith('\r') ? raw.substring(0, raw.length - 1) : raw;
+    final match = _cachedLine.firstMatch(line);
+    if (match == null) continue;
+    final minutes = int.parse(match.group(1)!);
+    final seconds = int.parse(match.group(2)!);
+    final fraction = match.group(3)!;
+    final millis = fraction.length == 2
+        ? int.parse(fraction) * 10
+        : int.parse(fraction);
+    lines.add((
+      minutes * 60000 + seconds * 1000 + millis,
+      match.group(4)!,
+    ));
+  }
+
+  final decoded = decodeTimings(timings);
+  // Positional: a payload for a different number of lines is for different
+  // lines.
+  final usable = decoded.length == lines.length ? decoded : const [];
+
+  return [
+    for (var i = 0; i < lines.length; i++)
+      LyricsEntry(
+        timeMs: lines[i].$1,
+        text: lines[i].$2,
+        // A line ends where the next begins; the cache does not store ends.
+        endMs: i + 1 < lines.length ? lines[i + 1].$1 : lines[i].$1 + 4000,
+        lyricWords: usable.isNotEmpty && usable[i].isNotEmpty ? usable[i] : null,
+      ),
+  ];
+}

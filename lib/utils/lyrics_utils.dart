@@ -23,7 +23,6 @@ class LyricsUtils {
 
   static final RegExp _stampedLineRegex =
       RegExp(r'^\[\d{2}:\d{2}\.\d{2,3}\].*');
-  static final RegExp _creditColonRegex = RegExp(r'\][^\[]+[:：].+');
   static final RegExp _creditKeywordRegex = RegExp(
     r'(?:作词|作曲|编曲|制作人|录音|混音|监制|Written\s+by|Lyrics\s+by|Composed\s+by|Produced\s+by|Arranged\s+by|QQ音乐|酷狗音乐|网易云音乐|Lyricist|Composer|Credits)',
     caseSensitive: false,
@@ -280,103 +279,47 @@ class LyricsUtils {
       }
     }
     
-    // Sort by timestamp
-    entries.sort();
+    // Sort by timestamp - STABLY. List.sort is not stable, and two lines that
+    // share a stamp (a chorus pasted twice, a gap marker on a line start) must
+    // keep the order they were written in or the lyric reads out of order.
+    final ordered = [
+      for (var i = 0; i < entries.length; i++) (i, entries[i]),
+    ]..sort((a, b) {
+        final byTime = a.$2.timeMs.compareTo(b.$2.timeMs);
+        return byTime != 0 ? byTime : a.$1.compareTo(b.$1);
+      });
+    final sorted = [for (final item in ordered) item.$2];
 
-    // Compute endMs and natural character-weighted word timings for lines without word tags
+    // Close each line at the start of the next.
+    //
+    // NOTHING IS INVENTED HERE. This pass used to give every plain line a word
+    // timing spread over its duration by an English vowel-group syllable
+    // counter, so a source with no word timing at all (LRCLIB, KuGou, a plain
+    // LRC) looked word-synced: `isWordSynced` was true for all of them, the
+    // "prioritize word sync" setting could never tell a real word-synced answer
+    // from a guess, and the sweep ran across words at invented speeds. A line
+    // with no word timing now has none, and is lit as a whole line. Real
+    // timing - enhanced-LRC stamps and syllable tags, handled above - is kept.
     final enrichedEntries = <LyricsEntry>[];
-    for (int i = 0; i < entries.length; i++) {
-      final current = entries[i];
+    for (int i = 0; i < sorted.length; i++) {
+      final current = sorted[i];
       if (current.timeMs == 0 && current.text.isEmpty) {
         enrichedEntries.add(current);
         continue;
       }
 
-      final nextTime = (i + 1 < entries.length)
-          ? entries[i + 1].timeMs
+      final nextTime = (i + 1 < sorted.length)
+          ? sorted[i + 1].timeMs
           : current.timeMs + 4000;
 
-      // If already parsed with word-level precision, keep it
-      if (current.words != null && current.words!.isNotEmpty) {
-        enrichedEntries.add(LyricsEntry(
-          timeMs: current.timeMs,
-          text: current.text,
-          endMs: nextTime,
-          words: current.words,
-        ));
-        continue;
-      }
-
-      final totalGap = (nextTime - current.timeMs).clamp(600, 20000);
-      final rawWords = current.text
-          .split(RegExp(r'\s+'))
-          .where((w) => w.isNotEmpty)
-          .toList();
-
-      final wordTimings = <WordTiming>[];
-      if (rawWords.isNotEmpty) {
-        // Syllable-based singing cadence: singers hold syllable-rich words
-        // and naturally elongate the last word of a phrase.
-        final List<double> weights = [];
-        for (int w = 0; w < rawWords.length; w++) {
-          final word = rawWords[w].replaceAll(RegExp(r'[^\w]'), '').toLowerCase();
-          // Estimate syllable count via vowel groups
-          double syllables = _estimateSyllables(word).toDouble();
-          if (syllables < 1) syllables = 1;
-          // End-of-phrase elongation: last word gets 1.6x, penultimate 1.15x
-          if (w == rawWords.length - 1 && rawWords.length > 1) {
-            syllables *= 1.6;
-          } else if (w == rawWords.length - 2 && rawWords.length > 2) {
-            syllables *= 1.15;
-          }
-          // Short function words ("a", "I", "to") never exceed 1 syllable weight
-          if (word.length <= 2) {
-            syllables = syllables.clamp(0.0, 1.2);
-          }
-          weights.add(syllables);
-        }
-
-        final double totalWeight = weights.fold(0.0, (acc, w) => acc + w);
-
-        // Vocal lines fill ~93% of the gap (singers use most of the duration)
-        final double targetSingingDuration = (totalGap * 0.93)
-            .clamp(600.0, totalGap.toDouble());
-
-        int currentStart = current.timeMs;
-        for (int w = 0; w < rawWords.length; w++) {
-          final wShare = weights[w] / totalWeight;
-          final wDuration = (targetSingingDuration * wShare).round()
-              .clamp(150, 5000);
-          wordTimings.add(WordTiming(
-            timeMs: currentStart,
-            durationMs: wDuration,
-            text: rawWords[w],
-          ));
-          currentStart += wDuration;
-        }
-      }
-
-// The lyric words carry the word's own span, so the wipe interpolates across
-        // a word instead of snapping to its end. Built through wordsFromWord-
-        // Timings so this path and the real-timed providers share one shape.
-        final lyricWords = wordsFromWordTimings([
-          for (final w in wordTimings)
-            (
-              timeMs: w.timeMs,
-              durationMs: w.durationMs,
-              text: w.text,
-            ),
-        ]);
-
-        enrichedEntries.add(LyricsEntry(
-          timeMs: current.timeMs,
-          text: current.text,
-          endMs: nextTime,
-          words: wordTimings,
-          lyricWords: lyricWords,
-        ));
-      }
-    
+      enrichedEntries.add(LyricsEntry(
+        timeMs: current.timeMs,
+        text: current.text,
+        endMs: nextTime,
+        words: current.words,
+        lyricWords: current.lyricWords,
+      ));
+    }
     return enrichedEntries;
   }
   
@@ -384,7 +327,11 @@ class LyricsUtils {
   /// Returns the index of the line that should be highlighted
   static int findCurrentLineIndex(List<LyricsEntry> entries, int positionMs) {
     if (entries.isEmpty) return -1;
-    
+
+    // Nothing stamped (plain text): there is no "current" line to follow, and
+    // the loop below would answer "the last one" because every stamp is 0.
+    if (entries.last.timeMs <= 0) return 0;
+
     int currentIndex = 0;
     
     for (int i = 0; i < entries.length; i++) {
@@ -398,56 +345,19 @@ class LyricsUtils {
     return currentIndex;
   }
 
-  /// Estimate syllable count for a word using vowel-group heuristic.
-  /// Handles common English patterns: silent-e, diphthongs, -le endings.
-  static int _estimateSyllables(String word) {
-    if (word.isEmpty) return 1;
-    final w = word.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-    if (w.isEmpty) return 1;
-    if (w.length <= 2) return 1;
-
-    // Count vowel groups (consecutive vowels = 1 syllable)
-    int count = 0;
-    bool prevVowel = false;
-    const vowels = {'a', 'e', 'i', 'o', 'u', 'y'};
-
-    for (int i = 0; i < w.length; i++) {
-      final isVowel = vowels.contains(w[i]);
-      if (isVowel && !prevVowel) {
-        count++;
-      }
-      prevVowel = isVowel;
-    }
-
-    // Silent-e: trailing 'e' after consonant doesn't add syllable
-    if (w.endsWith('e') && !w.endsWith('le') && count > 1) {
-      count--;
-    }
-    // Common suffixes that add syllable
-    if (w.endsWith('tion') || w.endsWith('sion')) {
-      // Already counted, no adjustment needed
-    }
-    // Words ending in -ed after consonant (jumped, walked) don't add syllable
-    if (w.endsWith('ed') && w.length > 3) {
-      final beforeEd = w[w.length - 3];
-      if (beforeEd != 't' && beforeEd != 'd' && !vowels.contains(beforeEd)) {
-        if (count > 1) count--;
-      }
-    }
-
-    return count < 1 ? 1 : count;
-  }
-
-  /// Parse plain text lyrics into [LyricsEntry] list with artificial spacing
+  /// Parse plain text lyrics into [LyricsEntry] list, every line stamped 0.
+  ///
+  /// Stamped 0 on purpose. This used to step the lines four seconds apart so
+  /// they would "scroll", which made text nobody had timed look synced: the
+  /// panel followed a made-up schedule, the strip showed the wrong line, and
+  /// `timeMs > 0` could no longer tell timed lyrics from untimed ones - the one
+  /// question the race, the cache and the strip all ask.
   static List<LyricsEntry> parsePlainText(String plainText) {
     final entries = <LyricsEntry>[LyricsEntry.headEntry];
-    final lines = plainText.split('\n');
-    int timeMs = 0;
-    for (final line in lines) {
+    for (final line in plainText.split('\n')) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
-      entries.add(LyricsEntry(timeMs: timeMs, text: trimmed));
-      timeMs += 4000;
+      entries.add(LyricsEntry(timeMs: 0, text: trimmed));
     }
     return entries;
   }

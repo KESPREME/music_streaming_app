@@ -49,6 +49,7 @@ export 'playback/playback_state.dart' show RepeatMode;
 import '../services/cast_service.dart'; // Cast Service
 import 'package:cast/cast.dart'; // Cast Models
 import '../services/lyrics/lyrics_service.dart'; // Multi-provider lyrics service
+import '../services/lyrics/provider_race.dart' show LyricsRaceCallbacks;
 import '../services/recommendation_service.dart'; // AI recommendation engine
 import '../services/recommendation/ranker.dart';
 import '../services/recommendation/taste_profile.dart';
@@ -792,8 +793,7 @@ for (final track in releases)
       _downloads.isDownloadedMetadataSync(trackId);
 
   // Audio State // YouTube Music InnerTube API
-  final LyricsService _lyricsService =
-      LyricsService(); // Multi-provider lyrics service
+  final LyricsService _lyricsService; // Multi-provider lyrics service
   final RecommendationService _recommendationService =
       RecommendationService(); // AI recommendations
   /// Public access for discovery surfaces (swipe deck taste signals).
@@ -818,25 +818,57 @@ for (final track in releases)
       currentLyrics != null && currentLyrics!.isNotEmpty;
   String? get lyricsTrackId => _lyricsTrackId;
 
-  /// Which provider produced the loaded lyric, or null when it is unknown.
+  /// Which provider produced the lyric on screen, or null when it is unknown.
   ///
   /// Null is a real answer, not a placeholder: it covers a song with no lyric
   /// and a cache row written before the source was recorded. Callers must show
   /// something honest for it rather than defaulting to the first provider.
   LyricsProvider? get lyricsSourceProvider =>
-      _currentLyrics == null || _currentLyrics!.isEmpty
-          ? null
-          : _lyricsService.lastSourceProvider;
+      _currentLyrics == null || _currentLyrics!.isEmpty ? null : _lyricsSource;
 
   /// The display name for [lyricsSourceProvider], or null when unknown.
   String? get lyricsSourceName => lyricsSourceProvider?.displayName;
 
-  /// Per-provider progress for the current lookup, for the provider sheet.
+  // ---------------------------------------------------------------------------
+  // Provider selection (port of BitChord MainViewModel ~289-502)
+  //
+  // ONE TRACK'S WORTH OF STATE, with three rules that the old model broke:
+  //
+  //   1. A provider SWITCH never clears the lyrics. Only a track change does.
+  //      The old switch nulled `_currentLyrics` and refetched, so the panel
+  //      showed the skeleton, lost its scroll position, and - because the row
+  //      list was rebuilt from empty - cross-faded old and new lines on top of
+  //      each other ("lines duplicate while switching").
+  //   2. Every provider's answer is KEPT. The race used to throw the losers away,
+  //      so choosing any source other than the winner meant fetching it again;
+  //      now a source that has answered switches instantly.
+  //   3. Callbacks carry a generation. A lookup that outlives its track reports
+  //      into the void, not into the next song's sheet.
+  // ---------------------------------------------------------------------------
+
+  /// Bumped whenever a lookup starts; every callback compares against it.
+  int _lyricsGeneration = 0;
+
+  /// The track the maps below describe.
+  String? _lyricsSelectionTrackId;
+
+  /// Per-provider progress for the current track, for the provider sheet.
   ///
-  /// Cleared when a lookup starts, because these describe one attempt at one
-  /// track. Carrying them across a track change would show the previous song's
-  /// misses against the new song's providers.
+  /// Reset when the TRACK changes - not when a provider is chosen, which would
+  /// wipe the check marks the sheet is there to show.
   final Map<LyricsProvider, ProviderState> _lyricsProviderStates = {};
+
+  /// Every answer that came back for this track, display-ready.
+  final Map<LyricsProvider, List<LyricsEntry>> _lyricsProviderResults = {};
+
+  /// The source the listener picked by hand for this track. In memory only:
+  /// BitChord does not persist it either, and the next play of the track opens
+  /// on whatever was cached when the choice was made (see
+  /// [LyricsService.rememberChoice]).
+  LyricsProvider? _selectedLyricsProvider;
+
+  /// Who produced the lyric currently shown.
+  LyricsProvider? _lyricsSource;
 
   Map<LyricsProvider, ProviderState> get lyricsProviderStates =>
       Map.unmodifiable(_lyricsProviderStates);
@@ -844,119 +876,323 @@ for (final track in releases)
   ProviderState lyricsStateOf(LyricsProvider provider) =>
       _lyricsProviderStates[provider] ?? ProviderState.notFetched;
 
-  /// Clears the per-provider progress and hooks the race's callbacks up.
+  /// The source the listener chose by hand, or null while the race decides.
+  LyricsProvider? get selectedLyricsProvider => _selectedLyricsProvider;
+
+  /// Makes [track] the current track without starting playback, for tests of
+  /// the lyric selection model.
+  @visibleForTesting
+  void debugSetCurrentTrack(Track? track) {
+    _currentTrack = track;
+  }
+
+  /// Whether a callback from lookup [generation] still describes the track on
+  /// screen.
+  bool _lyricsCurrent(int generation) =>
+      generation == _lyricsGeneration &&
+      _currentTrack != null &&
+      _currentTrack!.id == _lyricsSelectionTrackId;
+
+  /// What the lookup reports into.
   ///
-  /// The service is a singleton, so these are installed once at construction
-  /// rather than per lookup, and the sheet reads the map. [onProviderCancelled]
-  /// resets a losing provider to "not asked" rather than to "no lyrics": it was
-  /// still working when a better answer won, so marking it a miss would tell the
-  /// listener not to choose a source that was never properly asked.
-  void _installLyricsRaceReporting() {
-    _lyricsService.onProviderStarted = (provider) {
-      _lyricsProviderStates[provider] = ProviderState.fetching;
-      _notifyLyrics();
-    };
-    _lyricsService.onProviderResult = (provider, found) {
-      _lyricsProviderStates[provider] =
-          found ? ProviderState.found : ProviderState.notFound;
-      _notifyLyrics();
-    };
-    _lyricsService.onProviderCancelled = (provider) {
-      _lyricsProviderStates.remove(provider);
-      _notifyLyrics();
-    };
+  /// [dedicated] marks the single-provider fetch started by a manual choice. Its
+  /// callbacks differ in one place: a dedicated fetch that is cancelled is NOT
+  /// started again (it would be cancelled again, forever); the choice is simply
+  /// dropped.
+  LyricsRaceCallbacks _lyricsCallbacks(int generation, {bool dedicated = false}) {
+    return LyricsRaceCallbacks(
+      onStarted: (provider) {
+        if (!_lyricsCurrent(generation)) return;
+        _lyricsProviderStates[provider] = ProviderState.fetching;
+        _notifyLyrics();
+      },
+      onResult: (provider, entries) {
+        if (!_lyricsCurrent(generation)) return;
+        if (entries == null || entries.isEmpty) {
+          _lyricsProviderStates[provider] = ProviderState.notFound;
+          // The source they chose has nothing: stop waiting for it, so the
+          // race's winner is allowed onto the screen.
+          if (_selectedLyricsProvider == provider) {
+            _selectedLyricsProvider = null;
+          }
+        } else {
+          _lyricsProviderStates[provider] = ProviderState.found;
+          _lyricsProviderResults[provider] = entries;
+          // Chosen while it was still fetching: it has landed, show it.
+          if (_selectedLyricsProvider == provider) {
+            _applyProviderLyrics(provider, entries, remember: true);
+            return;
+          }
+        }
+        _notifyLyrics();
+      },
+      onCancelled: (provider) {
+        if (!_lyricsCurrent(generation)) return;
+        // Only a provider still working goes back to "not asked". One that had
+        // already answered keeps its answer.
+        if (_lyricsProviderStates[provider] == ProviderState.fetching) {
+          _lyricsProviderStates[provider] = ProviderState.notFetched;
+        }
+        if (_selectedLyricsProvider == provider) {
+          if (dedicated) {
+            _selectedLyricsProvider = null;
+          } else {
+            // The race gave up on the one they chose: ask it on its own, where
+            // nothing else is competing for the deadline.
+            unawaited(_fetchSelectedProvider(provider, generation));
+          }
+        }
+        _notifyLyrics();
+      },
+    );
+  }
+
+  /// Puts [entries] on screen as the work of [provider].
+  ///
+  /// Never nulls anything first: the new lines replace the old in one
+  /// notification, which is what lets the panel animate the change rather than
+  /// restart.
+  void _applyProviderLyrics(
+    LyricsProvider provider,
+    List<LyricsEntry> entries, {
+    required bool remember,
+  }) {
+    final track = _currentTrack;
+    if (track == null) return;
+    _currentLyrics = entries;
+    _lyricsTrackId = track.id;
+    _lyricsSource = provider;
+    _lyricsError = null;
+    _isLoadingLyrics = false;
+    if (remember) {
+      unawaited(_lyricsService.rememberChoice(
+        title: track.trackName,
+        artist: track.artistName,
+        videoId: track.source == 'youtube' ? track.id : null,
+        provider: provider,
+        entries: entries,
+      ));
+    }
+    notifyListeners();
   }
 
   /// Notifies for provider-sheet progress.
   ///
   /// Deliberately a plain [notifyListeners]. It fires several times per lookup as
   /// providers report, and the listener that cares about that is the live sheet -
-  /// which is a `context.watch` on this provider and rebuilds either way. Splitting
-  /// it into a narrower signal would mean a second ChangeNotifier whose only job
-  /// is to be listened to by one sheet, which is more machinery than the traffic
-  /// is worth.
+  /// which selects on the maps above and rebuilds only when they change.
   void _notifyLyrics() {
     notifyListeners();
   }
 
-  /// Re-runs the lookup against exactly one provider, ignoring the saved order.
+  /// The provider sheet's manual choice.
   ///
-  /// For the provider sheet's manual choice. Passed as an argument rather than
-  /// written into the service's order, so choosing one source by hand cannot
-  /// leave the listener's priorities rearranged afterwards.
+  /// Four cases, by what is already known about [provider] for this track:
   ///
-  /// Skips the cache: the whole point of asking is to get an answer from a
-  /// specific source, and returning the previous lookup's answer from disk would
-  /// ignore the request while reporting success. The track's own cache row is
-  /// then overwritten by whichever provider wins, so a later ordinary fetch
-  /// agrees with what the listener just chose.
-  Future<void> useLyricsProvider(LyricsProvider provider) async {
+  ///   * FOUND - its answer is on hand: show it now.
+  ///   * FETCHING - it is on its way: remember the choice and show it the moment
+  ///     it lands. Whatever is on screen stays until then.
+  ///   * NOT FETCHED - never asked (lazy, or given up on at the deadline): ask it
+  ///     alone and show it when it answers.
+  ///   * NOT FOUND - nothing to choose. The sheet disables the row; this is the
+  ///     belt to its braces.
+  Future<void> selectLyricsProvider(LyricsProvider provider) async {
     if (_currentTrack == null) return;
+    switch (lyricsStateOf(provider)) {
+      case ProviderState.found:
+        final stored = _lyricsProviderResults[provider];
+        if (stored == null) return;
+        _selectedLyricsProvider = provider;
+        _applyProviderLyrics(provider, stored, remember: true);
+      case ProviderState.fetching:
+        _selectedLyricsProvider = provider;
+        notifyListeners();
+      case ProviderState.notFetched:
+        _selectedLyricsProvider = provider;
+        _lyricsProviderStates[provider] = ProviderState.fetching;
+        notifyListeners();
+        await _fetchSelectedProvider(provider, _lyricsGeneration);
+      case ProviderState.notFound:
+        return;
+    }
+  }
 
-    _lyricsProviderStates
-      ..clear()
-      ..[provider] = ProviderState.fetching;
-    notifyListeners();
-    await fetchLyrics(
-      forceRefresh: true,
-      onlyProvider: provider,
-      skipLyricsCache: true,
-    );
+  /// A dedicated single-provider lookup for a manual choice.
+  Future<void> _fetchSelectedProvider(
+    LyricsProvider provider,
+    int generation,
+  ) async {
+    final track = _currentTrack;
+    if (track == null || !_lyricsCurrent(generation)) return;
+    _lyricsProviderStates[provider] = ProviderState.fetching;
+    try {
+      await _lyricsService.lookup(
+        title: track.trackName,
+        artist: track.artistName,
+        durationMs: _lyricsDurationMs(track),
+        videoId: track.source == 'youtube' ? track.id : null,
+        album: track.albumName,
+        onlyProvider: provider,
+        skipCache: true,
+        callbacks: _lyricsCallbacks(generation, dedicated: true),
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: Dedicated lyrics fetch failed: $e');
+      if (_lyricsCurrent(generation)) {
+        _lyricsProviderStates[provider] = ProviderState.notFetched;
+        if (_selectedLyricsProvider == provider) _selectedLyricsProvider = null;
+        _notifyLyrics();
+      }
+    }
+  }
+
+  /// Runs the lookup again for the track on screen, after the listener changed
+  /// which sources are enabled or in what order.
+  ///
+  /// The lyrics on screen stay put until the new winner is known; the cache is
+  /// skipped because its row was written under the old settings.
+  void refreshLyricsForSourceChange() {
+    if (_currentTrack == null) return;
+    unawaited(fetchLyrics(forceRefresh: true, skipLyricsCache: true));
+  }
+
+  int _lyricsDurationMs(Track track) {
+    final known = track.durationMs ?? 0;
+    return known > 0 ? known : _duration.inMilliseconds;
+  }
+
+  /// A lookup is not started until the track's length is known (BitChord
+  /// `MainViewModel.loadLyrics`): asked without one, the sources cannot tell the
+  /// studio cut from a live edit, and the answer is cached as if it were right.
+  bool _lyricsAwaitingDuration = false;
+  Timer? _lyricsDurationTimer;
+
+  /// A stream that never reports a length must not mean no lyrics, ever.
+  @visibleForTesting
+  Duration lyricsDurationPatience = const Duration(seconds: 3);
+
+  /// Reports the track's length as the player would, for tests of the wait.
+  @visibleForTesting
+  void debugSetDuration(Duration duration) {
+    _duration = duration;
+    _onDurationKnownForLyrics();
+  }
+
+  void _onDurationKnownForLyrics() {
+    if (!_lyricsAwaitingDuration) return;
+    _lyricsAwaitingDuration = false;
+    _lyricsDurationTimer?.cancel();
+    unawaited(fetchLyrics());
   }
 
   // Method to fetch lyrics
   Future<void> fetchLyrics({
     bool forceRefresh = false,
-    LyricsProvider? onlyProvider,
     bool skipLyricsCache = false,
   }) async {
     final targetTrack = _currentTrack;
     if (targetTrack == null) return;
     final targetTrackId = targetTrack.id;
-    final int generation = _playbackGeneration;
+    final int playbackGeneration = _playbackGeneration;
 
     // Return if already loaded for this track AND not forcing refresh
     if (!forceRefresh &&
         _lyricsTrackId == targetTrackId &&
         _currentLyrics != null) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint(
             "MusicProvider: Using cached lyrics for ${targetTrack.trackName}");
+      }
       return;
     }
 
-    _isLoadingLyrics = true;
+    final isNewTrack = _lyricsSelectionTrackId != targetTrackId;
+    final generation = ++_lyricsGeneration;
+    _lyricsSelectionTrackId = targetTrackId;
+    _lyricsDurationTimer?.cancel();
+    _lyricsAwaitingDuration = false;
+
+    if (isNewTrack) {
+      // The ONE place the lyrics may be nulled: the song changed.
+      _lyricsProviderStates.clear();
+      _lyricsProviderResults.clear();
+      _selectedLyricsProvider = null;
+      _lyricsSource = null;
+      _currentLyrics = null;
+      _lyricsTrackId = null;
+    } else {
+      // A refresh: the sources or their order changed, or the listener asked
+      // again. What is on screen stays until the new winner is known; what each
+      // provider said before no longer describes the new settings.
+      _lyricsProviderStates.clear();
+      _lyricsProviderResults.clear();
+      _selectedLyricsProvider = null;
+    }
     _lyricsError = null;
-    _currentLyrics = null;
-    _lyricsTrackId = null;
-    // Cleared here, not per report: these describe ONE attempt at ONE track, so
-    // a stale entry from the previous lookup would claim a provider had already
-    // been asked about this song when it had not.
-    _lyricsProviderStates.clear();
+    _isLoadingLyrics = _currentLyrics == null || _currentLyrics!.isEmpty;
     notifyListeners();
 
+    // Wait for the length (see [_lyricsAwaitingDuration]).
+    final durationMs = _lyricsDurationMs(targetTrack);
+    if (durationMs <= 0) {
+      _lyricsAwaitingDuration = true;
+      _lyricsDurationTimer = Timer(lyricsDurationPatience, () {
+        if (!_lyricsAwaitingDuration) return;
+        if (_currentTrack?.id != targetTrackId) return;
+        _lyricsAwaitingDuration = false;
+        unawaited(_runLyricsLookup(
+          targetTrack: targetTrack,
+          generation: generation,
+          playbackGeneration: playbackGeneration,
+          skipLyricsCache: skipLyricsCache,
+        ));
+      });
+      return;
+    }
+
+    await _runLyricsLookup(
+      targetTrack: targetTrack,
+      generation: generation,
+      playbackGeneration: playbackGeneration,
+      skipLyricsCache: skipLyricsCache,
+    );
+  }
+
+  Future<void> _runLyricsLookup({
+    required Track targetTrack,
+    required int generation,
+    required int playbackGeneration,
+    required bool skipLyricsCache,
+  }) async {
+    final targetTrackId = targetTrack.id;
+    bool stale() =>
+        generation != _lyricsGeneration ||
+        playbackGeneration != _playbackGeneration ||
+        _currentTrack == null ||
+        _currentTrack!.id != targetTrackId;
+
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint(
-            "MusicProvider: Fetching lyrics for ${targetTrack.trackName} (Force: $forceRefresh)");
-      final entries = await _lyricsService.getParsedLyrics(
+            "MusicProvider: Fetching lyrics for ${targetTrack.trackName}");
+      }
+      final result = await _lyricsService.lookup(
         title: targetTrack.trackName,
         artist: targetTrack.artistName,
-        durationMs: targetTrack.durationMs ?? _duration.inMilliseconds,
+        durationMs: _lyricsDurationMs(targetTrack),
         videoId: targetTrack.source == 'youtube' ? targetTrack.id : null,
+        album: targetTrack.albumName,
         // Both of these used to be switches in Settings that wrote a pref and
         // then nothing read it, so turning either off changed nothing at all.
         // They decide what is fetched, so they have to be passed in.
         syncedOnly: _syncedLyricsEnabled,
         prioritizeSyllable: _prioritizeSyllableSync,
-        onlyProvider: onlyProvider,
         skipCache: skipLyricsCache,
+        callbacks: _lyricsCallbacks(generation),
       );
 
-      // Verify that neither track nor playback generation changed while fetching
-      if (generation != _playbackGeneration ||
-          _currentTrack == null ||
-          _currentTrack!.id != targetTrackId) {
+      // Verify that neither track nor lookup changed while fetching
+      if (stale()) {
         if (kDebugMode) {
           debugPrint(
               "MusicProvider: Discarding stale lyrics for ${targetTrack.trackName} (Target: $targetTrackId, Active: ${_currentTrack?.id})");
@@ -964,28 +1200,45 @@ for (final track in releases)
         return;
       }
 
-      _lyricsTrackId = targetTrackId;
-      _currentLyrics = entries;
-      if (entries.isEmpty) {
-        _lyricsError = "No lyrics found";
+      final winner = result.provider;
+      if (result.isEmpty || winner == null) {
+        // Nothing found. Say so only if nothing is on screen: a manual choice
+        // that landed first is not erased by the race's empty answer.
+        if (_currentLyrics == null || _currentLyrics!.isEmpty) {
+          _currentLyrics = const [];
+          _lyricsTrackId = targetTrackId;
+          _lyricsSource = null;
+          _lyricsError = "No lyrics found";
+        }
+        _isLoadingLyrics = false;
+        notifyListeners();
+        return;
       }
-    } catch (e) {
-      if (generation == _playbackGeneration &&
-          _currentTrack != null &&
-          _currentTrack!.id == targetTrackId) {
-        _lyricsError = "Failed to load lyrics";
-        debugPrint("Lyrics Fetch Error: $e");
-      }
-    } finally {
-      if (generation == _playbackGeneration &&
-          _currentTrack != null &&
-          _currentTrack!.id == targetTrackId) {
+
+      // A cache hit makes no callbacks, so record the winner here: the sheet
+      // shows its check, and it is selectable like any other.
+      _lyricsProviderStates[winner] = ProviderState.found;
+      _lyricsProviderResults[winner] = result.entries;
+
+      // The listener's own choice outranks the race - unless it has not landed
+      // yet and nothing is on screen, in which case the winner is shown meanwhile.
+      final chosen = _selectedLyricsProvider;
+      final nothingShown = _currentLyrics == null || _currentLyrics!.isEmpty;
+      if (chosen == null || chosen == winner || nothingShown) {
+        _applyProviderLyrics(winner, result.entries, remember: false);
+      } else {
         _isLoadingLyrics = false;
         notifyListeners();
       }
+    } catch (e) {
+      if (!stale()) {
+        _lyricsError = "Failed to load lyrics";
+        _isLoadingLyrics = false;
+        notifyListeners();
+        debugPrint("Lyrics Fetch Error: $e");
+      }
     }
   }
-
   final List<_RetryOperation> _retryQueue = [];
   Timer? _retryTimer;
   static const int _maxRetryAttempts = 3;
@@ -1136,9 +1389,11 @@ for (final track in releases)
 
   // --- Initialization & Setup ---
   DateTime? _lastPositionNotify;
-  MusicProvider({AccentController? accentController})
-      : _accentController = accentController {
-    _installLyricsRaceReporting();
+  MusicProvider({
+    AccentController? accentController,
+    @visibleForTesting LyricsService? lyricsService,
+  })  : _accentController = accentController,
+        _lyricsService = lyricsService ?? LyricsService() {
     _paletteService.clearAlbumAccentOnEmptyArt = () {
       _accentController?.setAlbumAccent(null);
     };
@@ -1307,6 +1562,7 @@ for (final track in releases)
           dur > Duration.zero) {
         if (kDebugMode) debugPrint('MusicProvider: Duration updated: $dur');
         _duration = dur;
+        _onDurationKnownForLyrics();
         _debouncedNotify();
       }
     }, onError: (e) {
@@ -1467,11 +1723,14 @@ for (final track in releases)
       // The same constant the service defaults to, so the value is identical
       // before and after this line - a field that started `true` while the pref
       // loaded `false` would answer differently for the first seconds of a cold
-      // start. OFF by default: see LyricsService.prioritizeSyllableDefault.
+      // start. ON by default: see LyricsService.prioritizeSyllableDefault.
       //
-      // An existing install keeps its stored value; this only changes the default.
+      // Read from a NEW key. The old one (`prioritize_syllable_sync`) was never
+      // a user's decision: the app shipped it as false and wrote that back the
+      // first time anything touched the setting, so honouring it would carry the
+      // accident forward for every existing install.
       _prioritizeSyllableSync =
-          p.getBool('prioritize_syllable_sync') ??
+          p.getBool(LyricsService.prioritizePrefKey) ??
               LyricsService.prioritizeSyllableDefault;
       final lofiEnabled = p.getBool('lofiEnabled') ?? false;
       if (lofiEnabled && !_lofi.enabled) {
@@ -3668,7 +3927,7 @@ for (final track in releases)
     _prioritizeSyllableSync = value;
     notifyListeners();
     final p = await SharedPreferences.getInstance();
-    await p.setBool('prioritize_syllable_sync', value);
+    await p.setBool(LyricsService.prioritizePrefKey, value);
   }
 
   Future<void> seekTo(Duration position) async {
@@ -4054,6 +4313,8 @@ for (final track in releases)
           'title': track.trackName,
           'artist': track.artistName,
           'videoId': track.source == 'youtube' ? track.id : null,
+          'durationMs': track.durationMs?.toString(),
+          'album': LyricsService.cleanAlbum(track.albumName),
         }.map((key, value) => MapEntry(key, value ?? '')));
       }
     }
@@ -4065,11 +4326,17 @@ for (final track in releases)
         'title': track.trackName,
         'artist': track.artistName,
         'videoId': track.source == 'youtube' ? track.id : null,
+        'durationMs': track.durationMs?.toString(),
+        'album': LyricsService.cleanAlbum(track.albumName),
       }.map((key, value) => MapEntry(key, value ?? '')));
     }
 
     if (upcoming.isNotEmpty) {
-      _lyricsService.prefetchLyrics(upcoming);
+      _lyricsService.prefetchLyrics(
+        upcoming,
+        prioritizeSyllable: _prioritizeSyllableSync,
+        syncedOnly: _syncedLyricsEnabled,
+      );
     }
   }
 
@@ -5807,6 +6074,7 @@ for (final track in releases)
     }
     _audioSubscriptions.clear();
     _notifyDebouncer?.cancel();
+    _lyricsDurationTimer?.cancel();
     unawaited(_seekEvents.close());
 
     _audioService.dispose();
@@ -5885,12 +6153,22 @@ for (final track in releases)
       });
 
       // Lyrics Prefetch
+      //
+      // The same key the live lookup will use (video id only for YouTube) and the
+      // same settings; a prefetch under a different key or setting is cached
+      // under a name nobody ever asks for. Skipped without a length: asked
+      // blind, the sources cannot tell the studio cut from a live edit.
+      if ((nextTrack.durationMs ?? 0) <= 0) return;
       _lyricsService
-          .getParsedLyrics(
+          .lookup(
               title: nextTrack.trackName,
               artist: nextTrack.artistName,
               durationMs: nextTrack.durationMs,
-              videoId: nextTrack.id)
+              videoId: nextTrack.source == 'youtube' ? nextTrack.id : null,
+              album: nextTrack.albumName,
+              prioritizeSyllable: _prioritizeSyllableSync,
+              syncedOnly: _syncedLyricsEnabled,
+              prefetch: true)
           .then((_) {
         if (kDebugMode)
           debugPrint(

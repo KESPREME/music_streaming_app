@@ -10,6 +10,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:video_player_win/video_player_win.dart';
 
 import 'core/navigation/root_navigator.dart';
+import 'core/navigation/shell_back.dart';
 import 'core/perf_trace.dart';
 import 'providers/music_provider.dart';
 import 'providers/theme_provider.dart';
@@ -496,27 +497,30 @@ class _MainScreenState extends State<MainScreen> {
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
-        // Priority 1: Close Player Panel
-        if (isPanelOpen) {
-           musicProvider.setPlayerExpanded(false);
-           return;
-        }
-
-        // Priority 2: Pop nested detail screen route
-        if (canPopInner) {
-           mainNav.pop();
-           return;
-        }
-
-        // Priority 3: Exit search
-        if (_searchMode) {
-           _exitSearch();
-           return;
-        }
-
-        // Priority 4: Go to Home Tab if not there
-        if (_currentIndex != 0) {
-           _onItemTapped(0);
+        // Back closes the TOPMOST thing. The player has a navigator of its own
+        // (lyric provider sheet, options sheets, queue), and only this root
+        // handler hears the system back - so it forwards to that navigator
+        // before it brings the player down. See [resolveShellBack].
+        final playerNav = musicProvider.playerNavigatorKey.currentState;
+        switch (resolveShellBack(
+          isPanelOpen: isPanelOpen,
+          playerCanPop: playerNav != null && playerNav.canPop(),
+          detailCanPop: canPopInner,
+          searchMode: _searchMode,
+          tabIndex: _currentIndex,
+        )) {
+          case ShellBackAction.popPlayerRoute:
+            playerNav!.pop();
+          case ShellBackAction.collapsePlayer:
+            musicProvider.setPlayerExpanded(false);
+          case ShellBackAction.popDetail:
+            mainNav?.pop();
+          case ShellBackAction.exitSearch:
+            _exitSearch();
+          case ShellBackAction.goHome:
+            _onItemTapped(0);
+          case ShellBackAction.none:
+            break;
         }
       },
       child: Scaffold(

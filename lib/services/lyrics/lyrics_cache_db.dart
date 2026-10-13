@@ -56,11 +56,94 @@ class LyricsCacheEntry {
   bool get isExpired => DateTime.now().difference(cachedAt) > const Duration(days: 7);
 }
 
+/// The two things the schema code needs from a database.
+///
+/// A seam so the create/upgrade rules can be tested without a SQLite engine
+/// (the project has no FFI SQLite for tests). [DatabaseExecutor] is adapted to
+/// it by [LyricsCacheSchema.over].
+abstract class LyricsSchemaDb {
+  Future<void> execute(String sql);
+  Future<List<Map<String, Object?>>> rawQuery(String sql);
+}
+
+class _SqfliteSchemaDb implements LyricsSchemaDb {
+  const _SqfliteSchemaDb(this._db);
+
+  final DatabaseExecutor _db;
+
+  @override
+  Future<void> execute(String sql) => _db.execute(sql);
+
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(String sql) => _db.rawQuery(sql);
+}
+
+/// How the lyrics table is created and brought up to date.
+///
+/// WHY THIS IS ITS OWN CLASS
+///
+/// Version 2 added the `timings` column ONLY in `onUpgrade`. A database created
+/// fresh at version 2 - every install since - never ran the upgrade, so the
+/// table had no such column, every `put` threw "no column named timings", the
+/// error was caught and logged in debug only, and NOTHING was ever cached on a
+/// fresh install. Create and upgrade now come from one definition, and the
+/// upgrade asks the database what it has rather than trusting the version
+/// number, so both a fresh-v2 and an upgraded-v1 database heal.
+class LyricsCacheSchema {
+  const LyricsCacheSchema._();
+
+  static const String table = 'lyrics';
+
+  /// 3: rows written before this are dropped.
+  ///
+  /// They came from providers that mostly could not answer, so a cached
+  /// line-synced result would hide a word-synced one that now can be found; and
+  /// their word timings, where they had any, were guesses from the old vowel
+  /// counter. A cache is disposable. Refetching is cheaper than showing a
+  /// stale guess for a week.
+  static const int version = 3;
+
+  static LyricsSchemaDb over(DatabaseExecutor db) => _SqfliteSchemaDb(db);
+
+  static Future<void> create(LyricsSchemaDb db) async {
+    await db.execute('''
+      CREATE TABLE $table (
+        key TEXT PRIMARY KEY,
+        lyrics TEXT NOT NULL,
+        is_synced INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        cached_at INTEGER NOT NULL,
+        timings TEXT
+      )
+    ''');
+    // Index for faster lookups
+    await db.execute('CREATE INDEX idx_key ON $table(key)');
+  }
+
+  static Future<void> upgrade(
+    LyricsSchemaDb db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    // Whatever the version says, make sure the column exists.
+    if (!await _hasColumn(db, 'timings')) {
+      await db.execute('ALTER TABLE $table ADD COLUMN timings TEXT');
+    }
+    if (oldVersion < 3) {
+      await db.execute('DELETE FROM $table');
+    }
+  }
+
+  static Future<bool> _hasColumn(LyricsSchemaDb db, String column) async {
+    final rows = await db.rawQuery('PRAGMA table_info($table)');
+    return rows.any((row) => row['name'] == column);
+  }
+}
+
 /// SQLite-based persistent lyrics cache
 class LyricsCacheDb {
   static const String _dbName = 'lyrics_cache.db';
-  static const String _tableName = 'lyrics';
-  static const int _dbVersion = 2;
+  static const String _tableName = LyricsCacheSchema.table;
   
   Database? _database;
   bool _isInitialized = false;
@@ -75,33 +158,19 @@ class LyricsCacheDb {
       
       _database = await openDatabase(
         path,
-        version: _dbVersion,
+        version: LyricsCacheSchema.version,
         onCreate: (db, version) async {
-          await db.execute('''
-            CREATE TABLE $_tableName (
-              key TEXT PRIMARY KEY,
-              lyrics TEXT NOT NULL,
-              is_synced INTEGER NOT NULL,
-              provider TEXT NOT NULL,
-              cached_at INTEGER NOT NULL
-            )
-          ''');
-
-          // Index for faster lookups
-          await db.execute('CREATE INDEX idx_key ON $_tableName(key)');
-
+          await LyricsCacheSchema.create(LyricsCacheSchema.over(db));
           if (kDebugMode) debugPrint('LyricsCacheDb: Database created');
         },
         onUpgrade: (db, oldVersion, newVersion) async {
-          // v2 added word/syllable timings. Existing rows are left alone and
-          // simply carry NULL timings, which reads back as "no word timings" -
-          // the same thing they had before. Recreating them would mean refetching
-          // every cached song to get back data we already discarded once.
-          if (oldVersion < 2) {
-            await db.execute(
-              'ALTER TABLE $_tableName ADD COLUMN timings TEXT',
-            );
-            if (kDebugMode) debugPrint('LyricsCacheDb: added timings column');
+          await LyricsCacheSchema.upgrade(
+            LyricsCacheSchema.over(db),
+            oldVersion,
+            newVersion,
+          );
+          if (kDebugMode) {
+            debugPrint('LyricsCacheDb: upgraded $oldVersion -> $newVersion');
           }
         },
       );
@@ -240,5 +309,3 @@ class LyricsCacheDb {
     }
   }
 }
-
-

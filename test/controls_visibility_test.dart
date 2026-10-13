@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:music_streaming_app/models/lyrics_entry.dart';
 import 'package:music_streaming_app/models/track.dart';
@@ -1035,6 +1034,10 @@ void main() {
         LyricsTranslationService(
           client: MockClient((_) => reply.future),
           cacheDirectory: () async => null,
+          // No stored setting, without touching SharedPreferences: seeding the
+          // store after the provider is up lets its start-up run on into timers
+          // this test does not own.
+          settingReader: () async => null,
         ),
       );
       addTearDown(() => LyricsTranslationService.debugOverrideInstance(null));
@@ -1042,11 +1045,6 @@ void main() {
       await _openedPlayer(tester);
       expect(find.text('Lyrics by LRCLIB'), findsOneWidget);
 
-      // The target language is read from the stored setting on every tap. Seeded
-      // AFTER the player is up: the provider's own start-up reads the same store,
-      // and a seeded store lets it run on into timers this test has no business
-      // owning.
-      SharedPreferences.setMockInitialValues({});
       await tester.tap(find.bySemanticsLabel('Show translated lyrics'));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));

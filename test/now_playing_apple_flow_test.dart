@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart' hide RepeatMode;
-import 'package:flutter/material.dart'
-    show AnimatedOpacity, CustomScrollView;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -12,7 +10,6 @@ import 'package:music_streaming_app/widgets/glass_options_sheet.dart';
 import 'package:music_streaming_app/models/lyrics_entry.dart';
 import 'package:music_streaming_app/utils/lyrics_utils.dart';
 import 'package:music_streaming_app/services/lyrics/lyrics_service.dart';
-import 'package:music_streaming_app/services/canvas_resolution_service.dart';
 import 'package:music_streaming_app/services/canvas_video_manager.dart';
 import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/widgets/lyric_line/lyric_line.dart';
@@ -682,7 +679,7 @@ void main() {
       expect(find.text('Sleep Timer'), findsOneWidget);
   });
 
-  test('LyricsUtils: parses enhanced word-level LRC tags and character-weighted fallback', () {
+  test('LyricsUtils: parses enhanced word-level LRC tags; a plain line gets no invented words', () {
     const enhancedLrc = '''
 [00:01.00] <00:01.00> Gone <00:01.50> a <00:01.80> little <00:02.40> far
 [00:05.00] How was I to know this high
@@ -699,15 +696,12 @@ void main() {
     expect(line1.words![0].timeMs, 1000);
     expect(line1.words![0].durationMs, 500);
 
-    // Line 2: fallback syllable-weighted timing
+    // Line 2: a plain line. It used to be handed seven syllable-weighted word
+    // timings that nobody measured; now it is line-synced, and says so.
     final line2 = entries[2];
     expect(line2.text, 'How was I to know this high');
-    expect(line2.words, isNotNull);
-    expect(line2.words!.length, 7);
-    // End-of-phrase word 'high' gets 1.6x elongation bonus, longer than short word 'I'
-    final iWord = line2.words!.firstWhere((w) => w.text == 'I');
-    final highWord = line2.words!.firstWhere((w) => w.text == 'high');
-    expect(highWord.durationMs, greaterThan(iWord.durationMs));
+    expect(line2.words, isNull);
+    expect(line2.isWordSynced, isFalse);
   });
 
   testWidgets('Album artwork tap triggers unified morph to lyrics, and mini tap returns',

@@ -19,6 +19,16 @@ List<LyricsEntry> wordSynced(String text) => [
       ),
     ];
 
+/// An unsynced answer: every line stamped 0.
+List<LyricsEntry> plain(String text) => [LyricsEntry(timeMs: 0, text: text)];
+
+/// The judge the service uses with "prioritize word sync" ON.
+LyricsVerdict prioritizeOn(List<LyricsEntry> entries) {
+  if (entries.any((e) => e.isWordSynced)) return LyricsVerdict.accept;
+  if (entries.any((e) => e.timeMs > 0)) return LyricsVerdict.hold;
+  return LyricsVerdict.holdPlain;
+}
+
 /// A provider that answers after [delay], recording that it was asked.
 ProviderRaceSpec spec(
   LyricsProvider provider, {
@@ -39,6 +49,8 @@ ProviderRaceSpec spec(
     },
   );
 }
+
+const _ms = Duration(milliseconds: 1);
 
 void main() {
   group('concurrency', () {
@@ -64,11 +76,9 @@ void main() {
     test('the wait is the slowest pending provider, not the sum', () async {
       // Three 60ms providers: a serial loop costs ~180ms, a race ~60ms.
       final specs = [
-        spec(LyricsProvider.lrcRed,
-            delay: const Duration(milliseconds: 60)),
-        spec(LyricsProvider.betterLyrics,
-            delay: const Duration(milliseconds: 60)),
-        spec(LyricsProvider.kugou, delay: const Duration(milliseconds: 60)),
+        spec(LyricsProvider.lrcRed, delay: _ms * 60),
+        spec(LyricsProvider.betterLyrics, delay: _ms * 60),
+        spec(LyricsProvider.kugou, delay: _ms * 60),
       ];
 
       final stopwatch = Stopwatch()..start();
@@ -89,15 +99,11 @@ void main() {
       final outcome = await ProviderRace.run(
         specs: [
           spec(LyricsProvider.lrcRed,
-              delay: const Duration(milliseconds: 80),
-              build: () => wordSynced('from high priority')),
+              delay: _ms * 80, build: () => wordSynced('from high priority')),
           spec(LyricsProvider.lyricsPlus,
-              delay: const Duration(milliseconds: 5),
-              build: () => lineSynced('from low priority')),
+              delay: _ms * 5, build: () => lineSynced('from low priority')),
         ],
-        judge: (entries) => entries.any((e) => e.isWordSynced)
-            ? LyricsVerdict.accept
-            : LyricsVerdict.hold,
+        judge: prioritizeOn,
       );
 
       expect(outcome.provider, LyricsProvider.lrcRed);
@@ -109,7 +115,7 @@ void main() {
       final outcome = await ProviderRace.run(
         specs: [
           spec(LyricsProvider.lrcRed,
-              delay: const Duration(milliseconds: 50), build: () => lineSynced('a')),
+              delay: _ms * 50, build: () => lineSynced('a')),
           spec(LyricsProvider.lrclib, build: () => lineSynced('b')),
         ],
         judge: (_) => LyricsVerdict.accept,
@@ -122,19 +128,17 @@ void main() {
 
   group('verdicts', () {
     test('accept settles immediately without reading later providers', () async {
-      var laterAsked = false;
       final outcome = await ProviderRace.run(
         specs: [
           spec(LyricsProvider.lrcRed, build: () => lineSynced('winner')),
           spec(LyricsProvider.kugou,
-              onAsked: () => laterAsked = true, build: () => lineSynced('later')),
+              delay: _ms * 30, build: () => lineSynced('later')),
         ],
         judge: (_) => LyricsVerdict.accept,
       );
 
       expect(outcome.provider, LyricsProvider.lrcRed);
-      // The race stopped at the winner, so the loser was never asked.
-      expect(laterAsked, isFalse);
+      expect(outcome.isFallback, isFalse);
     });
 
     test('a held answer is returned when nothing better turns up', () async {
@@ -144,9 +148,7 @@ void main() {
           spec(LyricsProvider.kugou),
           spec(LyricsProvider.lrclib),
         ],
-        judge: (entries) => entries.any((e) => e.isWordSynced)
-            ? LyricsVerdict.accept
-            : LyricsVerdict.hold,
+        judge: prioritizeOn,
       );
 
       expect(outcome.isFallback, isTrue);
@@ -160,9 +162,7 @@ void main() {
           spec(LyricsProvider.lrcRed, build: () => lineSynced('held')),
           spec(LyricsProvider.kugou, build: () => wordSynced('better')),
         ],
-        judge: (entries) => entries.any((e) => e.isWordSynced)
-            ? LyricsVerdict.accept
-            : LyricsVerdict.hold,
+        judge: prioritizeOn,
       );
 
       expect(outcome.isFallback, isFalse);
@@ -182,7 +182,7 @@ void main() {
       expect(outcome.hasResult, isFalse);
     });
 
-    test('only the first held answer is kept', () async {
+    test('only the first held answer of a tier is kept', () async {
       final outcome = await ProviderRace.run(
         specs: [
           spec(LyricsProvider.lrcRed, build: () => lineSynced('first held')),
@@ -192,6 +192,136 @@ void main() {
       );
 
       expect(outcome.entries.first.text, 'first held');
+    });
+
+    test('a held line-synced answer outranks an earlier held plain one', () async {
+      // YouTube Music (plain) sits ahead of a line-synced source here, and the
+      // plain one answers first. Words that do not move are what you show when
+      // nothing moves, not when something does.
+      final outcome = await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.youtubeMusic, build: () => plain('plain')),
+          spec(LyricsProvider.kugou, build: () => lineSynced('synced')),
+        ],
+        judge: prioritizeOn,
+      );
+
+      expect(outcome.isFallback, isTrue);
+      expect(outcome.provider, LyricsProvider.kugou);
+    });
+
+    test('a plain answer is still returned when it is all there is', () async {
+      final outcome = await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.kugou),
+          spec(LyricsProvider.youtubeMusic, build: () => plain('plain')),
+        ],
+        judge: prioritizeOn,
+      );
+
+      expect(outcome.provider, LyricsProvider.youtubeMusic);
+      expect(outcome.isFallback, isTrue);
+    });
+  });
+
+  group('grace and deadline', () {
+    test('the grace period ends the wait for a word-synced answer', () async {
+      // lrc.red holds a line-synced answer at once; the word-synced source
+      // would take far longer than the grace allows.
+      final stopwatch = Stopwatch()..start();
+      final outcome = await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.lrcRed, build: () => lineSynced('held')),
+          spec(LyricsProvider.lyricsPlus,
+              delay: _ms * 600, build: () => wordSynced('too late')),
+        ],
+        judge: prioritizeOn,
+        grace: _ms * 60,
+        deadline: const Duration(seconds: 5),
+      );
+      stopwatch.stop();
+
+      expect(outcome.provider, LyricsProvider.lrcRed);
+      expect(outcome.isFallback, isTrue);
+      expect(stopwatch.elapsedMilliseconds, lessThan(400));
+    });
+
+    test('a word-synced answer arriving inside the grace period still wins',
+        () async {
+      final outcome = await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.lrcRed, build: () => lineSynced('held')),
+          spec(LyricsProvider.lyricsPlus,
+              delay: _ms * 30, build: () => wordSynced('worth the wait')),
+        ],
+        judge: prioritizeOn,
+        grace: _ms * 400,
+        deadline: const Duration(seconds: 5),
+      );
+
+      expect(outcome.provider, LyricsProvider.lyricsPlus);
+      expect(outcome.isFallback, isFalse);
+    });
+
+    test('the deadline returns what has answered, and gives up on the rest',
+        () async {
+      final cancelled = <LyricsProvider>[];
+      final outcome = await ProviderRace.run(
+        specs: [
+          // Hangs well past the deadline.
+          spec(LyricsProvider.lrcRed,
+              delay: _ms * 800, build: () => wordSynced('never seen')),
+          spec(LyricsProvider.kugou, build: () => lineSynced('in hand')),
+        ],
+        judge: prioritizeOn,
+        callbacks: LyricsRaceCallbacks(onCancelled: cancelled.add),
+        grace: const Duration(seconds: 5),
+        deadline: _ms * 80,
+      );
+
+      expect(outcome.provider, LyricsProvider.kugou);
+      expect(cancelled, [LyricsProvider.lrcRed]);
+    });
+
+    test('at the deadline an answer from LATER in the list is not thrown away '
+        'because an earlier source is still pending', () async {
+      final outcome = await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.lrcRed, delay: _ms * 800),
+          spec(LyricsProvider.lyricsPlus, build: () => wordSynced('arrived')),
+        ],
+        judge: prioritizeOn,
+        deadline: _ms * 60,
+      );
+
+      // The consumer was parked on lrc.red; lyricsPlus had long since answered.
+      expect(outcome.provider, LyricsProvider.lyricsPlus);
+      expect(outcome.isFallback, isFalse);
+    });
+
+    test('a settled provider is never reported cancelled', () async {
+      final cancelled = <LyricsProvider>[];
+      final results = <LyricsProvider>[];
+      await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.lrcRed, build: () => lineSynced('held')),
+          spec(LyricsProvider.kugou), // a genuine miss, settled at once
+          spec(LyricsProvider.lyricsPlus, delay: _ms * 400),
+        ],
+        judge: prioritizeOn,
+        callbacks: LyricsRaceCallbacks(
+          onResult: (p, _) => results.add(p),
+          onCancelled: cancelled.add,
+        ),
+        grace: _ms * 20,
+        deadline: _ms * 100,
+      );
+
+      // Let the deadline fire with the slow one still out.
+      await Future<void>.delayed(_ms * 200);
+
+      expect(cancelled, [LyricsProvider.lyricsPlus]);
+      expect(results, containsAll([LyricsProvider.lrcRed, LyricsProvider.kugou]));
     });
   });
 
@@ -222,13 +352,28 @@ void main() {
               onAsked: () => lazyAsked = true,
               build: () => lineSynced('genius')),
         ],
-        judge: (entries) => entries.any((e) => e.isWordSynced)
-            ? LyricsVerdict.accept
-            : LyricsVerdict.hold,
+        judge: prioritizeOn,
       );
 
       // Everything ahead of it missed and a line-synced answer is in hand, so
       // scraping a web page for Genius would spend a rate limit for nothing.
+      expect(lazyAsked, isFalse);
+    });
+
+    test('a lazy provider is not asked when a plain fallback is already held',
+        () async {
+      var lazyAsked = false;
+      await ProviderRace.run(
+        specs: [
+          spec(LyricsProvider.youtubeMusic, build: () => plain('plain')),
+          spec(LyricsProvider.genius,
+              lazy: true,
+              onAsked: () => lazyAsked = true,
+              build: () => plain('genius')),
+        ],
+        judge: prioritizeOn,
+      );
+
       expect(lazyAsked, isFalse);
     });
 
@@ -258,7 +403,7 @@ void main() {
           spec(LyricsProvider.genius, lazy: true, build: () => lineSynced('g')),
         ],
         judge: (_) => LyricsVerdict.accept,
-        onStarted: started.add,
+        callbacks: LyricsRaceCallbacks(onStarted: started.add),
       );
 
       // Genius was never asked, so it must not be showing as fetching.
@@ -280,18 +425,20 @@ void main() {
     });
 
     test('an empty answer is a miss', () async {
-      final settled = <LyricsProvider>[];
+      final results = <(LyricsProvider, List<LyricsEntry>?)>[];
       final outcome = await ProviderRace.run(
         specs: [
           spec(LyricsProvider.lrcRed, build: () => const []),
           spec(LyricsProvider.kugou, build: () => const []),
         ],
         judge: (_) => LyricsVerdict.accept,
-        onSettled: (p, _) => settled.add(p),
+        callbacks: LyricsRaceCallbacks(onResult: (p, e) => results.add((p, e))),
       );
 
       expect(outcome.hasResult, isFalse);
-      expect(settled, hasLength(2));
+      expect(results, hasLength(2));
+      // Reported as null, never as an empty list: "found" must mean found.
+      expect(results.every((r) => r.$2 == null), isTrue);
     });
 
     test('every provider failing yields no result rather than throwing',
@@ -310,61 +457,67 @@ void main() {
   });
 
   group('status reporting', () {
-    test('a started provider reports fetching, then settled', () async {
+    test('a started provider reports fetching, then its result', () async {
       final started = <LyricsProvider>[];
-      final settled = <(LyricsProvider, bool)>[];
+      final results = <(LyricsProvider, bool)>[];
 
       await ProviderRace.run(
         specs: [spec(LyricsProvider.lrcRed, build: () => lineSynced('x'))],
         judge: (_) => LyricsVerdict.accept,
-        onStarted: started.add,
-        onSettled: (p, found) => settled.add((p, found)),
+        callbacks: LyricsRaceCallbacks(
+          onStarted: started.add,
+          onResult: (p, e) => results.add((p, e != null)),
+        ),
       );
 
       expect(started, [LyricsProvider.lrcRed]);
-      expect(settled, [(LyricsProvider.lrcRed, true)]);
+      expect(results, [(LyricsProvider.lrcRed, true)]);
     });
 
-    test('a genuine miss is reported as settled with found=false', () async {
-      final settled = <(LyricsProvider, bool)>[];
+    test('a genuine miss is reported with null entries', () async {
+      final results = <(LyricsProvider, List<LyricsEntry>?)>[];
       await ProviderRace.run(
         specs: [spec(LyricsProvider.lrcRed)],
         judge: (_) => LyricsVerdict.accept,
-        onSettled: (p, found) => settled.add((p, found)),
+        callbacks: LyricsRaceCallbacks(onResult: (p, e) => results.add((p, e))),
       );
 
-      expect(settled, [(LyricsProvider.lrcRed, false)]);
+      expect(results, [(LyricsProvider.lrcRed, null)]);
     });
 
-    test('a race loser is reported as abandoned, never as a miss', () async {
-      // The distinction the provider sheet depends on. The loser was still
-      // working when the race ended; it did not answer "no lyrics here".
-      final settled = <LyricsProvider>[];
-      final abandoned = <LyricsProvider>[];
+    test('a race loser still reports its real answer after the race returns',
+        () async {
+      // The provider sheet depends on this: the loser was still working when the
+      // race ended, and its answer is what makes its row switchable.
+      final results = <LyricsProvider>[];
+      final cancelled = <LyricsProvider>[];
 
       final outcome = await ProviderRace.run(
         specs: [
           spec(LyricsProvider.lrcRed,
-              delay: const Duration(milliseconds: 5), build: () => lineSynced('w')),
+              delay: _ms * 5, build: () => lineSynced('w')),
           spec(LyricsProvider.kugou,
-              delay: const Duration(milliseconds: 120), build: () => lineSynced('l')),
+              delay: _ms * 120, build: () => lineSynced('l')),
         ],
         judge: (_) => LyricsVerdict.accept,
-        onSettled: (p, _) => settled.add(p),
-        onAbandoned: abandoned.add,
+        callbacks: LyricsRaceCallbacks(
+          onResult: (p, _) => results.add(p),
+          onCancelled: cancelled.add,
+        ),
       );
 
       expect(outcome.provider, LyricsProvider.lrcRed);
-      // Let the loser's own future land before asserting on the callbacks.
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      expect(abandoned, contains(LyricsProvider.kugou));
-      expect(settled, isNot(contains(LyricsProvider.kugou)));
+      expect(results, [LyricsProvider.lrcRed]);
+
+      await Future<void>.delayed(_ms * 200);
+      expect(results, [LyricsProvider.lrcRed, LyricsProvider.kugou]);
+      expect(cancelled, isEmpty);
     });
 
-    test('a provider nobody asked is reported neither settled nor abandoned',
-        () async {
-      final settled = <LyricsProvider>[];
-      final abandoned = <LyricsProvider>[];
+    test('a provider nobody asked is reported neither as a result nor as '
+        'cancelled', () async {
+      final results = <LyricsProvider>[];
+      final cancelled = <LyricsProvider>[];
 
       await ProviderRace.run(
         specs: [
@@ -372,18 +525,23 @@ void main() {
           spec(LyricsProvider.genius, lazy: true),
         ],
         judge: (_) => LyricsVerdict.accept,
-        onSettled: (p, _) => settled.add(p),
-        onAbandoned: abandoned.add,
+        callbacks: LyricsRaceCallbacks(
+          onResult: (p, _) => results.add(p),
+          onCancelled: cancelled.add,
+        ),
+        deadline: _ms * 40,
       );
+      await Future<void>.delayed(_ms * 100);
 
-      expect(settled, [LyricsProvider.lrcRed]);
-      expect(abandoned, isNot(contains(LyricsProvider.genius)));
+      expect(results, [LyricsProvider.lrcRed]);
+      expect(cancelled, isEmpty);
     });
   });
 
   group('degenerate input', () {
     test('no providers yields no result', () async {
-      final outcome = await ProviderRace.run(specs: const [], judge: (_) => LyricsVerdict.accept);
+      final outcome = await ProviderRace.run(
+          specs: const [], judge: (_) => LyricsVerdict.accept);
       expect(outcome.hasResult, isFalse);
     });
   });

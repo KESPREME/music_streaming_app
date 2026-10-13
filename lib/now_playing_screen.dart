@@ -197,6 +197,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   static const Duration _kDeckReturnRiseDuration = Duration(milliseconds: 700);
 
   /// What the lyric panel says it is doing to the words, for the caption.
+  final ValueNotifier<List<String>?> _displayLines =
+      ValueNotifier<List<String>?>(null);
   final ValueNotifier<LyricTransformStatus> _transformStatus =
       ValueNotifier<LyricTransformStatus>(LyricTransformStatus.none);
 
@@ -387,6 +389,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _deckController.dispose();
     _deckRiseController.dispose();
     _transformStatus.dispose();
+    _displayLines.dispose();
     // Performance & Battery Optimization: Pause silent canvas video when NowPlaying screen is dismissed
     CanvasVideoManager.instance.pause();
     super.dispose();
@@ -1267,6 +1270,7 @@ child: Transform.scale(
                                 // is doing to the words.
                                 onTransformStatusChanged: (status) =>
                                     _transformStatus.value = status,
+      onDisplayLinesChanged: (lines) => _displayLines.value = lines,
                                 // Ties the transform to this track, so a slow
                                 // answer cannot land under the next song.
                                 trackKey: currentTrack.id,
@@ -1523,7 +1527,10 @@ child: Transform.scale(
         final phraseIndex =
             activeTrack.id.hashCode.abs() % _lyricsIntroPhrases.length;
 
-        return LyricStrip(
+        return ValueListenableBuilder<List<String>?>(
+          valueListenable: _displayLines,
+          builder: (context, displayLines, _) => LyricStrip(
+          displayLines: isMatchingTrack ? displayLines : null,
           lyrics: isMatchingTrack ? musicProv.currentLyrics : null,
           clock: _lyricClock,
           introPhrase: _lyricsIntroPhrases[phraseIndex],
@@ -1536,6 +1543,7 @@ child: Transform.scale(
             HapticFeedback.lightImpact();
             _navigateToTab(0);
           },
+          ),
         );
       },
     );

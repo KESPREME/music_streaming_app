@@ -133,17 +133,27 @@ void main() {
     });
   });
 
-  group('the word-sync preference defaults off', () {
-    test('holding a line-synced answer is opt-in', () {
-      // Holding costs a round trip on every remaining provider for every track.
-      // Shipping it on meant every cold start paid for lookups nobody asked for;
-      // the reference's own note says it is worth it "to some, not to others"
-      // (AppSettings.kt:500-507).
+  group('the word-sync preference defaults ON', () {
+    test('holding a line-synced answer is the default', () {
+      // A product decision (plan v2): this app prefers word-by-word lyrics even
+      // at the cost of waiting for them. The wait is bounded - see
+      // `prioritizeGrace` and `overallDeadline` in provider_race.dart - which is
+      // what makes ON a sane default rather than the open-ended hold the
+      // reference warns about (AppSettings.kt:500-507).
       //
       // Read off the constant the service, the provider and the preference load
       // all use, rather than a literal beside the assertion - a test that wrote
-      // `expect(false, isFalse)` would keep passing after somebody flipped it.
-      expect(LyricsService.prioritizeSyllableDefault, isFalse);
+      // `expect(true, isTrue)` would keep passing after somebody flipped it.
+      expect(LyricsService.prioritizeSyllableDefault, isTrue);
+    });
+
+    test('is stored under a NEW key, so the old accidental default is not '
+        'inherited', () {
+      // The old key was never a user's decision: the app shipped it as false and
+      // wrote that back the first time anything touched the setting. Reading it
+      // would hand every existing install the accident as if it were a choice.
+      expect(LyricsService.prioritizePrefKey, 'prioritize_syllable_sync_v2');
+      expect(LyricsService.prioritizePrefKey, isNot('prioritize_syllable_sync'));
     });
   });
 }

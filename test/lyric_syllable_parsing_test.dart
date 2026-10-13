@@ -106,26 +106,47 @@ void main() {
     });
   });
 
-  group('plain LRC heuristic', () {
-    test('derived words carry their own span so they interpolate', () {
+  group('plain LRC', () {
+    // This group used to assert the opposite: that every plain line was given
+    // four invented word timings by a vowel-group syllable counter, "so the wipe
+    // moves gradually". It did - across words nobody had timed, at speeds
+    // nobody had measured - and it made `isWordSynced` true for LRCLIB and
+    // KuGou, so "prioritize word sync" could not tell a real word-synced answer
+    // from a guess. A line with no word timing has none.
+    test('a plain line carries NO invented word timing', () {
       const lrc = '[00:00.00]one two three four\n[00:10.00]next line';
       final entries = LyricsUtils.parseLrc(lrc);
       final sung = entries.firstWhere((e) => e.text.contains('one'));
-      expect(sung.timedWords.length, 4);
-      // Every derived word has a non-degenerate span, which is what stops the
-      // wipe snapping word to word on guessed timings.
-      for (final w in sung.timedWords) {
-        expect(w.endMs, greaterThan(w.startMs));
-        expect(w.syllables, isNotEmpty);
-      }
-      // And it moves gradually rather than in four steps.
-      final samples = [
-        for (var i = 0; i <= 10; i++)
-          revealedChars(sung, sung.timeMs + i * 300),
-      ];
-      final distinct = samples.toSet().length;
-      expect(distinct, greaterThan(3),
-          reason: 'a guessed-but-interpolated wipe still has steps');
+      expect(sung.words, isNull);
+      expect(sung.lyricWords, isNull);
+      expect(sung.timedWords, isEmpty);
+      expect(sung.isWordSynced, isFalse);
+    });
+
+    test('a plain line still ends where the next begins', () {
+      const lrc = '[00:00.00]one two three four\n[00:10.00]next line';
+      final entries = LyricsUtils.parseLrc(lrc);
+      final sung = entries.firstWhere((e) => e.text.contains('one'));
+      expect(sung.endMs, 10000);
+    });
+
+    test('equal stamps keep the order they were written in', () {
+      // List.sort is not stable; a chorus line pasted at the same stamp as its
+      // neighbour must not swap places with it.
+      final lrc = [
+        for (var i = 0; i < 60; i++) '[00:05.00]line $i',
+      ].join('\n');
+      final entries = LyricsUtils.parseLrc(lrc)
+          .where((e) => e.text.startsWith('line'))
+          .map((e) => e.text)
+          .toList();
+      expect(entries, [for (var i = 0; i < 60; i++) 'line $i']);
+    });
+
+    test('plain text is stamped 0, never stepped four seconds apart', () {
+      final entries = LyricsUtils.parsePlainText('first\n\nsecond\nthird');
+      expect(entries.map((e) => e.text), ['', 'first', 'second', 'third']);
+      expect(entries.every((e) => e.timeMs == 0), isTrue);
     });
   });
 }

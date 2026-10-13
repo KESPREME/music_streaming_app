@@ -68,6 +68,7 @@ class LyricsScreen extends StatefulWidget {
     this.clock,
     this.discsVisible,
     this.onTransformStatusChanged,
+    this.onDisplayLinesChanged,
   });
 
   final VoidCallback? onMinimize;
@@ -107,6 +108,11 @@ class LyricsScreen extends StatefulWidget {
   /// caption needs rather than the player reaching into it. Called only when the
   /// status actually changes, never from inside a build.
   final ValueChanged<LyricTransformStatus>? onTransformStatusChanged;
+
+  /// The text of each line as it is SHOWN (the translation or romanization when
+  /// one is on, otherwise null), so the strip above the seek bar says what the
+  /// panel says. Called only when the lines change, never from inside a build.
+  final ValueChanged<List<String>?>? onDisplayLinesChanged;
 
   @override
   State<LyricsScreen> createState() => _LyricsScreenState();
@@ -181,6 +187,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     _clock = widget.clock ?? LyricClock(vsync: this);
     _subController.addListener(_onSubLineChanged);
     _subController.addListener(_publishTransformStatus);
+    _subController.addListener(_publishDisplayLines);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _checkLyrics();
@@ -264,6 +271,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     _subController
       ..removeListener(_onSubLineChanged)
       ..removeListener(_publishTransformStatus)
+      ..removeListener(_publishDisplayLines)
       ..dispose();
     _feed?.dispose();
     if (_ownsClock) _clock.dispose();
@@ -344,6 +352,35 @@ class _LyricsScreenState extends State<LyricsScreen>
     scheduleMicrotask(() {
       if (!mounted) return;
       widget.onTransformStatusChanged?.call(next);
+    });
+  }
+
+  List<String>? _publishedLines;
+
+  static bool _sameLines(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Tells the caller when the shown text CHANGES, by content: the controller
+  /// notifies on every frame of the reveal, and a parent that rebuilt per frame
+  /// for a string list that has not moved would be the cost of this feature.
+  void _publishDisplayLines() {
+    final lyrics =
+        Provider.of<MusicProvider>(context, listen: false).currentLyrics;
+    final next =
+        lyrics == null ? null : _subController.displayedLinesFor(lyrics);
+    final prev = _publishedLines;
+    final same = (next == null && prev == null) ||
+        (next != null && prev != null && _sameLines(next, prev));
+    if (same) return;
+    _publishedLines = next;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      widget.onDisplayLinesChanged?.call(next);
     });
   }
 
