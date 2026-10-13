@@ -1062,6 +1062,7 @@ class RenderLyricLine extends RenderBox {
       final span = spans[word.index];
       if (span == null) continue;
       final fall = wordFall(_entry.timedWords, word.index, now);
+      final flatLift = wordLiftPx(_entry.timedWords, word.index, now);
 
       for (var i = 0; i < word.length; i++) {
         final ci = span.$1 + i;
@@ -1069,7 +1070,9 @@ class RenderLyricLine extends RenderBox {
         // Not yet sung, so not yet grown: the swell follows the voice.
         if (revealed < ci + 1) break;
 
-        word.sampleInto(i, now, sample);
+        // Locked to the fill: the wave is measured from where the sweep is, so a
+        // letter starts from rest the instant it has been sung.
+        word.sampleInto(i, now, sample, voice: revealed - span.$1);
 
         final left = g.charLeft[ci];
         final right = g.charRight[ci];
@@ -1077,10 +1080,11 @@ class RenderLyricLine extends RenderBox {
         final row = g.rows[g.charRow[ci]];
         final cx = (left + right) / 2;
         final cy = (row.top + row.bottom) / 2;
-        // The lift is in MULTIPLES of the ordinary sung-word rise - the same
-        // 2dp the flat words use - times the word's shared settle, so a grown
-        // letter comes to rest at exactly the lift a flat word would have.
-        final dy = sample.rise * wordRiseDp * fall;
+        // The word's ordinary lift (what the flat passes gave it until this
+        // letter was handed over) PLUS the wave's extra, which fades with the
+        // word's own settle. Replacing the one with the other is what made the
+        // letters drop and re-climb at every hand-over - a tower, not a wave.
+        final dy = flatLift + sample.rise * wordRiseDp * fall;
         final dx = sample.shift * em;
 
         canvas.save();

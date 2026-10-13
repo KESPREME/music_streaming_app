@@ -88,151 +88,189 @@ void main() {
     });
   });
 
-  group('the three beats', () {
-    final w = grown('golden', heldMs: 3000);
-    final sample = CharGrowth();
+  // The swell is ONE wave riding behind the sweep, not a column per letter. These
+  // sample it by "voice": how many letters of the word have been sung.
+  group('the wave', () {
+    // Six letters held three seconds: a 2s wave, four letters wide.
+    GrowingWord golden() => grown('golden');
+    double width(GrowingWord w) =>
+        (w.restsAtMs - w.endMs) * (w.length / (w.endMs - w.startMs));
 
-    test('starts at rest, unswollen', () {
-      w.sampleInto(0, w.startMs - 1, sample);
-      expect(sample.scale, 1.0);
-      expect(sample.bloom, 0.0);
-    });
+    CharGrowth at(GrowingWord w, int letter, double voice) {
+      final s = CharGrowth();
+      w.sampleInto(letter, w.startMs + 1, s, voice: voice);
+      return s;
+    }
 
-    test('swells up partway through the hold', () {
-      // First letter, a quarter of the way through its own move.
-      final span = (w.endMs - w.startMs).toDouble();
-      w.sampleInto(0, w.startMs + (span * growSpan * 0.5).round(), sample);
-      expect(sample.scale, greaterThan(1.0));
-      expect(sample.bloom, greaterThan(0.0));
-    });
-
-    test('holds at its peak rather than oscillating', () {
-      final span = (w.endMs - w.startMs).toDouble();
-      final first = CharGrowth();
-      final second = CharGrowth();
-      // Either side of the middle of the hold window.
-      w.sampleInto(0, w.startMs + (span * growSpan * 0.26).round(), first);
-      w.sampleInto(0, w.startMs + (span * growSpan * 0.29).round(), second);
-      expect(first.scale, second.scale);
-    });
-
-    test('settles back to the ordinary sung-word lift', () {
-      // Long past the move: back to scale 1 and the plain lift, not to nothing.
-      w.sampleInto(0, w.restsAtMs + 5000, sample);
-      expect(sample.scale, 1.0);
-      expect(sample.rise, growRest);
-      expect(sample.bloom, 0.0);
-      expect(sample.shift, 0.0);
-    });
-
-    test('scale never dips below the laid-out size mid-move', () {
-      // A swell that shrank past 1 would read as the letter deflating.
-      final span = (w.endMs - w.startMs).toDouble();
-      for (var t = 0.0; t <= 1.0; t += 0.02) {
-        w.sampleInto(
-          0,
-          w.startMs + (span * growSpan * t).round(),
-          sample,
-        );
-        expect(sample.scale, greaterThanOrEqualTo(1.0));
+    test('a letter is exactly at rest the instant it has been sung', () {
+      // The handover from the flat word. Anything but rest here is a pop.
+      final w = golden();
+      for (var i = 0; i < w.length; i++) {
+        final s = at(w, i, i + 1.0);
+        expect(s.scale, 1);
+        expect(s.rise, 0);
+        expect(s.bloom, 0);
+        expect(s.shift, 0);
       }
     });
 
-    test('bloom stays within its own range', () {
-      final span = (w.endMs - w.startMs).toDouble();
-      for (var t = 0.0; t <= 1.0; t += 0.02) {
-        w.sampleInto(
-          2,
-          w.startMs + (span * growSpan * t).round(),
-          sample,
-        );
-        expect(sample.bloom, inInclusiveRange(0.0, 1.0));
+    test('a letter is not touched before the voice reaches it', () {
+      final w = golden();
+      final s = at(w, 3, 2.0);
+      expect(s.scale, 1);
+      expect(s.rise, 0);
+    });
+
+    test('swells as the crest passes over it and peaks half a wave behind the '
+        'voice', () {
+      final w = golden();
+      final crest = at(w, 0, 1 + width(w) / 2);
+      final early = at(w, 0, 1 + width(w) * 0.1);
+      expect(crest.scale, greaterThan(1.02));
+      expect(early.scale, lessThan(crest.scale));
+      expect(crest.rise, greaterThan(early.rise));
+    });
+
+    test('settles back to rest a full wave behind the voice', () {
+      final w = golden();
+      final s = at(w, 0, 1 + width(w));
+      expect(s.scale, closeTo(1, 1e-9));
+      expect(s.rise, closeTo(0, 1e-9));
+      expect(s.bloom, closeTo(0, 1e-9));
+    });
+
+    test('never dips below the laid-out size, and bloom stays in range', () {
+      final w = golden();
+      for (var v = 0.0; v <= w.length + width(w); v += 0.05) {
+        for (var i = 0; i < w.length; i++) {
+          final s = at(w, i, v);
+          expect(s.scale, greaterThanOrEqualTo(1 - 1e-9));
+          expect(s.bloom, inInclusiveRange(0, 1.3));
+        }
       }
     });
-  });
 
-  group('the stagger', () {
-    test('later letters start later, so movement travels along the word', () {
-      final w = grown('golden', heldMs: 3000);
-      final span = (w.endMs - w.startMs).toDouble();
-      // A point where the first letter is moving but the last has not begun.
-      final at = w.startMs + (span * growSpan * 0.30).round();
-      final first = CharGrowth();
-      final last = CharGrowth();
-      w.sampleInto(0, at, first);
-      w.sampleInto(w.length - 1, at, last);
-      expect(first.scale, greaterThan(last.scale));
+    test('is continuous: moving the voice a hair never makes a letter jump',
+        () {
+      // The tower, as a test. A letter that pops in at 55% of its swell, or
+      // steps between frames, fails this.
+      final w = golden();
+      for (var i = 0; i < w.length; i++) {
+        var prev = at(w, i, 0);
+        for (var v = 0.01; v <= w.length + width(w); v += 0.01) {
+          final s = at(w, i, v);
+          expect((s.scale - prev.scale).abs(), lessThan(0.004),
+              reason: 'letter $i at voice $v');
+          expect((s.rise - prev.rise).abs(), lessThan(0.02));
+          expect((s.bloom - prev.bloom).abs(), lessThan(0.02));
+          prev = s;
+        }
+      }
     });
 
-    test('the word is still animating right up to its rest', () {
-      final w = grown('golden', heldMs: 3000);
-      expect(w.isAnimatingAt(w.startMs), isTrue);
+    test('has no zero-slope plateau of its own: height eases in and out', () {
+      // sin^2 leaves the ground and returns to it with zero slope - the
+      // difference between a swell and a step.
+      final w = golden();
+      final start = at(w, 0, 1 + 0.01);
+      final end = at(w, 0, 1 + width(w) - 0.01);
+      expect(start.scale - 1, lessThan(0.0005));
+      expect(end.scale - 1, lessThan(0.0005));
+    });
+
+    test('neighbouring letters sit at neighbouring heights - one curve along '
+        'the word', () {
+      final w = golden();
+      // Voice at 5 letters: letters 0..4 are sung, and the crest (half a wave,
+      // 2 letters, behind the voice) is over letter 3.
+      final heights = [
+        for (var i = 0; i < 5; i++) at(w, i, 5.0).scale - 1,
+      ];
+      final peak = heights.reduce((a, b) => a > b ? a : b);
+      expect(peak, greaterThan(0.02));
+      // The tallest is near the crest, and no neighbour is more than ~60% of
+      // the peak away from the next: a row of towers would step from ~0 to ~peak.
+      expect(heights.indexOf(peak), anyOf(2, 3));
+      for (var i = 1; i < heights.length; i++) {
+        expect((heights[i] - heights[i - 1]).abs(), lessThan(peak * 0.65),
+            reason: 'letters ${i - 1} and $i: $heights');
+      }
+    });
+
+    test('the wave runs out after the last letter, and the word stays '
+        'animating until it has', () {
+      final w = golden();
       expect(w.isAnimatingAt(w.restsAtMs), isTrue);
       expect(w.isAnimatingAt(w.restsAtMs + 1), isFalse);
       expect(w.isAnimatingAt(w.startMs - 1), isFalse);
+
+      final last = w.length - 1;
+      final atEnd = CharGrowth();
+      w.sampleInto(last, w.endMs, atEnd);
+      expect(atEnd.scale, 1, reason: 'the last letter starts from rest');
+
+      final done = CharGrowth();
+      w.sampleInto(last, w.restsAtMs, done);
+      expect(done.scale, closeTo(1, 1e-6), reason: 'and ends at rest');
+    });
+
+    test('without a voice it assumes the word\'s mean pace', () {
+      final w = golden();
+      final a = CharGrowth();
+      final b = CharGrowth();
+      w.sampleInto(0, w.startMs + 1500, a);
+      w.sampleInto(0, w.startMs + 1500, b, voice: 3.0);
+      expect(a.scale, closeTo(b.scale, 1e-9));
+    });
+
+    test('the wave\'s width in time is bounded', () {
+      final brief = grown('oh', heldMs: 1400);
+      final long = grown('oh', heldMs: 6000);
+      expect(brief.restsAtMs - brief.endMs, inInclusiveRange(700, 2000));
+      expect(long.restsAtMs - long.endMs, 2000);
     });
   });
 
   group('how much each word has earned', () {
+    double crestScale(GrowingWord w, int letter) {
+      final span = (w.endMs - w.startMs).toDouble();
+      final pace = w.length / span;
+      final waveMs = (span * growWaveFraction).clamp(growWaveMinMs, growWaveMaxMs);
+      final s = CharGrowth();
+      w.sampleInto(letter, w.startMs + 1, s,
+          voice: letter + 1 + waveMs * pace / 2);
+      return s.scale;
+    }
+
     test('a word held barely long enough barely moves', () {
-      // The ramp is cubed so that under a second is nearly nothing. Getting this
-      // wrong is what makes every word twitch.
       final brief = grown('golden', heldMs: 900);
       final long = grown('golden', heldMs: 3000);
-      final a = CharGrowth();
-      final b = CharGrowth();
-      brief.sampleInto(0, brief.startMs + (900 * growSpan * 0.3).round(), a);
-      long.sampleInto(0, long.startMs + (3000 * growSpan * 0.3).round(), b);
-      expect(a.scale, lessThan(b.scale));
+      expect(crestScale(brief, 0) - 1, lessThan((crestScale(long, 0) - 1) * 0.6));
     });
 
     test('a long word damps its tail', () {
-      // Otherwise the last letters are still swelling after the singer moved on.
-      final w = grown('golden', heldMs: 9000);
-      final span = (w.endMs - w.startMs).toDouble();
-      final first = CharGrowth();
-      final last = CharGrowth();
-      final at = w.startMs + (span * growSpan * 0.29).round();
-      w.sampleInto(0, at, first);
-      w.sampleInto(w.length - 1, at, last);
-      expect(last.scale, lessThan(first.scale));
+      final w = grown('wonders', heldMs: 3000);
+      expect(crestScale(w, w.length - 1), lessThan(crestScale(w, 0)));
     });
 
     test('a short word swells a little more than a long one', () {
-      // Fewer letters to do it with, so each carries more.
       final short = grown('oh', heldMs: 3000);
-      final long = grown('golden', heldMs: 3000);
-      final a = CharGrowth();
-      final b = CharGrowth();
-      short.sampleInto(0, (short.startMs + 3000 * growSpan * 0.29).round(), a);
-      long.sampleInto(0, (long.startMs + 3000 * growSpan * 0.29).round(), b);
-      expect(a.scale, greaterThan(b.scale));
+      final long = grown('wonders', heldMs: 3000);
+      expect(crestScale(short, 0), greaterThan(crestScale(long, 0)));
     });
   });
 
   group('the lean', () {
     test('letters lean away from the middle', () {
-      // So the word opens outwards rather than every letter sliding one way.
-      //
-      // Each letter is sampled at ITS OWN peak. Sampling them all at one instant
-      // would measure the stagger instead of the lean: late letters have not
-      // started yet by then, and their shift would read as zero.
-      final w = grown('golden', heldMs: 3000);
-      final span = (w.endMs - w.startMs).toDouble();
-      final peakPhase = (growIn + growHold) / 2;
-      int at(int charIndex) => w.startMs +
-          (span * charIndex * growStagger + span * growSpan * peakPhase)
-              .round();
-
+      final w = grown('golden');
       final first = CharGrowth();
-      final mid = CharGrowth();
       final last = CharGrowth();
-      w.sampleInto(0, at(0), first);
-      w.sampleInto(3, at(3), mid);
-      w.sampleInto(w.length - 1, at(w.length - 1), last);
+      final crest = 1 + 2.0;
+      w.sampleInto(0, w.startMs + 1, first, voice: crest);
+      w.sampleInto(w.length - 1, w.startMs + 1, last,
+          voice: w.length + 2.0);
       expect(first.shift, lessThan(0));
       expect(last.shift, greaterThan(0));
-      expect(mid.shift.abs(), lessThan(first.shift.abs()));
     });
   });
 

@@ -33,7 +33,7 @@ The old per-section notes (parity plan, SweptLine, old clock) are superseded; gi
 colour re-lays-out). Alpha and blur ride ONE `saveLayer`; the active line at alpha 1 / blur 0 takes none. Feather (30dp, CENTRED on the voice - 3/4 behind, 1/4 ahead, shrinking to 0 at both row ends via `lyricFeatherZone`, so there is no lag and no pop when a line finishes) and the
 held-word bloom are extra layers on the active line only. Blur sigma = `0.57735*r + 0.5/dpr` (Skia's conversion) — a recollection,
 CHECK ON DEVICE; if it looks too weak set sigma = ladder dp (`LyricLineStyle.sigmaFor`). Font: Plus Jakarta Sans BUNDLED in
-`assets/google_fonts/` (32sp / h1.22 / w800 / -0.64) so it never arrives mid-sweep. Scroll stagger: `lyric_stagger.dart`.
+`assets/google_fonts/` (32sp / h1.22 / w800 / -0.64) so it never arrives mid-sweep. Scroll stagger: `lyric_stagger.dart`. Held-word swell (`lyric_growth.dart`) is ONE sin² wave trailing the voice (zero at the handover from the flat word, rides ON TOP of the word's flat lift via `wordLiftPx`, width = 0.7x the hold clamped 700-2000ms) — the old per-letter staggered trapezoid popped in part-way and dropped the lift ("tower").
 
 **Clock** (`services/lyrics/lyric_clock.dart`). Port of BitChord LyricClock. `LyricPlayhead` is pure; `LyricClock` is demand-driven:
 a vsync Ticker ONLY while a painter holds `retainFrames` (word-synced line in its window, or gap dots), a 100ms Timer for the

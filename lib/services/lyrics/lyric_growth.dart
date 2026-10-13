@@ -14,11 +14,23 @@
 // wrong is not "too subtle", it is "every word twitches" - a lyric that pulses
 // constantly stops being readable and starts being noisy.
 //
-// ONE MOVE, THREE BEATS, STAGGERED
+// A WAVE THAT TRAILS THE VOICE
 //
-// Every letter runs the same swell-hold-settle, each starting a fixed fraction of
-// the word's own length after the one before. That is what makes the movement
-// travel ALONG the word instead of the whole thing pulsing at once.
+// The swell is a single smooth wave riding behind the sweep: a letter starts at
+// rest the instant the voice has fully sung it, swells to its peak as the wave
+// crest passes over it, and settles back as the crest moves on. Neighbouring
+// letters are always part-way through the same curve, so the height along the
+// word is a continuous swell like a sea wave - never a row of separate columns.
+//
+// WHY NOT THE OLD STAGGERED TRAPEZOID
+//
+// Each letter used to run its own swell-hold-settle on a clock that began with
+// the WORD, not with the letter being sung. A letter was drawn flat until the
+// voice reached it and then snapped in part-way up its swell, and it also dropped
+// from the flat word's lift to nothing before climbing again. On a long hold that
+// is a tower: columns shooting up as the voice reaches each letter, standing
+// there, and falling together. The wave is a function of how far the voice is
+// past each letter, so it is zero at the handover and everything is continuous.
 //
 // THE PEAKS DIFFER LETTER BY LETTER
 //
@@ -38,6 +50,8 @@
 // asks where in its move a given letter has got to. That is what makes this
 // testable without a widget test, and why it lives in services rather than
 // widgets.
+
+import 'dart:math' as math;
 
 import 'lyric_words.dart' show LyricWord;
 
@@ -125,10 +139,15 @@ class GrowingWord {
           (centre - 0.5) * 2 * (scale - 1) * growShiftEm * growScaleTrim;
     }
 
-    final last = (chars - 1 < 0 ? 0 : chars - 1) * growStagger;
-    restsAtMs = startMs + (held * (last + growSpan)).round();
+    // The wave's temporal width: long enough to read as a swell, short enough
+    // that the word has settled by the time the singer has moved on.
+    final waveMs = (held * growWaveFraction)
+        .clamp(growWaveMinMs, growWaveMaxMs)
+        .toDouble();
+    // The same width in letters, at the word's own pace.
+    _waveLetters = waveMs * (chars / held);
+    restsAtMs = endMs + waveMs.round();
   }
-
   /// Which of the line's words this is.
   final int index;
 
@@ -136,7 +155,7 @@ class GrowingWord {
   final int endMs;
   final String text;
 
-  /// When the last letter has finished moving and is sitting lifted.
+  /// When the wave has finished passing over the last letter.
   late final int restsAtMs;
 
   late final List<String> _letters = _lettersOf(text.trim());
@@ -151,49 +170,54 @@ class GrowingWord {
   bool isAnimatingAt(int positionMs) =>
       positionMs >= startMs && positionMs <= restsAtMs;
 
+  /// How wide the wave is, in letters.
+  late final double _waveLetters;
+
   /// Where letter [charIndex] has got to at [positionMs], written into [into].
   ///
-  /// [into.rise] comes back in multiples of the ordinary sung-word lift and
-  /// [into.shift] in ems, so the caller converts once using the size it is
-  /// actually drawing at.
-  void sampleInto(int charIndex, int positionMs, CharGrowth into) {
+  /// [voice] is how many letters of the word have been sung, fractional, as the
+  /// sweep has them - passing it locks the wave to the fill exactly. Without it
+  /// the voice is assumed to move at the word's mean pace.
+  ///
+  /// After the word ends the voice is carried on at that same pace, so the wave
+  /// runs out over its own width instead of stopping mid-swell or being cut off.
+  ///
+  /// [into.rise] is the EXTRA lift over the ordinary sung-word lift (in
+  /// multiples of it), not a replacement for it: the caller adds the two, so a
+  /// letter handed over from the flat word keeps the height it had.
+  /// [into.shift] comes back in ems, so the caller converts once using the size
+  /// it is actually drawing at.
+  void sampleInto(
+    int charIndex,
+    int positionMs,
+    CharGrowth into, {
+    double? voice,
+  }) {
     if (charIndex < 0 || charIndex >= _letters.length) return;
-    final span = (endMs - startMs) > 1 ? (endMs - startMs).toDouble() : 1.0;
-    final elapsed =
-        positionMs - startMs - charIndex * span * growStagger;
-    var phase = elapsed / (span * growSpan);
-    phase = phase < 0 ? 0 : (phase > 1 ? 1 : phase);
+    final n = _letters.length;
+    final held = (endMs - startMs) > 1 ? (endMs - startMs).toDouble() : 1.0;
 
-    final peakScale = _scalePeak[charIndex];
-    final peakShift = _shiftPeak[charIndex];
-    final peakRise = _risePeak[charIndex];
-    final peakBloom = _bloomPeak[charIndex];
-
-    if (phase < growIn) {
-      final t = _smooth(phase / growIn);
-      into.scale = 1 + (peakScale - 1) * t;
-      into.shift = peakShift * t;
-      into.rise = peakRise * t;
-      into.bloom = peakBloom * t;
-    } else if (phase < growHold) {
-      into.scale = peakScale;
-      into.shift = peakShift;
-      into.rise = peakRise;
-      into.bloom = peakBloom;
-    } else if (phase < growOut) {
-      final t = _smooth((phase - growHold) / (growOut - growHold));
-      into.scale = peakScale + (1 - peakScale) * t;
-      into.shift = peakShift * (1 - t);
-      into.rise = peakRise + (growRest - peakRise) * t;
-      into.bloom = peakBloom * (1 - t);
+    final double sung;
+    if (positionMs > endMs) {
+      sung = n + (positionMs - endMs) * (n / held);
     } else {
-      into.scale = 1;
-      into.shift = 0;
-      into.rise = growRest;
-      into.bloom = 0;
+      sung = voice ?? n * (positionMs - startMs) / held;
     }
-  }
 
+    // How far the voice is past this letter's end, as a fraction of the wave.
+    final past = sung - (charIndex + 1);
+    final x = _waveLetters <= 0
+        ? 1.0
+        : (past <= 0 ? 0.0 : (past >= _waveLetters ? 1.0 : past / _waveLetters));
+    // sin^2: zero at both ends WITH zero slope, so the letter eases into the
+    // swell and out of it, and the crest passes over it at x = 0.5.
+    final wave = 0.5 * (1 - math.cos(2 * math.pi * x));
+
+    into.scale = 1 + (_scalePeak[charIndex] - 1) * wave;
+    into.shift = _shiftPeak[charIndex] * wave;
+    into.rise = _risePeak[charIndex] * wave;
+    into.bloom = _bloomPeak[charIndex] * wave;
+  }
   /// How much of the movement is taken back off the later letters.
   ///
   /// Two reasons, both from the reference. A long word is a lot of letters to run
@@ -215,9 +239,6 @@ class GrowingWord {
     }
     return strength > growDecayMax ? growDecayMax : strength;
   }
-
-  static double _smooth(double fraction) =>
-      fraction * fraction * (3 - 2 * fraction);
 }
 
 /// Longest word worth running a wave through; past this it reads as a ripple.
@@ -244,20 +265,10 @@ const double growDecayQuick = 0.3;
 const double growDecayQuickTiny = 0.1;
 const double growDecayMax = 0.7;
 
-/// Each letter starts this fraction of the word's own length after the one before.
-const double growStagger = 0.09;
-
-/// How much of the word's own length one letter's whole move takes.
-const double growSpan = 1.5;
-
-/// The three beats: swell in, hold, settle out.
-const double growIn = 0.25;
-const double growHold = 0.30;
-const double growOut = 0.75;
-
-/// What a settled letter rests at: the ordinary sung-word lift.
-const double growRest = 1;
-
+/// The wave's width in time: this fraction of the hold, within these bounds.
+const double growWaveFraction = 0.7;
+const double growWaveMinMs = 700;
+const double growWaveMaxMs = 2000;
 /// How much of the treatment a word has earned, from how long it is held.
 const double growRampMinMs = 400;
 const double growRampMaxMs = 3000;
