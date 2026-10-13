@@ -57,6 +57,30 @@ import 'lyric_line_geometry.dart';
 /// fades to the dim one.
 const double lyricWipeFeather = 30.0;
 
+/// A letter's lean, limited so that it (scaled about its centre) stays inside its
+/// row.
+///
+/// The lean opens a word outwards, which pushed the first letter of a word at the
+/// start of a row out past the text column - past the margin the rest of the lyric
+/// keeps. A letter that cannot lean outwards simply does not.
+@visibleForTesting
+double clampLean({
+  required double want,
+  required double left,
+  required double right,
+  required double rowLeft,
+  required double rowRight,
+  required double scale,
+}) {
+  final cx = (left + right) / 2;
+  final lo = rowLeft - cx + (cx - left) * scale;
+  final hi = rowRight - cx - (right - cx) * scale;
+  if (lo > hi) {
+    // A letter wider than the room: centre it rather than favour a side.
+    return (lo + hi) / 2;
+  }
+  return want.clamp(lo, hi).toDouble();
+}
 /// How far the soft edge reaches behind and ahead of the voice at [x] on a row
 /// that spans [left]..[right].
 ///
@@ -370,6 +394,7 @@ class RenderLyricLine extends RenderBox {
   set tailAlpha(double value) {
     if (_tailAlpha == value) return;
     _tailAlpha = value;
+    _disposeLetters(dimOnly: true);
     _dim?.dispose();
     _dim = null;
     markNeedsPaint();
@@ -444,7 +469,45 @@ class RenderLyricLine extends RenderBox {
   LyricLineGeometry? _geometry;
   double _laidOutWidth = double.nan;
 
+  /// One painter per letter of a held word, for the swell. See
+  /// [_letterPainter].
+  final Map<int, TextPainter> _litLetters = <int, TextPainter>{};
+  final Map<int, TextPainter> _dimLetters = <int, TextPainter>{};
+
+  void _disposeLetters({bool dimOnly = false}) {
+    for (final p in _dimLetters.values) {
+      p.dispose();
+    }
+    _dimLetters.clear();
+    if (dimOnly) return;
+    for (final p in _litLetters.values) {
+      p.dispose();
+    }
+    _litLetters.clear();
+  }
+
+  /// A painter for the single letter at [ci], in [color].
+  ///
+  /// A held word's letters are drawn ONE AT A TIME, each as its own glyph. They
+  /// used to be the whole line's paragraph clipped to the letter's caret box, and
+  /// that cannot work: with tracking and kerning a glyph's ink spills past its
+  /// advance box, so the clip cut the ink off ("y"'s arm, "f"'s hook) AND let a
+  /// neighbour's overhang through, which then moved with THIS letter's lift and
+  /// scale - a ghost sliver beside the real glyph. Its own painter has neither
+  /// problem: the glyph is whole, nothing else is in it.
+  ///
+  /// Positioned by the full paragraph's caret (see [_paintGrownLetter]), so
+  /// kerning is already in where it sits.
+  TextPainter _letterPainter(Map<int, TextPainter> cache, int ci, Color color) {
+    return cache[ci] ??= TextPainter(
+      text: TextSpan(text: _entry.text[ci], style: _style.copyWith(color: color)),
+      textDirection: TextDirection.ltr,
+      textScaler: _textScaler,
+    )..layout();
+  }
+
   void _invalidateText() {
+    _disposeLetters();
     _litPainter?.dispose();
     _litPainter = null;
     _dim?.dispose();
@@ -645,6 +708,7 @@ class RenderLyricLine extends RenderBox {
   @override
   void dispose() {
     _removeClockListener();
+    _disposeLetters();
     _litPainter?.dispose();
     _dim?.dispose();
     super.dispose();
@@ -1123,9 +1187,12 @@ class RenderLyricLine extends RenderBox {
         final s = _growthScratch[i];
         final ci = span.$1 + i;
         if (s.bloom <= 0.01 || revealed <= ci) continue;
-        final b = _grownBox(g, ci)
-            .shift(Offset(s.shift * em, -(flat + s.rise * wordRiseDp * fall)))
-            .inflate(lyricGlowSigma * 3 + 4 + em * 0.2);
+        final b = _grownInk(g, ci, em)
+            .shift(Offset(
+              _grownDx(g, ci, s, em),
+              -(flat + s.rise * wordRiseDp * fall),
+            ))
+            .inflate(lyricGlowSigma * 3 + 4 + em * 0.1);
         glowBounds = glowBounds == null ? b : glowBounds.expandToInclude(b);
       }
       if (glowBounds != null) {
@@ -1149,28 +1216,50 @@ class RenderLyricLine extends RenderBox {
           final s = _growthScratch[i];
           final ci = span.$1 + i;
           if (s.bloom <= 0.01 || revealed <= ci) continue;
-          _paintGrownLetter(canvas, dim, lit, g, ci, s, flat, fall, em,
-              revealed, feather, glowOpacity: s.bloom);
+          _paintGrownLetter(canvas, g, ci, s, flat, fall, em, revealed, feather,
+              glowOpacity: s.bloom);
         }
         canvas.restore();
       }
 
       // ── The letters themselves ──
       for (var i = 0; i < count; i++) {
-        _paintGrownLetter(canvas, dim, lit, g, span.$1 + i, _growthScratch[i],
-            flat, fall, em, revealed, feather);
+        _paintGrownLetter(canvas, g, span.$1 + i, _growthScratch[i], flat, fall,
+            em, revealed, feather);
       }
     }
   }
 
-  /// The box a letter is clipped to.
-  Rect _grownBox(LyricLineGeometry g, int ci) {
+  /// Where a letter's ink can reach: its caret box plus room for the tracking
+  /// and kerning overhang, a lean, and the swell's own scale.
+  Rect _grownInk(LyricLineGeometry g, int ci, double em) {
     final row = g.rows[g.charRow[ci]];
     return Rect.fromLTRB(
-      g.charLeft[ci] - 0.5,
-      row.top,
-      g.charRight[ci] + 0.5,
-      row.bottom,
+      g.charLeft[ci] - em * 0.35,
+      row.top - em * 0.25,
+      g.charRight[ci] + em * 0.35,
+      row.bottom + em * 0.25,
+    );
+  }
+
+  /// The lean, kept inside the row.
+  ///
+  /// Letters lean away from the middle of the word, so the first letter of a
+  /// word at the start of a row leant out of the text column - past the margin
+  /// the rest of the lyric keeps, and into whatever clips there. The lean (and
+  /// the scale about the letter's centre) may not carry the letter's edges
+  /// outside the row.
+  double _grownDx(LyricLineGeometry g, int ci, CharGrowth s, double em) {
+    final row = g.rows[g.charRow[ci]];
+    final left = g.charLeft[ci];
+    final right = g.charRight[ci];
+    return clampLean(
+      want: s.shift * em,
+      left: left,
+      right: right,
+      rowLeft: row.left,
+      rowRight: row.right,
+      scale: s.scale,
     );
   }
 
@@ -1178,8 +1267,6 @@ class RenderLyricLine extends RenderBox {
   /// glyph, at that opacity, for the glow layer.
   void _paintGrownLetter(
     Canvas canvas,
-    TextPainter dim,
-    TextPainter lit,
     LyricLineGeometry g,
     int ci,
     CharGrowth s,
@@ -1198,8 +1285,9 @@ class RenderLyricLine extends RenderBox {
     final cx = (left + right) / 2;
     final cy = (row.top + row.bottom) / 2;
     final dy = flat + s.rise * wordRiseDp * fall;
-    final dx = s.shift * em;
-    final box = _grownBox(g, ci);
+    final dx = _grownDx(g, ci, s, em);
+    final ink = _grownInk(g, ci, em);
+    final origin = Offset(left, row.top);
     final glow = glowOpacity != null;
 
     canvas.save();
@@ -1209,44 +1297,44 @@ class RenderLyricLine extends RenderBox {
 
     if (glow && glowOpacity < 0.995) {
       canvas.saveLayer(
-        box.inflate(2),
+        ink,
         Paint()..color = Color.fromRGBO(0, 0, 0, glowOpacity.clamp(0.0, 1.0)),
       );
       debugLayers++;
     }
-    // Clipped in the SAME transformed space as the glyph, so the box scales with
-    // the letter and its neighbours stay out.
-    canvas.clipRect(box);
 
     // Unfinished letters keep their dim glyph underneath, exactly as the plain
-    // passes layer it.
+    // passes layer it. No clip: the glyph is whole and alone.
     if (!glow && revealed < ci + 1) {
-      dim.paint(canvas, Offset.zero);
+      _letterPainter(_dimLetters, ci, const Color(0xFFFFFFFF).withValues(alpha: _tailAlpha))
+          .paint(canvas, origin);
       debugParagraphDraws++;
     }
 
-    // The lit glyph, up to the voice (the plain pass's own edge numbers).
+    // The lit glyph, up to the voice (the plain pass's own edge numbers). Only a
+    // letter the voice is IN needs cutting; one it has passed is drawn whole.
     final edge = _edgeScratch[rowIndex];
-    final hi = math.min(box.right, edge);
-    if (hi > box.left) {
+    if (edge > left) {
       final soft = _softScratch[rowIndex];
-      final masked = !glow && feather && !soft.isNaN && edge.isFinite && soft < hi;
+      // Within the soft edge's reach of the voice (it extends up to
+      // [lyricWipeFeather] behind it) the letter is cut and feathered exactly as
+      // the plain pass would cut it.
+      final voiceInside = edge.isFinite && edge < right + lyricWipeFeather;
+      final masked =
+          !glow && feather && voiceInside && !soft.isNaN && soft < right;
       canvas.save();
-      canvas.clipRect(Rect.fromLTRB(box.left, box.top, hi, box.bottom));
+      if (voiceInside) {
+        canvas.clipRect(Rect.fromLTRB(ink.left, ink.top, edge, ink.bottom));
+      }
       if (masked) {
-        canvas.saveLayer(box.inflate(2), Paint());
+        canvas.saveLayer(ink, Paint());
         debugLayers++;
       }
-      lit.paint(canvas, Offset.zero);
+      _letterPainter(_litLetters, ci, const Color(0xFFFFFFFF)).paint(canvas, origin);
       debugParagraphDraws++;
       if (masked) {
         canvas.drawRect(
-          Rect.fromLTRB(
-            math.max(soft, box.left),
-            box.top - _paintMargin * 0.5,
-            edge,
-            box.bottom,
-          ),
+          Rect.fromLTRB(math.max(soft, ink.left), ink.top, edge, ink.bottom),
           Paint()
             ..blendMode = BlendMode.dstIn
             ..shader = ui.Gradient.linear(
