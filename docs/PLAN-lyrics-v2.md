@@ -1001,16 +1001,15 @@ retry, mutual cancellation and the cache key rules.
 
 | Phase | Status | Commit |
 |---|---|---|
-| 0 baseline + fixtures | [ ] | |
-| 1 clock | [ ] | |
-| 2 renderer | [ ] | |
-| 3 panel | [ ] | |
-| 4 player integration | [ ] | |
-| 5 providers + race | [ ] | |
-| 6 sheet + settings | [ ] | |
-| 7 globe / translate | [ ] | |
-| 8 gates + docs | [ ] | device: user |
-
+| 0 baseline + fixtures | [x] | 2a8df5d |
+| 1 clock | [x] | c79a9b5 |
+| 2 renderer | [x] | 0d55cb7 |
+| 3 panel | [x] | e431aa5 + 5557bc7 (stagger) |
+| 4 player integration | [x] | e431aa5 + 5557bc7 |
+| 5 providers + race | [x] | 2a8df5d (providers) + f8ded9a (service, cache, race) |
+| 6 sheet + settings | [x] | f8ded9a |
+| 7 globe / translate | [x] | 5557bc7 |
+| 8 gates + docs | [x] | device: user |
 Recommended order is as listed. Phases 1→2→3→4 are the visible bugs; do not
 start 5 before 4 is green on tests. Phase 5 is independent of 2-4 and may be
 done by a parallel worker on a separate branch if desired.
@@ -1019,3 +1018,26 @@ done by a parallel worker on a separate branch if desired.
 
 (Append dated entries: baseline numbers, Phase 0 findings, anything
 deliberately not done and why. Never delete entries.)
+
+### 2026-10-12 — implementation log
+
+**Numbers.** Baseline 891 tests / 198 analyzer issues / 0 errors. Final 1463 tests / 186 issues / 0 errors. `flutter build apk --debug`: built (app-debug.apk, 96s).
+
+**Deviations from the plan, and why.**
+- **User-Agent.** Our own (`LyricsHttp.agent`), not BitChord's. Impersonating another product is not needed: Genius answers 200 to ours and 403 to a Chrome-shaped one.
+- **Live sheet is NOT on the root navigator.** The global overlay draws the player card above the root navigator, so a root-navigator sheet would open underneath the card it was opened from. It stays on the player's navigator; the back bug (R9a) is fixed where it really lives — `main.dart`'s `PopScope` only collapsed the player and never forwarded to the player's own navigator (`resolveShellBack`, tested). The settings sheet DOES use the root navigator (R11), hiding the mini player meanwhile.
+- **Drag-to-dismiss** uses `DraggableScrollableSheet` snapping at 50%, not BitChord's 25%; Flutter has no threshold hook.
+- **Grace/deadline** are instance fields on the service (`raceGrace`, `raceDeadline`, `identifyTimeout`) so tests can shorten them.
+- **Losers are not abandoned.** Dart cannot cancel a future, and a late answer is free information for the sheet. Only a source still working at the 10s deadline is `onCancelled`.
+- **Cache v3 deletes all old rows.** They came from providers that mostly could not answer, and their word timings (where any) were guesses.
+- **Scroll stagger**: rows past the third share the third's delay (the plan's wording overlapped rows 3 and 4). The follow-scroll now glides at every line change; before, it hard-cut (`_scrollRunUp` returned 0 -> `jumpTo`).
+- `activeWordAt` moved into `word_lift_test.dart`; the strip's "unsynced" is redefined as NO timestamp at all.
+- Edge-autoscroll `Ticker` in the settings list was KEPT (not checked on a device).
+
+**Bugs found beyond the ledger.**
+- The disk cache lost every word timing on read (the stored list and `parseLrc`'s list differed by its own head entry, so the positional payload was discarded). Fixed with `decodeCachedLyrics`.
+- The translation parser read one segment per line; real responses split by sentence, so every batch failed. Rewritten.
+- `List.sort` instability in `parseLrc`; `findCurrentLineIndex` answered "the last line" for untimed lyrics.
+- `_prefetchNextTrack` cached under the wrong key (video id for non-YouTube tracks) and without duration.
+
+**Not verifiable here.** Musixmatch `token.get` returned 403 from the dev IP (signature and parsers are unit-tested). PaxSenix keyed routes (need a key). The blur strength (see CONTEXT.md). Everything on a device.
