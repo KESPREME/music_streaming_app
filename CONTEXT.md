@@ -30,7 +30,7 @@ The old per-section notes (parity plan, SweptLine, old clock) are superseded; gi
 
 **Renderer** (`lib/widgets/lyric_line/`). ONE `RenderLyricLine` per line, repainting from the clock. Geometry is per VISUAL ROW
 (`LyricLineGeometry`) so wrapped lines sweep row by row and never overlap. Paragraphs have fixed colours (changing a TextPainter
-colour re-lays-out). Alpha and blur ride ONE `saveLayer`; the active line at alpha 1 / blur 0 takes none. Feather (30dp) and the
+colour re-lays-out). Alpha and blur ride ONE `saveLayer`; the active line at alpha 1 / blur 0 takes none. Feather (30dp, CENTRED on the voice - 3/4 behind, 1/4 ahead, shrinking to 0 at both row ends via `lyricFeatherZone`, so there is no lag and no pop when a line finishes) and the
 held-word bloom are extra layers on the active line only. Blur sigma = `0.57735*r + 0.5/dpr` (Skia's conversion) — a recollection,
 CHECK ON DEVICE; if it looks too weak set sigma = ladder dp (`LyricLineStyle.sigmaFor`). Font: Plus Jakarta Sans BUNDLED in
 `assets/google_fonts/` (32sp / h1.22 / w800 / -0.64) so it never arrives mid-sweep. Scroll stagger: `lyric_stagger.dart`.

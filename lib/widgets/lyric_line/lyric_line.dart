@@ -57,6 +57,26 @@ import 'lyric_line_geometry.dart';
 /// fades to the dim one.
 const double lyricWipeFeather = 30.0;
 
+/// How far the soft edge reaches behind and ahead of the voice at [x] on a row
+/// that spans [left]..[right].
+///
+/// Three quarters behind, a quarter ahead, and BOTH shrink to nothing as [x]
+/// nears either end of the row. That is what makes progress continuous: with
+/// nothing sung there is nothing lit, with the row sung there is no ramp left
+/// to remove, and in between the edge is where the voice is.
+@visibleForTesting
+({double behind, double ahead}) lyricFeatherZone(
+  double x,
+  double left,
+  double right,
+) {
+  final room = math.max(0.0, math.min(x - left, right - x));
+  return (
+    behind: math.min(lyricWipeFeather * 0.75, room),
+    ahead: math.min(lyricWipeFeather * 0.25, room),
+  );
+}
+
 /// BitChord `GLOW_ALPHA`.
 const double lyricGlowAlpha = 0.62;
 
@@ -940,6 +960,14 @@ class RenderLyricLine extends RenderBox {
   }
 
   final List<double> _edgeScratch = <double>[];
+  final List<double> _softScratch = <double>[];
+
+  List<double> _softScratchFor(int rows) {
+    while (_softScratch.length < rows) {
+      _softScratch.add(0);
+    }
+    return _softScratch;
+  }
 
   List<double> _edgesFor(int rows) {
     while (_edgeScratch.length < rows) {
@@ -964,13 +992,33 @@ class RenderLyricLine extends RenderBox {
     // lit to their end; the row the voice is on is cut at x; rows after it are
     // not lit at all.
     final edges = _edgesFor(g.rowCount);
+    final softFrom = _softScratchFor(g.rowCount);
     for (var r = 0; r < g.rowCount; r++) {
       final row = g.rows[r];
       edges[r] = double.negativeInfinity;
+      softFrom[r] = double.nan;
       if (fullyLit || revealed >= row.end) {
         edges[r] = double.infinity;
       } else if (revealed > row.start) {
-        edges[r] = g.xAt(r, revealed, sweepSpans);
+        final x = g.xAt(r, revealed, sweepSpans);
+        if (!feather) {
+          edges[r] = x;
+        } else {
+          // The soft edge is CENTRED on where the voice is, not trailing it.
+          //
+          // It used to run from 30dp behind the voice up to it, so the lit
+          // letters were always 30dp short of the audio, a word that had just
+          // been sung was still partly dim, and the instant the line finished
+          // the whole feather vanished in one frame: the fill appeared to
+          // finish EARLY at a slower pace and then jump. Here the ramp is mostly
+          // behind the voice and a little ahead of it (as Apple Music's is), and
+          // it narrows to nothing at both ends of the row - at the start there is
+          // nothing lit, at the end the row is exactly fully lit - so progress is
+          // continuous from the first pixel to the last, with no pop at the end.
+          final zone = lyricFeatherZone(x, row.left, row.right);
+          edges[r] = x + zone.ahead;
+          softFrom[r] = x - zone.behind;
+        }
       }
     }
 
@@ -979,10 +1027,10 @@ class RenderLyricLine extends RenderBox {
     if (!feather) return;
     for (var r = 0; r < g.rowCount; r++) {
       final edge = edges[r];
-      if (edge.isInfinite || edge.isNaN) continue; // whole row, or not reached
-      final row = g.rows[r];
-      final x0 = math.max(edge - lyricWipeFeather, row.left);
+      final x0 = softFrom[r];
+      if (edge.isInfinite || edge.isNaN || x0.isNaN) continue; // whole row / not reached
       if (edge <= x0) continue;
+      final row = g.rows[r];
       canvas.drawRect(
         Rect.fromLTRB(x0, row.top - _paintMargin * 0.5, edge, row.bottom),
         Paint()
