@@ -88,13 +88,12 @@ void main() {
     });
   });
 
-  // The swell is ONE wave riding behind the sweep, not a column per letter. These
-  // sample it by "voice": how many letters of the word have been sung.
+  // The swell is ONE wave riding the voice: the letter being sung rises as it is
+  // sung, the crest is just behind the voice, and the letters behind it fall away
+  // slowly. These sample it by "voice": how many letters of the word are sung.
   group('the wave', () {
-    // Six letters held three seconds: a 2s wave, four letters wide.
+    // Six letters held three seconds.
     GrowingWord golden() => grown('golden');
-    double width(GrowingWord w) =>
-        (w.restsAtMs - w.endMs) * (w.length / (w.endMs - w.startMs));
 
     CharGrowth at(GrowingWord w, int letter, double voice) {
       final s = CharGrowth();
@@ -102,11 +101,10 @@ void main() {
       return s;
     }
 
-    test('a letter is exactly at rest the instant it has been sung', () {
-      // The handover from the flat word. Anything but rest here is a pop.
+    test('a letter is untouched until the voice reaches it', () {
       final w = golden();
       for (var i = 0; i < w.length; i++) {
-        final s = at(w, i, i + 1.0);
+        final s = at(w, i, i.toDouble());
         expect(s.scale, 1);
         expect(s.rise, 0);
         expect(s.bloom, 0);
@@ -114,52 +112,81 @@ void main() {
       }
     });
 
-    test('a letter is not touched before the voice reaches it', () {
+    test('the letter under the voice RISES as it is sung', () {
       final w = golden();
-      final s = at(w, 3, 2.0);
-      expect(s.scale, 1);
-      expect(s.rise, 0);
-    });
-
-    test('swells as the crest passes over it and peaks half a wave behind the '
-        'voice', () {
-      final w = golden();
-      final crest = at(w, 0, 1 + width(w) / 2);
-      final early = at(w, 0, 1 + width(w) * 0.1);
-      expect(crest.scale, greaterThan(1.02));
-      expect(early.scale, lessThan(crest.scale));
-      expect(crest.rise, greaterThan(early.rise));
-    });
-
-    test('settles back to rest a full wave behind the voice', () {
-      final w = golden();
-      final s = at(w, 0, 1 + width(w));
-      expect(s.scale, closeTo(1, 1e-9));
-      expect(s.rise, closeTo(0, 1e-9));
-      expect(s.bloom, closeTo(0, 1e-9));
-    });
-
-    test('never dips below the laid-out size, and bloom stays in range', () {
-      final w = golden();
-      for (var v = 0.0; v <= w.length + width(w); v += 0.05) {
-        for (var i = 0; i < w.length; i++) {
-          final s = at(w, i, v);
-          expect(s.scale, greaterThanOrEqualTo(1 - 1e-9));
-          expect(s.bloom, inInclusiveRange(0, 1.3));
-        }
+      var prev = 1.0;
+      for (var d = 0.05; d <= growCrest; d += 0.05) {
+        final s = at(w, 2, 2 + d);
+        expect(s.scale, greaterThanOrEqualTo(prev - 1e-12),
+            reason: 'rising while being sung, d=$d');
+        prev = s.scale;
       }
+    });
+
+    test('the crest is as the voice leaves the letter, and nothing is higher',
+        () {
+      final w = golden();
+      final crest = at(w, 0, growCrest);
+      for (var d = 0.0; d <= 6; d += 0.05) {
+        expect(at(w, 0, d).scale, lessThanOrEqualTo(crest.scale + 1e-12));
+      }
+      expect(crest.scale, greaterThan(1.02));
+    });
+
+    test('the letters BEHIND the voice come down, smoothly and slowly', () {
+      final w = golden();
+      var prev = at(w, 0, growCrest).scale;
+      for (var d = growCrest + 0.05; d <= 6; d += 0.05) {
+        final s = at(w, 0, d).scale;
+        expect(s, lessThanOrEqualTo(prev + 1e-12),
+            reason: 'falling behind the crest, d=$d');
+        prev = s;
+      }
+      expect(at(w, 0, 6).scale, closeTo(1, 1e-9),
+          reason: 'and back at rest once the wave has passed');
+    });
+
+    test('the fall is much longer than the rise - a swell, not a pulse', () {
+      // Follow-through: the tail trails off behind the letter in front.
+      final w = golden();
+      double firstBelowHalf() {
+        final crestExtra = at(w, 0, growCrest).scale - 1;
+        for (var d = growCrest; d <= 8; d += 0.01) {
+          if (at(w, 0, d).scale - 1 < crestExtra / 2) return d - growCrest;
+        }
+        return 8;
+      }
+
+      double risingHalf() {
+        final crestExtra = at(w, 0, growCrest).scale - 1;
+        for (var d = 0.0; d <= growCrest; d += 0.01) {
+          if (at(w, 0, d).scale - 1 >= crestExtra / 2) return d;
+        }
+        return growCrest;
+      }
+
+      expect(firstBelowHalf(), greaterThan(risingHalf() * 1.8));
+    });
+
+    test('while the focus moves on to the next letter the previous one goes '
+        'down', () {
+      // The sea-wave behaviour: one letter coming up, the one before it falling.
+      final w = golden();
+      final before = [at(w, 1, 2.5), at(w, 2, 2.5)];
+      final after = [at(w, 1, 2.9), at(w, 2, 2.9)];
+      // Letter 2 (being sung) is rising; letter 1 (behind it) is falling.
+      expect(after[1].scale, greaterThan(before[1].scale));
+      expect(after[0].scale, lessThan(before[0].scale));
     });
 
     test('is continuous: moving the voice a hair never makes a letter jump',
         () {
-      // The tower, as a test. A letter that pops in at 55% of its swell, or
-      // steps between frames, fails this.
       final w = golden();
       for (var i = 0; i < w.length; i++) {
         var prev = at(w, i, 0);
-        for (var v = 0.01; v <= w.length + width(w); v += 0.01) {
+        for (var v = 0.005; v <= w.length + 6; v += 0.005) {
           final s = at(w, i, v);
-          expect((s.scale - prev.scale).abs(), lessThan(0.004),
+          expect((s.scale - prev.scale).abs(), lessThan(0.0015),
               reason: 'letter $i at voice $v');
           expect((s.rise - prev.rise).abs(), lessThan(0.02));
           expect((s.bloom - prev.bloom).abs(), lessThan(0.02));
@@ -168,50 +195,73 @@ void main() {
       }
     });
 
-    test('has no zero-slope plateau of its own: height eases in and out', () {
-      // sin^2 leaves the ground and returns to it with zero slope - the
-      // difference between a swell and a step.
+    test('is smooth, not merely continuous: the SLOPE has no steps either', () {
+      // The difference between a wave and two ramps meeting at a corner.
       final w = golden();
-      final start = at(w, 0, 1 + 0.01);
-      final end = at(w, 0, 1 + width(w) - 0.01);
-      expect(start.scale - 1, lessThan(0.0005));
-      expect(end.scale - 1, lessThan(0.0005));
+      const h = 0.01;
+      double slope(double v) =>
+          (at(w, 0, v + h).scale - at(w, 0, v).scale) / h;
+      for (var v = 0.0; v < 5; v += h) {
+        expect((slope(v + h) - slope(v)).abs(), lessThan(0.12),
+            reason: 'slope jumped at voice $v');
+      }
     });
 
     test('neighbouring letters sit at neighbouring heights - one curve along '
         'the word', () {
       final w = golden();
-      // Voice at 5 letters: letters 0..4 are sung, and the crest (half a wave,
-      // 2 letters, behind the voice) is over letter 3.
+      // Voice a little way into letter 4: letters 0..4 have the wave on them.
       final heights = [
-        for (var i = 0; i < 5; i++) at(w, i, 5.0).scale - 1,
+        for (var i = 0; i < 5; i++) at(w, i, 4.5).scale - 1,
       ];
       final peak = heights.reduce((a, b) => a > b ? a : b);
       expect(peak, greaterThan(0.02));
-      // The tallest is near the crest, and no neighbour is more than ~60% of
-      // the peak away from the next: a row of towers would step from ~0 to ~peak.
-      expect(heights.indexOf(peak), anyOf(2, 3));
-      for (var i = 1; i < heights.length; i++) {
-        expect((heights[i] - heights[i - 1]).abs(), lessThan(peak * 0.65),
-            reason: 'letters ${i - 1} and $i: $heights');
+      // The tallest is just behind the voice, and the tail trails off behind it
+      // monotonically: a row of towers would not.
+      final top = heights.indexOf(peak);
+      expect(top, anyOf(3, 4));
+      for (var i = 1; i <= top; i++) {
+        expect(heights[i], greaterThanOrEqualTo(heights[i - 1] - 1e-12),
+            reason: 'the tail behind the crest rises towards it: $heights');
       }
     });
 
-    test('the wave runs out after the last letter, and the word stays '
-        'animating until it has', () {
+    test('the tail after the word ends is continuous with the word', () {
+      // The voice's speed must not change at the word's end, or the wave lurches.
+      final w = golden();
+      final last = w.length - 1;
+      double sungSpeed(int a, int b) =>
+          (w.voiceAt(b) - w.voiceAt(a)) / (b - a);
+      final before = sungSpeed(w.endMs - 20, w.endMs - 10);
+      final after = sungSpeed(w.endMs + 10, w.endMs + 20);
+      expect(after, closeTo(before, before * 0.15));
+      expect(w.voiceAt(w.endMs).toDouble(), closeTo(w.length.toDouble(), 1e-9));
+
+      final atEnd = CharGrowth();
+      w.sampleInto(last, w.endMs, atEnd);
+      final done = CharGrowth();
+      w.sampleInto(last, w.restsAtMs, done);
+      expect(done.scale, closeTo(1, 1e-6), reason: 'and ends at rest');
+    });
+
+    test('the voice only ever moves forward through the tail', () {
+      final w = golden();
+      var prev = w.voiceAt(w.endMs);
+      for (var t = w.endMs + 10; t <= w.restsAtMs + 1000; t += 10) {
+        final v = w.voiceAt(t);
+        expect(v, greaterThan(prev));
+        prev = v;
+      }
+    });
+
+    test('the word stays in the swell\'s hands until the wave has run out', () {
       final w = golden();
       expect(w.isAnimatingAt(w.restsAtMs), isTrue);
       expect(w.isAnimatingAt(w.restsAtMs + 1), isFalse);
       expect(w.isAnimatingAt(w.startMs - 1), isFalse);
-
-      final last = w.length - 1;
-      final atEnd = CharGrowth();
-      w.sampleInto(last, w.endMs, atEnd);
-      expect(atEnd.scale, 1, reason: 'the last letter starts from rest');
-
-      final done = CharGrowth();
-      w.sampleInto(last, w.restsAtMs, done);
-      expect(done.scale, closeTo(1, 1e-6), reason: 'and ends at rest');
+      // Long enough for the flat lift (liftRiseMs) to have fallen away.
+      expect(w.restsAtMs - w.endMs, greaterThanOrEqualTo(700));
+      expect(w.restsAtMs - w.endMs, lessThanOrEqualTo(1500));
     });
 
     test('without a voice it assumes the word\'s mean pace', () {
@@ -223,22 +273,19 @@ void main() {
       expect(a.scale, closeTo(b.scale, 1e-9));
     });
 
-    test('the wave\'s width in time is bounded', () {
-      final brief = grown('oh', heldMs: 1400);
-      final long = grown('oh', heldMs: 6000);
-      expect(brief.restsAtMs - brief.endMs, inInclusiveRange(700, 2000));
-      expect(long.restsAtMs - long.endMs, 2000);
+    test('even a one-letter hold swells WHILE it is held', () {
+      // Letters are no longer only animated after the voice has left them.
+      final w = grown('I', heldMs: 2400);
+      final s = CharGrowth();
+      w.sampleInto(0, w.startMs + 2000, s, voice: 0.83);
+      expect(s.scale, greaterThan(1.01));
     });
   });
 
   group('how much each word has earned', () {
     double crestScale(GrowingWord w, int letter) {
-      final span = (w.endMs - w.startMs).toDouble();
-      final pace = w.length / span;
-      final waveMs = (span * growWaveFraction).clamp(growWaveMinMs, growWaveMaxMs);
       final s = CharGrowth();
-      w.sampleInto(letter, w.startMs + 1, s,
-          voice: letter + 1 + waveMs * pace / 2);
+      w.sampleInto(letter, w.startMs + 1, s, voice: letter + growCrest);
       return s.scale;
     }
 
@@ -265,10 +312,9 @@ void main() {
       final w = grown('golden');
       final first = CharGrowth();
       final last = CharGrowth();
-      final crest = 1 + 2.0;
-      w.sampleInto(0, w.startMs + 1, first, voice: crest);
+      w.sampleInto(0, w.startMs + 1, first, voice: growCrest);
       w.sampleInto(w.length - 1, w.startMs + 1, last,
-          voice: w.length + 2.0);
+          voice: w.length - 1 + growCrest);
       expect(first.shift, lessThan(0));
       expect(last.shift, greaterThan(0));
     });

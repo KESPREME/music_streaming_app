@@ -811,7 +811,14 @@ class RenderLyricLine extends RenderBox {
       _paintPass(canvas, dim, g, null, debugDimClips);
     }
 
-    if (revealed <= 0) return;
+    if (revealed <= 0) {
+      // Nothing is lit, but a held word's letters are still the swell's to draw
+      // (dim, and already lifting with their word).
+      if (growing.isNotEmpty) {
+        _paintGrowth(canvas, dim, lit, g, now, revealed, words, spans, growing);
+      }
+      return;
+    }
 
     // ── Lit pass: clipped per visual row to where the voice has got to ──
     final fullyLit = revealed >= length;
@@ -833,7 +840,7 @@ class RenderLyricLine extends RenderBox {
 
     // ── Swell: held letters, one by one ──
     if (growing.isNotEmpty) {
-      _paintGrowth(canvas, lit, g, now, revealed, words, spans, growing);
+      _paintGrowth(canvas, dim, lit, g, now, revealed, words, spans, growing);
     }
   }
 
@@ -874,15 +881,15 @@ class RenderLyricLine extends RenderBox {
 
       final grower = growing.isEmpty ? null : growingFor(i);
       if (grower != null) {
-        // The sung letters of a held word are the swell's, not the plain
-        // passes': a hole here, drawn by [_paintGrowth].
-        final soFar = (revealed - start).floor().clamp(0, end - start);
-        if (soFar > 0) {
-          g.forEachRowSegment(start, start + soFar, (row, x0, x1) {
-            _specials[row]..add(x0)..add(x1)..add(double.nan);
-          });
-          any = true;
-        }
+        // A held word belongs to the swell from its FIRST moment - sung letters,
+        // the one being sung and the ones still to come - a hole here, drawn by
+        // [_paintGrowth]. Handing letters over one by one as they were sung left
+        // the unsung ones unlifted while the sung ones rode the word's lift, so
+        // every letter jumped by the lift at the instant it changed hands.
+        g.forEachRowSegment(start, end, (row, x0, x1) {
+          _specials[row]..add(x0)..add(x1)..add(double.nan);
+        });
+        any = true;
         continue;
       }
 
@@ -988,9 +995,46 @@ class RenderLyricLine extends RenderBox {
         ? _entry.sweepSpans
         : const <(int, int)>[];
 
-    // Where the leading edge is on each row. Rows wholly before the voice are
-    // lit to their end; the row the voice is on is cut at x; rows after it are
-    // not lit at all.
+    final edges = _edgesFor(g.rowCount);
+    final softFrom = _softScratchFor(g.rowCount);
+    _fillEdges(g, revealed, fullyLit, feather, sweepSpans);
+
+    _paintPass(canvas, lit, g, (r) => edges[r], debugLitClips);
+
+    if (!feather) return;
+    for (var r = 0; r < g.rowCount; r++) {
+      final edge = edges[r];
+      final x0 = softFrom[r];
+      if (edge.isInfinite || edge.isNaN || x0.isNaN) continue; // whole row / not reached
+      if (edge <= x0) continue;
+      final row = g.rows[r];
+      canvas.drawRect(
+        Rect.fromLTRB(x0, row.top - _paintMargin * 0.5, edge, row.bottom),
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = ui.Gradient.linear(
+            Offset(x0, 0),
+            Offset(edge, 0),
+            const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+          ),
+      );
+    }
+  }
+
+  /// Where the leading edge is on each row, into [_edgeScratch] (the clip) and
+  /// [_softScratch] (where the soft edge starts). Rows wholly before the voice
+  /// are lit to their end; the row the voice is on is cut at x; rows after it
+  /// are not lit at all.
+  ///
+  /// One definition, used by the plain lit pass AND by a held word's letters, so
+  /// the two can never disagree about where the voice is.
+  void _fillEdges(
+    LyricLineGeometry g,
+    double revealed,
+    bool fullyLit,
+    bool feather,
+    List<(int, int)> sweepSpans,
+  ) {
     final edges = _edgesFor(g.rowCount);
     final softFrom = _softScratchFor(g.rowCount);
     for (var r = 0; r < g.rowCount; r++) {
@@ -1021,31 +1065,23 @@ class RenderLyricLine extends RenderBox {
         }
       }
     }
-
-    _paintPass(canvas, lit, g, (r) => edges[r], debugLitClips);
-
-    if (!feather) return;
-    for (var r = 0; r < g.rowCount; r++) {
-      final edge = edges[r];
-      final x0 = softFrom[r];
-      if (edge.isInfinite || edge.isNaN || x0.isNaN) continue; // whole row / not reached
-      if (edge <= x0) continue;
-      final row = g.rows[r];
-      canvas.drawRect(
-        Rect.fromLTRB(x0, row.top - _paintMargin * 0.5, edge, row.bottom),
-        Paint()
-          ..blendMode = BlendMode.dstIn
-          ..shader = ui.Gradient.linear(
-            Offset(x0, 0),
-            Offset(edge, 0),
-            const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
-          ),
-      );
-    }
   }
 
+  final List<CharGrowth> _growthScratch = <CharGrowth>[];
+
+  /// A held word, drawn by the swell: every letter, from the word's first moment
+  /// until its wave has run out.
+  ///
+  /// Each letter is drawn in its own transformed space (lift, lean, scale about
+  /// its centre) as: the dim glyph if the voice has not finished it, then the lit
+  /// glyph up to the voice - the SAME edge and soft feather the plain lit pass
+  /// uses, so a held word fills exactly as the words either side of it do.
+  ///
+  /// The glow is ONE blurred layer for the whole word. It used to be a blurred
+  /// layer per letter per frame, which is where a long hold's frame time went.
   void _paintGrowth(
     Canvas canvas,
+    TextPainter dim,
     TextPainter lit,
     LyricLineGeometry g,
     int now,
@@ -1055,77 +1091,176 @@ class RenderLyricLine extends RenderBox {
     List<GrowingWord> growing,
   ) {
     final em = _textScaler.scale(_style.fontSize ?? 32);
-    final sample = CharGrowth();
+    final sweepSpans = _entry.sweepSpans;
+    final fullyLit = revealed >= _entry.text.length;
+    final feather = _feather && !fullyLit;
+    _fillEdges(g, revealed, fullyLit, feather, sweepSpans);
 
     for (final word in growing) {
       if (!word.isAnimatingAt(now)) continue;
       final span = spans[word.index];
       if (span == null) continue;
+      final count = math.min(word.length, g.length - span.$1);
+      if (count <= 0) continue;
+
+      // The word's ordinary lift (what the flat passes give any sung word) plus
+      // the wave's extra, which fades with the word's own settle. The wave rides
+      // ON the lift; it never replaces it.
       final fall = wordFall(_entry.timedWords, word.index, now);
-      final flatLift = wordLiftPx(_entry.timedWords, word.index, now);
+      final flat = wordLiftPx(_entry.timedWords, word.index, now);
 
-      for (var i = 0; i < word.length; i++) {
+      while (_growthScratch.length < count) {
+        _growthScratch.add(CharGrowth());
+      }
+      for (var i = 0; i < count; i++) {
+        // Locked to the fill: the wave is measured from where the sweep is.
+        word.sampleInto(i, now, _growthScratch[i], voice: revealed - span.$1);
+      }
+
+      // ── Glow: one blurred layer, the glowing letters drawn into it ──
+      Rect? glowBounds;
+      for (var i = 0; i < count; i++) {
+        final s = _growthScratch[i];
         final ci = span.$1 + i;
-        if (ci >= g.length) break;
-        // Not yet sung, so not yet grown: the swell follows the voice.
-        if (revealed < ci + 1) break;
-
-        // Locked to the fill: the wave is measured from where the sweep is, so a
-        // letter starts from rest the instant it has been sung.
-        word.sampleInto(i, now, sample, voice: revealed - span.$1);
-
-        final left = g.charLeft[ci];
-        final right = g.charRight[ci];
-        if (right <= left) continue;
-        final row = g.rows[g.charRow[ci]];
-        final cx = (left + right) / 2;
-        final cy = (row.top + row.bottom) / 2;
-        // The word's ordinary lift (what the flat passes gave it until this
-        // letter was handed over) PLUS the wave's extra, which fades with the
-        // word's own settle. Replacing the one with the other is what made the
-        // letters drop and re-climb at every hand-over - a tower, not a wave.
-        final dy = flatLift + sample.rise * wordRiseDp * fall;
-        final dx = sample.shift * em;
-
-        canvas.save();
-        canvas.translate(cx + dx, cy - dy);
-        canvas.scale(sample.scale);
-        canvas.translate(-cx, -cy);
-
-        final box = Rect.fromLTRB(left - 0.5, row.top, right + 0.5, row.bottom);
-
-        if (sample.bloom > 0.01) {
-          // Bloom: the letter, blurred, behind itself.
-          final glowBounds = box.inflate(lyricGlowSigma * 3 + 4);
-          canvas.saveLayer(
-            glowBounds,
-            Paint()
-              ..color = Color.fromRGBO(
-                0,
-                0,
-                0,
-                (lyricGlowAlpha * sample.bloom).clamp(0.0, 1.0),
-              )
-              ..imageFilter = ui.ImageFilter.blur(
-                sigmaX: lyricGlowSigma,
-                sigmaY: lyricGlowSigma,
-                tileMode: ui.TileMode.decal,
-              ),
-          );
-          debugLayers++;
-          canvas.clipRect(box);
-          lit.paint(canvas, Offset.zero);
-          debugParagraphDraws++;
-          canvas.restore();
+        if (s.bloom <= 0.01 || revealed <= ci) continue;
+        final b = _grownBox(g, ci)
+            .shift(Offset(s.shift * em, -(flat + s.rise * wordRiseDp * fall)))
+            .inflate(lyricGlowSigma * 3 + 4 + em * 0.2);
+        glowBounds = glowBounds == null ? b : glowBounds.expandToInclude(b);
+      }
+      if (glowBounds != null) {
+        canvas.saveLayer(
+          glowBounds,
+          Paint()
+            ..color = Color.fromRGBO(
+              0,
+              0,
+              0,
+              lyricGlowAlpha.clamp(0.0, 1.0),
+            )
+            ..imageFilter = ui.ImageFilter.blur(
+              sigmaX: lyricGlowSigma,
+              sigmaY: lyricGlowSigma,
+              tileMode: ui.TileMode.decal,
+            ),
+        );
+        debugLayers++;
+        for (var i = 0; i < count; i++) {
+          final s = _growthScratch[i];
+          final ci = span.$1 + i;
+          if (s.bloom <= 0.01 || revealed <= ci) continue;
+          _paintGrownLetter(canvas, dim, lit, g, ci, s, flat, fall, em,
+              revealed, feather, glowOpacity: s.bloom);
         }
-
-        // Clipped in the SAME transformed space as the glyph, so the box scales
-        // with the letter and neighbours (whose boxes lie outside it) stay out.
-        canvas.clipRect(box);
-        lit.paint(canvas, Offset.zero);
-        debugParagraphDraws++;
         canvas.restore();
       }
+
+      // ── The letters themselves ──
+      for (var i = 0; i < count; i++) {
+        _paintGrownLetter(canvas, dim, lit, g, span.$1 + i, _growthScratch[i],
+            flat, fall, em, revealed, feather);
+      }
     }
+  }
+
+  /// The box a letter is clipped to.
+  Rect _grownBox(LyricLineGeometry g, int ci) {
+    final row = g.rows[g.charRow[ci]];
+    return Rect.fromLTRB(
+      g.charLeft[ci] - 0.5,
+      row.top,
+      g.charRight[ci] + 0.5,
+      row.bottom,
+    );
+  }
+
+  /// One letter of a held word. With [glowOpacity] set it draws only the lit
+  /// glyph, at that opacity, for the glow layer.
+  void _paintGrownLetter(
+    Canvas canvas,
+    TextPainter dim,
+    TextPainter lit,
+    LyricLineGeometry g,
+    int ci,
+    CharGrowth s,
+    double flat,
+    double fall,
+    double em,
+    double revealed,
+    bool feather, {
+    double? glowOpacity,
+  }) {
+    final left = g.charLeft[ci];
+    final right = g.charRight[ci];
+    if (right <= left) return;
+    final rowIndex = g.charRow[ci];
+    final row = g.rows[rowIndex];
+    final cx = (left + right) / 2;
+    final cy = (row.top + row.bottom) / 2;
+    final dy = flat + s.rise * wordRiseDp * fall;
+    final dx = s.shift * em;
+    final box = _grownBox(g, ci);
+    final glow = glowOpacity != null;
+
+    canvas.save();
+    canvas.translate(cx + dx, cy - dy);
+    canvas.scale(s.scale);
+    canvas.translate(-cx, -cy);
+
+    if (glow && glowOpacity < 0.995) {
+      canvas.saveLayer(
+        box.inflate(2),
+        Paint()..color = Color.fromRGBO(0, 0, 0, glowOpacity.clamp(0.0, 1.0)),
+      );
+      debugLayers++;
+    }
+    // Clipped in the SAME transformed space as the glyph, so the box scales with
+    // the letter and its neighbours stay out.
+    canvas.clipRect(box);
+
+    // Unfinished letters keep their dim glyph underneath, exactly as the plain
+    // passes layer it.
+    if (!glow && revealed < ci + 1) {
+      dim.paint(canvas, Offset.zero);
+      debugParagraphDraws++;
+    }
+
+    // The lit glyph, up to the voice (the plain pass's own edge numbers).
+    final edge = _edgeScratch[rowIndex];
+    final hi = math.min(box.right, edge);
+    if (hi > box.left) {
+      final soft = _softScratch[rowIndex];
+      final masked = !glow && feather && !soft.isNaN && edge.isFinite && soft < hi;
+      canvas.save();
+      canvas.clipRect(Rect.fromLTRB(box.left, box.top, hi, box.bottom));
+      if (masked) {
+        canvas.saveLayer(box.inflate(2), Paint());
+        debugLayers++;
+      }
+      lit.paint(canvas, Offset.zero);
+      debugParagraphDraws++;
+      if (masked) {
+        canvas.drawRect(
+          Rect.fromLTRB(
+            math.max(soft, box.left),
+            box.top - _paintMargin * 0.5,
+            edge,
+            box.bottom,
+          ),
+          Paint()
+            ..blendMode = BlendMode.dstIn
+            ..shader = ui.Gradient.linear(
+              Offset(soft, 0),
+              Offset(edge, 0),
+              const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+            ),
+        );
+        canvas.restore();
+      }
+      canvas.restore();
+    }
+
+    if (glow && glowOpacity < 0.995) canvas.restore();
+    canvas.restore();
   }
 }
