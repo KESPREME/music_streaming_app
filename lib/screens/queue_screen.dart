@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/blurred_backdrop.dart';
+import '../widgets/transition_chip.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/animated_equalizer_icon.dart';
@@ -269,33 +270,41 @@ class QueueScreen extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          if (musicProvider.canClearQueue)
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                _showClearDialog(context, musicProvider);
-              },
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    width: 0.5,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TransitionChip(settings: musicProvider.transitionSettings),
+              if (musicProvider.canClearQueue) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _showClearDialog(context, musicProvider);
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Text(
+                      'Clear',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-                child: Text(
-                  'Clear',
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
+              ],
+            ],
+          ),
         ],
       ),
     );

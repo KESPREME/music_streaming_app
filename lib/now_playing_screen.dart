@@ -17,6 +17,7 @@ import '../services/canvas_video_manager.dart';
 import '../utils/app_image_cache.dart';
 import '../widgets/artist_picker_sheet.dart';
 import '../widgets/blurred_backdrop.dart';
+import '../widgets/mix_overlays.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/apple_player_icons.dart';
@@ -823,6 +824,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         else
                           const ColoredBox(color: Color(0xFF101010)),
 
+                        // During a mix: the incoming song's wash, dissolving
+                        // in on the audio's own progress. Stays until the mix
+                        // ends so the handoff underneath is never visible.
+                        MixIncomingBackdrop(
+                          state: musicProvider.transitionState,
+                          trackFor: musicProvider.windowedTrack,
+                        ),
+
                         // Whole-screen video canvas blur overlay
                         if (musicProvider.animatedCanvasEnabled)
                           ValueListenableBuilder<VideoPlayerController?>(
@@ -1329,6 +1338,18 @@ child: Transform.scale(
                                       : AppImageCache.heroMemCache,
                                 ),
                               ),
+                              // During a mix: the incoming artwork dissolving
+                              // in over this one (see mix_overlays.dart).
+                              MixIncomingArt(
+                                state: musicProvider.transitionState,
+                                trackFor: musicProvider.windowedTrack,
+                                buildArt: (incoming) => _buildAlbumArtImage(
+                                  incoming,
+                                  cacheSize: t > 0.5
+                                      ? AppImageCache.morphMemCache
+                                      : AppImageCache.heroMemCache,
+                                ),
+                              ),
                               // In-place animated motion canvas overlay
                               if (musicProvider.animatedCanvasEnabled)
                                 Positioned.fill(
@@ -1572,8 +1593,13 @@ child: Transform.scale(
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ThinSlider(
+            // A jump (the session moving to the song a mix is bringing in, a
+            // tap on the bar) glides; ordinary creeping progress does not.
+            JumpSmoother(
               value: fraction,
+              enabled: !_isScrubbing,
+              builder: (context, smoothed) => ThinSlider(
+              value: smoothed,
               idleHeight: 7.0,
               activeHeight: 12.0,
               activeColor: Colors.white,
@@ -1605,21 +1631,31 @@ child: Transform.scale(
                 _setHeldGesture(false);
               },
             ),
+            ),
             Transform.translate(
               offset: const Offset(0, -9.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  Text(
-                    _formatTime(_draggedPositionSec != null
-                        ? Duration(milliseconds: _draggedPositionSec!.toInt())
-                        : pos),
-                    style: _scrubberTimeStyle,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatTime(_draggedPositionSec != null
+                            ? Duration(
+                                milliseconds: _draggedPositionSec!.toInt())
+                            : pos),
+                        style: _scrubberTimeStyle,
+                      ),
+                      Text(
+                        '-${_formatTime(remaining)}',
+                        style: _scrubberTimeStyle,
+                      ),
+                    ],
                   ),
-                  Text(
-                    '-${_formatTime(remaining)}',
-                    style: _scrubberTimeStyle,
-                  ),
+                  // Between the two times, where there is room: names a real
+                  // AutoMix while it runs, and takes no layout of its own.
+                  MixBadge(state: provider.transitionState),
                 ],
               ),
             ),

@@ -9,6 +9,7 @@ import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../models/music_source.dart';
 import '../screens/account_screen.dart';
+import '../screens/song_transitions_screen.dart';
 import '../widgets/themed_downloaded_songs_screen.dart';
 import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
@@ -44,6 +45,7 @@ const List<SettingsEntry> settingsSearchEntries = <SettingsEntry>[
     SettingsEntry('prefs.theme', ['Theme', 'appearance', 'dark mode', 'accent', 'colour', 'color']),
     SettingsEntry('prefs.dynamic', ['Dynamic Colors', 'material you', 'wallpaper']),
     SettingsEntry('accent.card', ['Accent', 'colour', 'color', 'swatch', 'album art']),
+    SettingsEntry('playback.transitions', ['Song Transitions', 'crossfade', 'automix', 'fade', 'gapless', 'blend', 'mix']),
     SettingsEntry('playback.autoQueue', ['Auto Queue', 'keep playing', 'queue']),
     SettingsEntry('playback.cellular', ['Cellular Quality', 'mobile data', 'stream over mobile data']),
     SettingsEntry('playback.lowData', ['Low Data Mode', 'data saver']),
@@ -267,6 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               // Player & Playback — grounded
               if (index.matchesAny(const [
+                'playback.transitions',
                 'playback.autoQueue',
                 'playback.cellular',
                 'playback.lowData',
@@ -283,6 +286,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     child: Column(
                       children: [
+                        if (index.matchesAny(const ['playback.transitions'])) ...[
+                          ListenableBuilder(
+                            listenable: musicProvider.transitionSettings,
+                            builder: (context, _) => _NavTile(
+                              icon: Icons.blur_linear_rounded,
+                              title: 'Song Transitions',
+                              subtitle: SongTransitionsScreen.summary(
+                                  musicProvider.transitionSettings),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const SongTransitionsScreen()),
+                              ),
+                            ),
+                          ),
+                          _divider(),
+                        ],
                         _GlassRow(
                           icon: Icons.play_circle_filled_rounded,
                           iconBg: accent.withValues(alpha: 0.18),
