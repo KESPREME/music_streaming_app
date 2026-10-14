@@ -303,3 +303,50 @@ Each row gets a settings-search entry.
 2. **P5 fork.** Acceptable to maintain a small just_audio Android fork for DJ effects? Without it AutoMix stops at T2 (beat-matched volume blends), which is still on par with Apple.
 3. **iOS priority.** Android first, with iOS in P6, assumed because Android is the primary platform.
 4. **Defaults.** Transitions off (Apple's default) or Crossfade 6 s on? Recommended: off, with a one-time tip in the queue the first time the user plays a playlist.
+
+## 11. Implementation log (what shipped, what did not)
+
+Built clean-room in Dart over `just_audio` + `audio_service`. Nothing audio-side has been run on a device yet: every number below is from unit tests, synthetic signals and sixteen real songs decoded on the desktop, not from a phone.
+
+**Shipped**
+
+| Piece | Where | Verified by |
+|---|---|---|
+| Media session over two decks (`MineAudioHandler`, `DeckPair`, `DeckRelay`) | `services/playback/` | engine tests with fake decks; APK builds. **Not on a device.** |
+| Settings model (off by default, 1-12 s, AutoMix, match tempo BETA, albums gapless, sleep fade, skip silence, analyse on mobile data) | `transition_settings.dart` | `transition_support_test` |
+| Equal-power curves, planner (tiers, guards, album gapless, tempo window +-4 %) | `fade_curves.dart`, `transition_planner.dart` | 18 planner tests |
+| `TransitionEngine` (arm, mix, handoff at progress 0.5, bail, pause/skip/seek during a mix, sleep fade, stop-after-track) | `transition_engine.dart` | 28 engine tests |
+| On-device analyser: level envelope, outro, onsets, tempo, beats, bar lines, confidence | `audio_analyzer.dart` | 19 tests on built signals + calibration below |
+| Native decoder (`MediaExtractor` + `MediaCodec` to mono 11 025 Hz PCM) | `AudioDecoder.java`, `MainActivity.java` | compiles in `flutter build apk --debug`. **Not run on a file.** |
+| `AnalysisService` (one at a time, SQLite store, Wi-Fi only unless allowed, offline/low-data aware, ten-minute failure cooldown) | `analysis_service.dart` | 20 tests with the platform replaced |
+| Settings screen, queue chip (Off, Crossfade, AutoMix), Now Playing mix motion (art + backdrop dissolve, "Mixing" badge, scrubber smoothing) | `song_transitions_screen.dart`, `transition_chip.dart`, `mix_overlays.dart` | 23 widget tests |
+
+**Analyser calibration (16 real songs, `%TEMP%`, never copied into the repo)**
+
+- Tempo within 0.1 BPM of the published tempo on every song whose tempo is known to me (Dynamite 114, Memories 91, Circles 120, Astronomia 126).
+- Analysis takes about 200 ms per song on a desktop CPU. **Phone timing is unmeasured.**
+- Findings that changed the code, in order:
+  1. Confidence from pulse contrast alone did not separate right from wrong tempos. Agreement of the tempo across 25 s stretches does.
+  2. Autocorrelation alone reads a busy hi-hat pulse at 3:2 of its tempo (a 140 BPM pattern as 93, one real song at 102 as 151). Harmonic voting did not fix it; weighting the kick band did (`kickWeight = 2`). That real song now reads 100.6 at confidence 0.21, which the planner ignores (it read 151 at 0.63 before).
+  3. A held tone has no onsets but looked like a perfect pulse after normalisation. An absolute activity gate (`minOnsetActivity = 15`; tone 1.7, noise 90, songs 83-116) rejects it.
+- Known limit: tempo can come out at half or double speed (a 174 BPM pattern reads 87). The planner folds octaves (`alignTempoOctave`), so this is harmless to a mix. Sixteen songs is a small corpus; treat the thresholds as measured, not proven.
+
+**Not done**
+
+- Loudness normalisation (needs `loudnessDb` captured from InnerTube).
+- Transition marker on the scrubber; title/artist swap animation; Material You settings entry; queue connector.
+- DJ filters and echo (P5): needs a `just_audio` Android fork and a device to tune. iOS (P6): no decoder or second deck there yet; the analysis service is Android-only (`AnalysisPlatform.supported`).
+- Re-using the player's cache file for analysis: the current song is fetched a second time when AutoMix is first turned on.
+- Without a result from the analysis service (not yet analysed, or analysis not possible) AutoMix plans a plain crossfade of the chosen length.
+
+**Device checklist (what still has to be heard)**
+
+1. Lock-screen and notification: next, previous, seek, play/pause (they now go through `MineAudioHandler`).
+2. Pause and resume during a mix; skip during a mix; seek during a mix.
+3. Album tracks stay gapless with "Transition between album tracks" off.
+4. Crossfade at 1, 6 and 12 s: no dip or bump at the midpoint, no click at the handoff.
+5. Sleep timer fades out instead of cutting.
+6. AutoMix on Wi-Fi: the second song of a session is analysed in the background; a mix between two analysed songs starts earlier than the end when the first has a fade-out.
+7. AutoMix with mobile data: nothing is downloaded until "Analyse on mobile data" is on.
+8. Queue chip cycles Off, Crossfade, AutoMix; long-press opens the settings screen.
+9. `PERF_WINDOW` and battery over ten transitions against transitions-off.

@@ -605,6 +605,35 @@ So the fixes remove work from the scene rather than caching it.
 
 Deliberately NOT done (and why) is recorded in docs/PLAN-perf-battery.md.
 
+## SONG TRANSITIONS (crossfade + AutoMix; docs/PLAN-transitions-automix.md)
+
+Off by default. Settings > Player & Playback > Song Transitions, or the chip in the
+queue heading (tap cycles Off, Crossfade, AutoMix; long-press opens the screen).
+
+- Playback is two `AudioPlayer`s (`DeckPair`, `services/playback/decks.dart`) under one
+  `audio_service` handler (`MineAudioHandler.shared`, set in `main.dart`). This REPLACED
+  `just_audio_background`, which cannot host two players. The standby deck carries the
+  INCOMING song only; at progress 0.5 the roles swap (no seek), and
+  `_onTransitionHandoff` refills the window around the new head.
+- `services/transition/`: `transition_settings` (prefs), `fade_curves`,
+  `transition_planner` (pure), `transition_engine` (sleeps between songs; `poke()` wakes
+  it), `audio_service_decks` + `provider_hooks` (glue), `track_analysis` (value type),
+  `audio_analyzer` (pure-Dart DSP, isolate entry `analyzeInput`), `analysis_service`.
+- The incoming song never writes the shared cache file: `buildSource(cacheWrites: false)`.
+- `MusicProvider`: `transitions`, `transitionState`, `transitionContext()`,
+  `windowedTrack(id)`, `analysisService`, `_analysisSourceFor`. Lock-screen transport
+  goes through the same entry points as the on-screen buttons (`_bindMediaSession`).
+- Analyser: tempo = autocorrelation of onset strength with harmonic voting, kick band
+  weighted (`kickWeight`); confidence = agreement across 25 s stretches x pulse contrast;
+  absolute activity gate. Planner acts only above `minBeatConfidence` 0.55. See
+  the calibration notes in the plan, section 11, before touching any threshold.
+- Android-only analysis: `AudioDecoder.java` via `MethodChannel('mine_music/audio_decode')`.
+- Gotchas: `poke()` must stay asleep when idle (a pending timer fails widget tests);
+  `pumpAndSettle` never settles on `TransitionDiagram` while enabled (use `pump(Duration)`);
+  the queue's `LiquidGlassSegmented` thumb only highlights the FIRST active segment, which
+  is why the transition toggle is a chip, not a 4th segment.
+- NOT verified on a device: any audio behaviour, the decoder on real cache files, the
+  handoff, lock-screen controls. Checklist: plan section 11.
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
