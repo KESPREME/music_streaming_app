@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart' as svc;
+import 'services/playback/mine_audio_handler.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -93,11 +94,16 @@ void main() async {
   // The result was a cold start with a silently broken session and nothing on
   // screen to explain why nothing played.
   try {
-    // Initialize JustAudioBackground
-    await JustAudioBackground.init(
-      androidNotificationChannelId: 'com.example.music_streaming_app.channel.audio',
-      androidNotificationChannelName: 'Music Playback',
-      androidNotificationOngoing: true,
+    // The media session. One handler over however many decks the engine runs
+    // (a crossfade needs two; just_audio_background supports one).
+    MineAudioHandler.shared = await svc.AudioService.init(
+      builder: () => MineAudioHandler(),
+      config: const svc.AudioServiceConfig(
+        androidNotificationChannelId:
+            'com.example.music_streaming_app.channel.audio',
+        androidNotificationChannelName: 'Music Playback',
+        androidNotificationOngoing: true,
+      ),
     );
   } catch (e, s) {
     FlutterError.reportError(FlutterErrorDetails(

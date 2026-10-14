@@ -2,7 +2,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart' show MediaItem;
+import 'playback/decks.dart';
+import 'playback/mine_audio_handler.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -16,7 +18,11 @@ import 'dart:math';
 class AudioService {
   // FIX: Create equalizer first, then pass to audio pipeline
   late final AndroidEqualizer _equalizer;
-  late final AudioPlayer _audioPlayer;
+  /// The pair of decks. [_audioPlayer] is whichever one is the session deck
+  /// right now; every call below that said "the player" still means that one.
+  late final DeckPair _decks;
+  AudioPlayer get _audioPlayer => _decks.active;
+  late final bool _enableEqualizer;
   
   final NetworkService _networkService = NetworkService();
   bool _isInitialized = false;
@@ -93,17 +99,45 @@ class AudioService {
   // the incoming stream by identity — so an uncached getter makes every
   // position/duration StreamBuilder in the app (now playing x2, lyrics,
   // mini player, progress bar) cancel and re-subscribe on *every* rebuild.
-  late final Stream<Duration> onPositionChanged =
-      _audioPlayer.positionStream;
+  //
+  // They are relays (see decks.dart): stable streams that follow whichever deck
+  // is the session deck, so a crossfade handoff is invisible to every listener.
+  // Cached as fields for the reason above - a getter that built a new stream
+  // each call would resubscribe every StreamBuilder on every rebuild.
+  final DeckRelay<Duration> _positionRelay = DeckRelay<Duration>();
+  final DeckRelay<Duration?> _durationRelay = DeckRelay<Duration?>(replay: true);
+  final DeckRelay<bool> _playingRelay = DeckRelay<bool>(replay: true);
+  final DeckRelay<PlayerState> _stateRelay = DeckRelay<PlayerState>(replay: true);
+  final DeckRelay<ProcessingState> _processingRelay =
+      DeckRelay<ProcessingState>(replay: true);
+  final DeckRelay<double> _volumeRelay = DeckRelay<double>(replay: true);
+  final DeckRelay<int?> _indexRelay = DeckRelay<int?>(replay: true);
+  final DeckRelay<PlaybackEvent> _eventRelay = DeckRelay<PlaybackEvent>();
+
+  /// Points every relay at [p]. Called once at start and again at each handoff.
+  void _attachFeeds(AudioPlayer p) {
+    _positionRelay.follow(p.positionStream);
+    _durationRelay.follow(p.durationStream);
+    _playingRelay.follow(p.playingStream);
+    _stateRelay.follow(p.playerStateStream);
+    _processingRelay.follow(p.processingStateStream);
+    _volumeRelay.follow(p.volumeStream);
+    _indexRelay.follow(p.currentIndexStream);
+    _eventRelay.follow(p.playbackEventStream);
+  }
+
+  Stream<Duration> get onPositionChanged => _positionRelay.stream;
   late final Stream<Duration> onDurationChanged =
-      _audioPlayer.durationStream.map((duration) => duration ?? Duration.zero);
-  Stream<bool> get onPlaybackStateChanged => _audioPlayer.playingStream;
-  Stream<PlayerState> get playerStateStream => _audioPlayer.playerStateStream;
-  late final Stream<bool> onPlaybackComplete =
-      _audioPlayer.processingStateStream
-          .map((state) => state == ProcessingState.completed);
-  Stream<double> get onVolumeChanged => _audioPlayer.volumeStream;
-  double get volume => _audioPlayer.volume;
+      _durationRelay.stream.map((duration) => duration ?? Duration.zero);
+  late final Stream<bool> onPlaybackStateChanged = _playingRelay.stream;
+  late final Stream<PlayerState> playerStateStream = _stateRelay.stream;
+  late final Stream<bool> onPlaybackComplete = _processingRelay.stream
+      .map((state) => state == ProcessingState.completed);
+  late final Stream<double> onVolumeChanged = _volumeRelay.stream;
+
+  /// What the listener set. The decks' own volumes are this times a fade gain.
+  double _userVolume = 1.0;
+  double get volume => _userVolume;
 
   // --- A2.0 measurement baseline ---
   //
@@ -201,61 +235,65 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
   return effects;
 }
 
-AudioService({bool enableEqualizer = false}) {
-  // Initialize audio effects
-  _equalizer = AndroidEqualizer();
+  AudioService({bool enableEqualizer = false}) {
+    // Initialize audio effects
+    _equalizer = AndroidEqualizer();
+    _enableEqualizer = enableEqualizer;
+    _decks = DeckPair(_newPlayer);
+    _attachFeeds(_decks.active);
 
-  // Create audio player with effects pipeline
-  _audioPlayer = AudioPlayer(
-    audioPipeline: AudioPipeline(
-      androidAudioEffects:
-          _buildAndroidAudioEffects(enableEqualizer: enableEqualizer),
-    ),
-      // Hand sequencing to the player: it skips forward past a windowed track
-      // that fails to load instead of wedging playback. Two attempts is enough
-      // to ride out one flaky URL without silently skipping a whole queue.
-      maxSkipsOnError: 2,
-      // Offload decode to the low-power audio DSP. This is the single largest
-      // battery win available on Android, and the guards keep it from fighting
-      // the rest of the pipeline: gapless must still be possible (a device
-      // that cannot do gapless under offload will not engage it), and a speed
-      // or pitch change forces it back to the full decoder.
-      androidAudioOffloadPreferences: AndroidAudioOffloadPreferences(
-        audioOffloadMode: AndroidAudioOffloadMode.enabled,
-        isGaplessSupportRequired: true,
-        isSpeedChangeSupportRequired: false,
-      ),
-      // Prepare each windowed item just in time before it is reached. This is
-      // what makes the window seam-free; setting it false defeats the point.
-      useLazyPreparation: true,
-      audioLoadConfiguration: const AudioLoadConfiguration(
-         androidLoadControl: AndroidLoadControl(
-           minBufferDuration: Duration(milliseconds: 1000),
-           // Far beyond any single track. Latency comes from bytes being on
-           // disk before the track is reached, not from a smaller threshold,
-           // so the thresholds below stay aggressive. Duration is set past any
-           // song so the byte ceiling is the only binding constraint.
-           maxBufferDuration: Duration(minutes: 15),
-           bufferForPlaybackDuration: Duration(milliseconds: 200),
-           bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 800),
-           prioritizeTimeOverSizeThresholds: true,
-           // History only as far as the seek people actually make: nudging
-           // back a few seconds for a lyric. Wider than this and the back
-           // buffer competes with read-ahead for the same byte ceiling.
-           backBufferDuration: Duration(seconds: 30),
-         ),
-         darwinLoadControl: DarwinLoadControl(
-           preferredForwardBufferDuration: Duration(seconds: 15),
-           automaticallyWaitsToMinimizeStalling: false,
-         ),
-      ),
-    );
-    
     _initAudioSession();
     _monitorIndexChanges();
     _measureStartLatency();
     _emitWindowIndex();
+    _bindSession();
   }
+
+  /// One deck, configured the way the single player always was.
+  AudioPlayer _newPlayer() => AudioPlayer(
+        audioPipeline: AudioPipeline(
+          androidAudioEffects:
+              _buildAndroidAudioEffects(enableEqualizer: _enableEqualizer),
+        ),
+        // Hand sequencing to the player: it skips forward past a windowed track
+        // that fails to load instead of wedging playback. Two attempts is enough
+        // to ride out one flaky URL without silently skipping a whole queue.
+        maxSkipsOnError: 2,
+        // Offload decode to the low-power audio DSP. This is the single largest
+        // battery win available on Android, and the guards keep it from fighting
+        // the rest of the pipeline: gapless must still be possible (a device
+        // that cannot do gapless under offload will not engage it), and a speed
+        // or pitch change forces it back to the full decoder.
+        androidAudioOffloadPreferences: AndroidAudioOffloadPreferences(
+          audioOffloadMode: AndroidAudioOffloadMode.enabled,
+          isGaplessSupportRequired: true,
+          isSpeedChangeSupportRequired: false,
+        ),
+        // Prepare each windowed item just in time before it is reached. This is
+        // what makes the window seam-free; setting it false defeats the point.
+        useLazyPreparation: true,
+        audioLoadConfiguration: const AudioLoadConfiguration(
+          androidLoadControl: AndroidLoadControl(
+            minBufferDuration: Duration(milliseconds: 1000),
+            // Far beyond any single track. Latency comes from bytes being on
+            // disk before the track is reached, not from a smaller threshold,
+            // so the thresholds below stay aggressive. Duration is set past any
+            // song so the byte ceiling is the only binding constraint.
+            maxBufferDuration: Duration(minutes: 15),
+            bufferForPlaybackDuration: Duration(milliseconds: 200),
+            bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 800),
+            prioritizeTimeOverSizeThresholds: true,
+            // History only as far as the seek people actually make: nudging
+            // back a few seconds for a lyric. Wider than this and the back
+            // buffer competes with read-ahead for the same byte ceiling.
+            backBufferDuration: Duration(seconds: 30),
+          ),
+          darwinLoadControl: DarwinLoadControl(
+            preferredForwardBufferDuration: Duration(seconds: 15),
+            automaticallyWaitsToMinimizeStalling: false,
+          ),
+        ),
+      );
 
   /// The MediaItem id of whichever window entry the player is on, or null.
   ///
@@ -266,7 +304,7 @@ AudioService({bool enableEqualizer = false}) {
   Stream<String?> get windowIndexStream => _windowIndexController.stream;
 
   void _emitWindowIndex() {
-    _subscriptions.add(_audioPlayer.currentIndexStream.listen((index) {
+    _subscriptions.add(_indexRelay.stream.listen((index) {
       final seq = _audioPlayer.sequence;
       if (index == null || index < 0 || index >= seq.length) {
         _windowIndexController.add(null);
@@ -282,7 +320,7 @@ AudioService({bool enableEqualizer = false}) {
   /// Stops measuring once a non-zero position is seen for the current request,
   /// so a long track does not keep re-reporting the first second.
   void _measureStartLatency() {
-    _subscriptions.add(_audioPlayer.positionStream.listen((pos) {
+    _subscriptions.add(_positionRelay.stream.listen((pos) {
       final requestedAt = _playRequestedAtMs;
       if (requestedAt == null || _startLatencyMs != null) return;
       if (pos <= Duration.zero) return;
@@ -349,7 +387,7 @@ AudioService({bool enableEqualizer = false}) {
                 // Pause playback; remember whether WE were playing so we only
                 // resume what was actually playing before the interruption.
                 _wasPlayingBeforeInterruption = _audioPlayer.playing;
-                _audioPlayer.pause();
+                _pauseAllDecks();
                 break;
             }
           } else {
@@ -367,13 +405,13 @@ AudioService({bool enableEqualizer = false}) {
       _subscriptions.add(
         session.becomingNoisyEventStream.listen((_) {
           // Pause when headphones unplugged (standard behavior)
-          _audioPlayer.pause();
+          _pauseAllDecks();
         }),
       );
 
       // Set up error handling
       _subscriptions.add(
-        _audioPlayer.playbackEventStream.listen(
+        _eventRelay.stream.listen(
           (event) {},
           onError: (Object e, StackTrace st) {
             debugPrint('Audio player error: $e');
@@ -458,11 +496,14 @@ AudioService({bool enableEqualizer = false}) {
     String? artist,
     String? artUri,
     String? id,
+    bool cacheWrites = true,
   }) async {
     if (url == null || url.isEmpty) return null;
 
     // A warmed connection for this exact URL wins, and is consumed once.
-    final preloaded = takePreloaded(url);
+    // (Not for a transition's incoming deck: that source must never write the
+    // cache file another deck may be filling for the same song.)
+    final preloaded = cacheWrites ? takePreloaded(url) : null;
     if (preloaded != null) {
       return _retag(preloaded,
           id: id, url: url, title: title, artist: artist, artUri: artUri);
@@ -513,6 +554,16 @@ AudioService({bool enableEqualizer = false}) {
         final cacheFile = File('${dir.path}/audio_$sanitizedId.m4a');
         if (await cacheFile.exists() && (await cacheFile.length()) > 100000) {
           return AudioSource.file(cacheFile.path, tag: tag);
+        }
+        // The incoming deck of a transition plays straight from the network when
+        // the song is not fully cached: a second LockCachingAudioSource on the
+        // same cache file, in a second player, would have two writers.
+        if (!cacheWrites) {
+          return AudioSource.uri(
+            uri,
+            headers: resolvedHeaders.isNotEmpty ? resolvedHeaders : null,
+            tag: tag,
+          );
         }
         unawaited(_pruneAudioCacheIfNeeded());
         return LockCachingAudioSource(
@@ -589,9 +640,15 @@ AudioService({bool enableEqualizer = false}) {
     }
     await _initAudioSession();
 
+    // A new window ends any transition in flight: both decks, gains restored.
+    beforeTransport?.call();
     if (_audioPlayer.playing) {
       await _audioPlayer.stop();
     }
+    await _decks.standbyIfAny?.stop();
+    _activeGain = 1.0;
+    _standbyGain = 0.0;
+    await _audioPlayer.setVolume(_userVolume);
 
     // Remembered so a network-failure retry can rebuild a correctly tagged
     // source: the media session casts every sequence tag to MediaItem without
@@ -619,6 +676,7 @@ AudioService({bool enableEqualizer = false}) {
     // them on setAudioSources.
     if (_speed != 1.0) await _audioPlayer.setSpeed(_speed);
     if (_pitch != 1.0) await setPitch(_pitch);
+    _publishQueue();
     // `play()` must not be awaited bare. Its future resolves when the player
     // reports playing, and that report can already have happened - or arrive
     // via a path the request is not listening on - while audio is genuinely
@@ -638,6 +696,8 @@ AudioService({bool enableEqualizer = false}) {
     if (sources.isEmpty) return;
     _windowTracks.addAll(List<String?>.filled(sources.length, null, growable: true));
     await _audioPlayer.addAudioSources(sources);
+    _publishQueue();
+    engineEvent?.call();
   }
 
   /// Inserts [source] at [index] in the live window without interrupting
@@ -652,6 +712,7 @@ AudioService({bool enableEqualizer = false}) {
     _windowTracks.insert(at, null);
     try {
       await _audioPlayer.insertAudioSource(at, source);
+      _publishQueue();
     } catch (e) {
       _windowTracks.removeAt(at);
       rethrow;
@@ -684,8 +745,15 @@ AudioService({bool enableEqualizer = false}) {
   /// stepping to the next item", which look identical from the outside.
   int get windowIndex => _audioPlayer.currentIndex ?? -1;
 
-  Future<void> seekToNextInWindow() => _audioPlayer.seekToNext();
-  Future<void> seekToPreviousInWindow() => _audioPlayer.seekToPrevious();
+  Future<void> seekToNextInWindow() {
+    beforeTransport?.call();
+    return _audioPlayer.seekToNext();
+  }
+
+  Future<void> seekToPreviousInWindow() {
+    beforeTransport?.call();
+    return _audioPlayer.seekToPrevious();
+  }
 
   /// Applies the app's repeat mode to the player.
   ///
@@ -708,6 +776,7 @@ AudioService({bool enableEqualizer = false}) {
 
   @override
   Future<void> seekTo(Duration position) async {
+    beforeTransport?.call();
     try {
       await _audioPlayer.seek(position);
     } catch (e) {
@@ -740,6 +809,8 @@ AudioService({bool enableEqualizer = false}) {
     _playRequestSeq++;
     try {
       await _audioPlayer.pause();
+      final standby = _decks.standbyIfAny;
+      if (standby != null && standby.playing) await standby.pause();
     } catch (e) {
       debugPrint('Error pausing audio: $e');
       throw Exception('Failed to pause audio: $e');
@@ -824,7 +895,11 @@ AudioService({bool enableEqualizer = false}) {
     try {
       _sourceEpoch++;
       cancelPendingRetry();
+      beforeTransport?.call();
       await _audioPlayer.stop();
+      await _decks.standbyIfAny?.stop();
+      _activeGain = 1.0;
+      _standbyGain = 0.0;
       _currentUrl = null;
       _currentFilePath = null;
       _isLocalFile = false;
@@ -836,8 +911,40 @@ AudioService({bool enableEqualizer = false}) {
     }
   }
 
+  bool _skipSilence = false;
+
+  /// Skips silent passages inside a song, on every deck.
+  Future<void> setSkipSilence(bool enabled) async {
+    _skipSilence = enabled;
+    try {
+      await _audioPlayer.setSkipSilenceEnabled(enabled);
+      final standby = _decks.standbyIfAny;
+      if (standby != null) await standby.setSkipSilenceEnabled(enabled);
+    } catch (e) {
+      if (kDebugMode) debugPrint('AudioService: skip silence unavailable: $e');
+    }
+  }
+
   Future<void> setVolume(double volume) async {
-    await _audioPlayer.setVolume(volume);
+    _userVolume = volume.clamp(0.0, 1.0);
+    await _applyGains();
+  }
+
+  double _activeGain = 1.0;
+  double _standbyGain = 0.0;
+
+  /// The deck volumes: what the listener set, times each deck's fade gain.
+  /// The only writer of deck volume, so a fade and the volume control can
+  /// never fight over it.
+  Future<void> _applyGains() async {
+    await _audioPlayer.setVolume(_userVolume * _activeGain);
+    final standby = _decks.standbyIfAny;
+    if (standby != null) await standby.setVolume(_userVolume * _standbyGain);
+  }
+
+  void _pauseAllDecks() {
+    _audioPlayer.pause();
+    _decks.standbyIfAny?.pause();
   }
 
   Future<void> setSpeed(double speed) async {
@@ -1067,14 +1174,14 @@ AudioService({bool enableEqualizer = false}) {
       // changes are ordinary playback, not navigation intents.
 
       // --- Error Handling Monitor ---
-      _subscriptions.add(_audioPlayer.playerStateStream.listen((state) {
+      _subscriptions.add(_stateRelay.stream.listen((state) {
         if (state.processingState == ProcessingState.idle) {
           // Idle usually happens after stop or reset, but check for error
         }
       }));
     
     // Listen for Player Exceptions explicitly
-    _subscriptions.add(_audioPlayer.playbackEventStream.listen((event) {}, 
+    _subscriptions.add(_eventRelay.stream.listen((event) {}, 
         onError: (Object e, StackTrace stackTrace) {
             debugPrint('AudioService: Playback Event Exception: $e');
             // Check for specific error substrings if possible
@@ -1085,6 +1192,246 @@ AudioService({bool enableEqualizer = false}) {
     }));
   }
 
+  // ── Session: what the lock screen, notification and headset see ───────────
+  //
+  // just_audio_background used to mirror the (single) player into the media
+  // session. With two decks that cannot work - it supports one player - so the
+  // mirror is ours, and it follows whichever deck is the session deck.
+
+  void _bindSession() {
+    void ignore(Object _) {}
+    _subscriptions.add(
+        _eventRelay.stream.listen((_) => _publishSession(), onError: ignore));
+    _subscriptions.add(
+        _stateRelay.stream.listen((_) => _publishSession(), onError: ignore));
+    _subscriptions.add(_indexRelay.stream.listen((_) {
+      _publishMedia();
+      _publishSession();
+      engineEvent?.call();
+    }, onError: ignore));
+    _subscriptions.add(
+        _playingRelay.stream.listen((_) => engineEvent?.call(), onError: ignore));
+    _subscriptions.add(
+        _durationRelay.stream.listen((_) => _publishMedia(), onError: ignore));
+  }
+
+  void _publishSession() {
+    final handler = MineAudioHandler.shared;
+    if (handler == null) return;
+    final p = _audioPlayer;
+    handler.publish(
+      playing: p.playing,
+      processing: p.processingState,
+      position: p.position,
+      buffered: p.bufferedPosition,
+      speed: p.speed,
+      queueIndex: p.currentIndex,
+    );
+  }
+
+  void _publishMedia() {
+    final handler = MineAudioHandler.shared;
+    if (handler == null) return;
+    final p = _audioPlayer;
+    final i = p.currentIndex;
+    final seq = p.sequence;
+    if (i == null || i < 0 || i >= seq.length) {
+      handler.publishMedia(null);
+      return;
+    }
+    final tag = seq[i].tag;
+    handler.publishMedia(tag is MediaItem ? tag.copyWith(duration: p.duration) : null);
+  }
+
+  void _publishQueue() {
+    final handler = MineAudioHandler.shared;
+    if (handler == null) return;
+    handler.publishQueue([
+      for (final s in _audioPlayer.sequence)
+        if (s.tag is MediaItem) s.tag as MediaItem,
+    ]);
+  }
+
+  // ── Decks: the surface the TransitionEngine drives ────────────────────────
+  //
+  // Everything a crossfade needs and nothing else. The standby deck carries the
+  // INCOMING track only (see decks.dart); the engine decides when and how.
+
+  /// Called BEFORE anything the listener does to what is playing (a seek, a
+  /// skip, a new window, a stop), so a transition in flight is abandoned with a
+  /// short ramp rather than finished against nothing.
+  VoidCallback? beforeTransport;
+
+  /// Something the engine plans around changed: play/pause, the track, the
+  /// window. The engine sleeps between songs and wakes on this.
+  VoidCallback? engineEvent;
+
+  Duration? get activeDuration => _audioPlayer.duration;
+  Duration get activePosition => _audioPlayer.position;
+  bool get activePlaying => _audioPlayer.playing;
+
+  /// The tag id of the session deck's current item, or null.
+  String? get currentWindowId {
+    final i = _audioPlayer.currentIndex;
+    final seq = _audioPlayer.sequence;
+    if (i == null || i < 0 || i >= seq.length) return null;
+    final tag = seq[i].tag;
+    return tag is MediaItem ? tag.id : null;
+  }
+
+  Duration get standbyPosition => _decks.standbyIfAny?.position ?? Duration.zero;
+  bool get standbyPlaying => _decks.standbyIfAny?.playing ?? false;
+  ProcessingState get standbyProcessing =>
+      _decks.standbyIfAny?.processingState ?? ProcessingState.idle;
+
+  /// Loads [source] on the standby deck, silent and paused, cued at [cue].
+  ///
+  /// [rate] is a tempo stretch for beat matching, applied on top of the
+  /// listener's own speed. The cue is reached by STARTING there rather than by
+  /// seeking, so there is no discontinuity to hide.
+  Future<void> prepareStandby(
+    IndexedAudioSource source, {
+    Duration cue = Duration.zero,
+    double rate = 1.0,
+  }) async {
+    await _initAudioSession();
+    final deck = _decks.standby;
+    try {
+      await deck.stop();
+    } catch (_) {}
+    _standbyGain = 0.0;
+    await deck.setVolume(0.0);
+    await deck.setAudioSources([source], initialIndex: 0, initialPosition: cue);
+    final speed = _speed * rate;
+    if ((deck.speed - speed).abs() > 1e-4) await deck.setSpeed(speed);
+    if (_pitch != 1.0) {
+      try {
+        await deck.setPitch(_pitch);
+      } catch (_) {}
+    }
+    if (_skipSilence) {
+      try {
+        await deck.setSkipSilenceEnabled(true);
+      } catch (_) {}
+    }
+    // Same sequencing mode as the session deck, so the one-item window the
+    // handoff leaves behind extends the way the old one did.
+    final loop = _audioPlayer.loopMode;
+    if (deck.loopMode != loop) await deck.setLoopMode(loop);
+  }
+
+  /// Starts the (already prepared, silent) standby deck.
+  void playStandby() {
+    _decks.standbyIfAny?.play().catchError((Object _) {});
+  }
+
+  /// Sets the two fade gains. 1.0 / 0.0 is "not mixing".
+  void setDeckGains({required double active, required double standby}) {
+    _activeGain = active.clamp(0.0, 1.0);
+    _standbyGain = standby.clamp(0.0, 1.0);
+    _applyGains().catchError((Object _) {});
+  }
+
+  /// Keeps the standby deck agreeing with the session deck about playing vs
+  /// paused during a mix, so a pause (focus loss, the sleep timer, the button)
+  /// takes both with it. The session deck is the one the listener controls:
+  /// before the handoff it is the outgoing song, after it the incoming one, and
+  /// the OTHER deck follows it either way.
+  void mirrorDecks() {
+    final standby = _decks.standbyIfAny;
+    if (standby == null) return;
+    final active = _audioPlayer;
+    if (active.playing != standby.playing) {
+      (active.playing ? standby.play() : standby.pause())
+          .catchError((Object _) {});
+    }
+  }
+
+  /// Makes the standby deck the session deck.
+  ///
+  /// A role swap, not a seek: nothing is re-buffered and no audio is rendered
+  /// twice. The relays move to the new deck, so the rest of the app sees one
+  /// continuous player whose item has changed - which is exactly what an
+  /// ordinary gapless advance looks like to it.
+  Future<void> swapDecks() async {
+    final incoming = _decks.standbyIfAny;
+    if (incoming == null) return;
+    final head = incoming.sequence.isEmpty ? null : incoming.sequence.first;
+
+    // The old head's retry loop must not wake up and reload the track that just
+    // ended.
+    _sourceEpoch++;
+    cancelPendingRetry();
+
+    _decks.swap();
+    final g = _activeGain;
+    _activeGain = _standbyGain;
+    _standbyGain = g;
+
+    _windowTracks = <String?>[null];
+    _adoptHead(head);
+    // Sequencing modes follow the listener, not the deck.
+    final old = _decks.standbyIfAny;
+    if (old != null && _audioPlayer.shuffleModeEnabled != old.shuffleModeEnabled) {
+      await _audioPlayer.setShuffleModeEnabled(old.shuffleModeEnabled);
+    }
+    _attachFeeds(_decks.active);
+    _publishMedia();
+    _publishQueue();
+    _publishSession();
+  }
+
+  /// Bookkeeping that tracks "the head": what a network retry would reload.
+  void _adoptHead(IndexedAudioSource? head) {
+    final tag = head?.tag;
+    Uri? uri;
+    if (head is UriAudioSource) {
+      uri = head.uri;
+    // ignore: experimental_member_use
+    } else if (head is LockCachingAudioSource) {
+      uri = head.uri;
+    }
+    _currentUrl = uri == null ? null : (uri.scheme == 'file' ? uri.toFilePath() : uri.toString());
+    _isLocalFile = uri != null && uri.scheme == 'file';
+    if (tag is MediaItem) {
+      _lastTitle = tag.title;
+      _lastArtist = tag.artist;
+      _lastArtUri = tag.artUri?.toString();
+      _lastId = tag.id;
+    }
+  }
+
+  /// Ends the standby deck's part: silence it, release its decoder, and give
+  /// the next transition a clean deck.
+  Future<void> retireStandby() async {
+    final deck = _decks.standbyIfAny;
+    if (deck == null) return;
+    _standbyGain = 0.0;
+    try {
+      await deck.setVolume(0.0);
+      await deck.stop();
+    } catch (_) {}
+    await _applyGains();
+  }
+
+  /// Puts the session deck back to plain playback after a mix: full gain, and
+  /// the listener's own speed (a beat-matched stretch is walked back).
+  Future<void> settleActive() async {
+    _activeGain = 1.0;
+    await _applyGains();
+    if ((_audioPlayer.speed - _speed).abs() > 1e-4) {
+      await _audioPlayer.setSpeed(_speed);
+    }
+  }
+
+  /// Sets the session deck's speed relative to the listener's own (1.0 = theirs).
+  Future<void> setActiveRate(double rate) async {
+    final target = _speed * rate;
+    if ((_audioPlayer.speed - target).abs() > 1e-4) {
+      await _audioPlayer.setSpeed(target);
+    }
+  }
+
   void dispose() {
     // FIX: Cancel all subscriptions before disposing
     for (final sub in _subscriptions) {
@@ -1092,7 +1439,19 @@ AudioService({bool enableEqualizer = false}) {
     }
     _subscriptions.clear();
     
-    _audioPlayer.dispose();
+    _decks.dispose();
+    for (final relay in <DeckRelay<dynamic>>[
+      _positionRelay,
+      _durationRelay,
+      _playingRelay,
+      _stateRelay,
+      _processingRelay,
+      _volumeRelay,
+      _indexRelay,
+      _eventRelay,
+    ]) {
+      relay.dispose();
+    }
     _onSkipToNextController.close();
     _onSkipToPreviousController.close();
     _onPlaybackErrorController.close();

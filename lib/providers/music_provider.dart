@@ -36,6 +36,11 @@ import '../services/innertube/innertube_service.dart';
 import '../services/auth_service.dart';
 import '../services/stream_resolution_service.dart';
 import '../services/window_filler.dart';
+import '../services/playback/mine_audio_handler.dart';
+import '../services/transition/audio_service_decks.dart';
+import '../services/transition/provider_hooks.dart';
+import '../services/transition/transition_engine.dart';
+import '../services/transition/transition_settings.dart';
 import '../services/downloads/download_manager.dart';
 import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
@@ -1393,8 +1398,10 @@ for (final track in releases)
   MusicProvider({
     AccentController? accentController,
     @visibleForTesting LyricsService? lyricsService,
+    @visibleForTesting TransitionSettings? transitionSettings,
   })  : _accentController = accentController,
-        _lyricsService = lyricsService ?? LyricsService() {
+        _lyricsService = lyricsService ?? LyricsService(),
+        transitionSettings = transitionSettings ?? TransitionSettings.shared {
     _paletteService.clearAlbumAccentOnEmptyArt = () {
       _accentController?.setAlbumAccent(null);
     };
@@ -1403,7 +1410,133 @@ for (final track in releases)
     _downloads.addListener(notifyListeners);
     // Attach auth-flip session reset (owned handle; detached in dispose).
     _authSessionReset;
+    _bindMediaSession();
+    _bindTransitions();
     _initialize();
+  }
+
+  // ── Song transitions (crossfade / AutoMix) ────────────────────────────────
+
+  /// What the listener chose. Shared with the settings screens.
+  final TransitionSettings transitionSettings;
+
+  /// Performs transitions on the two decks. See transition_engine.dart.
+  late final TransitionEngine transitions = TransitionEngine(
+    decks: AudioServiceDecks(_audioService),
+    hooks: ProviderTransitionHooks(
+      contextOf: transitionContext,
+      stopAfter: () => _stopAfterCurrentTrack,
+      build: _incomingSourceFor,
+      handoff: _onTransitionHandoff,
+      settled: (completed) {},
+      sleepDone: _onSleepFadeDone,
+      analysis: (id, durationMs) => null,
+    ),
+    settings: transitionSettings,
+  );
+
+  /// What the UI moves to: the same progress number that drives the audio.
+  ValueListenable<TransitionUiState> get transitionState => transitions.ui;
+
+  void _bindTransitions() {
+    _audioService.beforeTransport = transitions.bail;
+    _audioService.engineEvent = transitions.poke;
+    transitionSettings.addListener(_applyTransitionPrefs);
+    unawaited(() async {
+      try {
+        await transitionSettings.load();
+      } catch (_) {
+        // No preference store (a bare unit test): defaults stand.
+      }
+      _applyTransitionPrefs();
+    }());
+  }
+
+  void _applyTransitionPrefs() {
+    if (_disposed) return;
+    unawaited(_audioService.setSkipSilence(transitionSettings.skipSilence));
+  }
+
+  /// The pair about to join, as the transition engine sees it: what plays now
+  /// and what the player window holds next. Null when nothing follows yet.
+  TransitionContext? transitionContext() {
+    final current = _currentTrack;
+    if (current == null) return null;
+    final currentId = _audioService.currentWindowId;
+    final nextId = _audioService.nextWindowTrackId;
+    if (currentId == null || nextId == null || nextId == currentId) return null;
+    final next = _windowedTracks[nextId];
+    if (next == null) return null;
+    return TransitionContext(
+      currentId: currentId,
+      nextId: nextId,
+      nextDurationMs: next.durationMs ?? 0,
+      albumSequential: _isAlbumSequential(current, next),
+      repeatOne: _repeatMode == RepeatMode.one,
+      casting: _isCasting,
+    );
+  }
+
+  /// Consecutive tracks of one album, played in order from that album.
+  bool _isAlbumSequential(Track a, Track b) {
+    if (!_isRealCuratedPlaylist) return false;
+    final idA = a.albumId;
+    if (idA != null && idA.isNotEmpty && idA == b.albumId) return true;
+    final nameA = a.albumName.trim().toLowerCase();
+    return nameA.isNotEmpty &&
+        nameA != 'unknown album' &&
+        nameA == b.albumName.trim().toLowerCase();
+  }
+
+  Future<IndexedAudioSource?> _incomingSourceFor(String trackId) {
+    final track = _windowedTracks[trackId];
+    if (track == null) return Future<IndexedAudioSource?>.value(null);
+    return _sourceForTrack(track, forTransition: true);
+  }
+
+  /// The session moved to the incoming song halfway through a mix. The new deck
+  /// holds only that song, so give it back a window and a previous track.
+  void _onTransitionHandoff(String incomingId) {
+    Future<void>.delayed(const Duration(milliseconds: 150), () {
+      final head = _currentTrack;
+      if (_disposed || head == null) return;
+      unawaited(_fillWindowAround(head));
+    });
+  }
+
+  void _onSleepFadeDone() {
+    _stopAfterCurrentTrack = false;
+    unawaited(stopTrack());
+    notifyListeners();
+  }
+
+  /// Routes the system's transport commands (notification, lock screen,
+  /// headset, Bluetooth, Android Auto) through the same entry points the
+  /// on-screen buttons use, so a lock-screen "next" is the SAME skip: queue
+  /// consumed, generation bumped, any crossfade in flight abandoned.
+  ///
+  /// just_audio_background used to seek the player directly, which bypassed all
+  /// of that.
+  void _bindMediaSession() {
+    final handler = MineAudioHandler.shared;
+    if (handler == null) return;
+    handler.onPlay = () => resumeTrack();
+    handler.onPause = () => pauseTrack();
+    handler.onStop = () => stopTrack();
+    handler.onSkipToNext = () => skipToNext();
+    handler.onSkipToPrevious = () => skipToPrevious();
+    handler.onSeek = (position) => seekTo(position);
+  }
+
+  void _unbindMediaSession() {
+    final handler = MineAudioHandler.shared;
+    if (handler == null) return;
+    handler.onPlay = null;
+    handler.onPause = null;
+    handler.onStop = null;
+    handler.onSkipToNext = null;
+    handler.onSkipToPrevious = null;
+    handler.onSeek = null;
   }
 
   /// Session reset handle for YouTube login/logout flips (owned).
@@ -2659,7 +2792,8 @@ for (final track in releases)
     }
   }
 
-  Future<IndexedAudioSource?> _sourceForTrack(Track t) async {
+  Future<IndexedAudioSource?> _sourceForTrack(Track t,
+      {bool forTransition = false}) async {
     _rememberWindowedTrack(t);
     try {
       if (t.source == 'local' || await isTrackDownloaded(t.id)) {
@@ -2672,6 +2806,7 @@ for (final track in releases)
           artist: t.artistName,
           artUri: t.albumArtUrl,
           id: t.id,
+          cacheWrites: !forTransition,
         );
       }
       final r = await _streamResolution.resolve(ResolveRequest(
@@ -2688,6 +2823,7 @@ for (final track in releases)
         artist: t.artistName,
         artUri: t.albumArtUrl,
         id: t.id,
+        cacheWrites: !forTransition,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('MusicProvider: window track ${t.id} failed: $e');
@@ -2802,6 +2938,19 @@ for (final track in releases)
       return;
     }
     if (next.id == _currentTrack?.id) return;
+
+    // "Stop after this track" is honoured HERE, at the signal that a song has
+    // really ended. It used to be checked only on paths a windowed player never
+    // takes, so it never fired. Only a natural end counts: a listener skipping
+    // ahead is not the song finishing.
+    if (_stopAfterCurrentTrack &&
+        _duration > Duration.zero &&
+        _position >= _duration - const Duration(seconds: 3)) {
+      _stopAfterCurrentTrack = false;
+      unawaited(stopTrack());
+      notifyListeners();
+      return;
+    }
 
 // Observe, never invalidate.
     //
@@ -6003,10 +6152,16 @@ for (final track in releases)
 
   void setSleepTimer(int minutes) {
     _sleepTimer?.cancel();
+    transitions.cancelSleepFade();
     if (minutes > 0) {
       _sleepTimer = Timer(Duration(minutes: minutes), () {
-        stopTrack();
-        notifyListeners();
+        // Fade out instead of cutting, when the listener allows it.
+        if (transitionSettings.sleepFade && _isPlaying && !_isCasting) {
+          transitions.fadeOutNow();
+        } else {
+          stopTrack();
+          notifyListeners();
+        }
       });
       _errorMessage = "Sleep timer set for $minutes minutes.";
     } else if (minutes == 0) {
@@ -6018,6 +6173,7 @@ for (final track in releases)
       // Let's implement _stopAfterCurrentTrack logic.
       _stopAfterCurrentTrack = true;
       _errorMessage = "Playback will stop after this track.";
+      transitions.poke(); // it fades the song out as it ends
     } else {
       _errorMessage = "Sleep timer cancelled.";
     }
@@ -6068,6 +6224,11 @@ for (final track in releases)
     debugPrint('MusicProvider: Disposing...');
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this); // Stop lifecycle updates
+    _unbindMediaSession();
+    transitionSettings.removeListener(_applyTransitionPrefs);
+    _audioService.beforeTransport = null;
+    _audioService.engineEvent = null;
+    transitions.dispose();
     _authSessionReset.dispose();
     _paletteService.removeListener(_paletteNotified);
 

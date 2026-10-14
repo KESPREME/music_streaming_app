@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart' show MediaItem;
 import 'package:music_streaming_app/services/audio_service.dart';
 
 /// Guards for the player-window rework (Phase A).
