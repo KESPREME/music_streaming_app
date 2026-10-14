@@ -16,6 +16,7 @@ import '../services/audio_output_service.dart';
 import '../services/canvas_video_manager.dart';
 import '../utils/app_image_cache.dart';
 import '../widgets/artist_picker_sheet.dart';
+import '../widgets/blurred_backdrop.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/apple_player_icons.dart';
@@ -763,6 +764,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final palette = data.palette;
         final accentColor =
             ColorUtils.getVibrantAccent(palette, _defaultPrimaryColor);
+        final backdropImage = _backdropProviderFor(currentTrack);
         final isPlaying = data.isPlaying;
         final mq = MediaQuery.of(context);
         final statusBarHeight = mq.padding.top;
@@ -803,28 +805,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       children: [
                         // Base still album art blur.
                         //
-                        // The real blur is back: replacing it with a tiny
-                        // decode + upscale was cheaper on paper but visibly
-                        // degraded the wash, and it bought almost nothing —
-                        // this subtree sits inside its own RepaintBoundary, so
-                        // the blur rasterises once and is not what was costing
-                        // the morph its frames.
-                        if (currentTrack.albumArtUrl.isNotEmpty)
-                          Transform.scale(
+                        // Baked once per track (see blurred_backdrop.dart) and
+                        // drawn as one image. The live `ImageFiltered(blur 60)`
+                        // this replaces looked identical but was re-blurred on
+                        // the GPU every frame: the RepaintBoundary around it
+                        // saves Dart repaint work, and Impeller has no raster
+                        // cache to save the blur itself. The bake runs the same
+                        // cover-fit, blur and 1.6x scale about the top centre;
+                        // test/blurred_backdrop_test.dart compares them.
+                        if (backdropImage != null)
+                          BlurredBackdrop(
+                            image: backdropImage,
+                            sigma: 60,
                             scale: 1.6,
                             alignment: Alignment.topCenter,
-                            child: ImageFiltered(
-                              imageFilter: ImageFilter.blur(
-                                sigmaX: 60,
-                                sigmaY: 60,
-                              ),
-                              child: SizedBox.expand(
-                                child: _buildAlbumArtImage(
-                                  currentTrack,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
                           )
                         else
                           const ColoredBox(color: Color(0xFF101010)),
@@ -1556,7 +1550,11 @@ child: Transform.scale(
     MusicProvider provider, {
     Color? accentColor,
   }) {
-    return StreamBuilder<Duration>(
+    // Its own layer: the position ticks about five times a second, and without
+    // a boundary each tick re-records everything in the player card's layer
+    // around it (scrims, the page view, the whole deck) for a 12dp slider.
+    return RepaintBoundary(
+      child: StreamBuilder<Duration>(
       stream: provider.positionStream,
       initialData: provider.position,
       builder: (context, snapshot) {
@@ -1616,19 +1614,11 @@ child: Transform.scale(
                     _formatTime(_draggedPositionSec != null
                         ? Duration(milliseconds: _draggedPositionSec!.toInt())
                         : pos),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: _scrubberTimeStyle,
                   ),
                   Text(
                     '-${_formatTime(remaining)}',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: _scrubberTimeStyle,
                   ),
                 ],
               ),
@@ -1636,8 +1626,32 @@ child: Transform.scale(
           ],
         );
       },
+    ),
     );
   }
+
+  String? _backdropArtKey;
+  ImageProvider? _backdropProvider;
+
+  /// The provider the blurred wash is made from, remembered per artwork so a
+  /// rebuild neither re-checks the disk nor hands the wash a new provider.
+  ImageProvider? _backdropProviderFor(Track track) {
+    final key = track.albumArtUrl;
+    if (key.isEmpty) return null;
+    if (key != _backdropArtKey) {
+      _backdropArtKey = key;
+      _backdropProvider = backdropArtProvider(key);
+    }
+    return _backdropProvider;
+  }
+
+  /// Built once. The scrubber rebuilds with every position tick, and a font
+  /// lookup per label per tick is allocation for no change.
+  static final TextStyle _scrubberTimeStyle = GoogleFonts.plusJakartaSans(
+    color: Colors.white.withValues(alpha: 0.55),
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+  );
 
   // ── Transport Controls (Previous, Play/Pause, Next) (Image 1) ───────────
 

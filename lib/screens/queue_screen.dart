@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
+import '../widgets/blurred_backdrop.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/glass_options_sheet.dart';
 import '../widgets/animated_equalizer_icon.dart';
@@ -67,23 +67,17 @@ class QueueScreen extends StatelessWidget {
             const Positioned.fill(
               child: ColoredBox(color: Color(0xFF08080A)),
             ),
-            if (currentTrack != null && currentTrack.albumArtUrl.isNotEmpty)
+            if (currentTrack != null &&
+                currentTrack.albumArtUrl.isNotEmpty &&
+                backdropArtProvider(currentTrack.albumArtUrl) != null)
               Positioned.fill(
-                child: RepaintBoundary(
-                  child: ClipRect(
-                    child: Transform.scale(
-                      scale: 1.25,
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(
-                          sigmaX: 65,
-                          sigmaY: 65,
-                        ),
-                        child: SizedBox.expand(
-                          child: _buildAlbumArtImage(currentTrack),
-                        ),
-                      ),
-                    ),
-                  ),
+                // Baked once per track and drawn as one image - the same
+                // cover-fit, blur 65 and 1.25x scale, without re-blurring the
+                // screen on the GPU every frame. See blurred_backdrop.dart.
+                child: BlurredBackdrop(
+                  image: backdropArtProvider(currentTrack.albumArtUrl)!,
+                  sigma: 65,
+                  scale: 1.25,
                 ),
               ),
             Positioned.fill(
@@ -1106,7 +1100,15 @@ child: Column(
     final art = ImageQualityUtils.getHighResArtwork(rawArt);
     if (!art.contains('://')) {
       final f = File(art);
-      if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
+      // Decoded at the row's size: a 48dp thumbnail does not need the file's
+      // full resolution in memory.
+      if (f.existsSync()) {
+        return Image.file(
+          f,
+          fit: BoxFit.cover,
+          cacheWidth: AppImageCache.thumbnailMemCache,
+        );
+      }
     }
     return CachedNetworkImage(
       imageUrl: art,
