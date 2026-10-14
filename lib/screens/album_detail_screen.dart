@@ -13,6 +13,7 @@ import '../services/innertube/innertube_service.dart';
 import '../utils/app_image_cache.dart';
 import '../utils/artwork_palette_resolver.dart';
 import '../utils/image_quality_utils.dart';
+import '../widgets/covered_gate.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
 import '../widgets/themed_options_sheet.dart';
@@ -98,6 +99,21 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     });
   }
 
+  /// The open player is covering this page. The looping canvas keeps no decoder
+  /// running for a header nobody can see.
+  bool _playerCovers = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final covered = CoveredScope.of(context);
+    if (covered == _playerCovers) return;
+    _playerCovers = covered;
+    final c = _albumVideoController;
+    if (c == null || !c.value.isInitialized) return;
+    (covered ? c.pause() : c.play()).ignore();
+  }
+
   @override
   void dispose() {
     _albumVideoController?.dispose();
@@ -155,7 +171,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       }
       await c.setVolume(0.0);
       await c.setLooping(true);
-      await c.play();
+      if (!_playerCovers) await c.play();
 
       final old = _albumVideoController;
       if (mounted) {

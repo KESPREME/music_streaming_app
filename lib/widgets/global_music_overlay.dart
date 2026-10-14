@@ -14,6 +14,7 @@ import '../theme/glass_tokens.dart';
 import '../utils/app_image_cache.dart';
 import '../utils/color_utils.dart';
 import '../utils/image_quality_utils.dart';
+import '../widgets/covered_gate.dart';
 import '../widgets/material_you_playback_bar.dart';
 import '../widgets/mini_player.dart';
 
@@ -103,6 +104,10 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   /// instead of one per notification.
   bool _routeSyncScheduled = false;
 
+  /// True while the open player is sitting still on top of the page, so nothing
+  /// under it is worth drawing. See [CoveredGate] and [PanelCover].
+  late final PanelCover _cover;
+
   /// Where the current flight is headed, or null when at rest.
   ///
   /// This is what makes a mid-flight reversal safe. The previous version tracked
@@ -171,6 +176,10 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     // open or close, and cannot be lost to a narrowing of the render listen.
     provider.addListener(_onProviderIntentChanged);
 
+    // Cover/uncover follows the card itself rather than the provider's intent
+    // (see [PanelCover]); created here so it is listening from the first frame.
+    _cover = PanelCover(_panelController, isFrozen: () => MorphFreeze.enabled);
+
     // The harness parks the flight so a frame can be captured and compared.
     // Applied after the listener so the provider still learns the state.
     final pinned = MorphFreeze.pinned;
@@ -199,6 +208,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     // listener left attached would keep this State reachable and fire against a
     // disposed controller.
     _provider.removeListener(_onProviderIntentChanged);
+    _cover.dispose();
     _panelController.dispose();
     super.dispose();
   }
@@ -305,6 +315,8 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
           _desiredTarget = null;
           PerfTrace.summary(label);
         });
+    // The flight is live from here: uncover now, not on its first tick.
+    _cover.sync();
   }
 
   // --- Build -----------------------------------------------------------------
@@ -336,7 +348,9 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
           final pageHeight = page.maxHeight;
           final player = _buildPlayerNavigator(gate.track);
 
-          return Stack(
+          return CoveredScope(
+            covered: _cover,
+            child: Stack(
             children: [
               // The page in its own repaint boundary. Not an optimisation, a
               // requirement: the scrim's alpha changes every frame, and without
@@ -346,7 +360,15 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
               // 41 of 41 frames over budget, against 3.45ms and 4 of 35 with
               // it. The page's own raster is content-driven and almost never
               // needs redoing; this is what lets it prove that.
-              RepaintBoundary(child: widget.child),
+              //
+              // Behind a [CoveredGate]: once the player is open and still, the
+              // page under its opaque card is neither painted nor animated.
+              // Impeller has no raster cache, so "retained" layers still cost a
+              // replay per frame; skipping them is the only way they are free.
+              CoveredGate(
+                covered: _cover,
+                child: RepaintBoundary(child: widget.child),
+              ),
 
               // The mini pill. Deliberately *outside* the animated subtree and
               // carrying no animation of its own.
@@ -404,6 +426,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                   },
                 ),
             ],
+            ),
           );
         },
       ),
@@ -469,7 +492,9 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
       left: 0,
       right: 0,
       bottom: 0,
-      child: ValueListenableBuilder<bool>(
+      child: CoveredGate(
+        covered: _cover,
+        child: ValueListenableBuilder<bool>(
         valueListenable: AppRouteObserver.instance.isAtRoot,
         builder: (context, isAtRoot, _) {
           // On MainScreen the nav bar hosts the pill as its bottom accessory; a
@@ -508,6 +533,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
             ),
           );
         },
+        ),
       ),
     );
   }

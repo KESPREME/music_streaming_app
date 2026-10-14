@@ -11,6 +11,7 @@ import '../providers/music_provider.dart';
 import '../screens/themed_now_playing_screen.dart';
 import '../utils/color_utils.dart';
 import '../utils/app_image_cache.dart';
+import 'covered_gate.dart';
 
 /// Floating liquid-glass mini player matching Muzo sizing (Image 2)
 /// with Previous, Play/Pause, Next inline controls and soft dynamic
@@ -31,6 +32,58 @@ class MiniPlayer extends StatelessWidget {
 
         return RepaintBoundary(
           child: _PillBody(musicProvider: musicProvider, onExpand: onExpand),
+        );
+      },
+    );
+  }
+}
+
+/// The pill's hairline progress bar.
+///
+/// Its own widget so the cover flag (see [CoveredScope]) rebuilds this and
+/// nothing else. While the open player sits on top, the pill is not drawn, and
+/// listening to the position would rebuild a bar nobody can see five times a
+/// second; unsubscribing keeps the last value, and it catches up on the first
+/// reading after the pill is uncovered.
+class _PillProgress extends StatelessWidget {
+  const _PillProgress({
+    required this.musicProvider,
+    required this.accent,
+    required this.radius,
+  });
+
+  final MusicProvider musicProvider;
+  final Color accent;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final covered = CoveredScope.of(context);
+    return StreamBuilder<Duration>(
+      stream: covered ? null : musicProvider.positionStream,
+      initialData: musicProvider.position,
+      builder: (context, snapshot) {
+        final position = snapshot.data ?? Duration.zero;
+        final duration = musicProvider.duration;
+        double progress = 0.0;
+        if (duration.inSeconds > 0) {
+          progress = (position.inSeconds / duration.inSeconds).clamp(0.0, 1.0);
+        }
+
+        return SizedBox(
+          height: 2,
+          child: ClipRRect(
+            borderRadius: BorderRadius.vertical(
+              bottom: Radius.circular(radius),
+            ),
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.white.withValues(alpha: 0.07),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Color.lerp(Colors.white, accent, 0.75)!,
+              ),
+            ),
+          ),
         );
       },
     );
@@ -237,42 +290,10 @@ class _PillBody extends StatelessWidget {
                               // Thin bottom progress bar (only in expanded mode)
                               if (!isInline)
                                 RepaintBoundary(
-                                  child: StreamBuilder<Duration>(
-                                    stream: musicProvider.positionStream,
-                                    builder: (context, snapshot) {
-                                      final position =
-                                          snapshot.data ?? Duration.zero;
-                                      final duration = musicProvider.duration;
-                                      double progress = 0.0;
-                                      if (duration.inSeconds > 0) {
-                                        progress = (position.inSeconds /
-                                                duration.inSeconds)
-                                            .clamp(0.0, 1.0);
-                                      }
-
-                                      return SizedBox(
-                                        height: 2,
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              const BorderRadius.vertical(
-                                            bottom: Radius.circular(pillRadius),
-                                          ),
-                                          child: LinearProgressIndicator(
-                                            value: progress,
-                                            backgroundColor: Colors.white
-                                                .withValues(alpha: 0.07),
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                              Color.lerp(
-                                                Colors.white,
-                                                activeVibrant,
-                                                0.75,
-                                              )!,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                  child: _PillProgress(
+                                    musicProvider: musicProvider,
+                                    accent: activeVibrant,
+                                    radius: pillRadius,
                                   ),
                                 ),
                             ],

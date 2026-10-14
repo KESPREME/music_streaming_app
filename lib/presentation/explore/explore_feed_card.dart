@@ -13,6 +13,7 @@ import '../../services/canvas_resolution_service.dart';
 import '../../services/explore/explore_engine.dart';
 import '../../services/explore/explore_palette.dart';
 import '../../utils/app_image_cache.dart';
+import '../../widgets/covered_gate.dart';
 
 /// Full-screen discovery card representing a song in the vertical feed.
 /// Features full-bleed blurred album art background or video canvas loop,
@@ -154,7 +155,11 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   Widget build(BuildContext context) {
     final track = widget.item.track;
     final accent = widget.palette.accent;
-    final activePlaying = _isVisuallyActive && widget.isPlaying;
+    // The open player covers this feed: its canvas video would decode into a
+    // card nobody can see (and, on Impeller, force a redraw per video frame).
+    // The decoder is released the same way a scrolled-off card's is.
+    final covered = CoveredScope.of(context);
+    final activePlaying = _isVisuallyActive && widget.isPlaying && !covered;
     final hasCanvas = _isVisuallyActive && (_canvasUrl != null && _canvasUrl!.isNotEmpty) && !_isTesting;
 
     return Container(
