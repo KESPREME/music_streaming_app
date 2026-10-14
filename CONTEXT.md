@@ -560,6 +560,51 @@ its `YouTubeProfile` channels.
 
 ---
 
+## PLAYER HEAT / BATTERY (perf plan, docs/PLAN-perf-battery.md)
+
+Root cause: Impeller (the Android default) has NO raster cache, so a
+`RepaintBoundary` saves Dart paint time and no GPU time. Every frame the player
+draws replays the whole scene, and a word-synced lyric makes that 60-120 fps.
+So the fixes remove work from the scene rather than caching it.
+
+- `lib/widgets/covered_gate.dart`. `PanelCover` (value true once the player
+  panel has been fully open AND still for 250ms; false in the very frame it
+  moves). `CoveredGate` mutes tickers and skips paint + hit-test under the page
+  and the floating mini - layout is NOT touched (a custom `RenderProxyBox`, not
+  `Offstage`, which would collapse the size and re-lay out the glass tab bar).
+  `CoveredScope.of(context)` lets descendants stop what a gate cannot: the mini
+  pill's position subscription, Explore's canvas video, the album header video.
+  Wired in `global_music_overlay.dart` only.
+- `lib/widgets/blurred_backdrop.dart`. The Now Playing wash (blur 60, 1.6x about
+  top-centre) and the standalone queue wash (blur 65, 1.25x) are baked ONCE per
+  track into a ~1/16-pixel image (`bakeBlurredBackdrop`, 4 logical px per baked
+  px) and drawn as one `RawImage`. Same ops as the live tree, smaller scale;
+  `test/blurred_backdrop_test.dart` renders both and compares (mean 0.7-1.2 of
+  255, max 4). Source is decoded at 256px (was the 800px hero decode, or a
+  full-resolution local file). A new track cross-fades 450ms; the old wash stays
+  up until the new one is baked, so there is never an empty frame.
+- `AnimatedEqualizerIcon` is a `CustomPainter` (`EqualizerBarsPainter`) inside a
+  `RepaintBoundary`, repainting off the controller: no build/layout per tick.
+  Compared pixel-for-pixel with the Row-of-Containers it replaced.
+- The deck scrubber sits in its own `RepaintBoundary` (a position tick no longer
+  re-records the whole player card's layer); its label style is hoisted.
+- `LyricStrip` listens to the `LyricClock` only when it has TIMED lyrics. The
+  clock is demand-driven, so a listener is what makes it tick.
+- `LyricClockFeed` is a `WidgetsBindingObserver`: paused/hidden/detached stops
+  the clock (its coarse timer is a plain `Timer.periodic` the scheduler does not
+  mute); resume does `clock.jump(provider.position)` BEFORE `setPlaying(true)` so
+  the first frame back shows the right line. `inactive` is NOT background.
+- `lib/services/window_filler.dart`. The player window is filled one resolve at
+  a time, in playback order, each appended as soon as ready (was `Future.wait`
+  over up to 4). Serialised; latest request wins; abandoned when the current
+  track changes.
+- `AudioService`: the unused `AndroidLoudnessEnhancer` is gone from the
+  pipeline (nothing could ever enable it; an attached effect also blocks offload).
+- `PerfTrace` prints a rolling `PERF_WINDOW` (fps, build/raster p50/p90) every
+  5s. `flutter build apk --profile --dart-define=PERF_TRACE=true`.
+
+Deliberately NOT done (and why) is recorded in docs/PLAN-perf-battery.md.
+
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
