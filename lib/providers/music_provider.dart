@@ -35,6 +35,7 @@ import '../services/network_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/auth_service.dart';
 import '../services/stream_resolution_service.dart';
+import '../services/window_filler.dart';
 import '../services/downloads/download_manager.dart';
 import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
@@ -2993,30 +2994,32 @@ for (final track in releases)
   /// finish gets its own repair.
   String? _dryRepairFor;
 
+  /// Serialises and staggers window fills. See [WindowFiller].
+  final WindowFiller<Track, IndexedAudioSource> _windowFiller = WindowFiller();
+
   /// Appends the tracks that follow the current one to the live window.
   ///
   /// Reads the same decision the advance path would make (see
   /// [_peekNextAfter]), so a refill never disagrees with playback. Best effort:
   /// a track that will not resolve is simply not added, and the next
   /// completion falls through to the existing decision path.
-  Future<void> _extendWindowFrom(Track current) async {
-    final pending = _upcomingTracks(current, _windowUpcoming);
-    if (pending.isEmpty) return;
-
-    final already = _audioService.windowTrackIds.toSet();
-    pending.removeWhere((t) => already.contains(t.id));
-    if (pending.isEmpty) return;
-
-    final built = await Future.wait(pending.map(_sourceForTrack));
-    final addable = built.whereType<IndexedAudioSource>().toList();
-    if (addable.isNotEmpty) {
-      await _audioService.appendWindow(addable);
-      if (kDebugMode) {
-        debugPrint('MusicProvider: window filled -> '
-            '${_audioService.windowTrackIds.length} entries');
-      }
-    }
-  }
+  ///
+  /// One resolve at a time, in playback order, instead of all at once.
+  Future<void> _extendWindowFrom(Track current) => _windowFiller.extend(
+        owner: current.id,
+        currentOwner: () => _currentTrack?.id,
+        upcoming: () => _upcomingTracks(current, _windowUpcoming),
+        idOf: (t) => t.id,
+        loaded: () => _audioService.windowTrackIds.toSet(),
+        resolve: _sourceForTrack,
+        append: (source) async {
+          await _audioService.appendWindow([source]);
+          if (kDebugMode) {
+            debugPrint('MusicProvider: window filled -> '
+                '${_audioService.windowTrackIds.length} entries');
+          }
+        },
+      );
 
   /// The playlist track that follows the current one, or null at the end.
   Track? _nextPlaylistTrack() {

@@ -16,7 +16,6 @@ import 'dart:math';
 class AudioService {
   // FIX: Create equalizer first, then pass to audio pipeline
   late final AndroidEqualizer _equalizer;
-  late final AndroidLoudnessEnhancer _loudnessEnhancer;
   late final AudioPlayer _audioPlayer;
   
   final NetworkService _networkService = NetworkService();
@@ -32,7 +31,6 @@ class AudioService {
   
   // Public getters for EQ access
   AndroidEqualizer get equalizer => _equalizer;
-  AndroidLoudnessEnhancer get loudnessEnhancer => _loudnessEnhancer;
   
   // Subscription management for proper cleanup
   final List<StreamSubscription> _subscriptions = [];
@@ -195,16 +193,17 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
 }) {
   final effects = <AndroidAudioEffect>[];
   if (enableEqualizer) effects.add(AndroidEqualizer());
-  // The loudness enhancer is left in place: it reports a different failure mode
-  // and does not null its handle, so it degrades instead of throwing.
-  effects.add(AndroidLoudnessEnhancer());
+  // No loudness enhancer. One used to ride in this pipeline, but it was a
+  // fresh instance nothing held a reference to, so nothing could ever enable
+  // it: it only cost a native effect attached to the audio session for the life
+  // of the player. An attached effect is also exactly what stops Android from
+  // offloading decode to the low-power DSP, which this player asks for below.
   return effects;
 }
 
 AudioService({bool enableEqualizer = false}) {
   // Initialize audio effects
   _equalizer = AndroidEqualizer();
-  _loudnessEnhancer = AndroidLoudnessEnhancer();
 
   // Create audio player with effects pipeline
   _audioPlayer = AudioPlayer(
