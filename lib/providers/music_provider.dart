@@ -37,6 +37,7 @@ import '../services/auth_service.dart';
 import '../services/stream_resolution_service.dart';
 import '../services/window_filler.dart';
 import '../services/playback/mine_audio_handler.dart';
+import '../services/transition/analysis_service.dart';
 import '../services/transition/audio_service_decks.dart';
 import '../services/transition/provider_hooks.dart';
 import '../services/transition/transition_engine.dart';
@@ -1430,13 +1431,55 @@ for (final track in releases)
       handoff: _onTransitionHandoff,
       settled: (completed) {},
       sleepDone: _onSleepFadeDone,
-      analysis: (id, durationMs) => null,
+      analysis: (id, durationMs) => analysisService.lookup(id, durationMs),
+      requestOf: (id) => analysisService.request(id,
+          durationMs: _windowedTracks[id]?.durationMs ?? 0),
     ),
     settings: transitionSettings,
   );
 
+  /// What AutoMix knows about songs: measured once, on this device, kept.
+  late final AnalysisService analysisService = AnalysisService(
+    locate: _analysisSourceFor,
+    isEnabled: () => !_disposed && transitionSettings.isAutomix,
+    allowCellular: () => transitionSettings.analyzeOnCellular,
+    onResult: () => transitions.poke(),
+    network: ({required bool allowCellular}) async =>
+        !_isOfflineMode &&
+        !_isLowDataMode &&
+        await AnalysisPlatform.networkAllowed(allowCellular: allowCellular),
+  );
+
+  /// Where to read [trackId]'s audio for analysis: the file when it is on this
+  /// device, else the stream the player would use.
+  Future<AnalysisSource?> _analysisSourceFor(String trackId) async {
+    final t = _windowedTracks[trackId];
+    if (t == null) return null;
+    try {
+      if (t.source == 'local' || await isTrackDownloaded(t.id)) {
+        final path = await _localFileFor(t);
+        return path == null || path.isEmpty ? null : AnalysisSource.file(path);
+      }
+      final r = await _streamResolution.resolve(ResolveRequest(
+        videoId: t.id,
+        title: t.trackName,
+        artist: t.artistName,
+        durationMs: t.durationMs,
+      ));
+      if (r == null || r.url.isEmpty) return null;
+      return AnalysisSource.network(r.url,
+          headers: r.userAgent == null ? null : {'User-Agent': r.userAgent!});
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// What the UI moves to: the same progress number that drives the audio.
   ValueListenable<TransitionUiState> get transitionState => transitions.ui;
+
+  /// A track the player has been handed, by id - the incoming song of a mix,
+  /// whose artwork the screen shows before the session moves to it.
+  Track? windowedTrack(String id) => _windowedTracks[id];
 
   void _bindTransitions() {
     _audioService.beforeTransport = transitions.bail;
@@ -6229,6 +6272,7 @@ for (final track in releases)
     _audioService.beforeTransport = null;
     _audioService.engineEvent = null;
     transitions.dispose();
+    analysisService.dispose();
     _authSessionReset.dispose();
     _paletteService.removeListener(_paletteNotified);
 

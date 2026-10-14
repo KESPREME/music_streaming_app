@@ -19,6 +19,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import android.os.Handler;
+import android.os.Looper;
 
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.EventChannel;
@@ -27,6 +31,11 @@ import io.flutter.plugin.common.MethodChannel;
 public class MainActivity extends AudioServiceFragmentActivity {
     private static final String METHODS = "mine_music/audio_output";
     private static final String EVENTS = "mine_music/audio_output_events";
+    private static final String DECODE = "mine_music/audio_decode";
+
+    /** One analysis at a time; a decode is seconds of CPU, never to be queued up. */
+    private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private AudioManager audioManager;
     private EventChannel.EventSink eventSink;
@@ -35,6 +44,34 @@ public class MainActivity extends AudioServiceFragmentActivity {
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+
+        // Analysis decode: file in, small mono PCM out. See AudioDecoder.
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DECODE)
+                .setMethodCallHandler((call, result) -> {
+                    if (!"decode".equals(call.method)) {
+                        result.notImplemented();
+                        return;
+                    }
+                    final String path = call.argument("path");
+                    final Integer rate = call.argument("rate");
+                    final Integer maxSeconds = call.argument("maxSeconds");
+                    if (path == null) {
+                        result.error("ARG", "path required", null);
+                        return;
+                    }
+                    final int outRate = rate == null ? 11025 : rate;
+                    final int limit = maxSeconds == null ? 900 : maxSeconds;
+                    decodeExecutor.execute(() -> {
+                        try {
+                            final byte[] pcm = AudioDecoder.decodeToMono16(path, outRate, limit);
+                            mainHandler.post(() -> result.success(pcm));
+                        } catch (AudioDecoder.DecodeException e) {
+                            mainHandler.post(() -> result.error("DECODE", e.getMessage(), null));
+                        } catch (Throwable t) {
+                            mainHandler.post(() -> result.error("DECODE", String.valueOf(t), null));
+                        }
+                    });
+                });
 
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), METHODS)
                 .setMethodCallHandler((call, result) -> {
