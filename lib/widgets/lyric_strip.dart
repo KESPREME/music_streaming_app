@@ -134,7 +134,29 @@ class _LyricStripState extends State<LyricStrip> {
     super.didChangeDependencies();
     // Listens to the clock only while its subtree is live; a strip in a route
     // that is not current must not hold the frame loop up.
-    _syncListener(TickerMode.valuesOf(context).enabled);
+    _syncListener(_shouldListen);
+  }
+
+  /// A clock listener is what makes the clock tick at all (it is demand-driven),
+  /// so the strip asks for one only when it has something to resolve against.
+  /// With no lyrics yet, none found, or a plain-text lyric that has no times,
+  /// every tick would be a wake-up that could not change a pixel - and with the
+  /// player open that is for the whole song.
+  bool get _shouldListen => TickerMode.valuesOf(context).enabled && _hasTimedLyrics;
+
+  List<LyricsEntry>? _timedChecked;
+  bool _timed = false;
+
+  /// Whether any line carries a time. Cached by list identity: this is asked on
+  /// every parent rebuild, and the list changes once per track.
+  bool get _hasTimedLyrics {
+    final lyrics = widget.lyrics;
+    if (lyrics == null || lyrics.isEmpty) return false;
+    if (!identical(lyrics, _timedChecked)) {
+      _timedChecked = lyrics;
+      _timed = lyrics.any((e) => e.timeMs > 0 || e.isWordSynced);
+    }
+    return _timed;
   }
 
   @override
@@ -144,6 +166,8 @@ class _LyricStripState extends State<LyricStrip> {
       oldWidget.clock.removeListener(_onClock);
       widget.clock.addListener(_onClock);
     }
+    // Lyrics arriving or leaving turns the listener on or off.
+    _syncListener(_shouldListen, notify: false);
     _resolveIndex(notify: false);
     _reconcileAvailability(notify: false);
   }
@@ -155,11 +179,11 @@ class _LyricStripState extends State<LyricStrip> {
     super.dispose();
   }
 
-  void _syncListener(bool enabled) {
+  void _syncListener(bool enabled, {bool notify = true}) {
     if (enabled && !_listening) {
       widget.clock.addListener(_onClock);
       _listening = true;
-      _resolveIndex();
+      _resolveIndex(notify: notify);
     } else if (!enabled && _listening) {
       widget.clock.removeListener(_onClock);
       _listening = false;
