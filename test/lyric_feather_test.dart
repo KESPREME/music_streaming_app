@@ -57,4 +57,35 @@ void main() {
       }
     });
   });
+
+  group('the profile of the soft edge', () {
+    // A linear ramp ends in a corner, and the eye turns a corner into a line: the
+    // thin vertical "seam" a few pixels ahead of the voice, which sat still on the
+    // next letter for as long as a slow fill took to reach it.
+    test('is fully lit at one end and fully clear at the other', () {
+      expect(lyricFeatherAlpha(0), 1);
+      expect(lyricFeatherAlpha(1), 0);
+    });
+
+    test('leaves both ends with zero slope - no corner for the eye to find', () {
+      const h = 1e-3;
+      final slopeAtStart = (lyricFeatherAlpha(h) - lyricFeatherAlpha(0)) / h;
+      final slopeAtEnd = (lyricFeatherAlpha(1) - lyricFeatherAlpha(1 - h)) / h;
+      expect(slopeAtStart.abs(), lessThan(0.01));
+      expect(slopeAtEnd.abs(), lessThan(0.01));
+    });
+
+    test('only ever gets less lit as it goes', () {
+      var previous = 1.0;
+      for (var t = 0.0; t <= 1.0; t += 0.01) {
+        final a = lyricFeatherAlpha(t);
+        expect(a, lessThanOrEqualTo(previous + 1e-12));
+        previous = a;
+      }
+    });
+
+    test('is half lit half way', () {
+      expect(lyricFeatherAlpha(0.5), closeTo(0.5, 1e-9));
+    });
+  });
 }

@@ -57,6 +57,42 @@ import 'lyric_line_geometry.dart';
 /// fades to the dim one.
 const double lyricWipeFeather = 30.0;
 
+/// The soft edge's profile: how lit a letter is, from fully (0) to not at all (1),
+/// across the width of the edge.
+///
+/// A smoothstep, NOT a straight line. A linear ramp has a corner at each end where
+/// its slope changes at once, and the eye exaggerates a corner into a visible
+/// line (a Mach band): the "seam" a few pixels ahead of the voice, which drew a
+/// thin vertical line through the next letter as the fill crept along - most
+/// noticeable on a slow fill, where it sits still for a long time. Smoothstep
+/// leaves the lit region and enters the clear one with zero slope, so there is no
+/// line to see.
+@visibleForTesting
+double lyricFeatherAlpha(double t) {
+  final x = t.clamp(0.0, 1.0).toDouble();
+  return 1.0 - x * x * (3.0 - 2.0 * x);
+}
+
+const int _featherSteps = 12;
+
+/// [lyricFeatherAlpha] sampled for a gradient. Twelve segments of a smoothstep are
+/// indistinguishable from it.
+final List<Color> _featherRamp = List<Color>.generate(
+  _featherSteps + 1,
+  (i) => Color.fromRGBO(
+    255,
+    255,
+    255,
+    lyricFeatherAlpha(i / _featherSteps),
+  ),
+  growable: false,
+);
+final List<double> _featherRampStops = List<double>.generate(
+  _featherSteps + 1,
+  (i) => i / _featherSteps,
+  growable: false,
+);
+
 /// A letter's lean, limited so that it (scaled about its centre) stays inside its
 /// row.
 ///
@@ -1079,7 +1115,8 @@ class RenderLyricLine extends RenderBox {
           ..shader = ui.Gradient.linear(
             Offset(x0, 0),
             Offset(edge, 0),
-            const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+            _featherRamp,
+            _featherRampStops,
           ),
       );
     }
@@ -1292,7 +1329,11 @@ class RenderLyricLine extends RenderBox {
 
     canvas.save();
     canvas.translate(cx + dx, cy - dy);
-    canvas.scale(s.scale);
+    // Quantised to 1/200: a scale that changes by a hair every frame asks the
+    // glyph cache for a NEW strike every frame (rasterising the letter again),
+    // while 16 distinct sizes are rasterised once and reused for the rest of the
+    // song. 0.5% of a 44px letter is a fifth of a pixel - not visible.
+    canvas.scale((s.scale * 200).roundToDouble() / 200);
     canvas.translate(-cx, -cy);
 
     if (glow && glowOpacity < 0.995) {
@@ -1312,42 +1353,69 @@ class RenderLyricLine extends RenderBox {
     }
 
     // The lit glyph, up to the voice (the plain pass's own edge numbers). Only a
-    // letter the voice is IN needs cutting; one it has passed is drawn whole.
+    // letter the voice is in, or has just left, needs any cutting; one it has
+    // passed is drawn whole.
     final edge = _edgeScratch[rowIndex];
     if (edge > left) {
       final soft = _softScratch[rowIndex];
       // Within the soft edge's reach of the voice (it extends up to
-      // [lyricWipeFeather] behind it) the letter is cut and feathered exactly as
-      // the plain pass would cut it.
+      // [lyricWipeFeather] behind it) the letter is cut exactly as the plain
+      // pass would cut it.
       final voiceInside = edge.isFinite && edge < right + lyricWipeFeather;
-      final masked =
-          !glow && feather && voiceInside && !soft.isNaN && soft < right;
-      canvas.save();
-      if (voiceInside) {
-        canvas.clipRect(Rect.fromLTRB(ink.left, ink.top, edge, ink.bottom));
-      }
-      if (masked) {
+      final feathered =
+          !glow && feather && voiceInside && !soft.isNaN && soft < edge;
+      if (feathered) {
+        // The cut is made ONLY by the mask, never by a clip. A clip at the edge
+        // plus a gradient that ends at the edge looks like the same thing and is
+        // not: wherever the two disagreed by a pixel the clip cut a faint, lit
+        // sliver of the next letter off with a hard vertical line (the seam in
+        // the "o" of "stolen"). One gradient - opaque behind the soft edge,
+        // fading across it, and TRANSPARENT beyond the voice - has no seam to
+        // have.
         canvas.saveLayer(ink, Paint());
         debugLayers++;
-      }
-      _letterPainter(_litLetters, ci, const Color(0xFFFFFFFF)).paint(canvas, origin);
-      debugParagraphDraws++;
-      if (masked) {
+        _letterPainter(_litLetters, ci, const Color(0xFFFFFFFF))
+            .paint(canvas, origin);
+        debugParagraphDraws++;
+        final span = ink.right - ink.left;
+        final from = ((soft - ink.left) / span).clamp(0.0, 1.0).toDouble();
+        final to = ((edge - ink.left) / span).clamp(0.0, 1.0).toDouble();
+        final end = to < from ? from : to;
+        // Opaque, then the soft edge's own smooth profile, then clear: the same
+        // curve the plain pass uses, laid across this letter.
+        final colors = <Color>[
+          const Color(0xFFFFFFFF),
+          ..._featherRamp,
+          const Color(0x00FFFFFF),
+        ];
+        final stops = <double>[
+          0.0,
+          for (final s in _featherRampStops) from + (end - from) * s,
+          1.0,
+        ];
         canvas.drawRect(
-          Rect.fromLTRB(math.max(soft, ink.left), ink.top, edge, ink.bottom),
+          ink,
           Paint()
             ..blendMode = BlendMode.dstIn
             ..shader = ui.Gradient.linear(
-              Offset(soft, 0),
-              Offset(edge, 0),
-              const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+              Offset(ink.left, 0),
+              Offset(ink.right, 0),
+              colors,
+              stops,
             ),
         );
         canvas.restore();
+      } else {
+        canvas.save();
+        if (voiceInside) {
+          canvas.clipRect(Rect.fromLTRB(ink.left, ink.top, edge, ink.bottom));
+        }
+        _letterPainter(_litLetters, ci, const Color(0xFFFFFFFF))
+            .paint(canvas, origin);
+        debugParagraphDraws++;
+        canvas.restore();
       }
-      canvas.restore();
     }
-
     if (glow && glowOpacity < 0.995) canvas.restore();
     canvas.restore();
   }
