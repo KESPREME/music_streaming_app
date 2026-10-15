@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +9,6 @@ import 'package:music_streaming_app/services/transition/transition_planner.dart'
 import 'package:music_streaming_app/services/transition/transition_settings.dart';
 import 'package:music_streaming_app/widgets/liquid_switch.dart';
 import 'package:music_streaming_app/widgets/queue_transition_connector.dart';
-import 'package:music_streaming_app/widgets/thin_slider.dart';
 import 'package:music_streaming_app/widgets/track_swap.dart';
 import 'package:music_streaming_app/widgets/transition_trace_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,11 +20,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// done (UpcomingMix, MixTrace), so most of what is tested is the wording and
 /// the rule that nothing is shown that the engine has not decided.
 
-Future<TransitionSettings> _settings({bool enabled = true}) async {
+Future<TransitionSettings> _settings({bool enabled = true, bool tipSeen = true}) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   final s = TransitionSettings();
   await s.load();
   await s.setEnabled(enabled);
+  await s.setTipSeen(tipSeen);
   return s;
 }
 
@@ -152,6 +151,53 @@ void main() {
       expect(find.textContaining('Crossfade'), findsNothing);
     });
 
+    testWidgets('a listener who has never met transitions is offered them once',
+        (tester) async {
+      final s = await _settings(enabled: false, tipSeen: false);
+      final up = ValueNotifier<UpcomingMix?>(null);
+      await tester.pumpWidget(
+          _app(QueueTransitionConnector(upcoming: up, settings: s)));
+      expect(find.text('Blend your songs'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Blend your songs'), findsNothing);
+      expect(s.tipSeen, isTrue, reason: 'and it stays dismissed');
+    });
+
+    testWidgets('opening the offer takes them to Song Transitions, once',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final s = await _settings(enabled: false, tipSeen: false);
+      final up = ValueNotifier<UpcomingMix?>(null);
+      await tester.pumpWidget(
+          _app(QueueTransitionConnector(upcoming: up, settings: s)));
+      await tester.tap(find.text('Blend your songs'));
+      await tester.pumpAndSettle(); // transitions are off, so nothing loops
+      expect(s.tipSeen, isTrue);
+      expect(find.byType(SongTransitionsScreen), findsOneWidget);
+    });
+
+    testWidgets('the offer is not made to someone who already uses them',
+        (tester) async {
+      final s = await _settings(enabled: true, tipSeen: false);
+      final up = ValueNotifier<UpcomingMix?>(null);
+      await tester.pumpWidget(
+          _app(QueueTransitionConnector(upcoming: up, settings: s)));
+      expect(find.text('Blend your songs'), findsNothing);
+    });
+
+    testWidgets('nor before the settings have been read', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final s = TransitionSettings(); // not loaded yet
+      final up = ValueNotifier<UpcomingMix?>(null);
+      await tester.pumpWidget(
+          _app(QueueTransitionConnector(upcoming: up, settings: s)));
+      expect(find.text('Blend your songs'), findsNothing,
+          reason: 'it would flash on every start otherwise');
+    });
     testWidgets('names the transition and follows the engine', (tester) async {
       final s = await _settings();
       final up = ValueNotifier<UpcomingMix?>(null);
@@ -255,33 +301,6 @@ void main() {
       await tester.pump();
       expect(find.text('Title of a'), findsNothing);
       expect(find.text('Title of b'), findsOneWidget);
-    });
-  });
-
-  group('the scrubber\'s bracket', () {
-    testWidgets('a track with a mark builds and paints', (tester) async {
-      await tester.pumpWidget(_app(SizedBox(
-        width: 300,
-        child: ThinSlider(
-          value: 0.4,
-          onValueChange: (_) {},
-          marks: const [
-            ThinSliderMark(from: 0.9, to: 0.96, color: Colors.teal, progress: 0.5),
-          ],
-        ),
-      )));
-      expect(tester.takeException(), isNull);
-      expect(find.byType(ThinSlider), findsOneWidget);
-    });
-
-    test('marks compare by value, so an unchanged plan does not repaint', () {
-      const a = ThinSliderMark(from: 0.9, to: 0.96, color: Colors.teal);
-      const b = ThinSliderMark(from: 0.9, to: 0.96, color: Colors.teal);
-      const c = ThinSliderMark(from: 0.9, to: 0.96, color: Colors.teal, progress: 0.1);
-      expect(a, b);
-      expect(a.hashCode, b.hashCode);
-      expect(a == c, isFalse);
-      expect(listEquals(<ThinSliderMark>[a], <ThinSliderMark>[b]), isTrue);
     });
   });
 

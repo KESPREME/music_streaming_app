@@ -45,7 +45,7 @@ const List<SettingsEntry> settingsSearchEntries = <SettingsEntry>[
     SettingsEntry('prefs.theme', ['Theme', 'appearance', 'dark mode', 'accent', 'colour', 'color']),
     SettingsEntry('prefs.dynamic', ['Dynamic Colors', 'material you', 'wallpaper']),
     SettingsEntry('accent.card', ['Accent', 'colour', 'color', 'swatch', 'album art']),
-    SettingsEntry('playback.transitions', ['Song Transitions', 'crossfade', 'automix', 'fade', 'gapless', 'blend', 'mix']),
+    SettingsEntry('playback.transitions', ['Song Transitions', 'crossfade', 'automix', 'fade', 'gapless', 'blend', 'mix', 'loudness', 'balance', 'beat', 'tempo', 'bpm', 'level', 'transition']),
     SettingsEntry('playback.autoQueue', ['Auto Queue', 'keep playing', 'queue']),
     SettingsEntry('playback.cellular', ['Cellular Quality', 'mobile data', 'stream over mobile data']),
     SettingsEntry('playback.lowData', ['Low Data Mode', 'data saver']),

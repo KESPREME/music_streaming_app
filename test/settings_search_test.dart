@@ -269,4 +269,33 @@ void main() {
       expect(find.text('No settings match "mobile"'), findsOneWidget);
     });
   });
+
+  group('finding Song Transitions', () {
+    SettingsSearchIndex search(String query) =>
+        SettingsSearchIndex(query)..registerAll(settingsSearchEntries);
+
+    test('every word a listener would type reaches it', () {
+      for (final query in [
+        'transitions',
+        'crossfade',
+        'automix',
+        'gapless',
+        'loudness',
+        'balance',
+        'beat',
+        'tempo',
+        'bpm',
+        'level',
+      ]) {
+        expect(search(query).matches('playback.transitions'), isTrue,
+            reason: '"$query" should find Song Transitions');
+      }
+    });
+
+    test('and it does not swallow the settings it is not', () {
+      final i = search('loudness');
+      expect(i.matches('playback.lowData'), isFalse);
+      expect(i.matches('playback.syncedLyrics'), isFalse);
+    });
+  });
 }

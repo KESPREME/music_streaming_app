@@ -174,7 +174,7 @@ class AnalysisPlatform {
       final bytes = await _channel.invokeMethod<Uint8List>('decode', {
         'path': path,
         'rate': rate,
-        'maxSeconds': 900,
+        'maxSeconds': AnalysisService.maxSongMs ~/ 1000,
         'channels': 2,
       });
       if (bytes == null || bytes.lengthInBytes < 2) return null;
@@ -317,6 +317,11 @@ class AnalysisService {
   final Duration cooldown;
   final int maxKnown;
 
+  /// Longer than this is not a song (a DJ set, a podcast, an audiobook chapter):
+  /// the decode alone would hold ~90 MB of samples, and there is no transition
+  /// to plan into the end of one.
+  static const int maxSongMs = 12 * 60 * 1000;
+
   // Insertion-ordered: the oldest is first.
   final LinkedHashMap<String, TrackAnalysis> _known =
       LinkedHashMap<String, TrackAnalysis>();
@@ -378,6 +383,8 @@ class AnalysisService {
       onResult();
       return;
     }
+
+    if (job.durationMs > maxSongMs) return _fail(job.id, 'too long to be a song');
 
     final source = await locate(job.id);
     if (source == null) return; // not known right now; the engine will ask again

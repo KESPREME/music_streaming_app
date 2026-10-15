@@ -425,6 +425,19 @@ void main() {
     });
   });
 
+  test('a track too long to be a song is never fetched or decoded', () async {
+    final r = _Rig();
+    r.service.request('mix', durationMs: AnalysisService.maxSongMs + 1000);
+    await r.settle();
+    expect(r.located, isEmpty, reason: 'not even looked for');
+    expect(r.decoded, isEmpty);
+    expect(r.service.lookup('mix', 0), isNull);
+
+    // ...and a long song that IS a song still is.
+    r.service.request('long', durationMs: AnalysisService.maxSongMs);
+    await r.settle();
+    expect(r.decoded, hasLength(1));
+  });
   test('memory keeps the most recent songs only', () async {
     final service = AnalysisService(
       locate: (id) async => const AnalysisSource.file('/x'),

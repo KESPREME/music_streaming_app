@@ -16,8 +16,10 @@
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../screens/song_transitions_screen.dart';
 import '../services/transition/transition_engine.dart';
 import '../services/transition/transition_planner.dart';
 import '../services/transition/transition_settings.dart';
@@ -74,13 +76,18 @@ class QueueTransitionConnector extends StatelessWidget {
       builder: (context, _) {
         final u = upcoming.value;
         final text = (u == null || !settings.enabled) ? null : describeUpcoming(u, settings);
+        // Transitions are off by default: until the listener has met them once,
+        // the line where the join would be offers them.
+        final tip = !settings.enabled && settings.loaded && !settings.tipSeen;
         return AnimatedSize(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
-          child: text == null
-              ? const SizedBox(width: double.infinity)
-              : _Line(label: text.label, detail: text.detail, mix: u!.isMix),
+          child: tip
+              ? _Tip(settings: settings)
+              : text == null
+                  ? const SizedBox(width: double.infinity)
+                  : _Line(label: text.label, detail: text.detail, mix: u!.isMix),
         );
       },
     );
@@ -168,6 +175,87 @@ class _Line extends StatelessWidget {
               const SizedBox(width: 12),
               rule,
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The one-time offer. Tapping it opens Song Transitions; the cross dismisses
+/// it. Either way it never comes back.
+class _Tip extends StatelessWidget {
+  const _Tip({required this.settings});
+
+  final TransitionSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Padding(
+      key: const ValueKey<String>('transition-tip'),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: Semantics(
+        button: true,
+        label: 'Blend your songs. Crossfade or AutoMix, in Song Transitions.',
+        child: Material(
+          color: accent.withValues(alpha: 0.12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: accent.withValues(alpha: 0.28)),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () {
+              HapticFeedback.selectionClick();
+              settings.setTipSeen(true);
+              Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => SongTransitionsScreen(settings: settings),
+              ));
+            },
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+              child: Row(
+                children: [
+                  TransitionGlyph(size: 22, color: accent),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Blend your songs',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          'Crossfade or AutoMix, so one song flows into the next.',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white60,
+                            fontSize: 12,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Dismiss',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      settings.setTipSeen(true);
+                    },
+                    icon: const Icon(Icons.close_rounded,
+                        size: 18, color: Colors.white54),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

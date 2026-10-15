@@ -37,6 +37,7 @@ class TransitionSettings extends ChangeNotifier {
   static const String keySkipSilence = 'skip_silence';
   static const String keyAnalyzeCellular = 'transitions_analyze_cellular';
   static const String keyLevelMatching = 'transitions_level_matching';
+  static const String keyTipSeen = 'transitions_tip_seen';
 
   static const int minSeconds = 1;
   static const int maxSeconds = 12;
@@ -52,6 +53,7 @@ class TransitionSettings extends ChangeNotifier {
   bool _crossfadeAlbums = false;
   bool _matchTempo = true;
   bool _levelMatching = true;
+  bool _tipSeen = false;
   bool _sleepFade = true;
   bool _skipSilence = false;
   bool _analyzeOnCellular = false;
@@ -78,6 +80,11 @@ class TransitionSettings extends ChangeNotifier {
   /// only place a fade well and align bars when two songs already agree to 1 %.
   /// Still a judgement call on analysis, hence the beta label.
   bool get matchTempo => _matchTempo;
+
+  /// The one-time hint in the queue ("Blend your songs") has been dealt with:
+  /// opened, or dismissed. Transitions are off by default, so without it nobody
+  /// who never opens Settings would learn they exist.
+  bool get tipSeen => _tipSeen;
 
   /// Keep two songs of different loudness in balance while they overlap, by
   /// attenuating the one that would bury the other (see level_plan.dart). Needs
@@ -116,6 +123,7 @@ class TransitionSettings extends ChangeNotifier {
     _crossfadeAlbums = p.getBool(keyAlbums) ?? false;
     _matchTempo = p.getBool(keyMatchTempo) ?? true;
     _levelMatching = p.getBool(keyLevelMatching) ?? true;
+    _tipSeen = p.getBool(keyTipSeen) ?? false;
     _sleepFade = p.getBool(keySleepFade) ?? true;
     _skipSilence = p.getBool(keySkipSilence) ?? false;
     _analyzeOnCellular = p.getBool(keyAnalyzeCellular) ?? false;
@@ -143,6 +151,9 @@ class TransitionSettings extends ChangeNotifier {
 
   Future<void> setLevelMatching(bool value) => _set(value, _levelMatching,
       (v) => _levelMatching = v, (p) => p.setBool(keyLevelMatching, value));
+
+  Future<void> setTipSeen(bool value) => _set(
+      value, _tipSeen, (v) => _tipSeen = v, (p) => p.setBool(keyTipSeen, value));
 
   Future<void> setSleepFade(bool value) => _set(value, _sleepFade,
       (v) => _sleepFade = v, (p) => p.setBool(keySleepFade, value));
