@@ -651,6 +651,50 @@ queue heading (tap cycles Off, Crossfade, AutoMix; long-press opens the screen).
   handoff, lock-screen controls, whether the beat lock lands on the beat the listener hears.
 
   Checklist: plan sections 11 and 12.
+
+## HOME SHELVES: ONE SHELF PER JOB (ece046e, dd2001e)
+
+- `presentation/home/home_shelf_plan.dart` (pure) decides what Home draws below the hero.
+  A job (quick picks, play history) is done by ONE shelf. If YouTube Music sent a shelf for
+  it, that shelf wins and keeps its feed position; the app's own shelf does not also appear.
+  What was played HERE is folded into the front of the native "Listen again" (`mergeHistory`,
+  8 local + native, 12 total; only streamable 11-char non-local ids, because the app does not
+  report plays to YTM). Non-streamable recents (local files) stay in the local "Jump back in".
+  A second feed shelf claiming the same job is dropped (first wins). Local Quick picks lose
+  the tracks the hero carousel already shows (kept if no overlap, or >= 3 left).
+- Why it used to double: `_LowerSections` always added the local shelves AND every feed shelf;
+  nothing compared them. It only happened for responses that carried the native shelves.
+- Title identity is `SectionIdentity.normalizedTitle` (keeps every script; `titleSlug` empties
+  CJK/Arabic and would collapse them). Convergence skips a remembered shelf when a fresh one has
+  the same normalised title (identity folds the dominant type, so it can flip).
+- Section memory is per account: `HomeRepository.memoryKeyFor(identity)`; legacy
+  `home_section_memory_v1` is deleted on load; `clearHomeCache` removes every memory key.
+  `refresh()` coalesces only within one identity and discards a result whose identity changed.
+- LIST MODE: `TrackListRow` had `onPlay` but never attached it to a gesture. The song area is
+  now the press target (`PressableScale` + button semantics); the overflow button is a SIBLING
+  so it never also plays. Keep it that way.
+- Tests: `home_shelf_plan_test`, `home_repository_identity_test`, `home_shelf_screen_test`,
+  `track_list_row_test`. NOT observed on a device: the duplication was proven in code and by
+  tests that fail on the old code, not seen live.
+
+## PURE BLACK (AMOLED) (setting is OFF by default)
+
+- `ThemeProvider.isAmoled` (pref `amoled_black_enabled`), Settings > Preferences > Appearance
+  > "Pure black (AMOLED)". `ThemeProvider` is now loaded in `main()` BEFORE `runApp` so a cold
+  start does not flash the art backdrop first.
+- It rides in the theme as `ThemeExtension<AmoledTheme>` (`theme/amoled_theme.dart`), attached by
+  `GlassTheme.build(accent, amoled:)`. Widgets read `AmoledTheme.isOn(context)` /
+  `gradient` / `surfaceOf` / `canvasOf` / `edge` - never the provider (tests would throw).
+- Black: the `AmbientBackdrop` (fades over `Motion.ambient`, cuts under reduce-motion; once black
+  the art, 48-sigma blur and bloom are NOT built) and the full-screen pages' grey gradients.
+  Raised surfaces (dialogs, sheets, snack bars) are `#0A0A0A` with a 12% white hairline: a black
+  panel on a black page has no edge. Artwork is never recoloured.
+- NOT covered: Now Playing / Queue art washes (the player's own surface), Material You screens
+  (being rebuilt in Material 3 Expressive), the audio-output sheet and a few cards that name
+  their own grey. Add `AmoledTheme.surfaceOf(context, ...)` there if wanted.
+- Tests: `amoled_test`, `amoled_settings_test` (mutation-checked: dropping the short-circuit, the
+  fade veil, or reduce-motion each fails a test).
+
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
