@@ -1,5 +1,37 @@
+import 'package:flutter/foundation.dart' show immutable, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+/// A stretch of the track worth pointing at, drawn as a thin bracket just under
+/// it: the song's transition, where the next one is going to come in.
+@immutable
+class ThinSliderMark {
+  const ThinSliderMark({
+    required this.from,
+    required this.to,
+    required this.color,
+    this.progress = 0.0,
+  });
+
+  /// Where it starts and ends along the track, 0..1.
+  final double from;
+  final double to;
+  final Color color;
+
+  /// How much of it has been played through, 0..1 (brightens the bracket).
+  final double progress;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ThinSliderMark &&
+      other.from == from &&
+      other.to == to &&
+      other.color == color &&
+      other.progress == progress;
+
+  @override
+  int get hashCode => Object.hash(from, to, color, progress);
+}
 
 /// Apple Music & BitChord style capsule slider with no thumb knob.
 ///
@@ -22,6 +54,9 @@ class ThinSlider extends StatefulWidget {
   final double touchHeight;
   final String? semanticLabel;
 
+  /// Brackets under the track (see [ThinSliderMark]).
+  final List<ThinSliderMark> marks;
+
   const ThinSlider({
     super.key,
     required this.value,
@@ -34,6 +69,7 @@ class ThinSlider extends StatefulWidget {
     this.inactiveColor = const Color(0x38FFFFFF),
     this.touchHeight = 36.0,
     this.semanticLabel,
+    this.marks = const <ThinSliderMark>[],
   });
 
   @override
@@ -163,6 +199,7 @@ class _ThinSliderState extends State<ThinSlider>
                       trackHeight: _heightAnim.value,
                       activeColor: widget.activeColor,
                       inactiveColor: widget.inactiveColor,
+                      marks: widget.marks,
                     ),
                   );
                 },
@@ -180,12 +217,14 @@ class _ThinSliderPainter extends CustomPainter {
   final double trackHeight;
   final Color activeColor;
   final Color inactiveColor;
+  final List<ThinSliderMark> marks;
 
   _ThinSliderPainter({
     required this.fraction,
     required this.trackHeight,
     required this.activeColor,
     required this.inactiveColor,
+    required this.marks,
   });
 
   @override
@@ -222,6 +261,36 @@ class _ThinSliderPainter extends CustomPainter {
       );
       canvas.drawRRect(activeRRect, activePaint);
     }
+
+    // 3. Marks: a bracket a few pixels under the track.
+    for (final m in marks) {
+      final y = centerY + trackHeight / 2.0 + 5.0;
+      final x1 = (m.from.clamp(0.0, 1.0)) * size.width;
+      final x2 = (m.to.clamp(0.0, 1.0)) * size.width;
+      final end = x2 < x1 + 4.0 ? x1 + 4.0 : x2;
+      final base = Paint()
+        ..color = m.color.withValues(alpha: 0.38)
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+      canvas.drawLine(Offset(x1, y), Offset(end, y), base);
+      if (m.progress > 0.0) {
+        final lit = Paint()
+          ..color = m.color.withValues(alpha: 0.95)
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round
+          ..isAntiAlias = true;
+        canvas.drawLine(
+            Offset(x1, y), Offset(x1 + (end - x1) * m.progress.clamp(0.0, 1.0), y), lit);
+      }
+      // The point where the next song comes in.
+      final tick = Paint()
+        ..color = m.color.withValues(alpha: 0.9)
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+      canvas.drawLine(Offset(x1, y - 3.5), Offset(x1, y + 3.5), tick);
+    }
   }
 
   @override
@@ -229,6 +298,7 @@ class _ThinSliderPainter extends CustomPainter {
     return oldDelegate.fraction != fraction ||
         oldDelegate.trackHeight != trackHeight ||
         oldDelegate.activeColor != activeColor ||
-        oldDelegate.inactiveColor != inactiveColor;
+        oldDelegate.inactiveColor != inactiveColor ||
+        !listEquals(oldDelegate.marks, marks);
   }
 }

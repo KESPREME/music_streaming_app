@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/blurred_backdrop.dart';
+import '../widgets/queue_transition_connector.dart';
 import '../widgets/transition_chip.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/glass_options_sheet.dart';
@@ -545,6 +546,16 @@ child: ClipRRect(
               currentTrack,
               musicProvider,
               accentColor,
+            ),
+          ),
+
+        // How the playing song will meet the next one: the join sits between
+        // them. Says nothing while transitions are off.
+        if (currentTrack != null)
+          SliverToBoxAdapter(
+            child: QueueTransitionConnector(
+              upcoming: musicProvider.upcomingMix,
+              settings: musicProvider.transitionSettings,
             ),
           ),
 

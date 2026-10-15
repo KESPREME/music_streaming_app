@@ -1,14 +1,17 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/music_provider.dart';
+import '../services/transition/transition_engine.dart';
 import '../services/transition/transition_settings.dart';
 import '../widgets/settings/glass_settings_group.dart';
 import '../widgets/thin_slider.dart';
 import '../widgets/transition_diagram.dart';
 import '../widgets/transition_glyph.dart';
+import '../widgets/transition_trace_card.dart';
 
 /// Song Transitions: how one song joins the next.
 ///
@@ -17,10 +20,13 @@ import '../widgets/transition_glyph.dart';
 /// options BitChord adds. The picture at the top is live: it redraws as the
 /// slider moves, over the same gain curves the player uses.
 class SongTransitionsScreen extends StatelessWidget {
-  const SongTransitionsScreen({super.key, this.settings});
+  const SongTransitionsScreen({super.key, this.settings, this.trace});
 
   /// Overrides the app's settings (tests).
   final TransitionSettings? settings;
+
+  /// Overrides the account of the last transition (tests).
+  final ValueListenable<MixTrace?>? trace;
 
   /// A one-line summary for a settings row.
   static String summary(TransitionSettings s) {
@@ -33,6 +39,7 @@ class SongTransitionsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = settings ?? context.read<MusicProvider>().transitionSettings;
+    final lastMix = trace ?? _traceOf(context);
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -46,7 +53,7 @@ class SongTransitionsScreen extends StatelessWidget {
           bottom: false,
           child: ListenableBuilder(
             listenable: s,
-            builder: (context, _) => _Body(settings: s),
+            builder: (context, _) => _Body(settings: s, trace: lastMix),
           ),
         ),
       ),
@@ -54,10 +61,21 @@ class SongTransitionsScreen extends StatelessWidget {
   }
 }
 
+/// The app's own record of the last transition, when there is a provider (a
+/// screen opened bare, as the tests do, has none).
+ValueListenable<MixTrace?>? _traceOf(BuildContext context) {
+  try {
+    return context.read<MusicProvider>().lastMixTrace;
+  } catch (_) {
+    return null;
+  }
+}
+
 class _Body extends StatelessWidget {
-  const _Body({required this.settings});
+  const _Body({required this.settings, required this.trace});
 
   final TransitionSettings settings;
+  final ValueListenable<MixTrace?>? trace;
 
   @override
   Widget build(BuildContext context) {
@@ -146,6 +164,29 @@ class _Body extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   _LengthCard(settings: s, automix: automix),
+                  const SizedBox(height: 18),
+                  const _SectionLabel('BALANCE'),
+                  const SizedBox(height: 10),
+                  GlassSettingsGroup(
+                    children: [
+                      GlassSettingsRow.toggle(
+                        icon: Icons.graphic_eq_rounded,
+                        title: 'Balance loudness',
+                        subtitle:
+                            'When one song is much louder than the other, the louder one is held down while they overlap and eases back up after, so neither buries the other.',
+                        value: s.levelMatching,
+                        onChanged: s.setLevelMatching,
+                      ),
+                      GlassSettingsRow.toggle(
+                        icon: Icons.signal_cellular_alt_rounded,
+                        title: 'Analyse on mobile data',
+                        subtitle:
+                            'Balancing and AutoMix read each upcoming song once (a few MB). Off keeps that to Wi-Fi.',
+                        value: s.analyzeOnCellular,
+                        onChanged: s.setAnalyzeOnCellular,
+                      ),
+                    ],
+                  ),
                   AnimatedSize(
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
@@ -165,17 +206,9 @@ class _Body extends StatelessWidget {
                                       title: 'Match tempo',
                                       badge: 'BETA',
                                       subtitle:
-                                          'Speed the next song up or down by a few percent so its beat lines up with the one leaving. Only when both songs have a clear beat.',
+                                          'Speed the next song up or down by up to 4 % so its beat lines up with the one leaving, and keep it on the beat through the overlap. Only when both songs have a clear beat.',
                                       value: s.matchTempo,
                                       onChanged: s.setMatchTempo,
-                                    ),
-                                    GlassSettingsRow.toggle(
-                                      icon: Icons.signal_cellular_alt_rounded,
-                                      title: 'Analyse on mobile data',
-                                      subtitle:
-                                          'AutoMix reads each upcoming song once to plan the join. Off keeps that to Wi-Fi.',
-                                      value: s.analyzeOnCellular,
-                                      onChanged: s.setAnalyzeOnCellular,
                                     ),
                                   ],
                                 ),
@@ -237,6 +270,14 @@ class _Body extends StatelessWidget {
             ),
           ),
         ),
+
+        if (trace != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              child: TransitionTraceCard(trace: trace!),
+            ),
+          ),
 
         SliverToBoxAdapter(
           child: Padding(

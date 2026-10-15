@@ -11,6 +11,7 @@ import '../theme/material_you_tokens.dart';
 import '../theme/material_you_typography.dart';
 import '../widgets/material_you_elevated_card.dart';
 import '../widgets/lyric_providers_sheet.dart';
+import 'song_transitions_screen.dart';
 
 /// Material You Settings Screen - NO BLUR, solid colors, Material 3 design
 class MaterialYouSettingsScreen extends StatelessWidget {
@@ -112,6 +113,23 @@ class MaterialYouSettingsScreen extends StatelessWidget {
                     title: 'Cellular Quality',
                     subtitle: '${musicProvider.cellularBitrate} kbps',
                     onTap: () => _showBitrateDialog(context, musicProvider, false, colorScheme),
+                  ),
+                  _buildDivider(colorScheme),
+                  // Crossfade and AutoMix. The screen is the same one the glass
+                  // settings open (it uses no blur); only the row is Material.
+                  ListenableBuilder(
+                    listenable: musicProvider.transitionSettings,
+                    builder: (context, _) => _buildListTile(
+                      context,
+                      icon: Icons.blur_linear_rounded,
+                      title: 'Song Transitions',
+                      subtitle: SongTransitionsScreen.summary(
+                          musicProvider.transitionSettings),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) => const SongTransitionsScreen()),
+                      ),
+                    ),
                   ),
                   _buildDivider(colorScheme),
                   _buildListTile(

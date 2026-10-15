@@ -22,6 +22,8 @@ import '../widgets/glass_options_sheet.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/apple_player_icons.dart';
 import '../widgets/thin_slider.dart';
+import '../widgets/track_swap.dart';
+import '../services/transition/transition_engine.dart' show TransitionPhase;
 import '../widgets/device_volume_slider.dart';
 import '../widgets/audio_output_sheet.dart';
 import '../widgets/liquid_glass_pill.dart';
@@ -1394,31 +1396,40 @@ child: Transform.scale(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          currentTrack.trackName,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                            fontSize: lerpDouble(24.0, 15.0, t)!,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: lerpDouble(-0.3, 0.0, t)!,
-                            height: 1.15,
+                        // The words change hands once, at the handoff of a mix (or
+                        // on a skip): see track_swap.dart.
+                        TrackTextSwap(
+                          identity: currentTrack.id,
+                          child: Text(
+                            currentTrack.trackName,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white,
+                              fontSize: lerpDouble(24.0, 15.0, t)!,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: lerpDouble(-0.3, 0.0, t)!,
+                              height: 1.15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                         SizedBox(height: lerpDouble(3.0, 2.0, t)!),
-                        Text(
-                          currentTrack.artistName,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white
-                                .withValues(alpha: lerpDouble(0.68, 0.65, t)!),
-                            fontSize: lerpDouble(17.0, 13.0, t)!,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: -0.1,
-                            height: 1.15,
+                        TrackTextSwap(
+                          identity: currentTrack.id,
+                          lag: 0.18,
+                          child: Text(
+                            currentTrack.artistName,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white.withValues(
+                                  alpha: lerpDouble(0.68, 0.65, t)!),
+                              fontSize: lerpDouble(17.0, 13.0, t)!,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: -0.1,
+                              height: 1.15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -1566,6 +1577,29 @@ child: Transform.scale(
 
   // ── Scrubber Bar with Timestamps (Image 1) ──────────────────────────────
 
+  /// The bracket under the scrubber that shows where the next song will come
+  /// in. Only what the engine has actually planned for THIS song is drawn: the
+  /// length check keeps a plan made for another song (or another cut) off it.
+  List<ThinSliderMark> _mixMarks(
+      MusicProvider provider, Color? accentColor, Duration dur) {
+    final u = provider.upcomingMix.value;
+    final total = dur.inMilliseconds;
+    if (u == null || u.isNone || total <= 0) return const <ThinSliderMark>[];
+    if ((u.durationMs - total).abs() > 1500) return const <ThinSliderMark>[];
+    final ui = provider.transitionState.value;
+    final running = ui.phase == TransitionPhase.fading && !ui.handedOff;
+    return <ThinSliderMark>[
+      ThinSliderMark(
+        from: u.startAtMs / total,
+        to: u.endAtMs / total,
+        color: u.isMix
+            ? (accentColor ?? Theme.of(context).colorScheme.primary)
+            : Colors.white,
+        progress: running ? ui.progress : 0.0,
+      ),
+    ];
+  }
+
   Widget _buildScrubberBar(
     BuildContext context,
     MusicProvider provider, {
@@ -1595,10 +1629,17 @@ child: Transform.scale(
           children: [
             // A jump (the session moving to the song a mix is bringing in, a
             // tap on the bar) glides; ordinary creeping progress does not.
-            JumpSmoother(
+            ListenableBuilder(
+              // Where the next song will come in, as the engine has planned it.
+              listenable: Listenable.merge(<Listenable>[
+                provider.upcomingMix,
+                provider.transitionState,
+              ]),
+              builder: (context, _) => JumpSmoother(
               value: fraction,
               enabled: !_isScrubbing,
               builder: (context, smoothed) => ThinSlider(
+              marks: _mixMarks(provider, accentColor, dur),
               value: smoothed,
               idleHeight: 7.0,
               activeHeight: 12.0,
@@ -1630,6 +1671,7 @@ child: Transform.scale(
                 // Re-arms from here, not from wherever the drag began.
                 _setHeldGesture(false);
               },
+            ),
             ),
             ),
             Transform.translate(
