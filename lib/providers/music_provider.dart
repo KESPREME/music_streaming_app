@@ -2127,6 +2127,8 @@ for (final track in releases)
     final t = _currentTrack;
     if (t == null) return;
     _currentTrack = null; // force playTrack full path
+    // A replay of the same track is a new play, not more of the last one.
+    listeningStats.onTrackChanged(null);
     await playTrack(t,
         playlistTracks: _currentPlayingTracks, playlistId: _currentPlaylistId);
   }
@@ -2754,6 +2756,7 @@ for (final track in releases)
 
         if (changed) {
           _currentTrack = updated;
+          listeningStats.onTrackChanged(updated);
           notifyListeners();
           if (kDebugMode) {
             debugPrint(
@@ -3047,6 +3050,7 @@ for (final track in releases)
     }
 
     _currentTrack = TrackMetadataEnricher.sanitizeTrack(next);
+    listeningStats.onTrackChanged(_currentTrack);
     // A new current track clears the dry-window latch, so whichever track
     // finishes next gets its own repair rather than being skipped as "already
     // handled".
@@ -3553,6 +3557,7 @@ for (final track in releases)
       }
 
       _currentTrack = sanitizedTrack;
+      listeningStats.onTrackChanged(sanitizedTrack);
       _paletteService.clear(); // Reset palette immediately
       _isOfflineTrack = false;
       _updateCurrentIndex();

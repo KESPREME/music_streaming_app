@@ -13,7 +13,7 @@ import 'package:music_streaming_app/widgets/library/library_header.dart';
 import 'package:music_streaming_app/widgets/library/library_hero_artwork.dart';
 import 'package:music_streaming_app/widgets/library/library_filter_bar.dart';
 import 'package:music_streaming_app/services/listening_stats.dart';
-import 'package:music_streaming_app/widgets/library/library_listening_card.dart';
+import 'package:music_streaming_app/widgets/replay/replay_card.dart';
 import 'package:music_streaming_app/widgets/library/library_shelves.dart';
 
 class FakeLibraryMusicProvider extends ChangeNotifier implements MusicProvider {
@@ -191,8 +191,8 @@ void main() {
       expect(find.bySemanticsLabel('Sort library items'), findsOneWidget);
 
       // 4. Listening card: nothing listened yet, so the honest empty state.
-      expect(find.byType(LibraryListeningCard), findsOneWidget);
-      expect(find.textContaining('in music'), findsOneWidget);
+      expect(find.byType(ReplayCardCarousel), findsOneWidget);
+      expect(find.text('Your Replay starts here'), findsOneWidget);
 
       // 5. Quick access: six destinations (the rail scrolls; the first few are
       // laid out on screen).

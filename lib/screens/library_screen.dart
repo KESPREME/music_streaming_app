@@ -27,7 +27,9 @@ import 'glass_library_search_screen.dart';
 import '../widgets/library/library_header.dart';
 import '../widgets/library/library_hero_artwork.dart';
 import '../widgets/library/library_filter_bar.dart';
-import '../widgets/library/library_listening_card.dart';
+import '../services/replay/replay_summary.dart';
+import '../widgets/replay/replay_card.dart';
+import 'replay_screen.dart';
 import '../widgets/library/library_shelves.dart';
 import '../widgets/themed_options_sheet.dart';
 
@@ -296,14 +298,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     String count(int n, String one, String many) => n == 1 ? '1 $one' : '$n $many';
 
     return [
-      // Listening time
+      // Replay: the listening card wallet. Tap any face for the full Replay.
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: LibraryListeningCard(
-            stats: provider.listeningStats,
-            horizontalPadding: gutter,
-            onTap: () => _openRecents(context),
+          child: ListenableBuilder(
+            listenable: provider.listeningStats,
+            builder: (context, _) => ReplayCardCarousel(
+              summary: ReplaySummary.of(provider.listeningStats, ReplayPeriod.year),
+              horizontalPadding: gutter,
+              onTap: () => ReplayScreen.open(context),
+            ),
           ),
         ),
       ),

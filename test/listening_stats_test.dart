@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/services/listening_stats.dart';
-import 'package:music_streaming_app/widgets/library/library_listening_card.dart';
+import 'package:music_streaming_app/services/replay/replay_summary.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The Library's listening number is measured time with audio playing. These pin
@@ -77,6 +77,7 @@ void main() {
     test('survives a restart', () async {
       final clock = _Clock(DateTime(2026, 5, 1, 10));
       final a = ListeningStats(clock: clock.call);
+      await a.load();
       a.onPlayingChanged(true);
       clock.advance(const Duration(minutes: 20));
       a.onPlayingChanged(false);
