@@ -25,7 +25,9 @@ void main() {
       expect(s.style, TransitionStyle.crossfade);
       expect(s.crossfadeSeconds, 6);
       expect(s.crossfadeAlbums, isFalse, reason: 'albums stay gapless');
-      expect(s.matchTempo, isFalse, reason: 'tempo changes are opt-in');
+      expect(s.matchTempo, isTrue,
+          reason: 'matching tempo is what AutoMix is; Crossfade never stretches');
+      expect(s.levelMatching, isTrue);
       expect(s.sleepFade, isTrue);
       expect(s.skipSilence, isFalse);
       expect(s.analyzeOnCellular, isFalse);
@@ -38,7 +40,8 @@ void main() {
       await a.setStyle(TransitionStyle.automix);
       await a.setCrossfadeSeconds(9);
       await a.setCrossfadeAlbums(true);
-      await a.setMatchTempo(true);
+      await a.setMatchTempo(false);
+      await a.setLevelMatching(false);
       await a.setSleepFade(false);
       await a.setSkipSilence(true);
       await a.setAnalyzeOnCellular(true);
@@ -49,7 +52,8 @@ void main() {
       expect(b.isAutomix, isTrue);
       expect(b.crossfadeSeconds, 9);
       expect(b.crossfadeAlbums, isTrue);
-      expect(b.matchTempo, isTrue);
+      expect(b.matchTempo, isFalse);
+      expect(b.levelMatching, isFalse);
       expect(b.sleepFade, isFalse);
       expect(b.skipSilence, isTrue);
       expect(b.analyzeOnCellular, isTrue);

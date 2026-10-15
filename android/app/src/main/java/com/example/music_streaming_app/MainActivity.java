@@ -55,15 +55,17 @@ public class MainActivity extends AudioServiceFragmentActivity {
                     final String path = call.argument("path");
                     final Integer rate = call.argument("rate");
                     final Integer maxSeconds = call.argument("maxSeconds");
+                    final Integer channels = call.argument("channels");
                     if (path == null) {
                         result.error("ARG", "path required", null);
                         return;
                     }
                     final int outRate = rate == null ? 11025 : rate;
                     final int limit = maxSeconds == null ? 900 : maxSeconds;
+                    final int outChannels = channels == null ? 1 : channels;
                     decodeExecutor.execute(() -> {
                         try {
-                            final byte[] pcm = AudioDecoder.decodeToMono16(path, outRate, limit);
+                            final byte[] pcm = AudioDecoder.decodeToPcm16(path, outRate, limit, outChannels);
                             mainHandler.post(() -> result.success(pcm));
                         } catch (AudioDecoder.DecodeException e) {
                             mainHandler.post(() -> result.error("DECODE", e.getMessage(), null));

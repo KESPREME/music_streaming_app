@@ -34,11 +34,128 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' show IndexedAudioSource;
 
 import 'fade_curves.dart';
+import 'level_plan.dart';
+import 'phase_lock.dart';
 import 'track_analysis.dart';
 import 'transition_planner.dart';
 import 'transition_settings.dart';
 
 enum TransitionPhase { idle, arming, fading, bailing, sleepFade }
+
+/// What one transition did, for the diagnostics card and the log.
+///
+/// The audio cannot be heard from here, so this is the engine's account of
+/// itself: what it planned, how late it started, how far off the beat the
+/// incoming song was and what it did about it, and how regular its own ticks
+/// were. Those are the numbers that say whether a mix that sounded wrong was
+/// planned wrong or performed wrong.
+@immutable
+class MixTrace {
+  const MixTrace({
+    required this.plan,
+    required this.level,
+    required this.fadeMs,
+    required this.startedLateMs,
+    required this.completed,
+    required this.ticks,
+    required this.maxTickGapMs,
+    this.firstPhaseErrorMs,
+    this.lastPhaseErrorMs,
+    this.peakTrim = 0.0,
+    this.phaseReleased = false,
+  });
+
+  final TransitionPlan plan;
+  final LevelPlan level;
+
+  /// The overlap actually performed (a late start shortens it).
+  final int fadeMs;
+
+  /// How far past the planned start the incoming song was started.
+  final int startedLateMs;
+
+  /// The mix reached its end (as opposed to being abandoned).
+  final bool completed;
+
+  /// Gain updates made, and the longest gap between two of them (the engine
+  /// asks for 30 ms; a gap of hundreds means the UI isolate was busy).
+  final int ticks;
+  final int maxTickGapMs;
+
+  /// Beat-matched mixes only: the incoming song's distance from the beat grid
+  /// when first measured and when last measured, in ms (positive = late).
+  final double? firstPhaseErrorMs;
+  final double? lastPhaseErrorMs;
+
+  /// The largest speed trim the phase lock applied (fraction, 0.01 = 1 %).
+  final double peakTrim;
+
+  /// The lock gave up (its readings were implausible).
+  final bool phaseReleased;
+
+  @override
+  String toString() => 'MIX_TRACE ${plan.kind.name} (${plan.reason}) '
+      'fade=${fadeMs}ms late=${startedLateMs}ms rate=${plan.incomingRate} '
+      '$level ticks=$ticks maxGap=${maxTickGapMs}ms '
+      'phase=${firstPhaseErrorMs?.toStringAsFixed(0)}->${lastPhaseErrorMs?.toStringAsFixed(0)}ms '
+      'trim=${(peakTrim * 100).toStringAsFixed(2)}%'
+      '${phaseReleased ? ' (lock released)' : ''} '
+      '${completed ? 'completed' : 'abandoned'}';
+}
+
+/// What the engine intends to do at the end of the current song, as far as it
+/// can tell now. The scrubber draws it as a mark, and the queue names it between
+/// the playing song and the next one.
+@immutable
+class UpcomingMix {
+  const UpcomingMix({
+    required this.currentId,
+    required this.nextId,
+    required this.durationMs,
+    required this.kind,
+    required this.reason,
+    this.startAtMs = 0,
+    this.endAtMs = 0,
+    this.incomingRate = 1.0,
+    this.analysed = false,
+  });
+
+  final String currentId;
+  final String nextId;
+
+  /// The length of the playing song this was planned against.
+  final int durationMs;
+
+  final PlanKind kind;
+  final String reason;
+  final int startAtMs;
+  final int endAtMs;
+  final double incomingRate;
+
+  /// Both songs had been analysed when this was planned.
+  final bool analysed;
+
+  bool get isNone => kind == PlanKind.none;
+  bool get isMix => kind == PlanKind.smart || kind == PlanKind.beatmatched;
+  int get fadeMs => endAtMs - startAtMs;
+
+  @override
+  bool operator ==(Object other) =>
+      other is UpcomingMix &&
+      other.currentId == currentId &&
+      other.nextId == nextId &&
+      other.durationMs == durationMs &&
+      other.kind == kind &&
+      other.reason == reason &&
+      other.startAtMs == startAtMs &&
+      other.endAtMs == endAtMs &&
+      other.incomingRate == incomingRate &&
+      other.analysed == analysed;
+
+  @override
+  int get hashCode => Object.hash(currentId, nextId, durationMs, kind, reason,
+      startAtMs, endAtMs, incomingRate, analysed);
+}
 
 /// What the UI needs to move in step with the audio.
 @immutable
@@ -102,8 +219,13 @@ abstract class TransitionDecks {
   void mirror();
   Future<void> swap();
   Future<void> retireStandby();
-  Future<void> settleActive();
+  /// Back to plain playback: full gain and, unless [resetSpeed] is false, the
+  /// listener's own speed (the engine walks a stretched song back itself).
+  Future<void> settleActive({bool resetSpeed = true});
   Future<void> setActiveRate(double rate);
+
+  /// Sets the standby deck's speed relative to the listener's own (1.0 = theirs).
+  Future<void> setStandbyRate(double rate);
 }
 
 @immutable
@@ -172,6 +294,12 @@ class TransitionEngine {
   final ValueNotifier<TransitionUiState> ui =
       ValueNotifier<TransitionUiState>(TransitionUiState.idle);
 
+  /// The account of the most recent transition (null before the first).
+  final ValueNotifier<MixTrace?> lastMix = ValueNotifier<MixTrace?>(null);
+
+  /// What will happen when the playing song ends (null: nothing, or unknown).
+  final ValueNotifier<UpcomingMix?> upcoming = ValueNotifier<UpcomingMix?>(null);
+
   // Timings (ms).
   static const int armLeadMs = 4000;
   static const int armTimeoutMs = 12000;
@@ -209,6 +337,20 @@ class TransitionEngine {
   double _gActive = 1.0;
   double _gStandby = 0.0;
 
+  // Loudness balance, phase lock, and the account of the mix.
+  LevelPlan _level = LevelPlan.none;
+  PhaseLock? _lock;
+  double _incomingRate = 1.0; // the incoming deck's current stretch
+  int _startedLateMs = 0;
+  int _ticks = 0;
+  int _maxGapMs = 0;
+  int _lastTickAt = 0;
+
+  // After a mix: the louder incoming song climbs back to its own level.
+  Timer? _releaseTimer;
+  LevelPlan? _releasing;
+  int _releaseStartedAt = 0;
+
   // Bail ramp.
   int _bailStartedAt = 0;
   double _bailFromActive = 1.0;
@@ -222,6 +364,9 @@ class TransitionEngine {
 
   // Tempo ease-back after a stretched mix.
   Timer? _easeTimer;
+  bool _easing = false;
+  double _easeFrom = 1.0;
+  int _easeK = 0;
 
   // ── Public ────────────────────────────────────────────────────────────────
 
@@ -234,6 +379,9 @@ class TransitionEngine {
     if (_phase == TransitionPhase.idle && !_watching) {
       _timer?.cancel();
       _timer = null;
+      // Nothing to wait for, but what WOULD happen is still worth showing (a
+      // paused queue names its next transition): a computation, no timer.
+      _refreshUpcoming();
       return;
     }
     _reschedule(const Duration(milliseconds: 1));
@@ -248,6 +396,7 @@ class TransitionEngine {
   void bail() {
     if (_disposed) return;
     _cancelEase(reset: true);
+    _cancelRelease();
     switch (_phase) {
       case TransitionPhase.idle:
       case TransitionPhase.bailing:
@@ -281,8 +430,11 @@ class TransitionEngine {
     _disposed = true;
     _timer?.cancel();
     _easeTimer?.cancel();
+    _releaseTimer?.cancel();
     settings.removeListener(poke);
     ui.dispose();
+    lastMix.dispose();
+    upcoming.dispose();
   }
 
   // ── The step ──────────────────────────────────────────────────────────────
@@ -336,13 +488,27 @@ class TransitionEngine {
       return Duration(milliseconds: wait.clamp(250, 30000));
     }
 
-    if (!settings.active) return null;
+    if (!settings.active) {
+      _setUpcoming(null);
+      return null;
+    }
     final ctx = hooks.context();
-    if (ctx == null) return const Duration(seconds: 5);
-    if (ctx.repeatOne || ctx.casting) return null;
-    if (_blockedPair == '${ctx.currentId}>${ctx.nextId}') return null;
+    if (ctx == null) {
+      _setUpcoming(null);
+      return const Duration(seconds: 5);
+    }
+    if (ctx.repeatOne || ctx.casting) {
+      _setUpcoming(null);
+      return null;
+    }
+    if (_blockedPair == '${ctx.currentId}>${ctx.nextId}') {
+      _setUpcoming(null);
+      return null;
+    }
 
-    if (settings.isAutomix) {
+    // Both songs are measured for AutoMix (beats, outro) and for level matching
+    // (loudness), which Crossfade uses too.
+    if (settings.isAutomix || settings.levelMatching) {
       hooks.requestAnalysis(ctx.currentId);
       hooks.requestAnalysis(ctx.nextId);
     }
@@ -365,7 +531,10 @@ class TransitionEngine {
     final key = '${ctx.currentId}>${ctx.nextId}|$durMs|${ctx.nextDurationMs}'
         '|${settings.planVersion}|${ctx.albumSequential}'
         '|${identityHashCode(outgoing)}|${identityHashCode(incoming)}';
-    if (key == _planKey && _planCached != null) return _planCached!;
+    if (key == _planKey && _planCached != null) {
+      _setUpcoming(_upcomingOf(ctx, durMs, _planCached!, outgoing, incoming));
+      return _planCached!;
+    }
     final plan = TransitionPlanner.plan(PlanRequest(
       durationMs: durMs,
       nextDurationMs: ctx.nextDurationMs,
@@ -379,8 +548,47 @@ class TransitionEngine {
     ));
     _planKey = key;
     _planCached = plan;
+    _setUpcoming(_upcomingOf(ctx, durMs, plan, outgoing, incoming));
     if (kDebugMode) debugPrint('TransitionEngine: $plan');
     return plan;
+  }
+
+  UpcomingMix _upcomingOf(TransitionContext ctx, int durMs, TransitionPlan plan,
+          TrackAnalysis? outgoing, TrackAnalysis? incoming) =>
+      UpcomingMix(
+        currentId: ctx.currentId,
+        nextId: ctx.nextId,
+        durationMs: durMs,
+        kind: plan.kind,
+        reason: plan.reason,
+        startAtMs: plan.startAtMs,
+        endAtMs: plan.endAtMs,
+        incomingRate: plan.incomingRate,
+        analysed: outgoing != null && incoming != null,
+      );
+
+  void _setUpcoming(UpcomingMix? v) {
+    if (_disposed) return;
+    if (upcoming.value != v) upcoming.value = v;
+  }
+
+  /// Works out what the end of this song will hold, without arming anything.
+  void _refreshUpcoming() {
+    if (!settings.active) {
+      _setUpcoming(null);
+      return;
+    }
+    final dur = decks.activeDuration;
+    final ctx = hooks.context();
+    if (dur == null ||
+        dur <= Duration.zero ||
+        ctx == null ||
+        ctx.repeatOne ||
+        ctx.casting) {
+      _setUpcoming(null);
+      return;
+    }
+    _planFor(ctx, dur.inMilliseconds);
   }
 
   // ── Arming ────────────────────────────────────────────────────────────────
@@ -449,15 +657,42 @@ class TransitionEngine {
 
   void _startFade(int pos) {
     final plan = _plan!;
+    // A song still climbing back from the last mix has no business under a new
+    // one; settle it so the new fade starts from full level.
+    _cancelRelease();
     _fadeStartPos = pos;
     // A late start shortens the fade; it never lengthens it.
     _fadeLen = math.max(1000, math.min(plan.fadeMs, plan.endAtMs - pos));
     _cue = decks.standbyPosition.inMilliseconds;
     _rate = plan.incomingRate;
+    _incomingRate = plan.incomingRate;
     _handedOff = false;
     _lastP = 0.0;
     _gActive = 1.0;
     _gStandby = 0.0;
+    _startedLateMs = math.max(0, pos - plan.startAtMs);
+    _ticks = 0;
+    _maxGapMs = 0;
+    _lastTickAt = _nowMs();
+
+    // Loudness balance, from what is known NOW (analysis may have landed since
+    // the engine armed), and the lock that keeps a beat-matched mix on the beat.
+    final ctx = _ctx!;
+    _level = settings.levelMatching
+        ? LevelPlanner.plan(
+            mix: plan,
+            outgoing: hooks.analysisFor(ctx.currentId, decks.activeDuration?.inMilliseconds ?? 0),
+            incoming: hooks.analysisFor(ctx.nextId, ctx.nextDurationMs),
+          )
+        : LevelPlan.none;
+    _lock = plan.kind == PlanKind.beatmatched
+        ? PhaseLock(
+            startAtMs: plan.startAtMs,
+            cueMs: plan.cueMs,
+            rate: plan.incomingRate,
+            userSpeed: decks.userSpeed <= 0 ? 1.0 : decks.userSpeed,
+          )
+        : null;
     decks.setGains(active: 1.0, standby: 0.0);
     decks.playStandby();
     _phase = TransitionPhase.fading;
@@ -485,13 +720,17 @@ class TransitionEngine {
     final p = math.max(_lastP, math.max(pOut, pIn).clamp(0.0, 1.0));
     _lastP = p;
 
-    final inG = riseGain(p);
-    final outG = fallGain(p);
-    final trim = headroomTrim(inG, outG);
-    _gActive = (_handedOff ? inG : outG) * trim;
-    _gStandby = (_handedOff ? outG : inG) * trim;
+    final g = mixGains(p, level: _level);
+    _gActive = _handedOff ? g.incoming : g.outgoing;
+    _gStandby = _handedOff ? g.outgoing : g.incoming;
     decks.setGains(active: _gActive, standby: _gStandby);
     _publish(phase: TransitionPhase.fading, progress: p);
+
+    final now = _nowMs();
+    if (_ticks > 0) _maxGapMs = math.max(_maxGapMs, now - _lastTickAt);
+    _lastTickAt = now;
+    _ticks++;
+    _holdBeat(now, outPos, inPos);
 
     if (!_handedOff && p >= handoffAt) {
       unawaited(_handoff());
@@ -515,6 +754,7 @@ class TransitionEngine {
       _gActive = _gStandby;
       _gStandby = a;
       hooks.onHandoff(_ctx!.nextId);
+      _setUpcoming(null); // it described the song that has just left
       _publish(phase: TransitionPhase.fading, progress: _lastP);
     } finally {
       _busy = false;
@@ -524,8 +764,11 @@ class TransitionEngine {
   Future<void> _finish({required bool completed}) async {
     if (_busy) return;
     _busy = true;
-    final rate = _rate;
+    final rate = _incomingRate;
     final handed = _handedOff;
+    // A stretched incoming song is walked back to the listener's speed below;
+    // settling must not snap it there first.
+    final easing = (rate - 1.0).abs() > 1e-4 && completed;
     try {
       if (!_handedOff) {
         // Reached the end without a handoff (a very short mix): hand off now so
@@ -535,17 +778,91 @@ class TransitionEngine {
         hooks.onHandoff(_ctx!.nextId);
       }
       await decks.retireStandby();
-      await decks.settleActive();
+      await decks.settleActive(resetSpeed: !easing);
     } finally {
       _busy = false;
     }
+    _recordTrace(completed: completed);
+    _setUpcoming(null);
+    final level = _level;
     _phase = TransitionPhase.idle;
     _blockedPair = null;
     _plan = null;
+    _lock = null;
     _publish(phase: TransitionPhase.idle);
     hooks.onSettled(completed: completed || handed);
-    if (rate != 1.0 && completed) _easeRateBack(rate);
+    if (easing) _easeRateBack(rate);
+    if (completed && level.incomingDb < 0) _startRelease(level);
     poke();
+  }
+
+  /// Keeps the incoming song on the beat: see PhaseLock.
+  void _holdBeat(int now, int outPos, int inPos) {
+    final lock = _lock;
+    if (lock == null || lock.released) return;
+    final next = lock.update(wallMs: now, outPosMs: outPos, inPosMs: inPos);
+    if (next == null) return;
+    _incomingRate = _rate * next;
+    unawaited((_handedOff
+            ? decks.setActiveRate(_incomingRate)
+            : decks.setStandbyRate(_incomingRate))
+        .catchError((Object _) {}));
+  }
+
+  // ── Release ───────────────────────────────────────────────────────────────
+
+  /// A song that had to be held down to blend with a quieter one climbs back to
+  /// its own level, over [LevelPlan.releaseMs], once it is playing alone.
+  void _startRelease(LevelPlan level) {
+    _releasing = level;
+    _releaseStartedAt = _nowMs();
+    decks.setGains(active: level.incomingGain, standby: 0.0);
+    if (!autoSchedule) return; // tests step it by hand
+    _releaseTimer?.cancel();
+    _releaseTimer = Timer.periodic(
+        const Duration(milliseconds: 100), (_) => releaseStep());
+  }
+
+  /// One step of the climb. Public so tests can drive it.
+  void releaseStep() {
+    final level = _releasing;
+    if (level == null) return;
+    final done = ((_nowMs() - _releaseStartedAt) / level.releaseMs).clamp(0.0, 1.0);
+    final g = mixGains(1.0, level: level, incomingRelease: done).incoming;
+    decks.setGains(active: g, standby: 0.0);
+    if (done >= 1.0) _endRelease();
+  }
+
+  void _endRelease() {
+    _releasing = null;
+    _releaseTimer?.cancel();
+    _releaseTimer = null;
+  }
+
+  void _cancelRelease() {
+    if (_releasing == null) return;
+    _endRelease();
+    decks.setGains(active: 1.0, standby: 0.0);
+  }
+  void _recordTrace({required bool completed}) {
+    final plan = _plan;
+    if (plan == null || _ticks == 0) return;
+    final lock = _lock;
+    final trace = MixTrace(
+      plan: plan,
+      level: _level,
+      fadeMs: _fadeLen,
+      startedLateMs: _startedLateMs,
+      completed: completed,
+      ticks: _ticks,
+      maxTickGapMs: _maxGapMs,
+      firstPhaseErrorMs: lock?.firstErrorMs,
+      lastPhaseErrorMs: lock?.lastErrorMs,
+      peakTrim: lock?.peakTrim ?? 0.0,
+      phaseReleased: lock?.released ?? false,
+    );
+    lastMix.value = trace;
+    if (!kReleaseMode) debugPrint('$trace');
   }
 
   // ── Bail ──────────────────────────────────────────────────────────────────
@@ -571,8 +888,11 @@ class TransitionEngine {
     } finally {
       _busy = false;
     }
+    _recordTrace(completed: false);
+    _setUpcoming(null);
     _phase = TransitionPhase.idle;
     _plan = null;
+    _lock = null;
     _publish(phase: TransitionPhase.idle);
     hooks.onSettled(completed: false);
     poke();
@@ -597,27 +917,37 @@ class TransitionEngine {
   // ── Tempo ease-back ───────────────────────────────────────────────────────
 
   void _easeRateBack(double from) {
-    const steps = 12;
-    var k = 0;
+    _easeFrom = from;
+    _easeK = 0;
+    _easing = true;
+    if (!autoSchedule) return; // tests step it by hand
     _easeTimer?.cancel();
-    _easeTimer = Timer.periodic(const Duration(milliseconds: 500), (t) {
-      k++;
-      final rate = from + (1.0 - from) * (k / steps);
-      unawaited(decks.setActiveRate(k >= steps ? 1.0 : rate));
-      if (k >= steps) {
-        t.cancel();
-        _easeTimer = null;
-      }
-    });
+    _easeTimer = Timer.periodic(
+        const Duration(milliseconds: 500), (_) => easeStep());
+  }
+
+  /// One half-second of the walk back to the listener's speed. Public so tests
+  /// can drive it.
+  void easeStep() {
+    if (!_easing) return;
+    const steps = 12;
+    _easeK++;
+    final rate = _easeFrom + (1.0 - _easeFrom) * (_easeK / steps);
+    unawaited(decks.setActiveRate(_easeK >= steps ? 1.0 : rate));
+    if (_easeK >= steps) _endEase();
+  }
+
+  void _endEase() {
+    _easing = false;
+    _easeTimer?.cancel();
+    _easeTimer = null;
   }
 
   void _cancelEase({required bool reset}) {
-    if (_easeTimer == null) return;
-    _easeTimer!.cancel();
-    _easeTimer = null;
+    if (!_easing) return;
+    _endEase();
     if (reset) unawaited(decks.setActiveRate(1.0));
   }
-
   // ── Sleep fade ────────────────────────────────────────────────────────────
 
   void _beginSleepFade({required bool byPosition, required int lengthMs}) {

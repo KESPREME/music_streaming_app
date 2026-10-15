@@ -57,8 +57,12 @@ class AudioServiceDecks implements TransitionDecks {
   Future<void> retireStandby() => _audio.retireStandby();
 
   @override
-  Future<void> settleActive() => _audio.settleActive();
+  Future<void> settleActive({bool resetSpeed = true}) =>
+      _audio.settleActive(resetSpeed: resetSpeed);
 
   @override
   Future<void> setActiveRate(double rate) => _audio.setActiveRate(rate);
+
+  @override
+  Future<void> setStandbyRate(double rate) => _audio.setStandbyRate(rate);
 }

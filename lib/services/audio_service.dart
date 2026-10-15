@@ -53,6 +53,31 @@ class AudioService {
     return dir;
   }
 
+  /// The finished cache file of [id], or null. A song that has been played (or
+  /// is playing and fully buffered) is already on disk; analysis reads that
+  /// instead of fetching the song a second time. Same completeness rule as
+  /// [buildSource]: the cache only gets its final name when it is whole.
+  Future<String?> cachedAudioFile(String id) async {
+    try {
+      final dir = await _getAudioCacheDir();
+      final sanitizedId = id.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+      final file = File('${dir.path}/audio_$sanitizedId.m4a');
+      if (await file.exists() && (await file.length()) > 100000) return file.path;
+    } catch (_) {}
+    return null;
+  }
+
+  /// Where [id]'s finished cache file belongs (it may not exist yet).
+  Future<String?> audioCachePathFor(String id) async {
+    try {
+      final dir = await _getAudioCacheDir();
+      final sanitizedId = id.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+      return '${dir.path}/audio_$sanitizedId.m4a';
+    } catch (_) {
+      return null;
+    }
+  }
+
   DateTime? _lastAudioPrune;
   Future<void> _pruneAudioCacheIfNeeded() async {
     final now = DateTime.now();
@@ -936,10 +961,37 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
   /// The deck volumes: what the listener set, times each deck's fade gain.
   /// The only writer of deck volume, so a fade and the volume control can
   /// never fight over it.
-  Future<void> _applyGains() async {
-    await _audioPlayer.setVolume(_userVolume * _activeGain);
-    final standby = _decks.standbyIfAny;
-    if (standby != null) await standby.setVolume(_userVolume * _standbyGain);
+  Future<void> _applyGains() {
+    // Single flight, latest wins. The engine asks every 30 ms; if the platform
+    // is slow to answer, a queue of stale volumes would play out in order and
+    // the fade would run late. Instead a call made while one is in flight just
+    // marks the gains dirty, and the flight goes round again with the newest.
+    // Callers that await still get "volumes reflect what I asked for" when it
+    // completes. Both decks are set together, not one after the other.
+    final inFlight = _gainsFlight;
+    if (inFlight != null) {
+      _gainsDirty = true;
+      return inFlight;
+    }
+    return _gainsFlight = _drainGains();
+  }
+
+  Future<void>? _gainsFlight;
+  bool _gainsDirty = false;
+
+  Future<void> _drainGains() async {
+    try {
+      do {
+        _gainsDirty = false;
+        final standby = _decks.standbyIfAny;
+        await Future.wait<void>(<Future<void>>[
+          _audioPlayer.setVolume(_userVolume * _activeGain),
+          if (standby != null) standby.setVolume(_userVolume * _standbyGain),
+        ]);
+      } while (_gainsDirty);
+    } finally {
+      _gainsFlight = null;
+    }
   }
 
   void _pauseAllDecks() {
@@ -1416,10 +1468,10 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
 
   /// Puts the session deck back to plain playback after a mix: full gain, and
   /// the listener's own speed (a beat-matched stretch is walked back).
-  Future<void> settleActive() async {
+  Future<void> settleActive({bool resetSpeed = true}) async {
     _activeGain = 1.0;
     await _applyGains();
-    if ((_audioPlayer.speed - _speed).abs() > 1e-4) {
+    if (resetSpeed && (_audioPlayer.speed - _speed).abs() > 1e-4) {
       await _audioPlayer.setSpeed(_speed);
     }
   }
@@ -1429,6 +1481,16 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
     final target = _speed * rate;
     if ((_audioPlayer.speed - target).abs() > 1e-4) {
       await _audioPlayer.setSpeed(target);
+    }
+  }
+
+  /// The same for the standby deck (the incoming song before the handoff).
+  Future<void> setStandbyRate(double rate) async {
+    final deck = _decks.standbyIfAny;
+    if (deck == null) return;
+    final target = _speed * rate;
+    if ((deck.speed - target).abs() > 1e-4) {
+      await deck.setSpeed(target);
     }
   }
 

@@ -11,13 +11,16 @@ import java.nio.ShortBuffer;
 
 /**
  * Decodes an audio file (any container/codec the platform plays: AAC in MP4,
- * Opus in WebM, MP3, FLAC...) to MONO 16-bit PCM at a low sample rate, for
- * analysis only. Nothing here is heard.
+ * Opus in WebM, MP3, FLAC...) to 16-bit PCM at a low sample rate, for analysis
+ * only. Nothing here is heard.
  *
  * Mono at 11 025 Hz is 22 KB per second of audio: four minutes of music is
  * about 5 MB, and everything AutoMix measures (the level envelope, the beat,
- * where the music stops) survives that rate. The decoder does the downmix and
- * the rate conversion itself, so only the small result crosses into Dart.
+ * where the music stops) survives that rate. Stereo doubles that, and is what
+ * the loudness meter needs: BS.1770 sums the power of the two channels, which
+ * a mono downmix cannot reproduce (it read up to 3 dB low on wide mixes). The
+ * decoder does the rate conversion itself, so only the small result crosses
+ * into Dart.
  *
  * Runs on the caller's thread; the plugin calls it from a background thread.
  */
@@ -34,10 +37,13 @@ final class AudioDecoder {
      * @param path        a file path
      * @param outRate     the sample rate to produce, Hz
      * @param maxSeconds  stop after this much audio (a guard against a runaway file)
-     * @return little-endian 16-bit mono samples
+     * @param outChannels 1 for a mono mix-down, 2 for interleaved left/right
+     *                    (a mono source is written to both)
+     * @return little-endian 16-bit samples
      */
-    static byte[] decodeToMono16(String path, int outRate, int maxSeconds)
+    static byte[] decodeToPcm16(String path, int outRate, int maxSeconds, int outChannels)
             throws DecodeException {
+        final boolean stereo = outChannels >= 2;
         MediaExtractor extractor = new MediaExtractor();
         MediaCodec codec = null;
         try {
@@ -66,14 +72,15 @@ final class AudioDecoder {
             int channels = format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)
                     ? format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 2;
 
-            ByteBuffer out = ByteBuffer.allocate(Math.max(1, outRate * 2 * 120));
+            ByteBuffer out = ByteBuffer.allocate(Math.max(1, outRate * 2 * (stereo ? 2 : 1) * 120));
             out.order(ByteOrder.LITTLE_ENDIAN);
 
             // Box-filter resampler: average every input sample that falls into
             // one output sample. Cheap, and plenty for an analysis signal.
             double step = (double) outRate / srcRate;
             double pos = 0.0;
-            double sum = 0.0;
+            double sumL = 0.0;
+            double sumR = 0.0;
             int n = 0;
             long maxOut = (long) outRate * maxSeconds;
             long produced = 0;
@@ -120,17 +127,28 @@ final class AudioDecoder {
                         ShortBuffer shorts = buf.order(ByteOrder.nativeOrder()).asShortBuffer();
                         int frames = shorts.remaining() / Math.max(1, channels);
                         for (int f = 0; f < frames; f++) {
-                            int mono = 0;
-                            for (int c = 0; c < channels; c++) mono += shorts.get();
-                            sum += (double) mono / channels;
+                            // Channels 0 and 1 are left and right; anything past
+                            // them (a surround file) is skipped, and a mono file
+                            // feeds both sides.
+                            int l = shorts.get();
+                            int r = channels >= 2 ? shorts.get() : l;
+                            for (int c = 2; c < channels; c++) shorts.get();
+                            sumL += l;
+                            sumR += r;
                             n++;
                             pos += step;
                             if (pos >= 1.0) {
                                 pos -= 1.0;
-                                if (out.remaining() < 2) out = grow(out);
-                                out.putShort((short) Math.round(sum / n));
+                                if (out.remaining() < 4) out = grow(out);
+                                if (stereo) {
+                                    out.putShort((short) Math.round(sumL / n));
+                                    out.putShort((short) Math.round(sumR / n));
+                                } else {
+                                    out.putShort((short) Math.round((sumL + sumR) / (2.0 * n)));
+                                }
                                 produced++;
-                                sum = 0.0;
+                                sumL = 0.0;
+                                sumR = 0.0;
                                 n = 0;
                             }
                         }

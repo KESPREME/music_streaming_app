@@ -5,6 +5,8 @@
 
 import 'dart:convert';
 
+import 'loudness.dart';
+
 class TrackAnalysis {
   const TrackAnalysis({
     required this.trackId,
@@ -16,11 +18,16 @@ class TrackAnalysis {
     this.beatConfidence = 0,
     this.beatsMs = const <int>[],
     this.downbeatsMs = const <int>[],
+    this.integratedLufs = LoudnessProfile.silent,
+    this.levelsLufs = const <double>[],
     this.version = currentVersion,
   });
 
   /// Bump when the analyser changes in a way that makes old results wrong.
-  static const int currentVersion = 1;
+  ///
+  /// 2: loudness (integrated and per second) was added; a version-1 result has
+  /// no level to match, so it is measured again.
+  static const int currentVersion = 2;
 
   final String trackId;
 
@@ -49,7 +56,24 @@ class TrackAnalysis {
   /// Bar lines (the first beat of each bar), ms.
   final List<int> downbeatsMs;
 
+  /// Gated integrated loudness of the whole song, LUFS (BS.1770-4). At or under
+  /// [LoudnessProfile.silent] when it was not measured.
+  final double integratedLufs;
+
+  /// Loudness of each consecutive second, LUFS.
+  final List<double> levelsLufs;
+
   final int version;
+
+  bool get hasLoudness =>
+      integratedLufs > LoudnessProfile.silent && levelsLufs.isNotEmpty;
+
+  /// How loud [fromMs, toMs) of this song is, LUFS - [LoudnessProfile.silent]
+  /// when unknown or silent.
+  double lufsBetween(int fromMs, int toMs) => hasLoudness
+      ? LoudnessProfile(integratedLufs: integratedLufs, secondsLufs: levelsLufs)
+          .windowLufs(fromMs, toMs)
+      : LoudnessProfile.silent;
 
   bool get hasBeats => bpm > 0 && beatsMs.length >= 8;
 
@@ -72,6 +96,9 @@ class TrackAnalysis {
         'bc': beatConfidence,
         'b': beatsMs,
         'db': downbeatsMs,
+        'lu': integratedLufs,
+        // Tenths of a dB: a minute of music is 60 numbers, not 60 doubles.
+        'lv': [for (final v in levelsLufs) (v * 10).round()],
       };
 
   String encode() => jsonEncode(toJson());
@@ -93,6 +120,11 @@ class TrackAnalysis {
             .toList(growable: false),
         downbeatsMs: ((m['db'] as List?) ?? const <Object>[])
             .map((e) => (e as num).toInt())
+            .toList(growable: false),
+        integratedLufs:
+            (m['lu'] as num?)?.toDouble() ?? LoudnessProfile.silent,
+        levelsLufs: ((m['lv'] as List?) ?? const <Object>[])
+            .map((e) => (e as num).toDouble() / 10)
             .toList(growable: false),
       );
     } catch (_) {

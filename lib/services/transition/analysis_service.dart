@@ -39,20 +39,36 @@ import 'track_analysis.dart';
 class AnalysisSource {
   const AnalysisSource.file(String this.path)
       : url = null,
-        headers = null;
-  const AnalysisSource.network(String this.url, {this.headers}) : path = null;
+        headers = null,
+        cacheTo = null;
+  const AnalysisSource.network(String this.url, {this.headers, this.cacheTo})
+      : path = null;
 
   final String? path;
   final String? url;
   final Map<String, String>? headers;
+
+  /// Where the player keeps a finished copy of this song. If the analysis has
+  /// to download the song anyway, it downloads it THERE - when nothing else is
+  /// writing that file and the download is provably whole - and the player then
+  /// plays that copy instead of fetching the song a second time.
+  final String? cacheTo;
 
   bool get isLocal => path != null;
 }
 
 typedef AnalysisLocator = Future<AnalysisSource?> Function(String trackId);
 
-/// Mono 16-bit PCM of the file at [path], or null if it cannot be decoded.
-typedef AnalysisDecoder = Future<Int16List?> Function(String path, int rate);
+/// The decoded audio the analyser works on: the mid ((L+R)/2) that beats and
+/// levels are read from, and the side ((L-R)/2) the loudness meter needs.
+class DecodedAudio {
+  const DecodedAudio(this.mid, [this.side]);
+  final Int16List mid;
+  final Int16List? side;
+}
+
+/// The audio of the file at [path], or null if it cannot be decoded.
+typedef AnalysisDecoder = Future<DecodedAudio?> Function(String path, int rate);
 
 /// Copies [source] to a local file and returns its path (the caller deletes it).
 typedef AnalysisFetcher = Future<String?> Function(AnalysisSource source);
@@ -152,22 +168,32 @@ class AnalysisPlatform {
   static bool get supported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  static Future<Int16List?> decode(String path, int rate) async {
+  static Future<DecodedAudio?> decode(String path, int rate) async {
     if (!supported) return null;
     try {
       final bytes = await _channel.invokeMethod<Uint8List>('decode', {
         'path': path,
         'rate': rate,
         'maxSeconds': 900,
+        'channels': 2,
       });
       if (bytes == null || bytes.lengthInBytes < 2) return null;
-      // The native side writes little-endian 16-bit samples; every platform
-      // Flutter runs on is little-endian, so the bytes ARE the samples. The
-      // channel hands back a view that may start on an odd offset, which an
-      // Int16List cannot sit on, so take one copy to a fresh, aligned buffer.
+      // Interleaved little-endian 16-bit left/right; every platform Flutter runs
+      // on is little-endian, so the bytes ARE the samples. The channel hands back
+      // a view that may start on an odd offset, which an Int16List cannot sit on,
+      // so take one copy to a fresh, aligned buffer.
       final aligned = Uint8List.fromList(bytes);
-      return Int16List.view(aligned.buffer, 0, aligned.lengthInBytes ~/ 2);
-    } on PlatformException catch (e) {
+      final st = Int16List.view(aligned.buffer, 0, aligned.lengthInBytes ~/ 2);
+      final frames = st.length ~/ 2;
+      final mid = Int16List(frames);
+      final side = Int16List(frames);
+      for (var i = 0; i < frames; i++) {
+        final l = st[2 * i];
+        final r = st[2 * i + 1];
+        mid[i] = (l + r) >> 1;
+        side[i] = (l - r) >> 1;
+      }
+      return DecodedAudio(mid, side);    } on PlatformException catch (e) {
       if (kDebugMode) debugPrint('AnalysisPlatform: decode failed: ${e.message}');
       return null;
     }
@@ -179,17 +205,24 @@ class AnalysisPlatform {
   static Future<String?> fetch(AnalysisSource source) async {
     final url = source.url;
     if (url == null) return source.path;
+
+    final shared = source.cacheTo;
+    final shareable = shared != null &&
+        !File(shared).existsSync() &&
+        !File('$shared.part').existsSync();
     final dir = await getTemporaryDirectory();
-    final target = p.join(
-        dir.path, 'automix_${DateTime.now().microsecondsSinceEpoch}.audio');
+    final target = shareable
+        ? '$shared.analysis'
+        : p.join(dir.path, 'automix_${DateTime.now().microsecondsSinceEpoch}.audio');
     final cancel = CancelToken();
     try {
-      await Dio().download(
+      final response = await Dio().download(
         url,
         target,
         cancelToken: cancel,
         options: Options(
-          headers: source.headers,
+          // The stream servers expect a range request, as the player makes.
+          headers: <String, String>{'Range': 'bytes=0-', ...?source.headers},
           receiveTimeout: const Duration(seconds: 40),
           sendTimeout: const Duration(seconds: 15),
         ),
@@ -197,6 +230,23 @@ class AnalysisPlatform {
           if (received > maxBytes || total > maxBytes) cancel.cancel('too large');
         },
       );
+      if (shareable) {
+        // Promote it to the player's cache only if it is provably the whole
+        // song: the server said how long the body was and that is what arrived.
+        // A truncated file under the cache's final name would play as a song
+        // that ends early.
+        final expected =
+            int.tryParse(response.headers.value(Headers.contentLengthHeader) ?? '');
+        final got = await File(target).length();
+        if (expected != null &&
+            expected == got &&
+            got > 100000 &&
+            !File(shared).existsSync() &&
+            !File('$shared.part').existsSync()) {
+          await File(target).rename(shared);
+          return shared;
+        }
+      }
       return target;
     } catch (e) {
       if (kDebugMode) debugPrint('AnalysisPlatform: fetch failed: $e');
@@ -204,7 +254,6 @@ class AnalysisPlatform {
       return null;
     }
   }
-
   static Future<void> _delete(String path) async {
     try {
       final f = File(path);
@@ -345,16 +394,20 @@ class AnalysisService {
         path = source.path;
       } else {
         path = await _fetch(source);
-        temporary = true;
+        // Anything but the player's own cache copy is ours to delete.
+        temporary = path != source.cacheTo;
       }
       if (path == null) return _fail(job.id, 'no audio');
 
-      final pcm = await _decode(path, AudioAnalyzer.sampleRate);
-      if (pcm == null || pcm.isEmpty) return _fail(job.id, 'undecodable');
+      final audio = await _decode(path, AudioAnalyzer.sampleRate);
+      if (audio == null || audio.mid.isEmpty) {
+        return _fail(job.id, 'undecodable');
+      }
 
-      final decodedMs = pcm.length * 1000 ~/ AudioAnalyzer.sampleRate;
+      final decodedMs = audio.mid.length * 1000 ~/ AudioAnalyzer.sampleRate;
       final analysis = await _run(AnalysisInput(
-        pcm: pcm,
+        pcm: audio.mid,
+        side: audio.side,
         trackId: job.id,
         durationMs: job.durationMs > 0 ? job.durationMs : decodedMs,
       ));

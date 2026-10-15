@@ -36,6 +36,7 @@ class TransitionSettings extends ChangeNotifier {
   static const String keySleepFade = 'transitions_sleep_fade';
   static const String keySkipSilence = 'skip_silence';
   static const String keyAnalyzeCellular = 'transitions_analyze_cellular';
+  static const String keyLevelMatching = 'transitions_level_matching';
 
   static const int minSeconds = 1;
   static const int maxSeconds = 12;
@@ -49,7 +50,8 @@ class TransitionSettings extends ChangeNotifier {
   TransitionStyle _style = TransitionStyle.crossfade;
   int _crossfadeSeconds = defaultSeconds;
   bool _crossfadeAlbums = false;
-  bool _matchTempo = false;
+  bool _matchTempo = true;
+  bool _levelMatching = true;
   bool _sleepFade = true;
   bool _skipSilence = false;
   bool _analyzeOnCellular = false;
@@ -70,10 +72,17 @@ class TransitionSettings extends ChangeNotifier {
   /// other.
   bool get crossfadeAlbums => _crossfadeAlbums;
 
-  /// AutoMix only: speed the incoming song by a few percent so its tempo
-  /// matches the outgoing one's, and start both on a bar line. Beta - it is a
-  /// judgement call on analysis, so it is off until the listener asks for it.
+  /// AutoMix only: speed the incoming song by a few percent (never more than
+  /// 4 %) so its tempo matches the outgoing one's, and start both on a bar line.
+  /// This is what AutoMix IS in Apple Music, so it is on; without it AutoMix can
+  /// only place a fade well and align bars when two songs already agree to 1 %.
+  /// Still a judgement call on analysis, hence the beta label.
   bool get matchTempo => _matchTempo;
+
+  /// Keep two songs of different loudness in balance while they overlap, by
+  /// attenuating the one that would bury the other (see level_plan.dart). Needs
+  /// both songs measured, which AutoMix already does and Crossfade now does too.
+  bool get levelMatching => _levelMatching;
 
   /// Fade out instead of cutting when the sleep timer ends playback.
   bool get sleepFade => _sleepFade;
@@ -81,9 +90,13 @@ class TransitionSettings extends ChangeNotifier {
   /// Skip silent passages inside a song.
   bool get skipSilence => _skipSilence;
 
-  /// AutoMix reads each upcoming song once to analyse it. On mobile data that
-  /// is a few megabytes per song, so it waits for Wi-Fi unless allowed.
+  /// AutoMix (and level matching) reads each upcoming song once to analyse it.
+  /// On mobile data that is a few megabytes per song, so it waits for Wi-Fi
+  /// unless allowed.
   bool get analyzeOnCellular => _analyzeOnCellular;
+
+  /// Whether the songs about to play should be analysed at all.
+  bool get wantsAnalysis => _enabled && (_style == TransitionStyle.automix || _levelMatching);
 
   /// Whether a transition may happen at all.
   bool get active => _enabled;
@@ -101,7 +114,8 @@ class TransitionSettings extends ChangeNotifier {
     _crossfadeSeconds = (p.getInt(keyCrossfadeSeconds) ?? defaultSeconds)
         .clamp(minSeconds, maxSeconds);
     _crossfadeAlbums = p.getBool(keyAlbums) ?? false;
-    _matchTempo = p.getBool(keyMatchTempo) ?? false;
+    _matchTempo = p.getBool(keyMatchTempo) ?? true;
+    _levelMatching = p.getBool(keyLevelMatching) ?? true;
     _sleepFade = p.getBool(keySleepFade) ?? true;
     _skipSilence = p.getBool(keySkipSilence) ?? false;
     _analyzeOnCellular = p.getBool(keyAnalyzeCellular) ?? false;
@@ -126,6 +140,9 @@ class TransitionSettings extends ChangeNotifier {
 
   Future<void> setMatchTempo(bool value) => _set(value, _matchTempo,
       (v) => _matchTempo = v, (p) => p.setBool(keyMatchTempo, value));
+
+  Future<void> setLevelMatching(bool value) => _set(value, _levelMatching,
+      (v) => _levelMatching = v, (p) => p.setBool(keyLevelMatching, value));
 
   Future<void> setSleepFade(bool value) => _set(value, _sleepFade,
       (v) => _sleepFade = v, (p) => p.setBool(keySleepFade, value));
@@ -155,5 +172,5 @@ class TransitionSettings extends ChangeNotifier {
   /// A value that changes whenever anything that changes a PLAN changes. The
   /// engine caches plans against it.
   int get planVersion => Object.hash(_enabled, _style, _crossfadeSeconds,
-      _crossfadeAlbums, _matchTempo);
+      _crossfadeAlbums, _matchTempo, _levelMatching);
 }

@@ -1441,7 +1441,7 @@ for (final track in releases)
   /// What AutoMix knows about songs: measured once, on this device, kept.
   late final AnalysisService analysisService = AnalysisService(
     locate: _analysisSourceFor,
-    isEnabled: () => !_disposed && transitionSettings.isAutomix,
+    isEnabled: () => !_disposed && transitionSettings.wantsAnalysis,
     allowCellular: () => transitionSettings.analyzeOnCellular,
     onResult: () => transitions.poke(),
     network: ({required bool allowCellular}) async =>
@@ -1460,6 +1460,9 @@ for (final track in releases)
         final path = await _localFileFor(t);
         return path == null || path.isEmpty ? null : AnalysisSource.file(path);
       }
+      // Already on disk from playback: read that, not the network again.
+      final cached = await _audioService.cachedAudioFile(t.id);
+      if (cached != null) return AnalysisSource.file(cached);
       final r = await _streamResolution.resolve(ResolveRequest(
         videoId: t.id,
         title: t.trackName,
@@ -1467,8 +1470,11 @@ for (final track in releases)
         durationMs: t.durationMs,
       ));
       if (r == null || r.url.isEmpty) return null;
-      return AnalysisSource.network(r.url,
-          headers: r.userAgent == null ? null : {'User-Agent': r.userAgent!});
+      return AnalysisSource.network(
+        r.url,
+        headers: r.userAgent == null ? null : {'User-Agent': r.userAgent!},
+        cacheTo: await _audioService.audioCachePathFor(t.id),
+      );
     } catch (_) {
       return null;
     }
@@ -1476,6 +1482,11 @@ for (final track in releases)
 
   /// What the UI moves to: the same progress number that drives the audio.
   ValueListenable<TransitionUiState> get transitionState => transitions.ui;
+
+  /// What the engine intends at the end of the playing song (the scrubber's
+  /// mark, the queue's connector), and what the last transition actually did.
+  ValueListenable<UpcomingMix?> get upcomingMix => transitions.upcoming;
+  ValueListenable<MixTrace?> get lastMixTrace => transitions.lastMix;
 
   /// A track the player has been handed, by id - the incoming song of a mix,
   /// whose artwork the screen shows before the session moves to it.

@@ -26,6 +26,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'loudness.dart';
 import 'track_analysis.dart';
 
 /// Everything the analyser needs to know about the signal it is given.
@@ -34,11 +35,16 @@ class AnalysisInput {
     required this.pcm,
     required this.trackId,
     required this.durationMs,
+    this.side,
     this.sampleRate = AudioAnalyzer.sampleRate,
   });
 
-  /// Mono, 16-bit.
+  /// Mono (the mid, (L+R)/2), 16-bit.
   final Int16List pcm;
+
+  /// (L-R)/2, same length, or null for a mono source. Only the loudness meter
+  /// reads it (see Loudness.measure).
+  final Int16List? side;
   final String trackId;
 
   /// The duration of the SONG (from the player), not of the decoded signal.
@@ -51,6 +57,7 @@ TrackAnalysis analyzeInput(AnalysisInput input) => AudioAnalyzer.analyze(
       input.pcm,
       trackId: input.trackId,
       durationMs: input.durationMs,
+      side: input.side,
       sampleRate: input.sampleRate,
     );
 
@@ -82,6 +89,7 @@ class AudioAnalyzer {
     Int16List pcm, {
     required String trackId,
     required int durationMs,
+    Int16List? side,
     int sampleRate = AudioAnalyzer.sampleRate,
   }) {
     if (pcm.length < sampleRate * 2) {
@@ -90,6 +98,7 @@ class AudioAnalyzer {
 
     final levels = _levels(pcm, sampleRate);
     final shape = _shape(levels);
+    final loudness = Loudness.measure(pcm, side, sampleRate);
 
     var bpm = 0.0;
     var confidence = 0.0;
@@ -118,6 +127,8 @@ class AudioAnalyzer {
       beatConfidence: confidence,
       beatsMs: beats,
       downbeatsMs: downbeats,
+      integratedLufs: loudness.integratedLufs,
+      levelsLufs: loudness.secondsLufs,
     );
   }
 

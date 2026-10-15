@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -35,7 +36,7 @@ class _Rig {
       now: () => clock,
       decode: (path, rate) async {
         decoded.add(path);
-        return pcm ?? Int16List(rate * 3);
+        return DecodedAudio(pcm ?? Int16List(rate * 3));
       },
       fetch: (s) async {
         fetched.add(s.url!);
@@ -177,7 +178,7 @@ void main() {
   });
 
   test('songs are analysed one at a time, in the order asked', () async {
-    final gate = Completer<Int16List?>();
+    final gate = Completer<DecodedAudio?>();
     var inFlight = 0;
     var peak = 0;
     final order = <String>[];
@@ -196,7 +197,7 @@ void main() {
         peak = peak > inFlight ? peak : inFlight;
         if (!gate.isCompleted) await gate.future;
         inFlight--;
-        return Int16List(rate * 3);
+        return DecodedAudio(Int16List(rate * 3));
       },
       run: (input) async =>
           TrackAnalysis(trackId: input.trackId, durationMs: input.durationMs),
@@ -241,6 +242,89 @@ void main() {
       expect(r.fetched, hasLength(1));
     });
 
+    test('a temporary download is deleted once it has been analysed', () async {
+      final dir = Directory.systemTemp.createTempSync('analysis_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final temp = File('${dir.path}/automix_1.audio')..writeAsBytesSync([1, 2, 3]);
+      final service = AnalysisService(
+        locate: (id) async => const AnalysisSource.network('https://x/y'),
+        isEnabled: () => true,
+        allowCellular: () => false,
+        onResult: () {},
+        store: MemoryAnalysisStore(),
+        supported: true,
+        network: ({required bool allowCellular}) async => true,
+        fetch: (s) async => temp.path,
+        decode: (path, rate) async => DecodedAudio(Int16List(rate * 3)),
+        run: (input) async =>
+            TrackAnalysis(trackId: input.trackId, durationMs: input.durationMs),
+      );
+      service.request('a');
+      for (var i = 0; i < 30; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(service.lookup('a', 0), isNotNull);
+      expect(temp.existsSync(), isFalse);
+    });
+
+    test('a download that landed in the player\'s cache is kept for the player',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('analysis_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final shared = File('${dir.path}/audio_a.m4a')..writeAsBytesSync([1, 2, 3]);
+      final service = AnalysisService(
+        locate: (id) async =>
+            AnalysisSource.network('https://x/y', cacheTo: shared.path),
+        isEnabled: () => true,
+        allowCellular: () => false,
+        onResult: () {},
+        store: MemoryAnalysisStore(),
+        supported: true,
+        network: ({required bool allowCellular}) async => true,
+        fetch: (s) async => s.cacheTo,
+        decode: (path, rate) async {
+          expect(path, shared.path);
+          return DecodedAudio(Int16List(rate * 3));
+        },
+        run: (input) async =>
+            TrackAnalysis(trackId: input.trackId, durationMs: input.durationMs),
+      );
+      service.request('a');
+      for (var i = 0; i < 30; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(service.lookup('a', 0), isNotNull);
+      expect(shared.existsSync(), isTrue, reason: 'the player will play from it');
+    });
+
+    test('a download that could not be shared is still only a temporary one',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('analysis_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final shared = File('${dir.path}/audio_a.m4a');
+      final temp = File('${dir.path}/audio_a.m4a.analysis')..writeAsBytesSync([9]);
+      final service = AnalysisService(
+        locate: (id) async =>
+            AnalysisSource.network('https://x/y', cacheTo: shared.path),
+        isEnabled: () => true,
+        allowCellular: () => false,
+        onResult: () {},
+        store: MemoryAnalysisStore(),
+        supported: true,
+        network: ({required bool allowCellular}) async => true,
+        fetch: (s) async => temp.path, // not provably whole: not promoted
+        decode: (path, rate) async => DecodedAudio(Int16List(rate * 3)),
+        run: (input) async =>
+            TrackAnalysis(trackId: input.trackId, durationMs: input.durationMs),
+      );
+      service.request('a');
+      for (var i = 0; i < 30; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(temp.existsSync(), isFalse);
+      expect(shared.existsSync(), isFalse,
+          reason: 'a truncated file must never wear the cache\'s final name');
+    });
     test('a local file never asks the network', () async {
       final r = _Rig(network: false);
       r.service.request('a', durationMs: 5000);
@@ -300,7 +384,7 @@ void main() {
         onResult: () {},
         store: MemoryAnalysisStore(),
         supported: true,
-        decode: (path, rate) async => Int16List(rate * 3),
+        decode: (path, rate) async => DecodedAudio(Int16List(rate * 3)),
         run: (input) async =>
             TrackAnalysis(trackId: input.trackId, durationMs: input.durationMs),
       );
@@ -350,7 +434,7 @@ void main() {
       store: MemoryAnalysisStore(),
       supported: true,
       maxKnown: 3,
-      decode: (path, rate) async => Int16List(rate * 3),
+      decode: (path, rate) async => DecodedAudio(Int16List(rate * 3)),
       run: (input) async =>
           TrackAnalysis(trackId: input.trackId, durationMs: input.durationMs),
     );
@@ -390,7 +474,7 @@ void main() {
       onResult: () {},
       store: MemoryAnalysisStore(),
       supported: true,
-      decode: (path, rate) async => pcm,
+      decode: (path, rate) async => DecodedAudio(pcm),
       run: (input) async => analyzeInput(input),
     );
     service.request('click', durationMs: 30000);
