@@ -632,8 +632,20 @@ queue heading (tap cycles Off, Crossfade, AutoMix; long-press opens the screen).
   `pumpAndSettle` never settles on `TransitionDiagram` while enabled (use `pump(Duration)`);
   the queue's `LiquidGlassSegmented` thumb only highlights the FIRST active segment, which
   is why the transition toggle is a chip, not a 4th segment.
+- Quality pass (plan section 12): `loudness.dart` (BS.1770 meter, mid+side, validated against
+  ffmpeg), `level_plan.dart` (pair balancing; `mixGains` is the one gain law, used by the
+  engine AND the lab), `phase_lock.dart` (speed-trim beat lock), `MixTrace` / `UpcomingMix` on
+  the engine, `test/lab/mix_lab_test.dart` (renders real songs; `MIX_LAB_SONGS=<folder>`).
+  The decoder returns STEREO now (`channels: 2`); `TrackAnalysis` is version 2.
+- Level compared over the MIDDLE HALF OF THE OVERLAP of each song - not song averages, not the
+  stretch before the fade (both were wrong on real music; a test pins the case).
+- `settleActive(resetSpeed:)`: a stretched incoming song must not be snapped to normal speed
+  before the ease-back (it caused two tempo jumps).
+- `_applyGains` is single-flight, latest wins. Do not make it queue again.
+- Do not attach an AudioEffect to the players to "add DJ filters": see plan section 12 verdict.
 - NOT verified on a device: any audio behaviour, the decoder on real cache files, the
-  handoff, lock-screen controls. Checklist: plan section 11.
+  handoff, lock-screen controls, whether the beat lock lands on the beat the listener hears.
+  Checklist: plan sections 11 and 12.
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.

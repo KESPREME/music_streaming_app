@@ -350,3 +350,45 @@ Built clean-room in Dart over `just_audio` + `audio_service`. Nothing audio-side
 7. AutoMix with mobile data: nothing is downloaded until "Analyse on mobile data" is on.
 8. Queue chip cycles Off, Crossfade, AutoMix; long-press opens the settings screen.
 9. `PERF_WINDOW` and battery over ten transitions against transitions-off.
+## 12. Quality pass (measured, not guessed)
+
+Prompted by: AutoMix works but does not sound as smooth as Apple Music. No device was attached (`adb devices` listed none), so nothing below was heard. What was done instead is measure the transitions this app would make between real songs, offline, and fix what the numbers showed.
+
+### The instrument
+
+`test/lab/mix_lab_test.dart` (skipped unless `MIX_LAB_SONGS` names a folder; needs ffmpeg). It runs the real analyser, planner, level planner and gain law over the full-bandwidth 44.1 kHz decode of both songs, with gains stepped every 30 ms like the engine, and measures the result. The analysis it feeds the planner comes from the same box-filter resampler `AudioDecoder.java` uses, so the plan is the one a phone would make. The loudness meter was validated against `ffmpeg -af ebur128` first.
+
+### What it found
+
+| Finding | Number | Consequence |
+|---|---|---|
+| The songs in one library differ a lot in loudness | -5.6 to -14.6 LUFS integrated across 16 songs (9 dB) | A crossfade between mismatched songs is not a blend: at the crossover one song has 8x the power of the other. |
+| Level mismatch at the middle of the fade | Crossfade: median 6.7 dB, p90 29.8 dB. AutoMix: median 7.0, p90 18.3 | **The main reason a mix sounds like a cut.** |
+| After balancing (this change) | Crossfade: median 2.0, p90 20.6. AutoMix: median 1.7, p90 6.7 | The remaining p90 is songs whose overlap is nearly silent (a fade-out to nothing), which no gain law should "fix". |
+| Level plan acts | 82 % (Crossfade) to 89 % (AutoMix) of random pairs: more than 1.5 LU apart in the overlap | It is not an edge case. |
+| Clipping from summing the two decks | Over full scale in 0.00 % of overlap samples on average; worst pair 0.03 %; peak 1.17 | The existing headroom trim is adequate. No limiter added. |
+| Mono downmix loudness | Read 0.0-3.1 dB low vs ffmpeg, by stereo width | The decoder now returns stereo (`channels: 2`); the meter takes mid + side. Error vs ffmpeg through the Android resampler: mean -0.23 LU, worst -0.58, std 0.18. |
+| Pair level basis | Two earlier bases were wrong on real songs: whole-song average, and the 10 s before the fade. A song that ends in a fade-out is -5 LUFS on average and -27 over the fade; an opening can be 20 LU under its body. Both "corrected" blends that were already balanced. | Level is compared over the **middle half of the overlap** of each song (what is heard at the crossover). Pinned by a test built from exactly that case. |
+
+### What changed
+
+- `loudness.dart`: BS.1770-4 / R128 meter (K-weighting derived for the sampling rate, 400 ms blocks, absolute and relative gates), plus a 1-second profile stored with each analysis (`TrackAnalysis` version 2: old results are re-measured).
+- `level_plan.dart`: the pair plan and `mixGains`, shared by the engine and the lab. Attenuation only (a player cannot boost): a louder incoming song starts held down and climbs back over 8 s once alone; a quieter incoming song brings the *outgoing* one down early in the fade. Dead-band 1.5 LU, cap 12 dB. Setting: *Balance loudness*, on.
+- `phase_lock.dart`: beat-matched mixes start the incoming deck on a timer tick and a platform call, so it begins tens of ms late, a different amount every mix. The lock reads both decks' positions and trims the incoming deck's speed (at most 3 %, median of 3 readings, bounded, lets go on an implausible error) until it is on the beat. Simulated: starts up to 120 ms late settle within 12 ms in six seconds; 220 ms is worked off as fast as the bound allows.
+- **A bug found while writing the above:** `settleActive` snapped a stretched incoming song back to normal speed, and the tempo ease-back then started again from the stretched rate: two audible tempo jumps at the end of every tempo-matched mix. `settleActive(resetSpeed:)` and a steppable ease-back fix it; tested.
+- `AudioService._applyGains` is single-flight, latest-wins, and sets both decks together. Before, every 30 ms tick queued two awaited platform calls behind any slow one, so a hiccup delayed the fade instead of being skipped.
+- AutoMix's *Match tempo* default is on (what AutoMix is in Apple Music; capped at 4 %). Still labelled BETA.
+- Analysis reads the player's cache file when the song is already on disk, and otherwise downloads **into** the player's cache (promoted only if the body length matches the server's) so the song is fetched once, not once for analysis and once for playback. Needs a device to confirm against the real stream servers.
+- Crossfade now analyses too (for loudness), so *Analyse on mobile data* applies to both styles.
+- Engine: `upcoming` (what will happen at the end of this song) and `lastMix` (`MixTrace`: plan, level plan, start lateness, longest gap between gain steps, beat error before and after, trim).
+- UI: a bracket under the scrubber where the next song comes in (brightens while it runs); the title and artist exchange at the handoff (leaving 150 ms, arriving 360 ms, no overshoot, off with reduced motion); a connector line in the queue between the playing song and the next that says what the planner decided ("Gapless" for an album); a *Last transition* card (tap to copy the raw trace); the Material You settings now opens Song Transitions.
+
+### Verdicts on what was not built
+
+- **DJ filters / bass swap / echo (P5): not built, and not because of time.** The only ways to filter one deck are (1) a platform `AudioEffect` on the ExoPlayer session, or (2) an ExoPlayer `AudioProcessor`. (1): this repo already records two reasons against it: `just_audio`'s equalizer integration threw out of `play()`/`pause()` on hardware that cannot create the effect and skipped every track (commit 1a53ce1, `_buildAndroidAudioEffects`), and an attached effect is what stops Android from offloading decode, which the perf plan turned on. Attaching natively with a try/catch would avoid the first but not the second, and would do it *in the middle of a mix*, on the song that is playing. The 5-band platform EQ is also a set of wide peaking filters whose shape differs per OEM, so a bass swap built on it would sound different on every phone. (2) is the right design and needs a `just_audio` fork plus tuning by ear on a device.
+- **Global "Sound Check" normalisation: not built.** A streamed song's loudness is unknown until it has been read, so normalising would change the volume part-way through the first play of every song, or normalise only the songs heard before, which is inconsistent. Balancing the *pair* needs only what is known before the join.
+- **iOS (P6):** no decoder, no second-deck verification, and no macOS here. `AnalysisPlatform.supported` is false off Android, so iOS gets a plain crossfade.
+
+### Still to be heard (device)
+
+Everything in section 11's checklist, plus: do tempo-matched mixes sound on the beat (the *Last transition* card shows the beat error the lock measured; if it reports a few ms and it still sounds off, the decks' reported positions and the speaker disagree and the lock needs a constant offset); is the *Balance loudness* swell after a held-down song natural at 8 s; does the stereo decoder produce the right loudness on a real cache file (compare the card's Levels line with how it sounded).
