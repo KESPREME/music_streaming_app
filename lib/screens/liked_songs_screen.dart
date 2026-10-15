@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/global_music_overlay.dart';
+import '../theme/amoled_theme.dart';
 
 class LikedSongsScreen extends StatefulWidget {
   const LikedSongsScreen({super.key});
@@ -56,9 +57,9 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                 colors: isDark 
+                 colors: AmoledTheme.gradient(context, isDark 
                   ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-                  : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+                  : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
               ),
             ),
             child: SafeArea(

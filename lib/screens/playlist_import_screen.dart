@@ -6,6 +6,7 @@ import '../providers/music_provider.dart';
 import '../services/spotify_service.dart';
 import 'spotify_playlist_selection_screen.dart';
 import '../widgets/liquid_snackbar.dart';
+import '../theme/amoled_theme.dart';
 
 class PlaylistImportScreen extends StatefulWidget {
   const PlaylistImportScreen({super.key});
@@ -39,9 +40,9 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark 
+            colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: SafeArea(

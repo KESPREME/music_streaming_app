@@ -11,6 +11,7 @@ import '../widgets/settings/glass_settings_group.dart';
 import '../widgets/thin_slider.dart';
 import '../widgets/transition_diagram.dart';
 import '../widgets/transition_glyph.dart';
+import '../theme/amoled_theme.dart';
 import '../widgets/transition_trace_card.dart';
 
 /// Song Transitions: how one song joins the next.
@@ -42,11 +43,15 @@ class SongTransitionsScreen extends StatelessWidget {
     final lastMix = trace ?? _traceOf(context);
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF121212), Color(0xFF1E1E1E), Color(0xFF000000)],
+            colors: AmoledTheme.gradient(context, const [
+              Color(0xFF121212),
+              Color(0xFF1E1E1E),
+              Color(0xFF000000),
+            ]),
           ),
         ),
         child: SafeArea(

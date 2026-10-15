@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
 import '../models/track.dart';
+import '../theme/amoled_theme.dart';
 
 class TrendingNowScreen extends StatelessWidget {
   const TrendingNowScreen({super.key});
@@ -23,14 +24,14 @@ class TrendingNowScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark 
+            colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF141414), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: RefreshIndicator(
           color: const Color(0xFFFF1744),
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
           onRefresh: () => musicProvider.fetchTrendingTracks(forceRefresh: true),
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),

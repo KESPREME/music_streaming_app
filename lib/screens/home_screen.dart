@@ -39,6 +39,7 @@ import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/themed_trending_now_screen.dart';
 import '../core/navigation/root_navigator.dart';
+import '../theme/amoled_theme.dart';
 
 /// Home: a curated listening environment.
 ///
@@ -98,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen>
         bottom: false,
         child: RefreshIndicator(
           color: Theme.of(context).colorScheme.primary,
-          backgroundColor: const Color(0xFF141414),
+          backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF141414)),
           onRefresh: () async {
             final provider = context.read<MusicProvider>();
             final previous = provider.homeFeed;
@@ -2111,7 +2112,7 @@ class _MoodTracksScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0C),
+      backgroundColor: AmoledTheme.canvasOf(context, const Color(0xFF0A0A0C)),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Text(title, style: t.HomeTokens.homeTitle(context)),

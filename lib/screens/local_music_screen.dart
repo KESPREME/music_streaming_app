@@ -7,6 +7,7 @@ import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../services/local_music_service.dart';
 import '../widgets/track_tile.dart';
+import '../theme/amoled_theme.dart';
 
 class LocalMusicScreen extends StatefulWidget {
   const LocalMusicScreen({super.key});
@@ -87,9 +88,9 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: isDark 
+                colors: AmoledTheme.gradient(context, isDark 
                   ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-                  : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+                  : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
               ),
             ),
             child: SafeArea(
@@ -273,8 +274,11 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> with SingleTickerPr
      final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        side: AmoledTheme.edge(context),
+      ),
       builder: (context) => SafeArea(
         child: SingleChildScrollView(
           child: Column(

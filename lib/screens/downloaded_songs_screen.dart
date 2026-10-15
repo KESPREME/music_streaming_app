@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/track.dart';
 import '../widgets/global_music_overlay.dart';
+import '../theme/amoled_theme.dart';
 
 class DownloadedSongsScreen extends StatefulWidget {
   const DownloadedSongsScreen({super.key});
@@ -80,9 +81,9 @@ class _DownloadedSongsScreenState extends State<DownloadedSongsScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark 
+            colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: SafeArea(

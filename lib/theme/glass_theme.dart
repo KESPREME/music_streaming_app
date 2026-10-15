@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'amoled_theme.dart';
+
 /// Shared preset colors (re-exported for theme consumers).
 export 'package:music_streaming_app/providers/accent_controller.dart'
     show AccentColors;
@@ -27,8 +29,22 @@ class GlassTheme {
   static Color accentBorder(Color accent) =>
       accent.withValues(alpha: 0.35);
 
-  static ThemeData build(Color accent, {TextTheme? textTheme}) {
+  /// [amoled] turns on pure-black mode (see [AmoledTheme]): raised surfaces step
+  /// to `#0A0A0A` with a hairline instead of the greys below, and the flag rides
+  /// in the theme so widgets can read it without a provider.
+  static ThemeData build(
+    Color accent, {
+    TextTheme? textTheme,
+    bool amoled = false,
+  }) {
     final onAccentColor = onAccent(accent);
+    // The surfaces a theme names itself. In pure-black mode they are one step
+    // off the canvas and outlined; without elevation tint a bare black panel on
+    // a black page has no edge at all.
+    final panel = amoled ? AmoledTheme.surface : const Color(0xFF161616);
+    final panelEdge = amoled
+        ? const BorderSide(color: AmoledTheme.hairline)
+        : BorderSide.none;
     final scheme = ColorScheme(
       brightness: Brightness.dark,
       primary: accent,
@@ -39,7 +55,8 @@ class GlassTheme {
       onError: Colors.black,
       surface: Colors.black,
       onSurface: Colors.white,
-      surfaceContainerHighest: const Color(0xFF141414),
+      surfaceContainerHighest:
+          amoled ? AmoledTheme.surface : const Color(0xFF141414),
       onSurfaceVariant: const Color(0xFFB3B3B3),
       outline: Colors.white.withValues(alpha: 0.12),
     );
@@ -49,6 +66,7 @@ class GlassTheme {
       brightness: Brightness.dark,
       colorScheme: scheme,
       scaffoldBackgroundColor: Colors.black,
+      extensions: <ThemeExtension<dynamic>>[AmoledTheme(enabled: amoled)],
       splashFactory: InkSparkle.splashFactory,
       textTheme: textTheme,
       appBarTheme: const AppBarTheme(
@@ -82,20 +100,29 @@ class GlassTheme {
       dividerTheme:
           DividerThemeData(color: Colors.white.withValues(alpha: 0.08)),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFF1C1C1E),
+        backgroundColor: amoled ? AmoledTheme.surface : const Color(0xFF1C1C1E),
         contentTextStyle: const TextStyle(color: Colors.white),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: panelEdge,
+        ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: const Color(0xFF161616),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      ),
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: Color(0xFF161616),
-        modalBackgroundColor: Color(0xFF161616),
+        backgroundColor: panel,
+        surfaceTintColor: amoled ? Colors.transparent : null,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.circular(22),
+          side: panelEdge,
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: panel,
+        modalBackgroundColor: panel,
+        surfaceTintColor: amoled ? Colors.transparent : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          side: panelEdge,
         ),
       ),
     );

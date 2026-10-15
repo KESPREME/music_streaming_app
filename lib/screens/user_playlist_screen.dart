@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../models/playlist.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
+import '../theme/amoled_theme.dart';
 
 class UserPlaylistScreen extends StatefulWidget {
   const UserPlaylistScreen({super.key});
@@ -51,9 +52,9 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark 
+            colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: SafeArea(
@@ -269,7 +270,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
         title: Text('Create Playlist', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold)),
         content: TextField(
           controller: nameController,
@@ -306,8 +307,11 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
   void _showPlaylistOptions(BuildContext context, Playlist playlist) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        side: AmoledTheme.edge(context),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -330,7 +334,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Downloading ${playlist.tracks.length} tracks'),
-                    backgroundColor: const Color(0xFF1E1E1E),
+                    backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -355,7 +359,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
         title: const Text('Rename Playlist', style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: nameController,
@@ -392,7 +396,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
         title: const Text('Delete Playlist', style: TextStyle(color: Colors.white)),
         content: Text(
           'Are you sure you want to delete "${playlist.name}"?',

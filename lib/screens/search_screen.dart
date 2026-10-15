@@ -19,6 +19,7 @@ import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../core/navigation/root_navigator.dart';
 import 'album_detail_screen.dart';
+import '../theme/amoled_theme.dart';
 
 class ArtistSearchTile extends StatelessWidget {
   final String artistName;
@@ -355,7 +356,7 @@ class _SearchScreenState extends State<SearchScreen>
       // OPAQUE: this screen lives inside MainScreen's Stack ABOVE the home
       // content. Without a solid background the home screen bleeds through
       // and its text collides with search results.
-      backgroundColor: const Color(0xFF0A0A0C),
+      backgroundColor: AmoledTheme.canvasOf(context, const Color(0xFF0A0A0C)),
       body: SafeArea(
         child: NotificationListener<ScrollNotification>(
           onNotification: (n) {

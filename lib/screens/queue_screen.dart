@@ -19,6 +19,7 @@ import '../widgets/liquid_glass_pill.dart';
 import '../utils/color_utils.dart';
 import '../utils/app_image_cache.dart';
 import '../utils/image_quality_utils.dart';
+import '../theme/amoled_theme.dart';
 
 /// Queue / Playing Next Screen with Apple Music / Muzo liquid glass design (Image 4).
 class QueueScreen extends StatelessWidget {
@@ -1188,8 +1189,11 @@ child: Column(
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AmoledTheme.surfaceOf(ctx, const Color(0xFF1E1E1E)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: AmoledTheme.edge(ctx),
+        ),
         title: Text(
           'Clear Queue?',
           style: GoogleFonts.plusJakartaSans(

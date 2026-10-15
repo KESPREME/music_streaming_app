@@ -11,13 +11,19 @@ enum AppThemeMode {
 class ThemeProvider extends ChangeNotifier {
   static const String _themePreferenceKey = 'app_theme_mode';
   static const String _dynamicColorPreferenceKey = 'dynamic_color_enabled';
+  static const String _amoledPreferenceKey = 'amoled_black_enabled';
 
   AppThemeMode _currentTheme = AppThemeMode.glassmorphism; // Default to glassmorphism
   bool _isDynamicColorEnabled = true;
+  bool _isAmoled = false;
   bool _isInitialized = false;
 
   AppThemeMode get currentTheme => _currentTheme;
   bool get isDynamicColorEnabled => _isDynamicColorEnabled;
+
+  /// Pure-black (AMOLED) backgrounds. Off by default: the backdrop follows the
+  /// album art until the listener asks for black. See `AmoledTheme`.
+  bool get isAmoled => _isAmoled;
   bool get isInitialized => _isInitialized;
 
   /// Check if current theme is glassmorphism
@@ -41,6 +47,9 @@ class ThemeProvider extends ChangeNotifier {
 
       // Load dynamic color preference
       _isDynamicColorEnabled = prefs.getBool(_dynamicColorPreferenceKey) ?? true;
+
+      // Load pure-black preference
+      _isAmoled = prefs.getBool(_amoledPreferenceKey) ?? false;
 
       _isInitialized = true;
       notifyListeners();
@@ -87,6 +96,25 @@ class ThemeProvider extends ChangeNotifier {
       await prefs.setBool(_dynamicColorPreferenceKey, enabled);
     } catch (e) {
       debugPrint('Error saving dynamic color preference: $e');
+    }
+  }
+
+  /// Turn pure-black (AMOLED) backgrounds on or off.
+  ///
+  /// The change is applied and announced first, then written: the switch the
+  /// listener just flipped must not wait on a disk write to move. A failed write
+  /// costs only next launch's starting value, never this session's.
+  Future<void> setAmoled(bool enabled) async {
+    if (_isAmoled == enabled) return;
+
+    _isAmoled = enabled;
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_amoledPreferenceKey, enabled);
+    } catch (e) {
+      debugPrint('Error saving pure black preference: $e');
     }
   }
 

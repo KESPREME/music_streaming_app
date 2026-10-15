@@ -6,6 +6,7 @@ import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
 import '../models/track.dart';
 import '../widgets/themed_artist_detail_screen.dart';
+import '../theme/amoled_theme.dart';
 
 // A simple tile for displaying an artist
 class ArtistListTile extends StatelessWidget {
@@ -79,14 +80,14 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark 
+            colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF141414), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: RefreshIndicator(
           color: const Color(0xFFFF1744),
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
           onRefresh: _refreshArtists,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),

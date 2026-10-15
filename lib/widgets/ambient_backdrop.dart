@@ -7,15 +7,60 @@ import 'package:provider/provider.dart';
 
 import '../design/tokens/motion.dart';
 import '../providers/music_provider.dart';
+import '../theme/amoled_theme.dart';
 import '../utils/color_utils.dart';
 
-/// Ambient album-art canvas behind the whole app (v5.2 shell z-layer 0).
+/// Ambient canvas behind the whole app (v5.2 shell z-layer 0).
 ///
-/// The current track's artwork renders oversized, blurred and darkened
+/// By default it is the current track's artwork, oversized, blurred and darkened
 /// beneath every screen, cross-fading on track change. Static content —
 /// no per-frame backdrop filters, so it costs one image composite.
+///
+/// In pure-black (AMOLED) mode it is nothing at all: `#000000`. The art wash
+/// fades out over [Motion.ambient] when the setting is switched on and back in
+/// when it is switched off, and once it has fully faded the art, the 48-sigma
+/// blur and the accent bloom are not built, so the mode costs the GPU less than
+/// it did rather than more. With "reduce motion" on, it cuts instead of fading.
 class AmbientBackdrop extends StatelessWidget {
   const AmbientBackdrop({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final black = AmoledTheme.isOn(context);
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+    return IgnorePointer(
+      child: TweenAnimationBuilder<double>(
+        // No `begin`: the first build starts AT its target, so a cold start in
+        // either mode does not animate, only a change does.
+        tween: Tween<double>(end: black ? 1.0 : 0.0),
+        duration: reduceMotion ? Duration.zero : Motion.ambient,
+        curve: Curves.easeInOutCubic,
+        builder: (context, amount, art) {
+          // Fully black: draw nothing but the canvas.
+          if (amount >= 1.0) return const ColoredBox(color: AmoledTheme.canvas);
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // `art` is a const child, so a fade does not rebuild or repaint
+              // the blurred layer - it only changes the alpha of the veil below.
+              art!,
+              if (amount > 0)
+                ColoredBox(
+                  color: AmoledTheme.canvas.withValues(alpha: amount),
+                ),
+            ],
+          );
+        },
+        child: const _ArtCanvas(),
+      ),
+    );
+  }
+}
+
+/// The artwork wash: blurred art, scrim, accent bloom.
+class _ArtCanvas extends StatelessWidget {
+  const _ArtCanvas();
 
   @override
   Widget build(BuildContext context) {

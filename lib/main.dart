@@ -150,6 +150,15 @@ void main() async {
     ));
   }
 
+  // Load the theme BEFORE the first frame. It used to load in a post-frame
+  // callback, so a listener who had chosen pure black saw one frame (and, with
+  // the fade, a short animation) of the album-art backdrop on every cold start
+  // before it went black. The preferences are already warm from the session
+  // restore above, so this costs a few milliseconds, not a splash screen. It
+  // swallows its own errors and falls back to the defaults.
+  final themeProvider = ThemeProvider();
+  await themeProvider.initialize();
+
   runApp(
     // Wrap outside MaterialApp: `brightnessResolver` is invoked with a context
     // from inside it, so the glass shader reads the app's Theme rather than the
@@ -166,7 +175,7 @@ void main() async {
             ),
           ),
           ChangeNotifierProvider(create: (context) => AuthService()),
-          ChangeNotifierProvider(create: (context) => ThemeProvider()),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
           ChangeNotifierProvider(
             create: (context) => AudioOutputService()..init(),
           ),
@@ -286,6 +295,9 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentController>().accent;
+    // Selected, not watched: only this one flag rebuilds the app's theme, not
+    // every unrelated ThemeProvider change.
+    final amoled = context.select<ThemeProvider, bool>((t) => t.isAmoled);
     final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(Theme.of(context).textTheme);
     final textTheme = baseTextTheme.copyWith(
       headlineLarge: baseTextTheme.headlineLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
@@ -304,7 +316,7 @@ class _MyAppState extends State<MyApp> {
       navigatorKey: rootNavigatorKey, // Assigned Key
       navigatorObservers: [AppRouteObserver.instance],
       debugShowCheckedModeBanner: false,
-      theme: GlassTheme.build(accent, textTheme: textTheme),
+      theme: GlassTheme.build(accent, textTheme: textTheme, amoled: amoled),
       // Integrate Global Music Overlay here.
       //
       // The transparency Material is required, not cosmetic: liquid_glass_widgets

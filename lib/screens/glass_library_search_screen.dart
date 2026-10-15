@@ -8,6 +8,7 @@ import '../models/track.dart';
 import '../models/playlist.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
+import '../theme/amoled_theme.dart';
 
 class GlassLibrarySearchScreen extends StatefulWidget {
   const GlassLibrarySearchScreen({super.key});
@@ -108,9 +109,9 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark 
+            colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: SafeArea(

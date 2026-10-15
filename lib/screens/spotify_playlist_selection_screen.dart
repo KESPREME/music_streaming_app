@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../theme/amoled_theme.dart';
 
 class SpotifyPlaylistSelectionScreen extends StatelessWidget {
   final List<Map<String, dynamic>> playlists;
@@ -24,9 +25,9 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-             colors: isDark 
+             colors: AmoledTheme.gradient(context, isDark 
               ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+              : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: SafeArea(

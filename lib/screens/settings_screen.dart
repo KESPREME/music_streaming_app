@@ -16,6 +16,7 @@ import '../widgets/glass_surface.dart';
 import '../widgets/liquid_switch.dart';
 import '../widgets/lyric_providers_sheet.dart';
 import '../widgets/settings/settings_search.dart';
+import '../theme/amoled_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -44,6 +45,7 @@ const List<SettingsEntry> settingsSearchEntries = <SettingsEntry>[
     SettingsEntry('source', ['Source', 'innertube', 'powered by']),
     SettingsEntry('prefs.theme', ['Theme', 'appearance', 'dark mode', 'accent', 'colour', 'color']),
     SettingsEntry('prefs.dynamic', ['Dynamic Colors', 'material you', 'wallpaper']),
+  SettingsEntry('prefs.amoled', ['Pure black', 'AMOLED', 'OLED', 'black', 'true black', 'dark', 'battery', 'background']),
     SettingsEntry('accent.card', ['Accent', 'colour', 'color', 'swatch', 'album art']),
     SettingsEntry('playback.transitions', ['Song Transitions', 'crossfade', 'automix', 'fade', 'gapless', 'blend', 'mix', 'loudness', 'balance', 'beat', 'tempo', 'bpm', 'level', 'transition']),
     SettingsEntry('playback.autoQueue', ['Auto Queue', 'keep playing', 'queue']),
@@ -109,9 +111,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark
+            colors: AmoledTheme.gradient(context, isDark
                 ? [const Color(0xFF121212), const Color(0xFF1E1E1E), const Color(0xFF000000)]
-                : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)],
+                : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
         child: SafeArea(
@@ -213,7 +215,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
               // Appearance group — grounded elevated, only switches are glass
-              if (index.matchesAny(const ['prefs.theme', 'prefs.dynamic']))
+              if (index.matchesAny(
+                  const ['prefs.theme', 'prefs.dynamic', 'prefs.amoled']))
                 SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -241,6 +244,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           title: 'Dynamic Colors',
                           subtitle: themeProvider.isDynamicColorEnabled ? 'Enabled' : 'Disabled',
                           trailing: LiquidSwitch(value: themeProvider.isDynamicColorEnabled, onChanged: (v) => themeProvider.setDynamicColorEnabled(v)),
+                        ),
+                        _divider(),
+                        // Off by default. The backdrop and the full-screen pages
+                        // go to #000000 (see AmoledTheme); artwork is untouched.
+                        // One switch, one spoken label: the whole row is the
+                        // target and a screen reader hears "Pure black (AMOLED),
+                        // switch, on" instead of a bare unlabeled toggle.
+                        Semantics(
+                          container: true,
+                          toggled: themeProvider.isAmoled,
+                          label: 'Pure black (AMOLED)',
+                          hint: 'True black backgrounds, saves power on OLED screens',
+                          onTap: () => themeProvider.setAmoled(!themeProvider.isAmoled),
+                          excludeSemantics: true,
+                          child: _GlassRow(
+                            icon: Icons.contrast_rounded,
+                            iconBg: accent.withValues(alpha: 0.18),
+                            iconColor: accent,
+                            title: 'Pure black (AMOLED)',
+                            subtitle: themeProvider.isAmoled
+                                ? 'On · true black, saves power on OLED screens'
+                                : 'Off · backgrounds follow the album art',
+                            onTap: () => themeProvider.setAmoled(!themeProvider.isAmoled),
+                            trailing: LiquidSwitch(value: themeProvider.isAmoled, onChanged: (v) => themeProvider.setAmoled(v)),
+                          ),
                         ),
                         // The "Album-Art Adaptive" row that used to sit here
                         // is gone: AccentSettingsCard a few lines below already
@@ -574,8 +602,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final isAuto = provider.isAutoBitrate;
         final current = isWifi ? provider.wifiBitrate : provider.cellularBitrate;
         return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: AmoledTheme.surfaceOf(context, const Color(0xFF1E1E1E)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: AmoledTheme.edge(context),
+          ),
           title: Text('${isWifi ? "Wi-Fi" : "Cellular"} Quality', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
