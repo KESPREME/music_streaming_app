@@ -392,3 +392,19 @@ Prompted by: AutoMix works but does not sound as smooth as Apple Music. No devic
 ### Still to be heard (device)
 
 Everything in section 11's checklist, plus: do tempo-matched mixes sound on the beat (the *Last transition* card shows the beat error the lock measured; if it reports a few ms and it still sounds off, the decks' reported positions and the speaker disagree and the lock needs a constant offset); is the *Balance loudness* swell after a held-down song natural at 8 s; does the stereo decoder produce the right loudness on a real cache file (compare the card's Levels line with how it sounded).
+## 13. The transition inside the seek bar
+
+The bracket under the scrubber (section 12) is replaced by marking the bar itself. `widgets/seek_zone.dart`; the player's scrubber (`ThinSlider`) and the mini player's progress line both use it, so they cannot disagree.
+
+| State | What the bar does |
+|---|---|
+| Planned | The last stretch of the bar (the engine's `startAt`..`endAt`, widened to at least 10 px) sweeps in left to right over 520 ms with a deceleration, tinted: the accent with fine diagonal hatching for AutoMix, a quiet white veil for a plain crossfade, so a crossfade does not shout. It dissolves in 240 ms when the plan is withdrawn (leaving is quicker than arriving). |
+| Entered | The played fill is one continuous shape whose colour is dyed across the zone by one gradient: toward the accent for AutoMix (the next song arriving), thinning out for a crossfade (this song leaving). |
+| Live | While the mix runs the tint brightens and the hatching flows toward the end of the song (1.8 s per cycle). |
+| Reduced motion | The zone is simply there. No sweep, no flow. |
+
+Painted from animations handed to the painter's `repaint`, so a zone coming and going repaints a 7 px bar and rebuilds nothing; a running mix's 30 ms progress ticks do not rebuild the bar (tested). It was checked by rendering the bar in every state and looking at it, and the colour claims (zone is the accent and the rest of the bar is not; the fill is dyed more the deeper it goes; a crossfade never gets colour) are pixel tests in `test/seek_zone_test.dart`. Screen readers are told where the transition begins ("AutoMix begins at 3:52").
+
+Also in this pass: the mini player's title exchanges at the handoff like the player's; a one-time "Blend your songs" offer in the queue for someone who has never met transitions (off by default, so otherwise nobody who never opens Settings would learn they exist); search finds Song Transitions by "loudness", "beat", "tempo", "level"; analysis refuses tracks over 12 minutes (the decode alone holds ~90 MB, and there is no transition to plan into a DJ set).
+
+**Not touched, on purpose:** the Material You player, queue and wavy progress bar. They are to be rebuilt in Material 3 Expressive, so transition affordances belong in that rebuild, not on screens about to be replaced. Only the Material You *settings* entry exists.

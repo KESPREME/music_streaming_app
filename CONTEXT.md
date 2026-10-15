@@ -643,8 +643,13 @@ queue heading (tap cycles Off, Crossfade, AutoMix; long-press opens the screen).
   before the ease-back (it caused two tempo jumps).
 - `_applyGains` is single-flight, latest wins. Do not make it queue again.
 - Do not attach an AudioEffect to the players to "add DJ filters": see plan section 12 verdict.
+- The transition is drawn INSIDE the seek bar (`widgets/seek_zone.dart`, plan section 13):
+  `SeekZoneHost` owns the animations, `ThinSlider(zone:)` and the mini player's hairline paint
+  them. The old bracket under the bar is gone. Material You screens (player, queue, wavy
+  bar) deliberately have NO transition UI: they are being rebuilt in Material 3 Expressive.
 - NOT verified on a device: any audio behaviour, the decoder on real cache files, the
   handoff, lock-screen controls, whether the beat lock lands on the beat the listener hears.
+
   Checklist: plan sections 11 and 12.
 ## KNOWN LIMITATIONS
 
