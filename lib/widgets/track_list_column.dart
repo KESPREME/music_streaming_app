@@ -4,8 +4,17 @@ import 'package:flutter/material.dart';
 
 import '../models/track.dart';
 import '../presentation/home/home_tokens.dart' as t;
+import 'home_sections.dart' show PressableScale;
 
 /// One compact row: artwork, title, artist, overflow.
+///
+/// THE ROW ITSELF IS THE TAP TARGET. Tapping anywhere on it plays [track]; a
+/// long press, or the overflow button, opens its options. The first version drew
+/// the row and took [onPlay] but never attached it to anything - the only live
+/// control was the overflow button - so in list mode tapping a song did nothing
+/// while the same song in card mode played. The press feedback is the same
+/// [PressableScale] the card mode and the compact lists use, so the two layouts
+/// answer a touch the same way.
 ///
 /// The overflow button exists only here. In card mode there is nowhere to put it
 /// without covering artwork, and a long press still reaches the same sheet, so
@@ -29,83 +38,106 @@ class TrackListRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          vertical: t.HomeTokens.rowVerticalPadding),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(t.HomeTokens.rowArtRadius),
-            child: SizedBox(
-              width: t.HomeTokens.rowArtSize,
-              height: t.HomeTokens.rowArtSize,
-              child: track.albumArtUrl.isNotEmpty
-                  ? Image.network(
-                      track.albumArtUrl,
-                      fit: BoxFit.cover,
-                      // The artwork is an identifier here. If it fails, a blank
-                      // tile still reads as a row; a broken-image glyph reads
-                      // as an error the user has to dismiss mentally.
-                      errorBuilder: (_, __, ___) => ColoredBox(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        child: Icon(Icons.music_note_rounded,
-                            size: 18, color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    )
-                  : ColoredBox(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: Icon(Icons.music_note_rounded,
-                          size: 18, color: theme.colorScheme.onSurfaceVariant),
-                    ),
-            ),
-          ),
-          const SizedBox(width: t.HomeTokens.rowArtGap),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  track.trackName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.HomeTokens.compactTitle(context).copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: isPlaying
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  track.artistName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.HomeTokens.compactMetadata(context)
-                      .copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: t.HomeTokens.rowArtGap),
-          SizedBox(
-            width: t.HomeTokens.rowOverflowSize,
-            height: t.HomeTokens.rowOverflowSize,
-            child: IconButton(
-              onPressed: onOptions,
-              padding: EdgeInsets.zero,
-              iconSize: 19,
-              tooltip: 'More options',
-              icon: Icon(Icons.more_vert_rounded,
-                  color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ),
-        ],
+    final art = ClipRRect(
+      borderRadius: BorderRadius.circular(t.HomeTokens.rowArtRadius),
+      child: SizedBox(
+        width: t.HomeTokens.rowArtSize,
+        height: t.HomeTokens.rowArtSize,
+        child: track.albumArtUrl.isNotEmpty
+            ? Image.network(
+                track.albumArtUrl,
+                fit: BoxFit.cover,
+                // The artwork is an identifier here. If it fails, a blank
+                // tile still reads as a row; a broken-image glyph reads
+                // as an error the user has to dismiss mentally.
+                errorBuilder: (_, __, ___) => _artPlaceholder(theme),
+              )
+            : _artPlaceholder(theme),
       ),
     );
-  }
-}
 
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          track.trackName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: t.HomeTokens.compactTitle(context).copyWith(
+            fontWeight: FontWeight.w600,
+            color: isPlaying
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          track.artistName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: t.HomeTokens.compactMetadata(context)
+              .copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+
+    // The press target is the song (artwork + words), NOT the overflow button,
+    // which sits beside it as a sibling: a tap on the button must open options
+    // and never also play, and a screen reader must see two controls, not one
+    // node that is both.
+    return Row(
+      children: [
+        Expanded(
+          child: PressableScale(
+            onTap: onPlay,
+            onLongPress: onOptions,
+            child: Semantics(
+              container: true,
+              button: true,
+              selected: isPlaying,
+              label: '${track.trackName}, ${track.artistName}',
+              hint: 'Plays this song. Long press for options.',
+              onTap: onPlay,
+              onLongPress: onOptions,
+              child: ExcludeSemantics(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: t.HomeTokens.rowVerticalPadding),
+                  child: Row(
+                    children: [
+                      art,
+                      const SizedBox(width: t.HomeTokens.rowArtGap),
+                      Expanded(child: text),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: t.HomeTokens.rowArtGap),
+        SizedBox(
+          width: t.HomeTokens.rowOverflowSize,
+          height: t.HomeTokens.rowOverflowSize,
+          child: IconButton(
+            onPressed: onOptions,
+            padding: EdgeInsets.zero,
+            iconSize: 19,
+            tooltip: 'More options',
+            icon: Icon(Icons.more_vert_rounded,
+                color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+  Widget _artPlaceholder(ThemeData theme) => ColoredBox(
+        color: theme.colorScheme.surfaceContainerHighest,
+        child: Icon(Icons.music_note_rounded,
+            size: 18, color: theme.colorScheme.onSurfaceVariant),
+      );
+}
 /// A horizontal rail of fixed-height columns of [TrackListRow].
 ///
 /// Paging by column rather than by item is what makes this read as a list rather
