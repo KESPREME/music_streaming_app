@@ -1,37 +1,7 @@
-import 'package:flutter/foundation.dart' show immutable, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// A stretch of the track worth pointing at, drawn as a thin bracket just under
-/// it: the song's transition, where the next one is going to come in.
-@immutable
-class ThinSliderMark {
-  const ThinSliderMark({
-    required this.from,
-    required this.to,
-    required this.color,
-    this.progress = 0.0,
-  });
-
-  /// Where it starts and ends along the track, 0..1.
-  final double from;
-  final double to;
-  final Color color;
-
-  /// How much of it has been played through, 0..1 (brightens the bracket).
-  final double progress;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ThinSliderMark &&
-      other.from == from &&
-      other.to == to &&
-      other.color == color &&
-      other.progress == progress;
-
-  @override
-  int get hashCode => Object.hash(from, to, color, progress);
-}
+import 'seek_zone.dart';
 
 /// Apple Music & BitChord style capsule slider with no thumb knob.
 ///
@@ -42,6 +12,7 @@ class ThinSliderMark {
 /// - Starts at x = 0 and ends at x = width so timestamps placed in a Row below it
 ///   are 100% pixel-perfect aligned with the track ends.
 /// - Generous invisible touch target ([touchHeight]) supporting both tap-to-seek and dragging.
+/// - Can show the song's transition inside the bar itself ([zone], see seek_zone.dart).
 class ThinSlider extends StatefulWidget {
   final double value; // 0.0 to 1.0
   final ValueChanged<double> onValueChange;
@@ -54,8 +25,9 @@ class ThinSlider extends StatefulWidget {
   final double touchHeight;
   final String? semanticLabel;
 
-  /// Brackets under the track (see [ThinSliderMark]).
-  final List<ThinSliderMark> marks;
+  /// The stretch of the bar where the next song comes in, tinted and dyed into
+  /// the played fill (see seek_zone.dart). Null: a plain bar.
+  final SeekZoneFrame? zone;
 
   const ThinSlider({
     super.key,
@@ -69,7 +41,7 @@ class ThinSlider extends StatefulWidget {
     this.inactiveColor = const Color(0x38FFFFFF),
     this.touchHeight = 36.0,
     this.semanticLabel,
-    this.marks = const <ThinSliderMark>[],
+    this.zone,
   });
 
   @override
@@ -168,6 +140,7 @@ class _ThinSliderState extends State<ThinSlider>
       slider: true,
       label: widget.semanticLabel,
       value: '${(widget.value * 100).round()}%',
+      hint: widget.zone?.zone?.label,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final totalW = constraints.maxWidth;
@@ -199,7 +172,7 @@ class _ThinSliderState extends State<ThinSlider>
                       trackHeight: _heightAnim.value,
                       activeColor: widget.activeColor,
                       inactiveColor: widget.inactiveColor,
-                      marks: widget.marks,
+                      zone: widget.zone ?? SeekZoneFrame.none,
                     ),
                   );
                 },
@@ -217,21 +190,24 @@ class _ThinSliderPainter extends CustomPainter {
   final double trackHeight;
   final Color activeColor;
   final Color inactiveColor;
-  final List<ThinSliderMark> marks;
+  final SeekZoneFrame zone;
 
+  // The zone's animations repaint this painter directly: a zone sweeping in
+  // or a mix running moves no widget, only pixels.
   _ThinSliderPainter({
     required this.fraction,
     required this.trackHeight,
     required this.activeColor,
     required this.inactiveColor,
-    required this.marks,
-  });
+    required this.zone,
+  }) : super(repaint: zone.repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
     final double centerY = size.height / 2.0;
     final double top = centerY - trackHeight / 2.0;
     final double radius = trackHeight / 2.0;
+    final track = Rect.fromLTWH(0, top, size.width, trackHeight);
 
     // 1. Inactive full background capsule
     final inactivePaint = Paint()
@@ -239,57 +215,30 @@ class _ThinSliderPainter extends CustomPainter {
       ..isAntiAlias = true
       ..style = PaintingStyle.fill;
 
-    final inactiveRRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, top, size.width, trackHeight),
-      Radius.circular(radius),
-    );
+    final inactiveRRect = RRect.fromRectAndRadius(track, Radius.circular(radius));
     canvas.drawRRect(inactiveRRect, inactivePaint);
 
-    // 2. Active played progress capsule
+    // 2. The transition's own stretch of the bar: its tint and hatching, inside
+    //    the capsule, under the played fill.
+    if (zone.zone != null) {
+      canvas.save();
+      canvas.clipRRect(inactiveRRect);
+      SeekZonePaint.under(canvas, track, zone);
+      canvas.restore();
+    }
+
+    // 3. Active played progress capsule - dyed across the zone as the playhead
+    //    passes through it.
     if (fraction > 0.0) {
       final double activeWidth =
           (size.width * fraction).clamp(trackHeight, size.width);
-
-      final activePaint = Paint()
-        ..color = activeColor
-        ..isAntiAlias = true
-        ..style = PaintingStyle.fill;
 
       final activeRRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(0, top, activeWidth, trackHeight),
         Radius.circular(radius),
       );
-      canvas.drawRRect(activeRRect, activePaint);
-    }
-
-    // 3. Marks: a bracket a few pixels under the track.
-    for (final m in marks) {
-      final y = centerY + trackHeight / 2.0 + 5.0;
-      final x1 = (m.from.clamp(0.0, 1.0)) * size.width;
-      final x2 = (m.to.clamp(0.0, 1.0)) * size.width;
-      final end = x2 < x1 + 4.0 ? x1 + 4.0 : x2;
-      final base = Paint()
-        ..color = m.color.withValues(alpha: 0.38)
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round
-        ..isAntiAlias = true;
-      canvas.drawLine(Offset(x1, y), Offset(end, y), base);
-      if (m.progress > 0.0) {
-        final lit = Paint()
-          ..color = m.color.withValues(alpha: 0.95)
-          ..strokeWidth = 2.5
-          ..strokeCap = StrokeCap.round
-          ..isAntiAlias = true;
-        canvas.drawLine(
-            Offset(x1, y), Offset(x1 + (end - x1) * m.progress.clamp(0.0, 1.0), y), lit);
-      }
-      // The point where the next song comes in.
-      final tick = Paint()
-        ..color = m.color.withValues(alpha: 0.9)
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round
-        ..isAntiAlias = true;
-      canvas.drawLine(Offset(x1, y - 3.5), Offset(x1, y + 3.5), tick);
+      canvas.drawRRect(
+          activeRRect, SeekZonePaint.fillPaint(track, zone, activeColor));
     }
   }
 
@@ -299,6 +248,6 @@ class _ThinSliderPainter extends CustomPainter {
         oldDelegate.trackHeight != trackHeight ||
         oldDelegate.activeColor != activeColor ||
         oldDelegate.inactiveColor != inactiveColor ||
-        !listEquals(oldDelegate.marks, marks);
+        oldDelegate.zone != zone;
   }
 }

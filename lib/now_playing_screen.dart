@@ -23,7 +23,7 @@ import '../widgets/glass_snackbar.dart';
 import '../widgets/apple_player_icons.dart';
 import '../widgets/thin_slider.dart';
 import '../widgets/track_swap.dart';
-import '../services/transition/transition_engine.dart' show TransitionPhase;
+import '../widgets/seek_zone.dart';
 import '../widgets/device_volume_slider.dart';
 import '../widgets/audio_output_sheet.dart';
 import '../widgets/liquid_glass_pill.dart';
@@ -1577,29 +1577,6 @@ child: Transform.scale(
 
   // ── Scrubber Bar with Timestamps (Image 1) ──────────────────────────────
 
-  /// The bracket under the scrubber that shows where the next song will come
-  /// in. Only what the engine has actually planned for THIS song is drawn: the
-  /// length check keeps a plan made for another song (or another cut) off it.
-  List<ThinSliderMark> _mixMarks(
-      MusicProvider provider, Color? accentColor, Duration dur) {
-    final u = provider.upcomingMix.value;
-    final total = dur.inMilliseconds;
-    if (u == null || u.isNone || total <= 0) return const <ThinSliderMark>[];
-    if ((u.durationMs - total).abs() > 1500) return const <ThinSliderMark>[];
-    final ui = provider.transitionState.value;
-    final running = ui.phase == TransitionPhase.fading && !ui.handedOff;
-    return <ThinSliderMark>[
-      ThinSliderMark(
-        from: u.startAtMs / total,
-        to: u.endAtMs / total,
-        color: u.isMix
-            ? (accentColor ?? Theme.of(context).colorScheme.primary)
-            : Colors.white,
-        progress: running ? ui.progress : 0.0,
-      ),
-    ];
-  }
-
   Widget _buildScrubberBar(
     BuildContext context,
     MusicProvider provider, {
@@ -1629,17 +1606,19 @@ child: Transform.scale(
           children: [
             // A jump (the session moving to the song a mix is bringing in, a
             // tap on the bar) glides; ordinary creeping progress does not.
-            ListenableBuilder(
-              // Where the next song will come in, as the engine has planned it.
-              listenable: Listenable.merge(<Listenable>[
-                provider.upcomingMix,
-                provider.transitionState,
-              ]),
-              builder: (context, _) => JumpSmoother(
+            // The transition lives IN the bar: its last stretch is tinted where the
+            // next song will come in, and dyed as the playhead passes through
+            // (seek_zone.dart).
+            SeekZoneHost(
+              upcoming: provider.upcomingMix,
+              ui: provider.transitionState,
+              totalMs: dur.inMilliseconds,
+              mixColor: accentColor ?? Theme.of(context).colorScheme.primary,
+              builder: (context, zone) => JumpSmoother(
               value: fraction,
               enabled: !_isScrubbing,
               builder: (context, smoothed) => ThinSlider(
-              marks: _mixMarks(provider, accentColor, dur),
+              zone: zone,
               value: smoothed,
               idleHeight: 7.0,
               activeHeight: 12.0,

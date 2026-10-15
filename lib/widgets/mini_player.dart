@@ -12,6 +12,8 @@ import '../screens/themed_now_playing_screen.dart';
 import '../utils/color_utils.dart';
 import '../utils/app_image_cache.dart';
 import 'covered_gate.dart';
+import 'seek_zone.dart';
+import 'track_swap.dart';
 
 /// Floating liquid-glass mini player matching Muzo sizing (Image 2)
 /// with Previous, Play/Pause, Next inline controls and soft dynamic
@@ -70,17 +72,26 @@ class _PillProgress extends StatelessWidget {
           progress = (position.inSeconds / duration.inSeconds).clamp(0.0, 1.0);
         }
 
-        return SizedBox(
-          height: 2,
-          child: ClipRRect(
-            borderRadius: BorderRadius.vertical(
-              bottom: Radius.circular(radius),
-            ),
-            child: LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.white.withValues(alpha: 0.07),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Color.lerp(Colors.white, accent, 0.75)!,
+        // The same transition zone as the player's scrubber: the last stretch
+        // is tinted, and the fill is dyed as it passes through.
+        return SeekZoneHost(
+          upcoming: musicProvider.upcomingMix,
+          ui: musicProvider.transitionState,
+          totalMs: duration.inMilliseconds,
+          mixColor: accent,
+          builder: (context, zone) => SizedBox(
+            height: 2,
+            width: double.infinity,
+            child: ClipRRect(
+              borderRadius: BorderRadius.vertical(
+                bottom: Radius.circular(radius),
+              ),
+              child: CustomPaint(
+                painter: _HairlinePainter(
+                  progress: progress,
+                  fill: Color.lerp(Colors.white, accent, 0.75)!,
+                  zone: zone,
+                ),
               ),
             ),
           ),
@@ -88,6 +99,37 @@ class _PillProgress extends StatelessWidget {
       },
     );
   }
+}
+
+/// The pill's 2 px progress line: an empty track, the transition's stretch of
+/// it, and the played fill (dyed across that stretch).
+class _HairlinePainter extends CustomPainter {
+  _HairlinePainter({
+    required this.progress,
+    required this.fill,
+    required this.zone,
+  }) : super(repaint: zone.repaint);
+
+  final double progress;
+  final Color fill;
+  final SeekZoneFrame zone;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final track = Offset.zero & size;
+    canvas.drawRect(track, Paint()..color = Colors.white.withValues(alpha: 0.07));
+    SeekZonePaint.under(canvas, track, zone);
+    if (progress > 0) {
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width * progress, size.height),
+        SeekZonePaint.fillPaint(track, zone, fill),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HairlinePainter old) =>
+      old.progress != progress || old.fill != fill || old.zone != zone;
 }
 
 class _PillBody extends StatelessWidget {
@@ -345,16 +387,22 @@ class _PillBody extends StatelessWidget {
 
           // Track title only (bold, Plus Jakarta Sans, single line with ellipsis)
           Expanded(
-            child: Text(
-              currentTrack.trackName,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13.0,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -0.2,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TrackTextSwap(
+                identity: currentTrack.id,
+                child: Text(
+                  currentTrack.trackName,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.0,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(width: 4),
@@ -432,27 +480,34 @@ class _PillBody extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  currentTrack.trackName,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: -0.2,
+                TrackTextSwap(
+                  identity: currentTrack.id,
+                  child: Text(
+                    currentTrack.trackName,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 1),
-                Text(
-                  currentTrack.artistName,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.65),
+                TrackTextSwap(
+                  identity: currentTrack.id,
+                  lag: 0.18,
+                  child: Text(
+                    currentTrack.artistName,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.65),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
