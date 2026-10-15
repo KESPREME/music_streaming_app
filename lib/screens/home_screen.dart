@@ -12,10 +12,11 @@ import '../services/home/home_models.dart';
 import '../services/auth_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/recommendation/quick_picks_engine.dart'
-    show QuickPickCandidate, kCandidateVersion, kRankerVersion;
+    show kCandidateVersion, kRankerVersion;
 import '../presentation/home/home_playback.dart'
     show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
+import '../presentation/home/home_shelf_plan.dart';
 import '../design/tokens/motion.dart';
 import '../design/tokens/space.dart';
 import '../presentation/home/home_tokens.dart' as t;
@@ -1021,11 +1022,19 @@ class _RealHomeBody extends StatelessWidget {
     final provider = context.watch<MusicProvider>();
     final hasHero = _HomeScreenState._hasHero(provider);
 
-    // A feed shelf promoted to the hero must not also render below itself.
-    final excludeHeroSectionId =
-        _HomeScreenState._topPicksList(provider).isEmpty
-            ? _HomeScreenState._heroCandidate(provider)?.$1.id
-            : null;
+    // What the hero is showing, so nothing below it repeats it: a feed shelf
+    // promoted into the hero is not drawn again as a shelf, and the tracks the
+    // carousel carries are not served a second time as Quick picks.
+    final personalizedHero = _HomeScreenState._topPicksList(provider);
+    final promoted = personalizedHero.isEmpty
+        ? _HomeScreenState._heroCandidate(provider)
+        : null;
+    final heroSection = promoted?.$1;
+    final heroTrackIds = <String>{
+      for (final t in personalizedHero) t.id,
+      if (promoted != null)
+        for (final t in promoted.$2) t.id,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1044,7 +1053,8 @@ class _RealHomeBody extends StatelessWidget {
             // The hero is its own block here, so the section gap has to be
             // applied across that boundary explicitly.
             topGap: hasHero ? t.HomeTokens.sectionGap : 0.0,
-            excludeHeroSectionId: excludeHeroSectionId,
+            heroSection: heroSection,
+            heroTrackIds: heroTrackIds,
           ),
           builder: (context, version, lower) => lower!,
         ),
@@ -1113,7 +1123,8 @@ class _LowerSections extends StatelessWidget {
 const _LowerSections({
       required this.bottomInset,
       required this.topGap,
-      this.excludeHeroSectionId,
+      this.heroSection,
+      this.heroTrackIds = const {},
     });
 
     final double bottomInset;
@@ -1122,7 +1133,12 @@ const _LowerSections({
     /// The hero is a separate sliver, so the inter-section gap does not reach
     /// across that boundary.
     final double topGap;
-    final String? excludeHeroSectionId;
+
+    /// A feed shelf the hero carousel took, which must not be drawn again here.
+    final HomeSection? heroSection;
+
+    /// The tracks the hero carousel is showing.
+    final Set<String> heroTrackIds;
 
   @override
   Widget build(BuildContext context) {
@@ -1134,19 +1150,35 @@ const _LowerSections({
     final sections = <Widget>[];
     final renderedKinds = <String>[];
 
-    // Local overlay — continue listening.
+    // WHICH SHELVES. The app has shelves of its own (Jump back in, Quick picks)
+    // and a signed-in feed carries shelves for the same jobs (Listen again,
+    // Quick picks). Drawing both is how Home came to show two "Quick picks":
+    // the plan gives each job to one shelf (see home_shelf_plan.dart).
+    final feed = provider.homeFeed;
     final recents = provider.recentlyPlayed
         .where((t) => t.id != provider.currentTrack?.id)
         .toList();
-    if (recents.isNotEmpty) {
+    final plan = planHomeShelves(
+      feed: feed?.sections ?? const <HomeSection>[],
+      hero: heroSection,
+      heroTrackIds: heroTrackIds,
+      recents: recents,
+      quickPicks: provider.quickPicks,
+      renders: _feedSectionRenders,
+    );
+    final playingId = provider.currentTrack?.id;
+
+    // The app's own history shelf - only when the feed has none, or for the
+    // plays a YouTube shelf cannot hold (local files).
+    if (plan.localHistory.isNotEmpty) {
       sections.add(_JumpBackInSection(
-        recents: recents,
+        recents: plan.localHistory,
         // The recents list is the ordered context for this tap. Without it playback
         // starts with no list at all, so the window is one item: the track ends
         // with nothing to advance into and the lock screen has no prev/next.
         onPlay: (track) => context.read<MusicProvider>().playTrack(
               track,
-              playlistTracks: recents,
+              playlistTracks: plan.localHistory,
               playlistId: 'jump_back_in',
             ),
         onOptions: (track) => ThemedOptionsSheet.show(
@@ -1157,41 +1189,45 @@ const _LowerSections({
         viewMode: viewModes.modeOf(HomeViewSection.jumpBackIn),
         onToggleView: () =>
             viewModes.toggle(HomeViewSection.jumpBackIn),
+        playingId: playingId,
       ));
     }
 
     // Quick Picks (spec #2A/#61): deterministic personalized picks, high
-    // on the page. Always shown when candidates exist (cold start uses
+    // on the page - when the feed did not send its own (cold start uses
     // chart/trending as popularity prior).
-    final quickPicks = provider.quickPicks;
-    if (quickPicks.isNotEmpty) {
+    if (plan.localQuickPicks.isNotEmpty) {
+      final picks = plan.localQuickPicks.take(6).toList(growable: false);
       sections.add(_QuickPicksSection(
-        candidates: provider.quickPickCandidates,
-        onPlay: (track) => _play(context, track, quickPicks),
+        title: 'Quick picks',
+        tracks: picks,
+        onPlay: (track) => _play(context, track, picks),
         onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
         viewMode: viewModes.modeOf(HomeViewSection.quickPicks),
         onToggleView: () => viewModes.toggle(HomeViewSection.quickPicks),
+        playingId: playingId,
       ));
     }
 
-    final feed = provider.homeFeed;
     if (feed != null) {
-      // Curated shelves in source order — titles come from the source.
-      final feedSections = feed.sections
-          .where((s) => s.id != excludeHeroSectionId)
-          .toList();
-
-      for (final section in feedSections) {
-        final plan = planPresentation(section);
-        if (kDebugMode) renderedKinds.add(plan.semanticType.name);
-        if (!_feedSectionRenders(section)) {
-          if (kDebugMode) {
-            debugPrint('HOME_UI collapsed section="${section.title}" '
-                'kind=${plan.layoutKind.name} items=${section.items.length}');
+      // Curated shelves in source order - titles come from the source, one
+      // shelf per job.
+      if (kDebugMode) {
+        for (final s in feed.sections) {
+          if (!_feedSectionRenders(s)) {
+            debugPrint('HOME_UI collapsed section="${s.title}" '
+                'kind=${planPresentation(s).layoutKind.name} '
+                'items=${s.items.length}');
           }
-          continue;
         }
-        sections.add(_FeedSection(section: section));
+      }
+      for (final section in plan.feedSections) {
+        if (kDebugMode) {
+          renderedKinds.add(planPresentation(section).semanticType.name);
+        }
+        sections.add(identical(section, plan.quickPicksSection)
+            ? _FeedQuickPicks(section: section)
+            : _FeedSection(section: section));
       }
     } else {
       // No feed yet → legacy fallback sections (trusted sources only).
@@ -1336,6 +1372,7 @@ class _JumpBackInSection extends StatelessWidget {
     required this.onOptions,
     required this.viewMode,
     required this.onToggleView,
+    this.playingId,
   });
 
   final List<Track> recents;
@@ -1343,6 +1380,9 @@ class _JumpBackInSection extends StatelessWidget {
   final void Function(Track) onOptions;
   final HomeSectionViewMode viewMode;
   final VoidCallback onToggleView;
+
+  /// The song that is playing, so its row is marked.
+  final String? playingId;
 
   bool get _isCard => viewMode == HomeSectionViewMode.card;
 
@@ -1405,6 +1445,7 @@ class _JumpBackInSection extends StatelessWidget {
         tracks: recents,
         onPlay: onPlay,
         onOptions: onOptions,
+        isPlaying: (t) => t.id == playingId,
       ),
     );
   }
@@ -1451,18 +1492,23 @@ class _MadeForYouSection extends StatelessWidget {
 /// recognise a track by its row rather than its cover.
 class _QuickPicksSection extends StatelessWidget {
   const _QuickPicksSection({
-    required this.candidates,
+    required this.title,
+    required this.tracks,
     required this.onPlay,
     required this.onOptions,
     required this.viewMode,
     required this.onToggleView,
+    this.playingId,
   });
 
-  final List<QuickPickCandidate> candidates;
+  /// "Quick picks" - or the feed's own name for its shelf of the same job.
+  final String title;
+  final List<Track> tracks;
   final void Function(Track) onPlay;
   final void Function(Track) onOptions;
   final HomeSectionViewMode viewMode;
   final VoidCallback onToggleView;
+  final String? playingId;
 
   /// Subtitle = artist name (user preference: reason labels are noise in the
   /// list; engine reasoning lives in the RECOMMENDATION_ITEM debug traces).
@@ -1470,9 +1516,6 @@ class _QuickPicksSection extends StatelessWidget {
     final firstArtist = track.artistName.split(',').first.trim();
     return firstArtist.isEmpty ? track.artistName : firstArtist;
   }
-
-  List<Track> get _tracks =>
-      candidates.take(6).map((c) => c.track).toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
@@ -1482,7 +1525,7 @@ class _QuickPicksSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HomeSectionHeader(
-          title: 'Quick picks',
+          title: title,
           trailing: SectionViewToggle(
             mode: viewMode,
             onToggle: onToggleView,
@@ -1498,7 +1541,6 @@ class _QuickPicksSection extends StatelessWidget {
   }
 
   Widget _cards(BuildContext context) {
-    final tracks = _tracks;
     return SizedBox(
       height: 178 + homeRailTextBlockHeight(context),
       child: ListView.builder(
@@ -1527,16 +1569,50 @@ class _QuickPicksSection extends StatelessWidget {
 
   Widget _rows(BuildContext context) {
     return SizedBox(
-      height: trackListColumnsHeight(context, _tracks.length),
+      height: trackListColumnsHeight(context, tracks.length),
       child: TrackListColumns(
-        tracks: _tracks,
+        tracks: tracks,
         onPlay: onPlay,
         onOptions: onOptions,
+        isPlaying: (t) => t.id == playingId,
       ),
     );
   }
 }
 
+/// The FEED's own Quick picks shelf, drawn like the app's: the same cards-or-rows
+/// choice, the same tap to play. The listener's layout preference belongs to the
+/// job, not to where the songs came from.
+class _FeedQuickPicks extends StatelessWidget {
+  const _FeedQuickPicks({required this.section});
+
+  final HomeSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    final tracks = section.items
+        .map(homeItemToTrack)
+        .whereType<Track>()
+        .take(kHistoryShelfCap)
+        .toList(growable: false);
+    // Fewer than three songs is not a shelf of picks: let the generic renderer
+    // show whatever else the feed put there (albums, playlists).
+    if (tracks.length < 3) return _FeedSection(section: section);
+
+    final viewModes = context.watch<HomeViewModeStore>();
+    final playingId =
+        context.select<MusicProvider, String?>((p) => p.currentTrack?.id);
+    return _QuickPicksSection(
+      title: section.title,
+      tracks: tracks,
+      onPlay: (track) => _LowerSections._play(context, track, tracks),
+      onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+      viewMode: viewModes.modeOf(HomeViewSection.quickPicks),
+      onToggleView: () => viewModes.toggle(HomeViewSection.quickPicks),
+      playingId: playingId,
+    );
+  }
+}
 /// Trending section (spec #2B).
 class _WhatsHotSection extends StatefulWidget {
   const _WhatsHotSection({
@@ -1761,6 +1837,8 @@ class _HistoryFeedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final viewModes = context.watch<HomeViewModeStore>();
     final isCard = viewModes.isCard(HomeViewSection.listenAgain);
+    final playingId =
+        context.select<MusicProvider, String?>((p) => p.currentTrack?.id);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1783,6 +1861,7 @@ class _HistoryFeedSection extends StatelessWidget {
                   _LowerSections._play(context, track, tracks),
               onOptions: (track) =>
                   ThemedOptionsSheet.show(context, track: track),
+              isPlaying: (t) => t.id == playingId,
             ),
           ),
         ),

@@ -481,6 +481,13 @@ void main() {
       final recentTrack = sampleTrack(id: 'recent_1', title: 'Recent Track');
       final quickPickTrack = sampleTrack(id: 'qp_track_1', title: 'Pick Track');
       provider.setTestRecentlyPlayed([recentTrack]);
+      // The hero ("For you") falls back to the quick picks when there are no
+      // recommendations, and the shelf plan then (correctly) drops the Quick
+      // picks shelf so the same tracks are not shown twice. Give the hero its
+      // own track so this test exercises the shelf, not the fallback.
+      provider.setTestRecommendedTracks([
+        sampleTrack(id: 'rec_track_1', title: 'Rec Track'),
+      ]);
       provider.setTestQuickPicks(
         [quickPickTrack],
         [

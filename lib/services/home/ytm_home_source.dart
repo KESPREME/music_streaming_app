@@ -905,7 +905,18 @@ class HomeRepository {
 
   /// Persist section memory (spec #55): survives process death, so a cold
   /// start after force-stop retains category continuity. Schema-versioned.
-  static const _memoryKey = 'home_section_memory_v1';
+  ///
+  /// SCOPED TO WHO IS SIGNED IN, like the feed snapshot. It used to be one
+  /// global key: memory is personalised (it pins which shelves exist and in what
+  /// order), so after an account switch the previous account's shelves were
+  /// restored from disk and merged into the new account's feed - Quick picks and
+  /// Listen again from somebody else's history, standing in for shelves the new
+  /// feed had not sent. The unscoped v1 key is deleted on first load.
+  static const _memoryPrefix = 'home_section_memory';
+  static const _legacyMemoryKey = 'home_section_memory_v1';
+
+  static String memoryKeyFor(String identity) =>
+      '${_memoryPrefix}_v2_$identity';
 
   Future<void> _persistMemory() async {
     try {
@@ -920,7 +931,7 @@ class HomeRepository {
                 })
             .toList(),
       };
-      await prefs.setString(_memoryKey, jsonEncode(json));
+      await prefs.setString(memoryKeyFor(_identityTag()), jsonEncode(json));
     } catch (e) {
       if (kDebugMode) debugPrint('HomeRepository: memory persist failed: $e');
     }
@@ -929,7 +940,11 @@ class HomeRepository {
   Future<void> _loadMemory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_memoryKey);
+      // Whose shelves the unscoped v1 memory held is unknowable. Drop it.
+      if (prefs.containsKey(_legacyMemoryKey)) {
+        await prefs.remove(_legacyMemoryKey);
+      }
+      final raw = prefs.getString(memoryKeyFor(_identityTag()));
       if (raw == null) return;
       final json = jsonDecode(raw);
       if (json is! Map<String, dynamic> || json['schema'] != 1) return;
@@ -1015,7 +1030,13 @@ bool get isColdStartExhausted => _current == null && _firstFetchSettled;
   static String _cacheKeyFor(String source, String locale) =>
       '${_cachePrefix}_${_identityTag()}_${source}_$locale';
 
+  /// Tests set this to stand in for a signed-in account.
+  @visibleForTesting
+  static String? debugIdentity;
+
   static String _identityTag() {
+    final forced = debugIdentity;
+    if (forced != null) return forced;
     try {
       return AuthService().identityKey;
     } catch (_) {
@@ -1049,21 +1070,49 @@ bool get isColdStartExhausted => _current == null && _firstFetchSettled;
     return _current;
   }
 
+  /// Who the fetch in flight is for.
+  String? _inFlightIdentity;
+
   Future<HomeFeed?> refresh() async {
-    if (_inFlight != null) return _inFlight;
+    final identity = _identityTag();
+    // Coalesce only with a fetch for the SAME person. A fetch begun before an
+    // account switch carries the old account's feed; handing its result to the
+    // new account (which is what returning it here did) put one person's
+    // personalised shelves on another's Home.
+    if (_inFlight != null && _inFlightIdentity == identity) return _inFlight;
     if (DateTime.now().isBefore(_nextAttemptAt)) return _current;
 
-    _inFlight = _fetchFresh().whenComplete(() {
-      _inFlight = null;
-      _firstFetchSettled = true;
+    _inFlightIdentity = identity;
+    Future<HomeFeed?>? run;
+    run = _fetchFresh(identity).whenComplete(() {
+      // Only the fetch that is still THE fetch settles anything: a superseded
+      // one finishing late must not clear its successor.
+      if (identical(_inFlight, run)) {
+        _inFlight = null;
+        _firstFetchSettled = true;
+      }
     });
-    return _inFlight;
+    _inFlight = run;
+    return run;
   }
+
+  @visibleForTesting
+  Future<void> rememberForTest(HomeFeed feed) async {
+    _rememberSections(feed);
+    await _persistMemory();
+  }
+
+  @visibleForTesting
+  Future<void> loadMemoryForTest() => _loadMemory();
+
+  @visibleForTesting
+  Map<String, SectionMemoryEntry> get memoryForTest =>
+      Map.unmodifiable(_sectionMemory);
 
   String get _currentSourceTag => 'primary';
   bool _primaryHasVisitor() => _primary.hasVisitorData;
 
-  Future<HomeFeed?> _fetchFresh() async {
+  Future<HomeFeed?> _fetchFresh(String identity) async {
     try {
       final sw = Stopwatch()..start();
       var feed = await _primary.fetch();
@@ -1073,6 +1122,16 @@ bool get isColdStartExhausted => _current == null && _firstFetchSettled;
         sourceTag = 'fallback';
       }
       final requestMs = sw.elapsedMilliseconds;
+
+      // The account changed while the request was out: this is somebody else's
+      // Home. Remembering it, caching it, or showing it would be the leak.
+      if (_identityTag() != identity) {
+        HomeLoadTrace.log(
+          decision: 'IDENTITY_CHANGED_DISCARD',
+          requestMs: requestMs,
+        );
+        return _current;
+      }
 
       if (feed == null) {
         _failureCount++;
@@ -1368,7 +1427,11 @@ bool get isColdStartExhausted => _current == null && _firstFetchSettled;
     final prefs = await SharedPreferences.getInstance();
     final keys = prefs.getKeys();
     for (final key in keys) {
-      if (key.startsWith(_cachePrefix)) await prefs.remove(key);
+      // The snapshot AND the memory, for every identity: this runs when who is
+      // signed in changes, and neither may outlive that.
+      if (key.startsWith(_cachePrefix) || key.startsWith(_memoryPrefix)) {
+        await prefs.remove(key);
+      }
     }
     _current = null;
     _bestKnown = null;

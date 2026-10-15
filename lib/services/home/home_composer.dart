@@ -48,7 +48,12 @@ class HomeComposer {
       // Same-title collapse (live bug: native "New releases" + enriched
       // "New releases" rendered twice with different ids). First wins —
       // native order preserved, later duplicates are accounted drops.
-      if (!seenSectionTitles.add(section.title.toLowerCase().trim())) {
+      //
+      // The key is the NORMALISED title, not lower-case-and-trim: the same shelf
+      // arrives as "Listen again" and "Listen again" (non-breaking space),
+      // or "What's new" with a curly and a straight apostrophe, and those are
+      // one category to a listener and two shelves to a string comparison.
+      if (!seenSectionTitles.add(SectionIdentity.normalizedTitle(section.title))) {
         if (kDebugMode) {
           debugPrint(
               'HomeComposer: COLLAPSED duplicate-title section "${section.title}"');
@@ -163,7 +168,8 @@ class HomeComposer {
         // Collapsed duplicate titles were already accounted (COLLAPSED
         // loss line above) — the seen-set only contains KEPT titles, so
         // skip any section whose title isn't in it (i.e. collapsed ones).
-        if (!seenSectionTitles.contains(before.title.toLowerCase().trim())) {
+        if (!seenSectionTitles
+            .contains(SectionIdentity.normalizedTitle(before.title))) {
           continue;
         }
         final after = sections.where((s) => s.id == before.id).toList();

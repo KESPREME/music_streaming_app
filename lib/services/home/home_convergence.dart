@@ -70,12 +70,38 @@ class HomeConvergence {
     final converged = fresh.sections.toList();
     final convergedIds = freshById.keys.toSet();
 
+    // A remembered shelf is a stand-in for one the response OMITTED. A shelf
+    // with the same NAME that the response did send is not omitted, whatever
+    // identity it got this time: identity folds in the dominant content type
+    // (native:song:quick_picks in one response, native:video:quick_picks in the
+    // next), so identity alone let the stale copy come back beside the fresh
+    // one - and because the stand-in is inserted at its OLD position, ahead of
+    // the fresh shelf, the title-collapse downstream kept the stale one and
+    // threw the fresh one away. Name is what a listener sees, so name decides.
+    final convergedTitles = <String>{
+      for (final s in fresh.sections) SectionIdentity.normalizedTitle(s.title),
+    };
+
+    // Newest first, so if two remembered shelves share a name the fresher
+    // memory is the one that stands in.
+    final remembered = memory.entries.toList()
+      ..sort((a, b) => b.value.cachedAt.compareTo(a.value.cachedAt));
+
     // Retain eligible remembered sections omitted by this response (spec
     // #5/#7): within TTL + still renderable. Expiry/malformation removes.
-    for (final entry in memory.entries) {
+    for (final entry in remembered) {
       final identity = entry.key;
       if (convergedIds.contains(identity)) continue; // fresh has it
       final s = entry.value.section;
+      final titleKey = SectionIdentity.normalizedTitle(s.title);
+      if (convergedTitles.contains(titleKey)) {
+        HomeLoadTrace.loss(
+          stage: 'memory',
+          shelf: s.title,
+          reason: 'superseded by a shelf of the same name',
+        );
+        continue;
+      }
       final ttl = SectionMemoryPolicy.ttlFor(s);
       final age = clock.difference(entry.value.cachedAt);
       if (age > ttl) {
@@ -95,6 +121,7 @@ class HomeConvergence {
         continue;
       }
       convergedIds.add(identity);
+      convergedTitles.add(titleKey);
       // Positional stability: insert at previous index when valid.
       final pos = positionMap[identity];
       if (pos != null && pos <= converged.length) {

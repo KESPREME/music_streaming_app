@@ -127,6 +127,24 @@ class SectionIdentity {
     return dominant.name;
   }
 
+  /// A shelf's title reduced to what a person would call the same name.
+  ///
+  /// Two shelves are the same shelf when a listener would say so: case, runs of
+  /// whitespace (including the non-breaking and zero-width kinds a server can
+  /// send), curly versus straight quotes, and trailing punctuation do not make
+  /// a new category. Unlike [titleSlug] this keeps every script, so two shelves
+  /// titled in Japanese or Arabic are not both reduced to the empty string and
+  /// collapsed into one.
+  static String normalizedTitle(String title) {
+    var s = title.toLowerCase();
+    s = s.replaceAll(RegExp('[\u2018\u2019\u201B\u2032\u02BC]'), "'");
+    s = s.replaceAll(RegExp('[\u201C\u201D\u201E\u2033]'), '"');
+    s = s.replaceAll(RegExp('[\\s\u00A0\u200B\u200C\u200D\u2060\uFEFF]+'), ' ');
+    s = s.trim();
+    s = s.replaceAll(RegExp('[.!?:\u2026\u00B7\\-\u2013\u2014 ]+\$'), '');
+    return s;
+  }
+
   static String titleSlug(String title) => title
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F]+'),
