@@ -12,8 +12,9 @@ import 'package:music_streaming_app/screens/library_screen.dart';
 import 'package:music_streaming_app/widgets/library/library_header.dart';
 import 'package:music_streaming_app/widgets/library/library_hero_artwork.dart';
 import 'package:music_streaming_app/widgets/library/library_filter_bar.dart';
-import 'package:music_streaming_app/widgets/library/library_action_card.dart';
-import 'package:music_streaming_app/widgets/library/library_brand_promo_card.dart';
+import 'package:music_streaming_app/services/listening_stats.dart';
+import 'package:music_streaming_app/widgets/library/library_listening_card.dart';
+import 'package:music_streaming_app/widgets/library/library_shelves.dart';
 
 class FakeLibraryMusicProvider extends ChangeNotifier implements MusicProvider {
   final List<Track> _fakeLikedSongs = [];
@@ -41,6 +42,9 @@ class FakeLibraryMusicProvider extends ChangeNotifier implements MusicProvider {
 
   @override
   Future<List<Track>> getSmartLibraryAlbums() async => [];
+
+  @override
+  final ListeningStats listeningStats = ListeningStats();
 
   @override
   Track? get currentTrack => null;
@@ -176,7 +180,7 @@ void main() {
       expect(find.byType(LibraryHeroArtwork), findsOneWidget);
       expect(find.textContaining('ALL YOUR SOUNDS'), findsOneWidget);
       expect(find.text('Music\nlives\nhere.'), findsOneWidget);
-      expect(find.textContaining('Your'), findsOneWidget);
+      expect(find.textContaining('Your'), findsWidgets);
 
       // 3. Filter Bar & Sort Button
       expect(find.byType(LibraryFilterBar), findsOneWidget);
@@ -186,19 +190,23 @@ void main() {
       expect(find.text('Albums'), findsOneWidget);
       expect(find.bySemanticsLabel('Sort library items'), findsOneWidget);
 
-      // 4. 2-Column Action Grid (6 Cards)
-      expect(find.byType(LibraryActionCard), findsNWidgets(6));
+      // 4. Listening card: nothing listened yet, so the honest empty state.
+      expect(find.byType(LibraryListeningCard), findsOneWidget);
+      expect(find.textContaining('in music'), findsOneWidget);
+
+      // 5. Quick access: six destinations (the rail scrolls; the first few are
+      // laid out on screen).
+      expect(find.text('Quick access'), findsOneWidget);
       expect(find.text('Liked Songs'), findsOneWidget);
       expect(find.text('Your Playlists'), findsOneWidget);
-      expect(find.text('Recently Played'), findsOneWidget);
-      expect(find.text('Downloaded'), findsOneWidget);
-      expect(find.text('Local Files'), findsOneWidget);
-      expect(find.text('Import Playlists'), findsOneWidget);
+      expect(find.text('History'), findsOneWidget);
 
-      // 5. Promotional Brand Card
-      expect(find.byType(LibraryBrandPromoCard), findsOneWidget);
-      expect(find.text('YOUR MUSIC.\nYOUR WORLD.'), findsOneWidget);
-      expect(find.text('Listen\nyour way.'), findsOneWidget);
+      // 6. Shelves: recents has one track; playlists always offers a new one.
+      expect(find.text('Recently played'), findsOneWidget);
+      expect(find.text('Recent Track'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('New playlist'), 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.text('Your playlists'), findsOneWidget);
     });
 
     testWidgets('filter tabs switch smoothly between categories', (tester) async {
@@ -233,8 +241,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
 
-      // All 6 action cards are back
-      expect(find.byType(LibraryActionCard), findsNWidgets(6));
+      // The All tab is back
+      expect(find.text('Quick access'), findsOneWidget);
     });
 
     testWidgets('sort button opens liquid glass sort options sheet', (tester) async {
@@ -281,28 +289,15 @@ void main() {
         // 1. Zero RenderFlex or layout exceptions across all widths
         expect(tester.takeException(), isNull);
 
-        // 2. Geometry invariants: Cards are wide + compact
-        final cardFinders = find.byType(LibraryActionCard);
-        expect(cardFinders, findsNWidgets(6));
-        final cardSize = tester.getSize(cardFinders.first);
-
-        // Bounded wide proportion (1.45 to 1.70)
-        expect(cardSize.width / cardSize.height, inInclusiveRange(1.45, 1.70));
-        // Bounded height (comfortable, never cramped below 100 or excessively tall above 140 on phones)
-        expect(cardSize.height, inInclusiveRange(100.0, 140.0));
-
-        // 3. Long titles and metadata are rendered without clipping
-        expect(find.text('Recently Played'), findsOneWidget);
-        expect(find.text('Import Playlists'), findsOneWidget);
-        expect(find.text('Spotify & YouTube'), findsOneWidget);
-        expect(find.text('Offline music'), findsOneWidget);
-        expect(find.text('81 tracks'), findsOneWidget);
-        expect(find.text('1 song'), findsOneWidget);
+        // 2. Every destination tile has a 44dp-plus target and its full label.
+        final tiles = find.byType(LibraryQuickTile);
+        expect(tiles, findsWidgets);
+        final tileSize = tester.getSize(tiles.first);
+        expect(tileSize.width, greaterThanOrEqualTo(44));
+        expect(tileSize.height, greaterThanOrEqualTo(44));
+        expect(find.text('1 song'), findsWidgets);
         expect(find.text('10 songs'), findsOneWidget);
-
-        // 4. Promotional brand card rendered
-        expect(find.byType(LibraryBrandPromoCard), findsOneWidget);
-      });
+        expect(find.text('Recent Track'), findsOneWidget);      });
     }
   });
 }

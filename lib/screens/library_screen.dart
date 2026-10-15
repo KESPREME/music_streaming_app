@@ -27,8 +27,9 @@ import 'glass_library_search_screen.dart';
 import '../widgets/library/library_header.dart';
 import '../widgets/library/library_hero_artwork.dart';
 import '../widgets/library/library_filter_bar.dart';
-import '../widgets/library/library_action_card.dart';
-import '../widgets/library/library_brand_promo_card.dart';
+import '../widgets/library/library_listening_card.dart';
+import '../widgets/library/library_shelves.dart';
+import '../widgets/themed_options_sheet.dart';
 
 /// Mine Music — Library Screen.
 ///
@@ -78,14 +79,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     // Single owner for horizontal screen margins across all major sections
     final horizontalGutter = (screenWidth * 0.045).clamp(16.0, 24.0);
-    final columnGap = (screenWidth * 0.030).clamp(12.0, 16.0);
-
-    // Derived card geometry: wide + compact, bounded to prevent vertical cramping on narrow devices
-    final contentWidth = screenWidth - (2 * horizontalGutter);
-    final cardWidth = (contentWidth - columnGap) / 2;
-    final childAspectRatio = cardWidth <= 165
-        ? 1.52
-        : (cardWidth <= 240 ? 1.58 : 1.65);
 
     return PlayerAwarePopScope(
       child: Scaffold(
@@ -147,20 +140,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 child: SizedBox(height: 8),
               ),
 
-              // 4. Tab Content (All / Playlists / Artists / Albums)
-              if (_selectedFilter == 'All')
-                ..._buildAllTabSlivers(
-                  context,
-                  horizontalGutter,
-                  columnGap,
-                  childAspectRatio,
-                )
-              else if (_selectedFilter == 'Playlists')
-                _buildPlaylistsContent(context)
-              else if (_selectedFilter == 'Artists')
-                _buildArtistsContent(context)
-              else if (_selectedFilter == 'Albums')
-                _buildAlbumsContent(context),
+              // 4. Tab Content (All / Playlists / Artists / Albums), faded in on
+              // every switch so the change reads as one surface settling, not
+              // a cut. Keyed by tab: a new key is a new fade.
+              LibraryTabFade(
+                key: ValueKey(_selectedFilter),
+                sliver: switch (_selectedFilter) {
+                  'Playlists' => _buildPlaylistsContent(context),
+                  'Artists' => _buildArtistsContent(context),
+                  'Albums' => _buildAlbumsContent(context),
+                  _ => SliverMainAxisGroup(
+                      slivers: _buildAllTabSlivers(context, horizontalGutter),
+                    ),
+                },
+              ),
 
               // 5. Dynamic Scroll Clearance for Docked Mini-Player & Bottom Navigation
               SliverToBoxAdapter(
@@ -186,172 +179,354 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // ALL TAB: 2-Column Action Cards Grid + Promotional Brand Card
+  // ALL TAB
+  //
+  // One listening card (the page's authored moment), the destinations as a row
+  // of glass tiles, then shelves of real artwork: what you played, your
+  // playlists, the albums and artists your library is made of. A shelf with
+  // nothing in it is not drawn - except playlists, whose first card is always
+  // "New playlist" so an empty library still has a way in.
   // ---------------------------------------------------------------------------
 
-  List<Widget> _buildAllTabSlivers(
-    BuildContext context,
-    double horizontalGutter,
-    double columnGap,
-    double childAspectRatio,
-  ) {
+  void _push(BuildContext context, Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  /// Opens a library collection in the same detail screen playlists and albums
+  /// use (artwork-led header, play / shuffle / search, swipeable rows). An empty
+  /// collection opens its own screen instead, which knows how to say so.
+  void _openCollection(
+    BuildContext context, {
+    required String id,
+    required String name,
+    required List<Track> tracks,
+    required Widget whenEmpty,
+  }) {
+    if (tracks.isEmpty) {
+      _push(context, whenEmpty);
+      return;
+    }
+    _push(
+      context,
+      ThemedPlaylistDetailScreen(
+        playlistId: id,
+        playlistName: name,
+        cachedTracks: List<Track>.of(tracks),
+        artistNameHint: 'Your library',
+      ),
+    );
+  }
+
+  void _openLiked(BuildContext context) => _openCollection(
+        context,
+        id: 'library_liked_songs',
+        name: 'Liked Songs',
+        tracks: context.read<MusicProvider>().likedSongs,
+        whenEmpty: const ThemedLikedSongsScreen(),
+      );
+
+  void _openRecents(BuildContext context) => _openCollection(
+        context,
+        id: 'library_recently_played',
+        name: 'Recently Played',
+        tracks: context.read<MusicProvider>().recentlyPlayed,
+        whenEmpty: const ThemedRecentlyPlayedScreen(),
+      );
+
+  Future<void> _openDownloads(BuildContext context) async {
+    final provider = context.read<MusicProvider>();
+    List<Track> tracks = const [];
+    try {
+      tracks = await provider.getDownloadedTracks();
+    } catch (_) {}
+    if (!context.mounted) return;
+    _openCollection(
+      context,
+      id: 'library_downloads',
+      name: 'Downloaded',
+      tracks: tracks,
+      whenEmpty: const ThemedDownloadedSongsScreen(),
+    );
+  }
+
+  void _openPlaylist(BuildContext context, Playlist playlist) {
+    _push(
+      context,
+      ThemedPlaylistDetailScreen(
+        playlistId: playlist.id,
+        playlistName: playlist.name,
+        playlistImage: playlist.imageUrl,
+        cachedTracks: playlist.tracks,
+      ),
+    );
+  }
+
+  void _openAlbum(BuildContext context, Track track) {
+    _push(
+      context,
+      ThemedAlbumDetailScreen(
+        albumId: '',
+        albumName: track.albumName,
+        artistName: track.artistName,
+        albumImage: track.albumArtUrl,
+        searchByName: true,
+      ),
+    );
+  }
+
+  void _openArtist(BuildContext context, String name, String imageUrl) {
+    _push(
+      context,
+      ThemedArtistDetailScreen(
+        artistId: '',
+        artistName: name,
+        artistImage: imageUrl,
+        searchByName: true,
+      ),
+    );
+  }
+
+  void _showTab(String tab) {
+    HapticFeedback.selectionClick();
+    setState(() => _selectedFilter = tab);
+  }
+
+  List<Widget> _buildAllTabSlivers(BuildContext context, double gutter) {
+    final provider = context.read<MusicProvider>();
+    String count(int n, String one, String many) => n == 1 ? '1 $one' : '$n $many';
+
     return [
-      // 2-Column Grid (6 Cards)
-      SliverPadding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalGutter),
-        sliver: SliverGrid(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: childAspectRatio,
-            crossAxisSpacing: columnGap,
-            mainAxisSpacing: columnGap,
+      // Listening time
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: LibraryListeningCard(
+            stats: provider.listeningStats,
+            horizontalPadding: gutter,
+            onTap: () => _openRecents(context),
           ),
-          delegate: SliverChildListDelegate.fixed([
-            // 1. Liked Songs (Calibrated Coral Crimson)
-            Builder(
-              builder: (context) {
-                final likedCount = context.select<MusicProvider, int>(
-                  (p) => p.likedSongs.length,
-                );
-                return StaggerIn(
-                  index: 0,
-                  child: LibraryActionCard(
-                    title: 'Liked Songs',
-                    subtitle: likedCount == 1 ? '1 song' : '$likedCount songs',
-                    icon: Icons.favorite_rounded,
-                    color: const Color(0xFFE24362), // Restrained coral crimson
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ThemedLikedSongsScreen(),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            // 2. Your Playlists (Calibrated Calm Azure)
-            Builder(
-              builder: (context) {
-                final playlistCount = context.select<MusicProvider, int>(
-                  (p) => p.userPlaylists.length,
-                );
-                return StaggerIn(
-                  index: 1,
-                  child: LibraryActionCard(
-                    title: 'Your Playlists',
-                    subtitle: playlistCount == 1 ? '1 playlist' : '$playlistCount playlists',
-                    icon: Icons.queue_music_rounded,
-                    color: const Color(0xFF2575DC), // Calm azure
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ThemedUserPlaylistScreen(),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            // 3. Recently Played (Calibrated Honey Amber)
-            Builder(
-              builder: (context) {
-                final recentsCount = context.select<MusicProvider, int>(
-                  (p) => p.recentlyPlayed.length,
-                );
-                return StaggerIn(
-                  index: 2,
-                  child: LibraryActionCard(
-                    title: 'Recently Played',
-                    subtitle: recentsCount == 1 ? '1 song' : '$recentsCount songs',
-                    icon: Icons.history_rounded,
-                    color: const Color(0xFFD68524), // Warm honey amber
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ThemedRecentlyPlayedScreen(),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            // 4. Downloaded (Calibrated Subdued Emerald)
-            StaggerIn(
-              index: 3,
-              child: LibraryActionCard(
-                title: 'Downloaded',
-                subtitle: 'Offline music',
-                icon: Icons.download_rounded,
-                color: const Color(0xFF2EA858), // Subdued emerald
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ThemedDownloadedSongsScreen(),
-                  ),
-                ),
-              ),
-            ),
-            // 5. Local Files (Calibrated Amethyst Violet)
-            Builder(
-              builder: (context) {
-                final localCount = context.select<MusicProvider, int>(
-                  (p) => p.localTracks.length,
-                );
-                return StaggerIn(
-                  index: 4,
-                  child: LibraryActionCard(
-                    title: 'Local Files',
-                    subtitle: localCount == 1 ? '1 track' : '$localCount tracks',
-                    icon: Icons.folder_rounded,
-                    color: const Color(0xFF9348CE), // Deep amethyst violet
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ThemedLocalMusicScreen(),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            // 6. Import Playlists (Calibrated Muted Slate Ice)
-            StaggerIn(
-              index: 5,
-              child: LibraryActionCard(
-                title: 'Import Playlists',
-                subtitle: 'Spotify & YouTube',
-                icon: Icons.ios_share_rounded,
-                color: const Color(0xFF3896BE), // Muted slate ice
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ThemedPlaylistImportScreen(),
-                  ),
-                ),
-              ),
-            ),
-          ]),
         ),
       ),
 
+      // Quick access
       SliverToBoxAdapter(
-        child: SizedBox(height: columnGap),
+        child: LibraryShelfHeader(title: 'Quick access', horizontalPadding: gutter),
+      ),
+      SliverToBoxAdapter(
+        child: Builder(builder: (context) {
+          final liked = context.select<MusicProvider, int>((p) => p.likedSongs.length);
+          final lists = context.select<MusicProvider, int>((p) => p.userPlaylists.length);
+          final recents = context.select<MusicProvider, int>((p) => p.recentlyPlayed.length);
+          final local = context.select<MusicProvider, int>((p) => p.localTracks.length);
+          final tiles = <Widget>[
+            LibraryQuickTile(
+              title: 'Liked Songs',
+              subtitle: count(liked, 'song', 'songs'),
+              icon: Icons.favorite_rounded,
+              color: const Color(0xFFE24362),
+              onTap: () => _openLiked(context),
+            ),
+            LibraryQuickTile(
+              title: 'Your Playlists',
+              subtitle: count(lists, 'playlist', 'playlists'),
+              icon: Icons.queue_music_rounded,
+              color: const Color(0xFF2F7BEA),
+              onTap: () => _showTab('Playlists'),
+            ),
+            LibraryQuickTile(
+              title: 'History',
+              subtitle: count(recents, 'song', 'songs'),
+              icon: Icons.history_rounded,
+              color: const Color(0xFFE08A2A),
+              onTap: () => _openRecents(context),
+            ),
+            LibraryQuickTile(
+              title: 'Downloaded',
+              subtitle: 'Offline music',
+              icon: Icons.download_rounded,
+              color: const Color(0xFF2EB15E),
+              onTap: () => _openDownloads(context),
+            ),
+            LibraryQuickTile(
+              title: 'Local Files',
+              subtitle: count(local, 'track', 'tracks'),
+              icon: Icons.folder_rounded,
+              color: const Color(0xFF9B50DA),
+              onTap: () => _push(context, const ThemedLocalMusicScreen()),
+            ),
+            LibraryQuickTile(
+              title: 'Import',
+              subtitle: 'Spotify & YouTube',
+              icon: Icons.ios_share_rounded,
+              color: const Color(0xFF3AA0C8),
+              onTap: () => _push(context, const ThemedPlaylistImportScreen()),
+            ),
+          ];
+          return LibraryRail(
+            height: 124,
+            gap: 12,
+            horizontalPadding: gutter,
+            itemCount: tiles.length,
+            itemBuilder: (_, i) => StaggerIn(index: i, child: tiles[i]),
+          );
+        }),
       ),
 
-      // Promotional Brand Identity Card: "Listen your way."
+      // Recently played
       SliverToBoxAdapter(
-        child: StaggerIn(
-          index: 6,
-          child: LibraryBrandPromoCard(
-            horizontalPadding: horizontalGutter,
-            isActive: widget.isActive,
-          ),
+        child: Builder(builder: (context) {
+          final recents = context.select<MusicProvider, List<Track>>((p) => p.recentlyPlayed);
+          final playingId = context.select<MusicProvider, String?>((p) => p.currentTrack?.id);
+          if (recents.isEmpty) return const SizedBox.shrink();
+          final shown = recents.take(15).toList(growable: false);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LibraryShelfHeader(
+                title: 'Recently played',
+                horizontalPadding: gutter,
+                onSeeAll: () => _openRecents(context),
+              ),
+              LibraryRail(
+                height: LibraryArtCard.heightFor(148),
+                horizontalPadding: gutter,
+                itemCount: shown.length,
+                itemBuilder: (context, i) {
+                  final track = shown[i];
+                  return LibraryArtCard(
+                    imageUrl: track.albumArtUrl,
+                    title: track.trackName,
+                    subtitle: track.artistName,
+                    playing: track.id == playingId,
+                    onTap: () => context.read<MusicProvider>().playTrack(
+                          track,
+                          playlistTracks: recents,
+                          playlistId: 'recently_played',
+                        ),
+                    onLongPress: () => ThemedOptionsSheet.show(
+                      context,
+                      track: track,
+                      isRecentlyPlayedContext: true,
+                    ),
+                  );
+                },
+              ),
+            ],
+          );
+        }),
+      ),
+
+      // Your playlists
+      SliverToBoxAdapter(
+        child: Builder(builder: (context) {
+          final playlists = context.select<MusicProvider, List<Playlist>>((p) => p.userPlaylists);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LibraryShelfHeader(
+                title: 'Your playlists',
+                horizontalPadding: gutter,
+                onSeeAll: playlists.isEmpty ? null : () => _showTab('Playlists'),
+              ),
+              LibraryRail(
+                height: LibraryArtCard.heightFor(148),
+                horizontalPadding: gutter,
+                itemCount: playlists.length + 1,
+                itemBuilder: (context, i) {
+                  if (i == 0) {
+                    return LibraryNewPlaylistCard(
+                      onTap: () => _showCreatePlaylistDialog(context),
+                    );
+                  }
+                  final playlist = playlists[i - 1];
+                  return LibraryPlaylistCard(
+                    playlist: playlist,
+                    onTap: () => _openPlaylist(context, playlist),
+                    onLongPress: () => _showPlaylistOptions(context, playlist),
+                  );
+                },
+              ),
+            ],
+          );
+        }),
+      ),
+
+      // Your albums
+      SliverToBoxAdapter(
+        child: FutureBuilder<List<Track>>(
+          future: _smartAlbumsFuture,
+          builder: (context, snapshot) {
+            final albums = snapshot.data ?? const <Track>[];
+            if (albums.isEmpty) return const SizedBox.shrink();
+            final shown = albums.take(15).toList(growable: false);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LibraryShelfHeader(
+                  title: 'Your albums',
+                  horizontalPadding: gutter,
+                  onSeeAll: () => _showTab('Albums'),
+                ),
+                LibraryRail(
+                  height: LibraryArtCard.heightFor(148),
+                  horizontalPadding: gutter,
+                  itemCount: shown.length,
+                  itemBuilder: (context, i) {
+                    final album = shown[i];
+                    return LibraryArtCard(
+                      imageUrl: album.albumArtUrl,
+                      title: album.albumName,
+                      subtitle: album.artistName,
+                      icon: Icons.album_rounded,
+                      onTap: () => _openAlbum(context, album),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+
+      // Your artists
+      SliverToBoxAdapter(
+        child: FutureBuilder<List<dynamic>>(
+          future: _smartArtistsFuture,
+          builder: (context, snapshot) {
+            final artists = snapshot.data ?? const <dynamic>[];
+            if (artists.isEmpty) return const SizedBox.shrink();
+            final shown = artists.take(15).toList(growable: false);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LibraryShelfHeader(
+                  title: 'Your artists',
+                  horizontalPadding: gutter,
+                  onSeeAll: () => _showTab('Artists'),
+                ),
+                LibraryRail(
+                  height: LibraryArtistCard.heightFor(112),
+                  horizontalPadding: gutter,
+                  gap: 16,
+                  itemCount: shown.length,
+                  itemBuilder: (context, i) {
+                    final artist = shown[i];
+                    final name = artist.artistName as String;
+                    final image = artist.albumArtUrl as String;
+                    return LibraryArtistCard(
+                      imageUrl: image,
+                      name: name,
+                      onTap: () => _openArtist(context, name, image),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
         ),
       ),
     ];
   }
-
   // ---------------------------------------------------------------------------
   // PLAYLISTS TAB
   // ---------------------------------------------------------------------------
@@ -1018,4 +1193,48 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
   }
+}
+
+/// Fades a tab's content in when it arrives (the screen keys this by tab).
+/// Opacity only, on a sliver, so a long grid costs one layer, not a rebuild.
+class LibraryTabFade extends StatefulWidget {
+  const LibraryTabFade({super.key, required this.sliver});
+
+  final Widget sliver;
+
+  @override
+  State<LibraryTabFade> createState() => _LibraryTabFadeState();
+}
+
+class _LibraryTabFadeState extends State<LibraryTabFade>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+  late final Animation<double> _opacity =
+      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_c.status == AnimationStatus.dismissed) {
+      final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+      if (reduce) {
+        _c.value = 1;
+      } else {
+        _c.forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      SliverFadeTransition(opacity: _opacity, sliver: widget.sliver);
 }

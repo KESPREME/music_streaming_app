@@ -68,6 +68,7 @@ import '../services/recommendation/section_engines_v2.dart';
 import '../models/lyrics_entry.dart'; // Lyrics data model
 import '../services/metadata/track_metadata_enricher.dart';
 import '../services/recommendation/queue_builder.dart';
+import '../services/listening_stats.dart';
 // import '../services/firestore_service.dart'; // Uncomment if used
 
 // Your Project Utility Imports
@@ -1258,6 +1259,9 @@ for (final track in releases)
   List<Track> get fullTrendingTracks => List.unmodifiable(_fullTrendingTracks);
   List<Track> get searchedTracks =>
       List.unmodifiable(_searchedTracks); // Getter for searched tracks
+  /// Time actually spent listening this year (Library's listening card).
+  final ListeningStats listeningStats = ListeningStats();
+
   List<Track> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   List<Track> get likedSongs => List.unmodifiable(_likedSongs);
   List<Track> get artistTracks => List.unmodifiable(_artistTracks);
@@ -1629,6 +1633,7 @@ for (final track in releases)
     if (kDebugMode) debugPrint('MusicProvider: Initializing...');
 
     await _loadSettings();
+    unawaited(listeningStats.load());
     await _loadLikedSongs();
     await _loadRecentlyPlayed();
     await loadUserPlaylists();
@@ -1771,6 +1776,7 @@ for (final track in releases)
 
       if (_isPlaying != playing) {
         _isPlaying = playing;
+        listeningStats.onPlayingChanged(playing);
         if (playing) {
           _hasPlayedCurrentTrack = true;
         }
