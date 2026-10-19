@@ -1,6 +1,6 @@
 # Plan: crash fix, Spotify link import, fast downloads, player dock motion, performance
 
-Status: P0 done (`b1aef42`). P1–P6 below are implemented in this order, one commit each.
+Status: P0–P5 implemented and committed (`b1aef42` … see git log). Device checks pending (below).
 Material You screens are out of scope (rebuilt later in M3 Expressive).
 
 Evidence used: code read in this repo; BitChord (`BitChord-main/`, GPLv3 — behaviour and numbers
@@ -111,10 +111,18 @@ Ours (`lib/widgets/player_dock.dart`, overlay changes):
 
 ## P5 — Skeletons and motion polish
 
-- `SkeletonBox` / `SkeletonList` (one shared shimmer controller, paint-only), replacing spinners in
-  Library sections, Trending, All Artists; reduce-motion → static placeholder.
-- `PressableScale` becomes a real spring (it says spring, it was a 140 ms ease).
+- `SkeletonScope` / `SkeletonBox` / `SliverSkeletonCardGrid` / `SliverSkeletonRows` (one shared
+  sweep, paint-only), replacing spinners in Library Artists/Albums, Trending, Top Artists; reduce
+  motion → static placeholder. Per-row `BackdropFilter`s over flat gradients removed there.
+- `PressableScale` becomes a real spring (it said spring, it was a 140 ms ease).
 - `StaggerIn` uses `FadeTransition` (no rebuild-driven `Opacity`).
+
+## Not done (deliberately)
+
+- Predictive-back page transitions: the shell's root `PopScope(canPop: false)` blocks the system
+  preview on every tab but Home, so a builder alone would mislead; needs its own pass.
+- Palette extraction off the UI isolate (`palette_generator` runs on it): measurable on device first.
+- Detail-page header skeletons (artist/album/playlist): their tracklists already have one.
 
 ## Verification per phase
 

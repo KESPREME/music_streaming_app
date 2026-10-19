@@ -24,6 +24,22 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 81
 
 ## CURRENT STATE (commit 7f6777a)
 
+### Motion / perf / downloads pass (plan: docs/PLAN-motion-perf-downloads.md)
+- NEVER pass `path:` to on_audio_query's `querySongs`: it is pasted into SQL unescaped and a file
+  name with `'` kills the app natively. Artwork goes by MediaStore id (`LocalMusicService._idByPath`);
+  test/local_files_test.dart greps lib/ for it.
+- Spotify links import with no account via the public embed (`spotify_public.dart`); embed pages
+  give 100 songs + an anonymous token, spclient gives the full list. Unofficial endpoints.
+- Downloads: `ChunkedDownloader` (1 MB ranges x 4 connections, per-range files for resume, size
+  marker, atomic rename, cancel polls even on a stalled socket). googlevideo paces > ~10 MB / unranged
+  GETs. Stream-cache copy first; 403/410 -> `onStaleStream` + one re-resolve.
+- Player dock (`player_dock.dart`): rects read from the previous frame during the overlay build;
+  hiding the real artworks is a paint gate (legal mid-build). The overlay's card keeps ONE widget
+  structure (Opacity always present) so the player navigator is never remounted mid-flight.
+- `BlurredBackdrop` (bake once) now also backs the ambient shell wash and Explore cards: do not
+  reintroduce live `ImageFiltered` full-screen blurs.
+- High refresh rate is requested natively in `MainActivity.requestHighRefreshRate()`.
+
 ### Library: back nav, delete, YouTube playlists, Spotify import, Local Files (plan: docs/PLAN-local-import-youtube.md)
 - Back: `ShellPageTracker.canPop` (root_navigator.dart) is observed on `mainNavigatorKey`; MainScreen's
   PopScope reads `canPop()` live and calls `maybePop()` so a page's own PopScope (selection, open
