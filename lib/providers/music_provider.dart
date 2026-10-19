@@ -69,6 +69,7 @@ import '../models/lyrics_entry.dart'; // Lyrics data model
 import '../services/metadata/track_metadata_enricher.dart';
 import '../services/recommendation/queue_builder.dart';
 import '../services/listening_stats.dart';
+import '../services/innertube/library_playlists_parser.dart';
 // import '../services/firestore_service.dart'; // Uncomment if used
 
 // Your Project Utility Imports
@@ -5238,13 +5239,45 @@ for (final track in releases)
       _localTracks =
           LocalMusicService.sortTracks(_localTracks, _localTracksSortCriteria);
       _errorMessage = null;
+      _localPermissionDenied = false;
+      _localLoadedOnce = true;
     } catch (e) {
       _errorMessage = 'Failed to load local files: ${e.toString()}';
       _localTracks = [];
+      _localPermissionDenied = e.toString().toLowerCase().contains('permission');
+      _localLoadedOnce = true;
     } finally {
       _isLoadingLocal = false;
       notifyListeners();
     }
+  }
+
+  bool _localPermissionDenied = false;
+  bool _localLoadedOnce = false;
+
+  /// The last scan failed because access to the device's music was refused.
+  bool get localPermissionDenied => _localPermissionDenied;
+
+  /// A scan has finished at least once (so "no songs" means none, not "not
+  /// looked yet").
+  bool get localLoadedOnce => _localLoadedOnce;
+
+  final Map<String, Uint8List?> _localArt = {};
+  final Map<String, Future<Uint8List?>> _localArtPending = {};
+
+  /// The embedded cover of a file on this device (MediaStore), cached. Null when
+  /// it has none. Bounded: the oldest 300 are let go.
+  Future<Uint8List?> localArtwork(String path) {
+    if (_localArt.containsKey(path)) return Future.value(_localArt[path]);
+    return _localArtPending[path] ??= _localMusicService.getTrackArtwork(path).then((bytes) {
+      _localArtPending.remove(path);
+      if (_localArt.length >= 300) _localArt.remove(_localArt.keys.first);
+      _localArt[path] = bytes;
+      return bytes;
+    }).catchError((Object _) {
+      _localArtPending.remove(path);
+      return null;
+    });
   }
 
   void sortLocalTracks(SortCriteria criteria) {
@@ -5368,19 +5401,14 @@ for (final track in releases)
     }
   }
 
+  /// Deletes a playlist. One path for every screen: the list updates at once and
+  /// what is playing keeps playing (the queue holds its own copy of the songs).
+  ///
+  /// It used to await `stopTrack()` for the playlist being played BEFORE
+  /// notifying, so deleting the playlist you were listening to - the only kind
+  /// with songs that is ever "current" - looked like the button did nothing.
   Future<void> deletePlaylist(String playlistId) async {
-    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
-    if (i < 0) return;
-    try {
-      _userPlaylists.removeAt(i);
-      await saveUserPlaylists();
-      if (_currentPlaylistId == playlistId) await stopTrack();
-      _errorMessage = "Playlist deleted.";
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to delete (${e.runtimeType}): $e';
-      notifyListeners();
-    }
+    if (deletePlaylistWithUndo(playlistId) != null) _errorMessage = "Playlist deleted.";
   }
 
   Future<void> renamePlaylist(String playlistId, String newName) async {
@@ -5451,6 +5479,94 @@ for (final track in releases)
     } catch (e) {
       _errorMessage = 'Failed to remove track: $e';
       notifyListeners();
+    }
+  }
+
+  // --- YouTube Music library playlists (signed-in, read-only) ----------------
+
+  List<YouTubeLibraryPlaylist> _ytPlaylists = const [];
+  YouTubeLibraryStatus _ytStatus = YouTubeLibraryStatus.idle;
+  String? _ytFor;
+
+  /// The signed-in account's YouTube Music playlists ("From YouTube Music").
+  List<YouTubeLibraryPlaylist> get youtubeLibraryPlaylists => _ytPlaylists;
+  YouTubeLibraryStatus get youtubeLibraryStatus => _ytStatus;
+
+  /// Test seams: who is signed in, and what the browse returns.
+  @visibleForTesting
+  String? Function()? debugYouTubeIdentity;
+  @visibleForTesting
+  Future<Object?> Function()? debugYouTubeLibraryFetch;
+
+  String? _youtubeIdentity() {
+    final seam = debugYouTubeIdentity;
+    if (seam != null) return seam();
+    try {
+      final auth = AuthService();
+      return auth.isLoggedIn ? auth.identityKey : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Loads (or refreshes, with [force]) the playlists. Cached per account: a
+  /// different account signing in replaces the list rather than mixing them.
+  Future<void> loadYouTubeLibraryPlaylists({bool force = false}) async {
+    final who = _youtubeIdentity();
+    if (who == null) {
+      _ytPlaylists = const [];
+      _ytFor = null;
+      _ytStatus = YouTubeLibraryStatus.signedOut;
+      notifyListeners();
+      return;
+    }
+    if (_ytStatus == YouTubeLibraryStatus.loading) return;
+    if (!force && _ytFor == who && _ytStatus == YouTubeLibraryStatus.ready) return;
+    if (_ytFor != who) _ytPlaylists = const [];
+    _ytStatus = YouTubeLibraryStatus.loading;
+    notifyListeners();
+    var stale = false;
+    try {
+      final json = await (debugYouTubeLibraryFetch?.call() ??
+          _innerTubeService.browseJson('FEmusic_liked_playlists'));
+      // The account may have changed while the request was out: drop this
+      // answer and load for whoever is signed in now (never stuck "loading").
+      stale = _youtubeIdentity() != who;
+      if (!stale) {
+        _ytPlaylists = parseLibraryPlaylists(json);
+        _ytFor = who;
+        _ytStatus = YouTubeLibraryStatus.ready;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: YouTube library playlists failed: $e');
+      stale = _youtubeIdentity() != who;
+      if (!stale) _ytStatus = YouTubeLibraryStatus.error;
+    }
+    if (stale) {
+      _ytStatus = YouTubeLibraryStatus.idle;
+      _ytPlaylists = const [];
+      _ytFor = null;
+      await loadYouTubeLibraryPlaylists();
+      return;
+    }
+    notifyListeners();
+  }
+
+  /// Copies a YouTube Music playlist into your own playlists (so you can edit
+  /// it). Returns the new playlist, or null if its songs could not be loaded.
+  Future<Playlist?> saveYouTubePlaylistCopy(YouTubeLibraryPlaylist yt) async {
+    try {
+      final page = await fetchPlaylistPageData(yt.browseId);
+      if (page.tracks.isEmpty) return null;
+      return await createPlaylistWith(
+        name: yt.title,
+        tracks: page.tracks,
+        imageUrl: yt.thumbnailUrl.isEmpty ? null : yt.thumbnailUrl,
+        description: 'Copied from YouTube Music',
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: copy of ${yt.browseId} failed: $e');
+      return null;
     }
   }
 
@@ -5629,6 +5745,11 @@ for (final track in releases)
   }
 
   Future<void> importPlaylist(Playlist playlist) async {
+    final now = _nowMs();
+    playlist = playlist.copyWith(
+      createdAtMs: playlist.createdAtMs ?? now,
+      updatedAtMs: now,
+    );
     try {
       final i = _userPlaylists.indexWhere((p) => p.id == playlist.id);
       if (i >= 0) {
@@ -6829,3 +6950,5 @@ class RemovedPlaylist {
   final int index;
   final Playlist playlist;
 }
+
+enum YouTubeLibraryStatus { idle, signedOut, loading, ready, error }

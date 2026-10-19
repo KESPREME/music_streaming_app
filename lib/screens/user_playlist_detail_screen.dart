@@ -17,7 +17,6 @@
 //   * Menu: Edit details, Add songs, Reorder, Select, Add to queue, Download,
 //     Pin, Delete (with Undo).
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -164,6 +163,8 @@ class _UserPlaylistDetailScreenState extends State<UserPlaylistDetailScreen> {
 
   void _deletePlaylist(Playlist p) {
     final provider = context.read<MusicProvider>();
+    // Leaving on purpose: the "deleted elsewhere" path must not pop again.
+    _popping = true;
     final removed = provider.deletePlaylistWithUndo(p.id);
     if (removed == null) return;
     HapticFeedback.mediumImpact();
@@ -243,11 +244,15 @@ class _UserPlaylistDetailScreenState extends State<UserPlaylistDetailScreen> {
     final provider = context.read<MusicProvider>();
 
     if (p == null) {
-      // Deleted elsewhere while open.
+      // Deleted elsewhere while open. Only close THIS page, and only while it is
+      // on top: when it was deleted from its own menu it is already leaving, and
+      // a second pop would close the screen under it.
       if (!_popping) {
         _popping = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) Navigator.of(context).maybePop();
+          if (!mounted) return;
+          final route = ModalRoute.of(context);
+          if (route != null && route.isCurrent) Navigator.of(context).maybePop();
         });
       }
       return const Scaffold(backgroundColor: Colors.black);

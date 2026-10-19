@@ -395,10 +395,28 @@ class _MainScreenState extends State<MainScreen> {
     _minimizeController = lgw.GlassTabBarMinimizeController(
       behavior: lgw.GlassBarMinimizeBehavior.onScrollDown,
     );
+    // The shell's PopScope must know, at the moment back is pressed, whether a
+    // page is open on the nested navigator. This screen does not rebuild when
+    // one is pushed, so it listens.
+    ShellPageTracker.canPop.addListener(_onShellPagesChanged);
+  }
+
+  bool _shellSyncScheduled = false;
+
+  /// Observers fire inside the navigator's own update, where setState is not
+  /// allowed; a route change animates, so the next frame is soon enough.
+  void _onShellPagesChanged() {
+    if (!mounted || _shellSyncScheduled) return;
+    _shellSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _shellSyncScheduled = false;
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
+    ShellPageTracker.canPop.removeListener(_onShellPagesChanged);
     _tabState.dispose();
     _minimizeController.dispose();
     _searchController.dispose();
@@ -507,7 +525,7 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     final mainNav = mainNavigatorKey.currentState;
-    final canPopInner = mainNav != null && mainNav.canPop();
+    final canPopInner = ShellPageTracker.canPop.value || (mainNav != null && mainNav.canPop());
     final showSearchOverlay = _searchMode && !_searchSuspended;
 
     return PopScope(
@@ -520,10 +538,13 @@ class _MainScreenState extends State<MainScreen> {
         // handler hears the system back - so it forwards to that navigator
         // before it brings the player down. See [resolveShellBack].
         final playerNav = musicProvider.playerNavigatorKey.currentState;
+        // Read live, not from this build: a page pushed since the last build
+        // must be what back closes (it used to fall through to "go Home").
+        final shellNav = mainNavigatorKey.currentState;
         switch (resolveShellBack(
           isPanelOpen: isPanelOpen,
           playerCanPop: playerNav != null && playerNav.canPop(),
-          detailCanPop: canPopInner,
+          detailCanPop: shellNav != null && shellNav.canPop(),
           searchMode: _searchMode,
           tabIndex: _currentIndex,
         )) {
@@ -532,7 +553,9 @@ class _MainScreenState extends State<MainScreen> {
           case ShellBackAction.collapsePlayer:
             musicProvider.setPlayerExpanded(false);
           case ShellBackAction.popDetail:
-            mainNav?.pop();
+            // maybePop, not pop: the page decides (selection or reorder mode
+            // closes first, exactly like its own back button).
+            shellNav?.maybePop();
           case ShellBackAction.exitSearch:
             _exitSearch();
           case ShellBackAction.goHome:
@@ -562,7 +585,7 @@ class _MainScreenState extends State<MainScreen> {
                 key: mainNavigatorKey,
                 // Sheets and dialogs shown from inside the shell open here,
                 // UNDER the nav bar and pill; this lets them step aside.
-                observers: [ModalRouteTracker.shell],
+                observers: [ModalRouteTracker.shell, ShellPageTracker.instance],
                 onGenerateRoute: (settings) {
                   return MaterialPageRoute(
                     settings: settings,

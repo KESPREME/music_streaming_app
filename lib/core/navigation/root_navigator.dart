@@ -121,6 +121,56 @@ class ModalRouteTracker extends NavigatorObserver {
   }
 }
 
+/// Tracks PAGES pushed on the shell's nested navigator, so the shell's back
+/// handler knows - without rebuilding on every push - whether back should close
+/// a page or act on the tab itself.
+class ShellPageTracker extends NavigatorObserver {
+  ShellPageTracker._();
+
+  static final ShellPageTracker instance = ShellPageTracker._();
+
+  /// True while at least one page sits above the tab content.
+  static final ValueNotifier<bool> canPop = ValueNotifier<bool>(false);
+
+  final Set<Route<dynamic>> _pages = {};
+
+  void _sync() => canPop.value = _pages.isNotEmpty;
+
+  @visibleForTesting
+  static void debugReset() {
+    instance._pages.clear();
+    canPop.value = false;
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    if (previousRoute != null && route is PageRoute) _pages.add(route);
+    _sync();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _pages.remove(route);
+    _sync();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    _pages.remove(route);
+    _sync();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    if (oldRoute != null && _pages.remove(oldRoute) && newRoute is PageRoute) _pages.add(newRoute);
+    _sync();
+  }
+}
+
 /// Slides [child] down and out of the way while a sheet or dialog is open, and
 /// back when it closes. Untappable while hidden. Instant under reduce motion.
 class StepAsideForModals extends StatelessWidget {
