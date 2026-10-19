@@ -36,7 +36,13 @@ class _StaggerInState extends State<StaggerIn>
     super.initState();
     final delay = widget.step * widget.index.clamp(0, 8);
     Future.delayed(delay, () {
-      if (mounted) _controller.forward();
+      if (!mounted) return;
+      // Reduce motion: there, not arriving.
+      if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+        _controller.value = 1;
+      } else {
+        _controller.forward();
+      }
     });
   }
 
@@ -48,16 +54,18 @@ class _StaggerInState extends State<StaggerIn>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _fade,
-      builder: (context, child) => Opacity(
-        opacity: _fade.value,
-        child: Transform.translate(
+    // FadeTransition, not a rebuilt Opacity: the alpha goes straight to the
+    // layer, and at 1.0 there is no layer at all.
+    return FadeTransition(
+      opacity: _fade,
+      child: AnimatedBuilder(
+        animation: _fade,
+        builder: (context, child) => Transform.translate(
           offset: Offset(0, 18 * (1 - _fade.value)),
           child: child,
         ),
+        child: widget.child,
       ),
-      child: widget.child,
     );
   }
 }

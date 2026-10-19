@@ -1,11 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
 import '../models/track.dart';
 import '../widgets/themed_artist_detail_screen.dart';
+import '../widgets/skeleton.dart';
 import '../theme/amoled_theme.dart';
 
 // A simple tile for displaying an artist
@@ -99,8 +101,8 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                   future: _artistsFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const SliverFillRemaining(
-                        child: Center(child: CircularProgressIndicator(color: Color(0xFFFF1744))),
+                      return const SkeletonScope(
+                        child: SliverSkeletonRows(art: 70, circle: true, padding: EdgeInsets.zero, gap: 12),
                       );
                     }
                     if (snapshot.hasError) {
@@ -230,11 +232,11 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
         );
       },
       borderRadius: BorderRadius.circular(20),
+      // No BackdropFilter: it blurred a flat gradient (nothing to see) at a
+      // backdrop blur per row per scroll frame.
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
+        child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.04),
@@ -254,7 +256,9 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                     child: CircleAvatar(
                       radius: 35,
                       backgroundColor: Colors.grey[900],
-                      backgroundImage: artistTrack.albumArtUrl.isNotEmpty ? NetworkImage(artistTrack.albumArtUrl) : null,
+                      backgroundImage: artistTrack.albumArtUrl.isNotEmpty
+                          ? ResizeImage(CachedNetworkImageProvider(artistTrack.albumArtUrl), width: 224, height: 224)
+                          : null,
                       child: artistTrack.albumArtUrl.isEmpty ? const Icon(Icons.person, color: Colors.white54) : null,
                     ),
                   ),
@@ -295,7 +299,6 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
               ],
             ),
           ),
-        ),
       ),
     );
   }

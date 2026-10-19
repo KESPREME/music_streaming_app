@@ -35,6 +35,7 @@ import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/collection/collection_kit.dart' show CollectionStyle, showCollectionToast;
 import '../widgets/playlist/open_playlist.dart';
+import '../widgets/skeleton.dart';
 import '../widgets/playlist/playlist_edit_sheet.dart';
 
 /// Mine Music — Library Screen.
@@ -666,13 +667,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       future: _smartArtistsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SliverFillRemaining(
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white70,
-              ),
-            ),
+          // The grid's own shape, not a spinner: the cards land where the
+          // placeholders were.
+          return const SkeletonScope(
+            child: SliverSkeletonCardGrid(circle: true, aspectRatio: 0.88),
           );
         }
         final rawArtists = snapshot.data ?? [];
@@ -759,8 +757,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             ),
                             child: CircleAvatar(
                               radius: 42,
-                              backgroundImage: NetworkImage(
-                                ImageQualityUtils.getHighResArtwork(imageUrl),
+                              // Disk-cached and decoded at the circle's size,
+                              // not a fresh full-size download per card.
+                              backgroundImage: ResizeImage(
+                                CachedNetworkImageProvider(
+                                  ImageQualityUtils.getHighResArtwork(imageUrl),
+                                ),
+                                width: 256,
+                                height: 256,
                               ),
                               backgroundColor: Colors.white10,
                             ),
@@ -800,13 +804,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       future: _smartAlbumsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SliverFillRemaining(
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white70,
-              ),
-            ),
+          return const SkeletonScope(
+            child: SliverSkeletonCardGrid(circle: false, aspectRatio: 0.82),
           );
         }
         final rawAlbums = snapshot.data ?? [];

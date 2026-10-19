@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../design/tokens/motion.dart';
+import 'package:flutter/physics.dart' show SpringSimulation;
 import '../presentation/home/home_tokens.dart' as t;
 import 'glass_surface.dart';
 
@@ -101,8 +102,9 @@ class HomeSectionHeader extends StatelessWidget {
   }
 }
 
-/// Pressable wrapper: 0.98 compression while the finger is down (spec #47:
-/// tactile, barely perceptible, spring-back).
+/// Pressable wrapper: compresses to 0.97 while the finger is down and springs
+/// back on release (Motion.spring: a hair of give past 1.0, then rest). Reduce
+/// motion: no scale, the tap still works.
 class PressableScale extends StatefulWidget {
   const PressableScale(
       {super.key, required this.child, this.onTap, this.onLongPress});
@@ -115,8 +117,57 @@ class PressableScale extends StatefulWidget {
   State<PressableScale> createState() => _PressableScaleState();
 }
 
-class _PressableScaleState extends State<PressableScale> {
-  bool _pressed = false;
+class _PressableScaleState extends State<PressableScale>
+    with SingleTickerProviderStateMixin {
+  // Unbounded: the spring back may pass 1.0 by a hair, which is the "give".
+  late final AnimationController _scale =
+      AnimationController.unbounded(vsync: this, value: 1.0);
+  TickerFuture? _press;
+  bool _releasing = false;
+
+  static const double _pressedScale = 0.97;
+  static const Duration _pressIn = Duration(milliseconds: 90);
+
+  /// Reduce motion, read when the dependencies change (a tap can be cancelled
+  /// while the widget is being torn down, when looking it up is not allowed).
+  bool _still = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+  }
+
+  void _down(TapDownDetails _) {
+    if (_still) return;
+    _releasing = false;
+    _press = _scale.animateTo(_pressedScale, duration: _pressIn, curve: Curves.easeOut);
+  }
+
+  /// A quick tap still shows the whole press before springing back: released
+  /// mid-way, the spring waits for the press to land.
+  void _up() {
+    if (_still || !mounted) return;
+    _releasing = true;
+    final press = _press;
+    if (press != null && _scale.isAnimating) {
+      press.whenCompleteOrCancel(() {
+        if (mounted && _releasing) _springBack();
+      });
+    } else {
+      _springBack();
+    }
+  }
+
+  void _springBack() {
+    _scale.animateWith(SpringSimulation(Motion.spring, _scale.value, 1.0, 0));
+  }
+
+  @override
+  void dispose() {
+    _scale.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,15 +175,11 @@ class _PressableScaleState extends State<PressableScale> {
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.98 : 1.0,
-        duration: Motion.fast,
-        curve: Curves.easeOut,
-        child: widget.child,
-      ),
+      onTapDown: _down,
+      onTapUp: (_) => _up(),
+      onTapCancel: _up,
+      // A transition, not a rebuild: the child is never rebuilt for a press.
+      child: ScaleTransition(scale: _scale, child: widget.child),
     );
   }
 }

@@ -96,20 +96,22 @@ void main() {
         onOptions: () {},
       )));
       double scale() => tester
-          .widget<AnimatedScale>(find
+          .widget<ScaleTransition>(find
               .descendant(
                   of: find.byType(TrackListRow),
-                  matching: find.byType(AnimatedScale))
+                  matching: find.byType(ScaleTransition))
               .first)
-          .scale;
+          .scale
+          .value;
       expect(scale(), 1.0);
       final g = await tester.startGesture(tester.getCenter(find.text('Song a')));
       // A press is told apart from the start of a long press after kPressTimeout.
       await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 60));
       expect(scale(), lessThan(1.0), reason: 'compresses under the finger');
       await g.up();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(scale(), 1.0, reason: 'and springs back');
+      await tester.pumpAndSettle();
+      expect(scale(), closeTo(1.0, 1e-3), reason: 'and springs back');
     });
 
     testWidgets('a screen reader gets one play action and a separate options button',

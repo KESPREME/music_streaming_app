@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/skeleton.dart';
 import '../models/track.dart';
 import '../theme/amoled_theme.dart';
 
@@ -39,15 +40,20 @@ class TrendingNowScreen extends StatelessWidget {
               _buildLiquidAppBar(context, isDark),
               
               if (trendingTracks.isEmpty)
-                 SliverFillRemaining(
-                  child: Center(
-                    child: musicProvider.errorMessage != null && musicProvider.errorMessage!.toLowerCase().contains("trending")
-                    ? Text('Could not load trending tracks', style: GoogleFonts.plusJakartaSans(color: Colors.white54))
+                 musicProvider.errorMessage != null && musicProvider.errorMessage!.toLowerCase().contains("trending")
+                    ? SliverFillRemaining(
+                        child: Center(
+                          child: Text('Could not load trending tracks', style: GoogleFonts.plusJakartaSans(color: Colors.white54)),
+                        ),
+                      )
                     : (musicProvider.tracks.isEmpty && !musicProvider.isLoadingLocal)
-                        ? Text('No trending tracks available', style: GoogleFonts.plusJakartaSans(color: Colors.white54))
-                        : const CircularProgressIndicator(color: Color(0xFFFF1744)),
-                  ),
-                )
+                        ? SliverFillRemaining(
+                            child: Center(
+                              child: Text('No trending tracks available', style: GoogleFonts.plusJakartaSans(color: Colors.white54)),
+                            ),
+                          )
+                        // The list's own shape while it loads, not a spinner.
+                        : const SkeletonScope(child: SliverSkeletonRows(art: 50))
               else
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
@@ -132,11 +138,11 @@ class TrendingNowScreen extends StatelessWidget {
   }
 
   Widget _buildLiquidTrackTile(BuildContext context, Track track, bool isPlaying, VoidCallback onTap) {
+    // No BackdropFilter: it blurred a smooth gradient (no visible difference)
+    // and cost a backdrop blur per row on every scroll frame.
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-        child: Container(
+      child: Container(
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
@@ -148,7 +154,6 @@ class TrendingNowScreen extends StatelessWidget {
             onTap: onTap,
             backgroundColor: Colors.transparent, // Ensure tile has transparent bg
           ),
-        ),
       ),
     );
   }
