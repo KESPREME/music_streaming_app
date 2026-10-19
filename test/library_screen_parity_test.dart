@@ -12,6 +12,7 @@ import 'package:music_streaming_app/screens/library_screen.dart';
 import 'package:music_streaming_app/widgets/library/library_header.dart';
 import 'package:music_streaming_app/widgets/library/library_hero_artwork.dart';
 import 'package:music_streaming_app/widgets/library/library_filter_bar.dart';
+import 'package:music_streaming_app/services/innertube/library_playlists_parser.dart';
 import 'package:music_streaming_app/services/listening_stats.dart';
 import 'package:music_streaming_app/widgets/replay/replay_card.dart';
 import 'package:music_streaming_app/widgets/library/library_shelves.dart';
@@ -54,6 +55,12 @@ class FakeLibraryMusicProvider extends ChangeNotifier implements MusicProvider {
 
   @override
   bool get hideMiniPlayer => false;
+
+  @override
+  Future<void> loadYouTubeLibraryPlaylists({bool force = false}) async {}
+
+  @override
+  List<YouTubeLibraryPlaylist> get youtubeLibraryPlaylists => const [];
 
   @override
   Future<void> createPlaylist(String name,

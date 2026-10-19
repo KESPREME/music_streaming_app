@@ -21,10 +21,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../presentation/playlists/playlist_query.dart';
 import '../providers/music_provider.dart';
+import '../services/innertube/library_playlists_parser.dart';
 import '../theme/amoled_theme.dart';
 import '../widgets/collection/collection_kit.dart';
 import '../widgets/glass_circle_button.dart';
@@ -34,6 +37,7 @@ import '../widgets/playlist/open_playlist.dart';
 import '../widgets/playlist/playlist_cover.dart';
 import '../widgets/playlist/playlist_edit_sheet.dart';
 import '../widgets/themed_liked_songs_screen.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_playlist_import_screen.dart';
 
 const String kPlaylistSortPref = 'playlists_sort_v1';
@@ -57,11 +61,18 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
   PlaylistQuery _query = const PlaylistQuery();
   bool _grid = false;
 
+  /// The "YouTube Music" chip: show only the playlists from the signed-in
+  /// YouTube account.
+  bool _youtubeOnly = false;
+
   DateTime get _now => widget.now ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<MusicProvider>().loadYouTubeLibraryPlaylists();
+    });
     SharedPreferences.getInstance().then((p) {
       if (!mounted) return;
       final sort = PlaylistSort.fromName(p.getString(kPlaylistSortPref));
@@ -231,6 +242,77 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
     );
   }
 
+  void _openYouTube(YouTubeLibraryPlaylist y) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ThemedPlaylistDetailScreen(
+        playlistId: y.browseId,
+        playlistName: y.title,
+        playlistImage: y.thumbnailUrl.isEmpty ? null : y.thumbnailUrl,
+      ),
+    ));
+  }
+
+  Future<void> _playYouTube(YouTubeLibraryPlaylist y, {bool shuffle = false}) async {
+    final provider = context.read<MusicProvider>();
+    try {
+      final page = await provider.fetchPlaylistPageData(y.browseId);
+      final list = List<Track>.of(page.tracks);
+      if (list.isEmpty) throw StateError('empty');
+      if (shuffle) list.shuffle();
+      await provider.playTrack(list.first, playlistTracks: list, playlistId: y.browseId);
+    } catch (_) {
+      if (mounted) showCollectionToast(context, 'Couldn\'t load "${y.title}"', icon: Icons.error_outline_rounded);
+    }
+  }
+
+  Future<void> _copyYouTube(YouTubeLibraryPlaylist y) async {
+    showCollectionToast(context, 'Copying "${y.title}"…', icon: Icons.downloading_rounded);
+    final made = await context.read<MusicProvider>().saveYouTubePlaylistCopy(y);
+    if (!mounted) return;
+    if (made == null) {
+      showCollectionToast(context, 'Couldn\'t copy "${y.title}"', icon: Icons.error_outline_rounded);
+    } else {
+      showCollectionToast(
+        context,
+        'Saved a copy · ${made.tracks.length} songs',
+        icon: Icons.playlist_add_check_rounded,
+        action: SnackBarAction(
+          label: 'Open',
+          textColor: CollectionStyle.accent,
+          onPressed: () => openUserPlaylist(context, made),
+        ),
+      );
+    }
+  }
+
+  void _openYouTubeMenu(YouTubeLibraryPlaylist y) {
+    HapticFeedback.mediumImpact();
+    showCollectionSheet<void>(
+      context,
+      (sheet) => [
+        Row(
+          children: [
+            _YouTubeCover(playlist: y, size: 56),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(y.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: CollectionStyle.title(18)),
+                  Text('From YouTube Music', style: CollectionStyle.meta(size: 13)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SheetRow(icon: Icons.play_arrow_rounded, label: 'Play', onTap: () => _playYouTube(y)),
+        SheetRow(icon: Icons.shuffle_rounded, label: 'Shuffle', onTap: () => _playYouTube(y, shuffle: true)),
+        SheetRow(icon: Icons.library_add_rounded, label: 'Save a copy to your playlists', onTap: () => _copyYouTube(y)),
+      ],
+    );
+  }
+
   void _openLiked() => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ThemedLikedSongsScreen()));
 
   // ── Build ────────────────────────────────────────────────────────────────
@@ -253,14 +335,28 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
     final top = MediaQuery.paddingOf(context).top;
     final amoled = AmoledTheme.isOn(context);
     final clearance = collectionBottomClearance(context);
-    final showLiked = _query.filter == PlaylistFilter.all &&
+    final showLiked = !_youtubeOnly && _query.filter == PlaylistFilter.all &&
         (_query.search.trim().isEmpty || normalizeName('Liked Songs').contains(normalizeName(_query.search)));
     final reorderable = _query.sort == PlaylistSort.custom && !_query.isNarrowed && !_grid && matches.length > 1;
     final count = all.length;
+    final ytStatus = context.select<MusicProvider, YouTubeLibraryStatus>((p) => p.youtubeLibraryStatus);
+    final ytAll = context.select<MusicProvider, List<YouTubeLibraryPlaylist>>((p) => p.youtubeLibraryPlaylists);
+    final ytWords = normalizeName(_query.search).split(' ').where((w) => w.isNotEmpty).toList();
+    final ytShown = ytWords.isEmpty
+        ? ytAll
+        : ytAll.where((y) => ytWords.every(normalizeName(y.title).contains)).toList();
+    final hasYouTube = ytStatus != YouTubeLibraryStatus.signedOut && ytStatus != YouTubeLibraryStatus.idle;
+    // The section belongs to "All" and to its own chip; the other chips are
+    // about your playlists.
+    final showYouTube = hasYouTube && (_youtubeOnly || _query.filter == PlaylistFilter.all);
+    // Nothing of yours and nothing from YouTube (or it is still arriving): the
+    // invitation, not an empty list.
+    final emptyLibrary = count == 0 && ytAll.isEmpty && ytStatus != YouTubeLibraryStatus.loading;
 
     final chips = <CollectionChipData>[
       for (final f in PlaylistFilter.values)
         if (f != PlaylistFilter.imported || hasImported) CollectionChipData(id: f.name, label: f.label),
+      if (hasYouTube) const CollectionChipData(id: 'youtube', label: 'YouTube Music', icon: Icons.smart_display_rounded),
     ];
 
     Widget rowFor(PlaylistMatch m, int i, {Widget? handle}) => _PlaylistRow(
@@ -315,13 +411,18 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                       children: [
                         Semantics(header: true, child: Text('Your Playlists', style: CollectionStyle.title(36))),
                         const SizedBox(height: 4),
-                        Text(count == 1 ? '1 playlist' : '$count playlists',
-                            style: CollectionStyle.meta(size: 16, alpha: 0.55)),
+                        Text(
+                          [
+                            count == 1 ? '1 playlist' : '$count playlists',
+                            if (ytAll.isNotEmpty) '${ytAll.length} from YouTube Music',
+                          ].join(' · '),
+                          style: CollectionStyle.meta(size: 16, alpha: 0.55),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                if (count == 0)
+                if (emptyLibrary)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: CollectionEmptyState(
@@ -330,7 +431,7 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                       actionLabel: 'New playlist',
                       actionIcon: Icons.add_rounded,
                       onAction: _create,
-                      secondaryLabel: 'Import from Spotify or YouTube',
+                      secondaryLabel: 'Import from Spotify',
                       onSecondary: () => Navigator.of(context)
                           .push(MaterialPageRoute<void>(builder: (_) => const ThemedPlaylistImportScreen())),
                     ),
@@ -347,11 +448,19 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                   SliverToBoxAdapter(
                     child: CollectionChips(
                       chips: chips,
-                      selectedId: _query.filter.name,
+                      selectedId: _youtubeOnly ? 'youtube' : _query.filter.name,
                       onTap: (c) {
                         HapticFeedback.selectionClick();
-                        setState(() => _query = _query.copyWith(
-                            filter: PlaylistFilter.values.firstWhere((f) => f.name == c.id)));
+                        setState(() {
+                          if (c.id == 'youtube') {
+                            _youtubeOnly = !_youtubeOnly;
+                            _query = _query.copyWith(filter: PlaylistFilter.all);
+                          } else {
+                            _youtubeOnly = false;
+                            _query = _query.copyWith(
+                                filter: PlaylistFilter.values.firstWhere((f) => f.name == c.id));
+                          }
+                        });
                       },
                     ),
                   ),
@@ -369,8 +478,8 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                     ),
                   ),
                   FadeInSliver(
-                    key: ValueKey('${_query.signature}|$_grid'),
-                    sliver: _grid
+                    key: ValueKey('${_query.signature}|$_grid|$_youtubeOnly'),
+                    sliver: _grid && !_youtubeOnly
                         ? SliverPadding(
                             padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 8, CollectionStyle.gutter, 0),
                             sliver: SliverGrid(
@@ -405,7 +514,9 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                               ),
                             ),
                           )
-                        : (matches.isEmpty && !showLiked)
+                        : _youtubeOnly
+                            ? const SliverToBoxAdapter(child: SizedBox.shrink())
+                            : (matches.isEmpty && !showLiked)
                             ? SliverToBoxAdapter(
                                 child: CollectionNoMatch(
                                     query: _query.search, onClear: _clearNarrowing, noun: 'playlists'))
@@ -449,6 +560,17 @@ class _UserPlaylistScreenState extends State<UserPlaylistScreen> {
                                   ),
                   ),
                 ],
+                if (!emptyLibrary && showYouTube)
+                  SliverToBoxAdapter(
+                    child: _YouTubeSection(
+                      status: ytStatus,
+                      playlists: ytShown,
+                      searching: ytWords.isNotEmpty,
+                      onRetry: () => context.read<MusicProvider>().loadYouTubeLibraryPlaylists(force: true),
+                      onOpen: _openYouTube,
+                      onMenu: _openYouTubeMenu,
+                    ),
+                  ),
                 SliverToBoxAdapter(child: SizedBox(height: clearance)),
               ],
             ),
@@ -822,6 +944,218 @@ class _PlaylistTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── From YouTube Music ─────────────────────────────────────────────────────
+
+class _YouTubeCover extends StatelessWidget {
+  const _YouTubeCover({required this.playlist, required this.size});
+
+  final YouTubeLibraryPlaylist playlist;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final ph = Container(
+      color: const Color(0xFF2A1416),
+      alignment: Alignment.center,
+      child: Icon(playlist.isLikedMusic ? Icons.thumb_up_rounded : Icons.queue_music_rounded,
+          color: Colors.white38, size: size * 0.36),
+    );
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: playlist.thumbnailUrl.isEmpty
+                ? SizedBox(width: size, height: size, child: ph)
+                : CachedNetworkImage(
+                    imageUrl: playlist.thumbnailUrl,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => ph,
+                    errorWidget: (_, __, ___) => ph,
+                  ),
+          ),
+          // Where it lives: a small YouTube mark on the corner.
+          Positioned(
+            right: 4,
+            bottom: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF0033),
+                borderRadius: BorderRadius.circular(5),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 4)],
+              ),
+              child: const Icon(Icons.play_arrow_rounded, size: 12, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YouTubeSection extends StatelessWidget {
+  const _YouTubeSection({
+    required this.status,
+    required this.playlists,
+    required this.searching,
+    required this.onRetry,
+    required this.onOpen,
+    required this.onMenu,
+  });
+
+  final YouTubeLibraryStatus status;
+  final List<YouTubeLibraryPlaylist> playlists;
+  final bool searching;
+  final VoidCallback onRetry;
+  final ValueChanged<YouTubeLibraryPlaylist> onOpen;
+  final ValueChanged<YouTubeLibraryPlaylist> onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    switch (status) {
+      case YouTubeLibraryStatus.loading:
+        if (playlists.isEmpty) {
+          for (var i = 0; i < 3; i++) {
+            children.add(const _SkeletonRow());
+          }
+        }
+      case YouTubeLibraryStatus.error:
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: CollectionStyle.gutter, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('Couldn\'t load your YouTube Music playlists.',
+                    style: CollectionStyle.meta(size: 14.5, alpha: 0.65)),
+              ),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: Text('Retry',
+                    style: CollectionStyle.meta(size: 14.5, alpha: 1, w: FontWeight.w700)
+                        .copyWith(color: CollectionStyle.accent)),
+              ),
+            ],
+          ),
+        ));
+      case YouTubeLibraryStatus.ready:
+        if (playlists.isEmpty) {
+          children.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: CollectionStyle.gutter, vertical: 8),
+            child: Text(searching ? 'No YouTube Music playlists match.' : 'No playlists in your YouTube Music library.',
+                style: CollectionStyle.meta(size: 14.5, alpha: 0.55)),
+          ));
+        }
+      case YouTubeLibraryStatus.idle:
+      case YouTubeLibraryStatus.signedOut:
+        break;
+    }
+    for (var i = 0; i < playlists.length; i++) {
+      final y = playlists[i];
+      final meta = y.subtitle.isEmpty ? 'YouTube Music' : y.subtitle;
+      children.add(Semantics(
+        button: true,
+        label: '${y.title}, $meta, from YouTube Music',
+        excludeSemantics: true,
+        child: PressableScale(
+          onTap: () => onOpen(y),
+          onLongPress: () => onMenu(y),
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 10, 4, 10),
+            child: Row(
+              children: [
+                _YouTubeCover(playlist: y, size: 72),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(y.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: CollectionStyle.title(17, w: FontWeight.w700)),
+                      const SizedBox(height: 3),
+                      Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: CollectionStyle.meta()),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'More options for ${y.title}',
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                  icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.7)),
+                  onPressed: () => onMenu(y),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 28, CollectionStyle.gutter, 6),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                decoration: BoxDecoration(color: const Color(0xFFFF0033), borderRadius: BorderRadius.circular(6)),
+                child: const Icon(Icons.play_arrow_rounded, size: 14, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Semantics(header: true, child: Text('From YouTube Music', style: CollectionStyle.title(20))),
+              ),
+              if (status == YouTubeLibraryStatus.loading && playlists.isNotEmpty)
+                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 0, CollectionStyle.gutter, 4),
+          child: Text('Your YouTube account\'s playlists. Open one, or save a copy to edit it here.',
+              style: CollectionStyle.meta(size: 13, alpha: 0.5)),
+        ),
+        ...children,
+      ],
+    );
+  }
+}
+
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Colors.white.withValues(alpha: 0.06);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 10, CollectionStyle.gutter, 10),
+      child: Row(
+        children: [
+          Container(width: 72, height: 72, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(12))),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(height: 14, width: 160, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 8),
+                Container(height: 11, width: 100, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

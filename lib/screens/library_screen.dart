@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../providers/music_provider.dart';
+import '../services/innertube/library_playlists_parser.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/image_quality_utils.dart';
@@ -31,6 +32,7 @@ import '../widgets/replay/replay_card.dart';
 import 'replay_screen.dart';
 import '../widgets/library/library_shelves.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/collection/collection_kit.dart' show CollectionStyle, showCollectionToast;
 import '../widgets/playlist/open_playlist.dart';
 import '../widgets/playlist/playlist_edit_sheet.dart';
@@ -73,6 +75,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           _smartArtistsFuture = p.getSmartLibraryArtists();
           _smartAlbumsFuture = p.getSmartLibraryAlbums();
         });
+        p.loadYouTubeLibraryPlaylists();
       }
     });
   }
@@ -307,7 +310,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
             LibraryQuickTile(
               title: 'Import',
-              subtitle: 'Spotify & YouTube',
+              subtitle: 'From Spotify',
               icon: Icons.ios_share_rounded,
               color: const Color(0xFF3AA0C8),
               onTap: () => _push(context, const ThemedPlaylistImportScreen()),
@@ -371,6 +374,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       SliverToBoxAdapter(
         child: Builder(builder: (context) {
           final playlists = context.select<MusicProvider, List<Playlist>>((p) => p.userPlaylists);
+          final youtube = context.select<MusicProvider, List<YouTubeLibraryPlaylist>>((p) => p.youtubeLibraryPlaylists);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -382,11 +386,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
               LibraryRail(
                 height: LibraryArtCard.heightFor(148),
                 horizontalPadding: gutter,
-                itemCount: playlists.length + 1,
+                itemCount: playlists.length + 1 + youtube.length,
                 itemBuilder: (context, i) {
                   if (i == 0) {
                     return LibraryNewPlaylistCard(
                       onTap: () => _showCreatePlaylistDialog(context),
+                    );
+                  }
+                  // Yours first, then the signed-in account's YouTube Music ones.
+                  if (i > playlists.length) {
+                    final y = youtube[i - 1 - playlists.length];
+                    return LibraryArtCard(
+                      imageUrl: y.thumbnailUrl,
+                      title: y.title,
+                      subtitle: 'YouTube Music',
+                      icon: Icons.queue_music_rounded,
+                      onTap: () => _push(
+                        context,
+                        ThemedPlaylistDetailScreen(
+                          playlistId: y.browseId,
+                          playlistName: y.title,
+                          playlistImage: y.thumbnailUrl.isEmpty ? null : y.thumbnailUrl,
+                        ),
+                      ),
                     );
                   }
                   final playlist = playlists[i - 1];

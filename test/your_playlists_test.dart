@@ -240,7 +240,7 @@ void main() {
     testWidgets('empty: invitation to create or import', (tester) async {
       await pump(tester, UserPlaylistScreen(now: now));
       expect(find.text('Make your first playlist'), findsOneWidget);
-      expect(find.text('Import from Spotify or YouTube'), findsOneWidget);
+      expect(find.text('Import from Spotify'), findsOneWidget);
       await tester.tap(find.bySemanticsLabel('New playlist').last);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
