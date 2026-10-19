@@ -594,6 +594,7 @@ class CollectionTrackRow extends StatelessWidget {
     this.swipeEnabled = true,
     this.swipeRemoveEnabled = true,
     this.subtitleOverride,
+    this.artOverride,
   });
 
   final Track track;
@@ -622,6 +623,9 @@ class CollectionTrackRow extends StatelessWidget {
 
   /// Replaces the artist line (e.g. "Artist · 3:42").
   final String? subtitleOverride;
+
+  /// Replaces the network artwork (a file's embedded cover).
+  final Widget? artOverride;
 
   Widget _swipeBg({required bool left, required Color color, required IconData icon, required String label}) {
     return Container(
@@ -691,7 +695,7 @@ class CollectionTrackRow extends StatelessWidget {
                 height: CollectionStyle.art,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: art.isEmpty
+                  child: artOverride ?? (art.isEmpty
                       ? placeholder
                       : CachedNetworkImage(
                           imageUrl: ImageQualityUtils.getHighResArtwork(art),
@@ -700,7 +704,7 @@ class CollectionTrackRow extends StatelessWidget {
                           fadeInDuration: const Duration(milliseconds: 160),
                           placeholder: (_, __) => placeholder,
                           errorWidget: (_, __, ___) => placeholder,
-                        ),
+                        )),
                 ),
               ),
               const SizedBox(width: 16),
