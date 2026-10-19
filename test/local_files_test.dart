@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -110,6 +111,18 @@ void main() {
     test('every sort has words', () {
       final labels = {for (final c in SortCriteria.values) sortLabel(c)};
       expect(labels, hasLength(SortCriteria.values.length));
+    });
+
+    // on_audio_query pastes `path` into SQL unescaped: a file with an
+    // apostrophe crashed the app natively (uncatchable from Dart).
+    test('nothing queries on_audio_query by path', () {
+      final offenders = <String>[];
+      for (final f in Directory('lib').listSync(recursive: true).whereType<File>()) {
+        if (!f.path.endsWith('.dart')) continue;
+        final src = f.readAsStringSync();
+        if (RegExp(r'querySongs\([^)]*\bpath\s*:', dotAll: true).hasMatch(src)) offenders.add(f.path);
+      }
+      expect(offenders, isEmpty);
     });
   });
 

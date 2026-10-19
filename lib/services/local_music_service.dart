@@ -1,4 +1,5 @@
 // lib/services/local_music_service.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,46 @@ import '../models/track.dart';
 
 class LocalMusicService {
   final OnAudioQuery _audioQuery = OnAudioQuery();
+
+  // MediaStore id of every scanned file, by path. Artwork is looked up by id.
+  //
+  // NEVER pass a `path:` to on_audio_query's song query: it pastes the path into
+  // the SQL selection unescaped (`_data like '%<path>/%'`), so a file
+  // named "Don't Stop.mp3" throws "Invalid token" inside a Kotlin coroutine
+  // the Dart side cannot catch, and the app dies. (It also only matches
+  // folders, so it never found the file anyway.)
+  final Map<String, int> _idByPath = {};
+  Future<void>? _indexing;
+
+  // Thumbnail decoding is IO + bitmap work on the platform side: a screen full
+  // of rows must not start 40 at once.
+  static const int _maxArtworkJobs = 4;
+  int _artworkJobs = 0;
+  final List<Completer<void>> _artworkWaiters = [];
+
+  void _remember(List<SongModel> songs) {
+    for (final s in songs) {
+      _idByPath[s.data] = s.id;
+    }
+  }
+
+  /// Fills [_idByPath] from one unfiltered query (no SQL built from strings).
+  Future<void> _ensureIndex() {
+    if (_idByPath.isNotEmpty) return Future.value();
+    return _indexing ??= _audioQuery
+        .querySongs(uriType: UriType.EXTERNAL, ignoreCase: true)
+        .then(_remember)
+        .catchError((Object e) {
+      if (kDebugMode) debugPrint('LocalMusicService: index failed: $e');
+    }).whenComplete(() => _indexing = null);
+  }
+
+  Future<int?> _idFor(String path) async {
+    final known = _idByPath[path];
+    if (known != null) return known;
+    await _ensureIndex();
+    return _idByPath[path];
+  }
 
   Future<bool> _requestPermissions() async {
     if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) {
@@ -77,6 +118,8 @@ class LocalMusicService {
       );
 
       debugPrint('LocalMusicService: Found ${songs.length} songs via MediaStore.');
+      _idByPath.clear();
+      _remember(songs);
 
       // Map SongModel to Track model
       List<Track> tracks = songs
@@ -140,11 +183,18 @@ class LocalMusicService {
         final file = File(result.files.first.path!);
         final path = file.path;
 
-        // Attempt to get metadata via on_audio_query immediately
-        List<SongModel> songs = await _audioQuery.querySongs(path: path, uriType: UriType.EXTERNAL);
+        // Metadata from MediaStore when the file is indexed (matched by path in
+        // Dart; see the note on _idByPath for why never by `path:`).
+        SongModel? song;
+        try {
+          final all = await _audioQuery.querySongs(uriType: UriType.EXTERNAL, ignoreCase: true);
+          _remember(all);
+          song = all.where((s) => s.data == path).firstOrNull;
+        } catch (e) {
+          debugPrint('LocalMusicService: metadata lookup failed: $e');
+        }
 
-        if (songs.isNotEmpty) {
-          final song = songs.first;
+        if (song != null) {
           return Track(
             id: path,
             trackName: song.title,
@@ -279,21 +329,30 @@ class LocalMusicService {
 
   // --- Artwork Resolution ---
 
+  /// The embedded cover of the file at [path], or null. Looked up by MediaStore
+  /// id; at most [_maxArtworkJobs] run at once.
   Future<Uint8List?> getTrackArtwork(String path) async {
+    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return null;
     try {
-      // Query songs to find the ID associated with this path
-      final List<SongModel> songs = await _audioQuery.querySongs(
-        path: path,
-        uriType: UriType.EXTERNAL,
-      );
-
-      if (songs.isNotEmpty) {
-        return await _audioQuery.queryArtwork(
-          songs.first.id,
+      final id = await _idFor(path);
+      if (id == null) return null;
+      while (_artworkJobs >= _maxArtworkJobs) {
+        final w = Completer<void>();
+        _artworkWaiters.add(w);
+        await w.future;
+      }
+      _artworkJobs++;
+      try {
+        final bytes = await _audioQuery.queryArtwork(
+          id,
           ArtworkType.AUDIO,
           format: ArtworkFormat.JPEG,
-          size: 200, // Sufficient for palette generation
+          size: 200, // a 56 dp row at 3x, and enough for palette generation
         );
+        return bytes == null || bytes.isEmpty ? null : bytes;
+      } finally {
+        _artworkJobs--;
+        if (_artworkWaiters.isNotEmpty) _artworkWaiters.removeAt(0).complete();
       }
     } catch (e) {
       if (kDebugMode) debugPrint('LocalMusicService: Error fetching artwork for $path: $e');
