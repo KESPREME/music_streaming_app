@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:music_streaming_app/models/playlist.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/screens/replay_screen.dart';
@@ -47,6 +48,18 @@ class _FakeProvider extends ChangeNotifier implements MusicProvider {
   final ListeningStats listeningStats;
 
   final List<String> played = [];
+  final List<(String, List<String>)> created = [];
+
+  @override
+  Future<Playlist?> createPlaylistWith({
+    required String name,
+    List<Track>? tracks,
+    String? imageUrl,
+    String description = '',
+  }) async {
+    created.add((name, [for (final t in tracks ?? const <Track>[]) t.id]));
+    return Playlist(id: 'pl_1', name: name, imageUrl: '', tracks: tracks ?? const []);
+  }
 
   @override
   Future<void> playTrackList(List<Track> tracks, {int initialIndex = 0, String? playlistId}) async {
@@ -314,6 +327,20 @@ void main() {
       expect(find.text('Your listening pattern'), findsOneWidget);
       expect(find.text('You listen most around 8 PM.'), findsOneWidget);
       expect(find.text('Share my Replay'), findsOneWidget);
+    });
+
+    testWidgets('Save top songs as a playlist opens the create sheet with a name and the songs', (tester) async {
+      final p = await pump(tester);
+      await tester.tap(find.text('Save top songs as a playlist'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Starts with 2 songs'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Replay 2026'), findsOneWidget);
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(p.created.single.$1, 'Replay 2026');
+      expect(p.created.single.$2, ['a', 'b']);
     });
 
     testWidgets('lays out on a small phone without overflow', (tester) async {

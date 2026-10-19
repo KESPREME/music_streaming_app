@@ -27,7 +27,9 @@ import '../utils/app_image_cache.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/home_sections.dart' show PressableScale;
+import '../widgets/collection/collection_kit.dart' show showCollectionToast;
 import '../widgets/liquid_glass_pill.dart';
+import '../widgets/playlist/playlist_edit_sheet.dart';
 import '../widgets/replay/replay_card.dart';
 import '../widgets/themed_album_detail_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
@@ -88,6 +90,21 @@ class _ReplayScreenState extends State<ReplayScreen> {
     if (p == _period) return;
     HapticFeedback.selectionClick();
     setState(() => _period = p);
+  }
+
+  /// Turns the period's top songs into a playlist the listener can keep.
+  Future<void> _saveTopSongs(ReplaySummary s) async {
+    final tracks = [for (final e in s.topSongs) if (e.track != null) e.track!];
+    if (tracks.isEmpty) return;
+    final made = await showPlaylistEditSheet(
+      context,
+      initialTracks: tracks,
+      initialName: 'Replay ${s.label}',
+    );
+    if (made != null && mounted) {
+      showCollectionToast(context, 'Saved "${made.name}" with ${tracks.length} songs',
+          icon: Icons.playlist_add_check_rounded);
+    }
   }
 
   Future<void> _confirmClear(ListeningStats stats) async {
@@ -207,6 +224,7 @@ class _ReplayScreenState extends State<ReplayScreen> {
                           key: ValueKey(_period),
                           summary: s,
                           onPlayStory: () => ReplayStoryScreen.open(context, s),
+                          onSave: () => _saveTopSongs(s),
                           onShare: () => SharePlus.instance
                               .share(ShareParams(text: replayShareText(s))),
                         ),
@@ -292,11 +310,13 @@ class _ReplayBody extends StatelessWidget {
     required this.summary,
     required this.onPlayStory,
     required this.onShare,
+    required this.onSave,
   });
 
   final ReplaySummary summary;
   final VoidCallback onPlayStory;
   final VoidCallback onShare;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -434,6 +454,10 @@ class _ReplayBody extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
+          if (songs.isNotEmpty) ...[
+            _ActionRow(icon: Icons.playlist_add_rounded, label: 'Save top songs as a playlist', onTap: onSave),
+            const SizedBox(height: 10),
+          ],
           _ActionRow(icon: Icons.ios_share_rounded, label: 'Share my Replay', onTap: onShare),
         ],
       ],

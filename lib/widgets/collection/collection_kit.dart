@@ -592,6 +592,7 @@ class CollectionTrackRow extends StatelessWidget {
     this.removeLabel = 'Remove',
     this.reorderHandle,
     this.swipeEnabled = true,
+    this.swipeRemoveEnabled = true,
     this.subtitleOverride,
   });
 
@@ -614,6 +615,10 @@ class CollectionTrackRow extends StatelessWidget {
   /// When set (reorder mode) it replaces the ⋮ button, and swipes are off.
   final Widget? reorderHandle;
   final bool swipeEnabled;
+
+  /// False when removing cannot be undone (a deleted download): only the
+  /// swipe-right "Queue" remains, and removal goes through a confirmation.
+  final bool swipeRemoveEnabled;
 
   /// Replaces the artist line (e.g. "Artist · 3:42").
   final String? subtitleOverride;
@@ -776,7 +781,7 @@ class CollectionTrackRow extends StatelessWidget {
     if (selecting || !swipeEnabled || reorderHandle != null) return row;
     return Dismissible(
       key: ValueKey('dismiss_${track.id}'),
-      direction: DismissDirection.horizontal,
+      direction: swipeRemoveEnabled ? DismissDirection.horizontal : DismissDirection.startToEnd,
       dismissThresholds: const {
         DismissDirection.startToEnd: 0.3,
         DismissDirection.endToStart: 0.4,
@@ -791,8 +796,9 @@ class CollectionTrackRow extends StatelessWidget {
       onDismissed: (_) => onRemove(),
       background: _swipeBg(
           left: true, color: const Color(0xFF1F3B63), icon: Icons.queue_music_rounded, label: 'Queue'),
-      secondaryBackground: _swipeBg(
-          left: false, color: CollectionStyle.accentDeep, icon: Icons.heart_broken_rounded, label: removeLabel),
+      secondaryBackground: swipeRemoveEnabled
+          ? _swipeBg(left: false, color: CollectionStyle.accentDeep, icon: Icons.heart_broken_rounded, label: removeLabel)
+          : null,
       child: row,
     );
   }

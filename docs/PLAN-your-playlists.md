@@ -1,6 +1,18 @@
 # Your Playlists — plan (and what it needs from other screens)
 
-Status: PLAN ONLY. Nothing below is built yet except §6 (the mini-pill fix).
+Status: IMPLEMENTED (see commits `feat(playlists)` / `feat(history)`), with these deliberate
+differences from the plan as first written:
+
+- `origin` is not stored: a playlist is "created" when its id starts with `pl_`, otherwise
+  imported - nothing to migrate and nothing that can go stale.
+- "Recently played" sort uses a small `playlist_last_played_v1` map written when a playlist is
+  started from a Library screen; plays started elsewhere do not count.
+- "Suggested" in Add songs is the app's ranked lists (For you, Quick picks, chart), labelled as
+  such - it is not generated from the playlist's own songs.
+- History holds the last 20 songs (an existing provider limit), grouped by the play log.
+- Downloaded does not show storage used (no size is tracked) and removal always asks first.
+- Still not done: downloads progress inside the playlist rows, "Save as playlist" from album and
+  artist pages, drag reorder of Liked/History (chronological by definition).
 
 ## 1. What the references say
 

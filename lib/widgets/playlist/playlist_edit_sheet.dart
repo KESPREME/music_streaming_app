@@ -30,6 +30,7 @@ Future<Playlist?> showPlaylistEditSheet(
   BuildContext context, {
   Playlist? existing,
   List<Track> initialTracks = const [],
+  String? initialName,
   CoverPicker? coverPicker,
 }) {
   return showModalBottomSheet<Playlist>(
@@ -40,16 +41,23 @@ Future<Playlist?> showPlaylistEditSheet(
     builder: (sheet) => _EditBody(
       existing: existing,
       initialTracks: initialTracks,
+      initialName: initialName,
       coverPicker: coverPicker ?? pickAndStorePlaylistCover,
     ),
   );
 }
 
 class _EditBody extends StatefulWidget {
-  const _EditBody({required this.existing, required this.initialTracks, required this.coverPicker});
+  const _EditBody({
+    required this.existing,
+    required this.initialTracks,
+    required this.coverPicker,
+    this.initialName,
+  });
 
   final Playlist? existing;
   final List<Track> initialTracks;
+  final String? initialName;
   final CoverPicker coverPicker;
 
   @override
@@ -57,7 +65,7 @@ class _EditBody extends StatefulWidget {
 }
 
 class _EditBodyState extends State<_EditBody> {
-  late final TextEditingController _name = TextEditingController(text: widget.existing?.name ?? '');
+  late final TextEditingController _name = TextEditingController(text: widget.existing?.name ?? widget.initialName ?? '');
   late final TextEditingController _desc = TextEditingController(text: widget.existing?.description ?? '');
   late String _image = widget.existing?.imageUrl ?? '';
   final List<String> _pickedThisSession = [];

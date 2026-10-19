@@ -19,7 +19,6 @@ import '../widgets/themed_user_playlist_screen.dart';
 import '../widgets/themed_downloaded_songs_screen.dart';
 import '../widgets/themed_playlist_import_screen.dart';
 import '../widgets/themed_local_music_screen.dart';
-import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_album_detail_screen.dart';
 import 'glass_library_search_screen.dart';
@@ -197,60 +196,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  /// Opens a library collection in the same detail screen playlists and albums
-  /// use (artwork-led header, play / shuffle / search, swipeable rows). An empty
-  /// collection opens its own screen instead, which knows how to say so.
-  void _openCollection(
-    BuildContext context, {
-    required String id,
-    required String name,
-    required List<Track> tracks,
-    required Widget whenEmpty,
-  }) {
-    if (tracks.isEmpty) {
-      _push(context, whenEmpty);
-      return;
-    }
-    _push(
-      context,
-      ThemedPlaylistDetailScreen(
-        playlistId: id,
-        playlistName: name,
-        cachedTracks: List<Track>.of(tracks),
-        artistNameHint: 'Your library',
-      ),
-    );
-  }
-
   /// Liked Songs has its own live screen (search, sort, filters, swipe to
   /// remove with undo, multi-select) - never a snapshot.
   void _openLiked(BuildContext context) =>
       _push(context, const ThemedLikedSongsScreen());
 
-  void _openRecents(BuildContext context) => _openCollection(
-        context,
-        id: 'library_recently_played',
-        name: 'Recently Played',
-        tracks: context.read<MusicProvider>().recentlyPlayed,
-        whenEmpty: const ThemedRecentlyPlayedScreen(),
-      );
+  void _openRecents(BuildContext context) =>
+      _push(context, const ThemedRecentlyPlayedScreen());
 
-  Future<void> _openDownloads(BuildContext context) async {
-    final provider = context.read<MusicProvider>();
-    List<Track> tracks = const [];
-    try {
-      tracks = await provider.getDownloadedTracks();
-    } catch (_) {}
-    if (!context.mounted) return;
-    _openCollection(
-      context,
-      id: 'library_downloads',
-      name: 'Downloaded',
-      tracks: tracks,
-      whenEmpty: const ThemedDownloadedSongsScreen(),
-    );
-  }
-
+  void _openDownloads(BuildContext context) =>
+      _push(context, const ThemedDownloadedSongsScreen());
   void _openPlaylist(BuildContext context, Playlist playlist) =>
       openUserPlaylist(context, playlist);
 

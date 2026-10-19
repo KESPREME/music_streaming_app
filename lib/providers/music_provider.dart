@@ -5081,6 +5081,11 @@ for (final track in releases)
     }
   }
 
+  @visibleForTesting
+  void debugSetRecentlyPlayed(List<Track> tracks) {
+    _recentlyPlayed = List.of(tracks);
+  }
+
   void _updateRecentlyPlayed(Track track) async {
     _recentlyPlayed.removeWhere((t) => t.id == track.id);
     _recentlyPlayed.insert(0, track);
@@ -5088,6 +5093,35 @@ for (final track in releases)
       _recentlyPlayed = _recentlyPlayed.take(20).toList();
     await _saveRecentlyPlayed();
     _bumpHomeContent();
+  }
+
+  /// Removes songs from History and returns them with their positions, for
+  /// [restoreRecentlyPlayed]. One save, one notify.
+  List<RemovedPlaylistTrack> removeRecentlyPlayed(Iterable<String> trackIds) {
+    final ids = trackIds.toSet();
+    final removed = <RemovedPlaylistTrack>[
+      for (var i = 0; i < _recentlyPlayed.length; i++)
+        if (ids.contains(_recentlyPlayed[i].id))
+          RemovedPlaylistTrack(index: i, track: _recentlyPlayed[i]),
+    ];
+    if (removed.isEmpty) return const [];
+    _recentlyPlayed.removeWhere((t) => ids.contains(t.id));
+    unawaited(_saveRecentlyPlayed());
+    notifyListeners();
+    return removed;
+  }
+
+  void restoreRecentlyPlayed(List<RemovedPlaylistTrack> removed) {
+    final sorted = [...removed]..sort((a, b) => a.index.compareTo(b.index));
+    var changed = false;
+    for (final r in sorted) {
+      if (_recentlyPlayed.any((t) => t.id == r.track.id)) continue;
+      _recentlyPlayed.insert(r.index.clamp(0, _recentlyPlayed.length), r.track);
+      changed = true;
+    }
+    if (!changed) return;
+    unawaited(_saveRecentlyPlayed());
+    notifyListeners();
   }
 
   void removeFromRecentlyPlayed(String trackId) {

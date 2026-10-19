@@ -152,6 +152,19 @@ class ListeningStats extends ChangeNotifier {
   /// Metadata for every track in [records].
   Map<String, ListenedTrack> get tracks => Map.unmodifiable(_tracks);
 
+  /// When each track was last played (epoch ms), from the log. A track played
+  /// before the log existed is simply absent.
+  Map<String, int> lastPlayedAt() {
+    final out = <String, int>{};
+    for (final r in _records) {
+      final id = r.trackId;
+      if (id == null) continue;
+      final at = r.startMs;
+      if (at > (out[id] ?? 0)) out[id] = at;
+    }
+    return out;
+  }
+
   /// Counted plays (>= [countedPlay]) per track id, over the whole log.
   Map<String, int> playCounts() {
     final counted = countedPlay.inMilliseconds;

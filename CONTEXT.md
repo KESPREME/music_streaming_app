@@ -695,6 +695,29 @@ queue heading (tap cycles Off, Crossfade, AutoMix; long-press opens the screen).
 - Tests: `amoled_test`, `amoled_settings_test` (mutation-checked: dropping the short-circuit, the
   fade veil, or reduce-motion each fails a test).
 
+## LIBRARY COLLECTIONS (plan: docs/PLAN-your-playlists.md)
+
+- `widgets/collection/collection_kit.dart` is the shared kit (nav bar with collapsing title and
+  selection mode, pills, search, sort row, chips, `CollectionTrackRow`, selection bar, empty /
+  no-match, toast, sheets). Liked Songs, Your Playlists, a playlist, History and Downloaded are
+  built from it; change the look once, here.
+- Pure query layers (no widgets): `presentation/liked/liked_songs_query.dart`,
+  `presentation/playlists/playlist_query.dart`, `presentation/history/history_groups.dart`.
+- `Playlist` has description / created / updated / pinned / customOrder (all optional in JSON).
+  Mutations on `MusicProvider` notify first and write behind; every removal returns an undo token
+  (`RemovedLike`, `RemovedPlaylistTrack`, `RemovedPlaylist`). Ids are `pl_<ms>` and unique.
+- One "Add to playlist" sheet (`widgets/playlist/add_to_playlist_sheet.dart`) serves song options,
+  selection bars and Replay; one create/edit sheet (`playlist_edit_sheet.dart`); `PlaylistCover`
+  decides a playlist's picture (own image incl. device file, 2x2 collage, first cover, gradient).
+- `UserPlaylistDetailScreen` is LIVE (reads the provider); `openUserPlaylist()` gives Material You its
+  old screen. Tests turn the palette off: `UserPlaylistDetailScreen.defaultUsePalette = false`.
+- Mini pill / nav bar step aside for sheets and dialogs via `ModalRouteTracker` +
+  `StepAsideForModals` (root + shell navigators); `isAtRoot` counts pages only.
+- Test gotchas: a real `MusicProvider` must be built in `setUpAll` AFTER
+  `SharedPreferences.setMockInitialValues`, and `MockMusicProvider` overrides `userPlaylists` (use a
+  plain `MusicProvider` subclass for playlist tests); never `await Future.delayed` inside
+  `testWidgets` (fake async); `compute()` needs `tester.runAsync`.
+
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
