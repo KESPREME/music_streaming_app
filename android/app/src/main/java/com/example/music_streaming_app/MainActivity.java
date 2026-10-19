@@ -172,6 +172,45 @@ public class MainActivity extends AudioServiceFragmentActivity {
                 });
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        requestHighRefreshRate();
+    }
+
+    /**
+     * Asks for the display's fastest mode at the current resolution (90/120 Hz
+     * panels). Many OEMs (OnePlus, Xiaomi, some Samsung) keep an app at 60 Hz
+     * unless it asks, which caps every animation at 60 fps. Same approach as
+     * flutter_displaymode's setHighRefreshRate, without the dependency. The
+     * engine follows the display's vsync, and draws nothing when nothing moves.
+     */
+    private void requestHighRefreshRate() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        try {
+            final android.view.Display display = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    ? getDisplay()
+                    : getWindowManager().getDefaultDisplay();
+            if (display == null) return;
+            final android.view.Display.Mode current = display.getMode();
+            android.view.Display.Mode best = current;
+            for (android.view.Display.Mode m : display.getSupportedModes()) {
+                if (m.getPhysicalWidth() == current.getPhysicalWidth()
+                        && m.getPhysicalHeight() == current.getPhysicalHeight()
+                        && m.getRefreshRate() > best.getRefreshRate() + 0.5f) {
+                    best = m;
+                }
+            }
+            final android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+            if (lp.preferredDisplayModeId != best.getModeId()) {
+                lp.preferredDisplayModeId = best.getModeId();
+                getWindow().setAttributes(lp);
+            }
+        } catch (Throwable ignored) {
+            // A display that refuses is left at its default rate.
+        }
+    }
+
     private void pushVolume() {
         if (eventSink != null) {
             Map<String, Object> m = new HashMap<>(getVolume());

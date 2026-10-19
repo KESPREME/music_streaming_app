@@ -98,7 +98,7 @@ class ExploreController extends ChangeNotifier {
     try {
       final sources = await _fetchSources(seed);
       _session ??= ExploreSession(
-        sessionId: DateTime.now().millisecondsSinceEpoch,
+        sessionId: _nextSessionId(),
         startedAt: DateTime.now(),
         seed: seed,
       );
@@ -121,7 +121,7 @@ class ExploreController extends ChangeNotifier {
       if (_session!.items.isNotEmpty && _session!.currentIndex < 0) {
         await settle(0);
       }
-      debugPrint('EXPLORE_SESSION session=${_session!.sessionId} '
+      _log('EXPLORE_SESSION session=${_session!.sessionId} '
           'seed=${seed?.trackName ?? 'none'} candidates=${items.length} '
           'current=${_session!.currentIndex} '
           'remaining=${_session!.remaining.length} '
@@ -129,7 +129,7 @@ class ExploreController extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       _error = 'Could not load Explore';
-      debugPrint('EXPLORE_SESSION start failed: $e');
+      _log('EXPLORE_SESSION start failed: $e');
       notifyListeners();
     }
   }
@@ -161,7 +161,7 @@ class ExploreController extends ChangeNotifier {
     final gen = ++_playbackGeneration;
 
     if (!autoplayEnabled) {
-      debugPrint('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
+      _log('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
           'reason=${item.reason} score=${item.score.toStringAsFixed(2)} '
           'autoplay=off');
       return;
@@ -171,7 +171,7 @@ class ExploreController extends ChangeNotifier {
         (_isPlayingTrack?.call(item.track.id) ?? true);
     if (isAlreadyPlaying) {
       // Same track already actively playing — never restart mid-stride.
-      debugPrint('EXPLORE_PREFETCH prepared=[$index] mediaResolved=skip '
+      _log('EXPLORE_PREFETCH prepared=[$index] mediaResolved=skip '
           'already-playing');
       return;
     }
@@ -179,17 +179,17 @@ class ExploreController extends ChangeNotifier {
     final upcoming =
         s.upcoming(count: 4).map((i) => i.track).toList();
     try {
-      debugPrint('EXPLORE_PLAY title=${item.track.trackName} gen=$gen');
+      _log('EXPLORE_PLAY title=${item.track.trackName} gen=$gen');
       await _play(item.track, upcoming);
       if (gen != _playbackGeneration) return;
-      debugPrint('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
+      _log('EXPLORE_ITEM rank=$index title=${item.track.trackName} '
           'artist=${item.track.artistName} reason=${item.reason.name} '
           'score=${item.score.toStringAsFixed(2)} '
           'confidence=${item.confidence.toStringAsFixed(2)}');
     } catch (e) {
       if (gen == _playbackGeneration) {
         _error = 'Playback failed — swipe to continue';
-        debugPrint('EXPLORE_ITEM play failed: $e');
+        _log('EXPLORE_ITEM play failed: $e');
       }
     }
     if (gen != _playbackGeneration) return;
@@ -257,7 +257,7 @@ class ExploreController extends ChangeNotifier {
         _emptyStreak++;
         if (_emptyStreak >= 2) {
           _exhausted = true;
-          debugPrint('EXPLORE_SESSION sources exhausted '
+          _log('EXPLORE_SESSION sources exhausted '
               'shown=${s.shownItemIds.length}');
         }
       } else {
@@ -265,7 +265,7 @@ class ExploreController extends ChangeNotifier {
         _exhausted = false;
         s.appendBatch(items);
       }
-      debugPrint('EXPLORE_PREFETCH prepared=[${s.remaining.length} ahead] '
+      _log('EXPLORE_PREFETCH prepared=[${s.remaining.length} ahead] '
           'refill=${items.length} remaining=${s.remaining.length} '
           'exhausted=$_exhausted');
     } catch (e) {
@@ -273,9 +273,9 @@ class ExploreController extends ChangeNotifier {
       _emptyStreak++;
       if (_emptyStreak >= 3) {
         _exhausted = true;
-        debugPrint('EXPLORE_SESSION sources exhausted due to errors: $e');
+        _log('EXPLORE_SESSION sources exhausted due to errors: $e');
       }
-      debugPrint('EXPLORE_PREFETCH refill failed: $e');
+      _log('EXPLORE_PREFETCH refill failed: $e');
     } finally {
       _isRefilling = false;
     }
@@ -303,7 +303,7 @@ class ExploreController extends ChangeNotifier {
     _recordSwipeOutcome(
         item.track.artistName.split(',').first.trim(),
         wasAccepted: false);
-    debugPrint('EXPLORE_SKIP title=${item.track.trackName} '
+    _log('EXPLORE_SKIP title=${item.track.trackName} '
         'artist=${item.track.artistName.split(',').first.trim()}');
     final next = (_session!.currentIndex + 1);
     if (next < _session!.items.length) {
@@ -333,4 +333,20 @@ class ExploreController extends ChangeNotifier {
   @visibleForTesting
   void debugForceDwell(Duration dwell) =>
       _lastSettledAt = DateTime.now().subtract(dwell);
+}
+
+/// Explore's diagnostics: debug builds only (they ran in release on every
+/// settle and refill).
+void _log(String message) {
+  if (kDebugMode) debugPrint(message);
+}
+
+int _lastSessionId = 0;
+
+/// Time-based but strictly increasing: two sessions started in the same
+/// millisecond (a refresh right after a start) used to share an id.
+int _nextSessionId() {
+  final now = DateTime.now().millisecondsSinceEpoch;
+  _lastSessionId = now > _lastSessionId ? now : _lastSessionId + 1;
+  return _lastSessionId;
 }

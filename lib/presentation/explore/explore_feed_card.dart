@@ -14,6 +14,7 @@ import '../../services/explore/explore_engine.dart';
 import '../../services/explore/explore_palette.dart';
 import '../../utils/app_image_cache.dart';
 import '../../widgets/covered_gate.dart';
+import '../../widgets/blurred_backdrop.dart';
 
 /// Full-screen discovery card representing a song in the vertical feed.
 /// Features full-bleed blurred album art background or video canvas loop,
@@ -69,7 +70,30 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   bool get _isVisuallyActive => widget.isActive && widget.isCurrentTrack;
 
   bool get _shouldAnimateEq =>
-      !_isTesting && _isVisuallyActive && widget.isPlaying && !_canvasReady;
+      !_isTesting && _isVisuallyActive && widget.isPlaying && !_canvasReady && !_covered;
+
+  /// The open player is sitting on top of the feed: nothing here is visible,
+  /// so the equalizer's ticker must not keep asking for frames (at 120 Hz).
+  bool _covered = false;
+
+  void _syncEq() {
+    if (_isTesting) return;
+    if (_shouldAnimateEq && !_eqAnim.isAnimating) {
+      _eqAnim.repeat();
+    } else if (!_shouldAnimateEq && _eqAnim.isAnimating) {
+      _eqAnim.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final covered = CoveredScope.of(context);
+    if (covered != _covered) {
+      _covered = covered;
+      _syncEq();
+    }
+  }
 
   void _checkCanvas() {
     _canvasDebounceTimer?.cancel();
@@ -118,13 +142,7 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   @override
   void didUpdateWidget(ExploreFeedCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isTesting) {
-      if (_shouldAnimateEq && !_eqAnim.isAnimating) {
-        _eqAnim.repeat();
-      } else if (!_shouldAnimateEq && _eqAnim.isAnimating) {
-        _eqAnim.stop();
-      }
-    }
+    _syncEq();
     if (widget.item.track.id != oldWidget.item.track.id) {
       _canvasDebounceTimer?.cancel();
       _canvasUrl = null;
@@ -405,6 +423,44 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
 
 /// Fullscreen background showing enlarged, softened album artwork
 /// layered with ambient colors and a gentle vignette (matching Muzo frames 00:05 & 00:14).
+///
+/// The card's backdrop artwork URL: a 300 px rendition, which blurs exactly
+/// like the 800 px one at a quarter of the data. Public so the feed can
+/// precache the very entry the card reads.
+String exploreBackdropUrl(String url) {
+  if (url.isEmpty) return url;
+  if (url.contains('googleusercontent.com') || url.contains('ggpht.com')) {
+    return url.replaceAll(RegExp(r'=w\d+-h\d+.*'), '=w300-h300-l80-rj');
+  }
+  if (url.contains('i.ytimg.com')) {
+    if (url.contains('maxresdefault.jpg') || url.contains('hqdefault.jpg') || url.contains('default.jpg')) {
+      return url.replaceAll(RegExp(r'(maxresdefault|hqdefault|default)\.jpg'), 'mqdefault.jpg');
+    }
+  }
+  return url;
+}
+
+/// The two images a card shows, keyed exactly as the card asks for them, so a
+/// precache is a hit and not a second decode.
+List<ImageProvider> exploreCardImages(String artUrl) {
+  if (artUrl.isEmpty) return const [];
+  final backdrop = exploreBackdropUrl(artUrl);
+  return [
+    ResizeImage(
+      CachedNetworkImageProvider(artUrl),
+      width: AppImageCache.heroMemCache,
+      height: AppImageCache.heroMemCache,
+    ),
+    if (backdrop.isNotEmpty)
+      ResizeImage(
+        CachedNetworkImageProvider(backdrop),
+        width: kBackdropSourcePx,
+        height: kBackdropSourcePx,
+        policy: ResizeImagePolicy.fit,
+      ),
+  ];
+}
+
 class _BlurredAlbumArtBackground extends StatelessWidget {
   const _BlurredAlbumArtBackground({
     required this.imageUrl,
@@ -414,23 +470,7 @@ class _BlurredAlbumArtBackground extends StatelessWidget {
   final String imageUrl;
   final ExplorePalette palette;
 
-  static String _backdropUrl(String url) {
-    if (url.isEmpty) return url;
-    if (url.contains('googleusercontent.com') || url.contains('ggpht.com')) {
-      // Use lightweight 300x300 image: blurs identically to 800x800 but saves ~75% network data
-      // and drastically cuts GPU memory and fill-rate heat during blur passes.
-      return url.replaceAll(RegExp(r'=w\d+-h\d+.*'), '=w300-h300-l80-rj');
-    }
-    if (url.contains('i.ytimg.com')) {
-      if (url.contains('maxresdefault.jpg') ||
-          url.contains('hqdefault.jpg') ||
-          url.contains('default.jpg')) {
-        return url.replaceAll(
-            RegExp(r'(maxresdefault|hqdefault|default)\.jpg'), 'mqdefault.jpg');
-      }
-    }
-    return url;
-  }
+  static String _backdropUrl(String url) => exploreBackdropUrl(url);
 
   @override
   Widget build(BuildContext context) {
@@ -441,23 +481,23 @@ class _BlurredAlbumArtBackground extends StatelessWidget {
         // Base dark canvas
         Container(color: const Color(0xFF0C0C10)),
 
-        // Enlarged and softened artwork wrapped in RepaintBoundary to cache GPU blur pass
+        // Enlarged and softened artwork, blurred once per card into a small
+        // image (blurred_backdrop.dart) rather than by a full-screen blur that
+        // Impeller re-ran on every frame the feed moved.
         if (backdrop.isNotEmpty)
           Positioned.fill(
             child: RepaintBoundary(
-              child: Transform.scale(
-                scale: 1.18,
-                child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                  child: CachedNetworkImage(
-                    imageUrl: backdrop,
-                    memCacheWidth: 300,
-                    memCacheHeight: 300,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => const SizedBox.shrink(),
-                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
-                  ),
+              child: BlurredBackdrop(
+                image: ResizeImage(
+                  CachedNetworkImageProvider(backdrop),
+                  width: kBackdropSourcePx,
+                  height: kBackdropSourcePx,
+                  policy: ResizeImagePolicy.fit,
                 ),
+                sigma: 26,
+                scale: 1.18,
+                fade: const Duration(milliseconds: 280),
+                errorColor: Colors.transparent,
               ),
             ),
           ),

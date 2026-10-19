@@ -25,18 +25,23 @@ class MiniPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<MusicProvider>(
-      builder: (context, musicProvider, child) {
-        final currentTrack = musicProvider.currentTrack;
-
-        if (currentTrack == null) {
-          return const SizedBox.shrink();
-        }
-
-        return RepaintBoundary(
-          child: _PillBody(musicProvider: musicProvider, onExpand: onExpand),
-        );
-      },
+    // Only what the pill shows. It used to be a Consumer of the whole provider,
+    // so every notification anywhere (downloads, search, home feed, lyrics)
+    // rebuilt the glass lens and its children. The progress line listens to
+    // the position stream on its own.
+    context.select<MusicProvider, Object?>((p) => (
+          p.currentTrack,
+          p.isPlaying,
+          p.paletteGenerator,
+          p.duration,
+        ));
+    final musicProvider = context.read<MusicProvider>();
+    final currentTrack = musicProvider.currentTrack;
+    if (currentTrack == null) {
+      return const SizedBox.shrink();
+    }
+    return RepaintBoundary(
+      child: _PillBody(musicProvider: musicProvider, onExpand: onExpand),
     );
   }
 }

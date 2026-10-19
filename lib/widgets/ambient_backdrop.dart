@@ -1,6 +1,3 @@
-import 'dart:ui';
-
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +6,7 @@ import '../design/tokens/motion.dart';
 import '../providers/music_provider.dart';
 import '../theme/amoled_theme.dart';
 import '../utils/color_utils.dart';
+import 'blurred_backdrop.dart';
 
 /// Ambient canvas behind the whole app (v5.2 shell z-layer 0).
 ///
@@ -77,21 +75,10 @@ class _ArtCanvas extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Blurred artwork, cross-faded on track change.
-          AnimatedSwitcher(
-            duration: Motion.ambient,
-            switchInCurve: Motion.settle,
-            switchOutCurve: Motion.exit,
-            layoutBuilder: (currentChild, previousChildren) => Stack(
-              fit: StackFit.expand,
-              alignment: Alignment.center,
-              children: [
-                ...previousChildren,
-                if (currentChild != null) currentChild,
-              ],
-            ),
-            child: _BlurredArt(key: ValueKey(artUrl), artUrl: artUrl),
-          ),
+          // Blurred artwork. One baked wash (see blurred_backdrop.dart): the
+          // previous track's stays until the next is ready, then cross-fades,
+          // so there is never an empty frame between tracks.
+          _BlurredArt(artUrl: artUrl),
           // Dark scrim: keeps every screen legible over any artwork.
           DecoratedBox(
             decoration: BoxDecoration(
@@ -130,42 +117,31 @@ class _ArtCanvas extends StatelessWidget {
 }
 
 class _BlurredArt extends StatelessWidget {
-  const _BlurredArt({super.key, this.artUrl});
+  const _BlurredArt({this.artUrl});
 
   final String? artUrl;
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
     final url = artUrl;
-    if (url == null || url.isEmpty) {
+    final image = url == null || url.isEmpty ? null : backdropArtProvider(url);
+    if (image == null) {
       return const SizedBox.shrink();
     }
 
+    // Was a live `ImageFiltered(sigma 48)` over a 1.2x full-screen image with
+    // an `Opacity` inside it: on Impeller (no raster cache) that full-screen
+    // blur re-ran on every frame anything in the shell moved. Now it is
+    // blurred once per artwork into a small image and drawn as one quad; the
+    // same picture (test/blurred_backdrop_test.dart pins the bake).
     return RepaintBoundary(
-      // Isolates the sigma=48 blur from the rest of the shell. Without this,
-      // the backdrop shares a layer with the Navigator / mini player / nav
-      // bar, so any repaint up there can invalidate the filtered layer and
-      // force a full-screen blur to re-run. This is the single most expensive
-      // composited op in the shell, so it must only re-run when `artUrl`
-      // actually changes.
-      child: Transform.scale(
-        scale: 1.2,
-        child: ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-          child: Opacity(
-            opacity: 0.85,
-            child: CachedNetworkImage(
-              imageUrl: url,
-              fit: BoxFit.cover,
-              memCacheWidth: 240,
-              fadeInDuration: Motion.ambient,
-              errorWidget: (_, __, ___) => const SizedBox.shrink(),
-              // Oversized decode so the blur never samples edges.
-              width: size.width,
-              height: size.height,
-            ),
-          ),
+      child: Opacity(
+        opacity: 0.85,
+        child: BlurredBackdrop(
+          image: image,
+          sigma: 48,
+          scale: 1.2,
+          fade: MediaQuery.maybeDisableAnimationsOf(context) ?? false ? Duration.zero : Motion.ambient,
         ),
       ),
     );

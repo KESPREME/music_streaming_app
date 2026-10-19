@@ -84,7 +84,7 @@ void main() async {
     WindowsVideoPlayer.registerWith();
   }
   
-  // FIX: Request high refresh rate for smoother 120Hz animations
+  // 120 Hz: requested natively in MainActivity.requestHighRefreshRate().
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   
   // These two are initialised separately on purpose. Sharing one try/catch

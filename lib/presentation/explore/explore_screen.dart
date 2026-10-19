@@ -1,7 +1,8 @@
 import 'dart:async';
+import 'dart:math' show max;
 import 'dart:ui' show ImageFilter;
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -117,6 +118,12 @@ ExploreController bootstrapExploreController(BuildContext context,
     fetchSources: (anchor) async {
       // Source ladder: related → quick picks → favorites →
       // recents → charts → home shelves → official YouTube real-time charts.
+      //
+      // Every network source is fetched in ONE parallel wave. They used to be
+      // three sequential round trips (related, then the charts/home/playlist
+      // wave, then new releases), which is what made the first card slow.
+      final futures = <Future<void>>[];
+
       List<Track> related = const [];
       final relatedSeed = anchor ?? seed;
       if (relatedSeed != null &&
@@ -126,15 +133,26 @@ ExploreController bootstrapExploreController(BuildContext context,
         if (cached != null && _ExploreSourceCache.isFresh(cached.$2)) {
           related = cached.$1;
         } else {
-          try {
-            related = await InnerTubeService.instance
-                .getSuggestions(relatedSeed.id, limit: 30);
-            if (related.isNotEmpty) {
-              _ExploreSourceCache.cachedSuggestions[relatedSeed.id] =
-                  (related, DateTime.now());
-            }
-          } catch (_) {}
+          futures.add(() async {
+            try {
+              related = await InnerTubeService.instance
+                  .getSuggestions(relatedSeed.id, limit: 30);
+              if (related.isNotEmpty) {
+                _ExploreSourceCache.cachedSuggestions[relatedSeed.id] =
+                    (related, DateTime.now());
+              }
+            } catch (_) {}
+          }());
         }
+      }
+
+      List<Track> releases = provider.newReleases;
+      if (releases.isEmpty) {
+        futures.add(() async {
+          try {
+            releases = await InnerTubeService.instance.getNewReleases(limit: 15);
+          } catch (_) {}
+        }());
       }
 
       List<Track> charts = provider.fullTrendingTracks;
@@ -158,8 +176,6 @@ ExploreController bootstrapExploreController(BuildContext context,
       if (cachedPl != null && _ExploreSourceCache.isFresh(cachedPl.$2)) {
         officialChartTracks = cachedPl.$1;
       }
-
-      final futures = <Future<void>>[];
 
       // Only fetch trending tracks if we have nothing in provider and nothing fresh in cache
       final needTrending = charts.isEmpty &&
@@ -214,24 +230,20 @@ ExploreController bootstrapExploreController(BuildContext context,
         await Future.wait(futures);
       }
 
-      List<Track> releases = provider.newReleases;
-      if (releases.isEmpty) {
-        try {
-          releases = await InnerTubeService.instance.getNewReleases(limit: 15);
-        } catch (_) {}
-      }
       List<Track> quickPicks = provider.quickPicks;
       if (quickPicks.isEmpty) {
         quickPicks = provider.tracks.isNotEmpty
             ? provider.tracks
             : provider.recommendedTracks;
       }
-      debugPrint('EXPLORE_LOAD seed=${(anchor ?? seed)?.trackName ?? 'none'} '
-          'related=${related.length} quickPicks=${quickPicks.length} '
-          'favorites=${provider.likedSongs.length} '
-          'recents=${provider.recentlyPlayed.length} '
-          'charts=${charts.length} home=${homeShelves.length} '
-          'officialCharts=${officialChartTracks.length} releases=${releases.length}');
+      if (kDebugMode) {
+        debugPrint('EXPLORE_LOAD seed=${(anchor ?? seed)?.trackName ?? 'none'} '
+            'related=${related.length} quickPicks=${quickPicks.length} '
+            'favorites=${provider.likedSongs.length} '
+            'recents=${provider.recentlyPlayed.length} '
+            'charts=${charts.length} home=${homeShelves.length} '
+            'officialCharts=${officialChartTracks.length} releases=${releases.length}');
+      }
       return ExploreSources(
         seedRelated: related,
         quickPicks: quickPicks,
@@ -283,6 +295,9 @@ class _ExploreScreenState extends State<ExploreScreen>
   bool _isUserDragging = false;
   bool _isAppResumed = true;
   double _viewportH = 600;
+
+  /// The card whose palette has been asked for (see build).
+  String? _paletteRequestedFor;
 
   @override
   void initState() {
@@ -525,12 +540,20 @@ class _ExploreScreenState extends State<ExploreScreen>
     );
     final provider = context.read<MusicProvider>();
 
-    // Hysteresis: palette only re-resolves on settle (spec #33).
-    if (active != null && ExplorePaletteCache.cached(active.id) == null) {
-      _resolvePalette(controller);
-    } else if (active != null) {
+    // Hysteresis: palette only re-resolves on settle (spec #33). A card that
+    // became active without a settle here (the controller's own first settle,
+    // a restore) is resolved once - not on every rebuild until it lands, which
+    // started a PaletteGenerator run per rebuild.
+    if (active != null) {
       final cached = ExplorePaletteCache.cached(active.id);
-      if (cached != null && cached.background != _palette.background) {
+      if (cached == null) {
+        if (_paletteRequestedFor != active.id) {
+          _paletteRequestedFor = active.id;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _resolvePalette(controller);
+          });
+        }
+      } else if (cached.background != _palette.background) {
         _palette = cached;
       }
     }
@@ -759,13 +782,18 @@ class _ExploreScreenState extends State<ExploreScreen>
   void _preloadNext(ExploreController controller, List<ExploreItem> items,
       int index) {
     if (_isTesting || !widget.isActive || !_isAppResumed) return;
-    for (var i = index + 1;
+    // The current card too (a restore lands on it cold), then the next few:
+    // the exact image entries the cards read, and their palettes, so a swipe
+    // shows a finished card instead of one that fills in.
+    for (var i = max(0, index);
         i <= index + ExplorePolicy.prefetchAhead && i < items.length;
         i++) {
-      final t = items[i].track;
-      final url = t.albumArtUrl;
-      if (url.isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(url), context);
+      final item = items[i];
+      for (final image in exploreCardImages(item.track.albumArtUrl)) {
+        precacheImage(image, context, onError: (_, __) {});
+      }
+      if (i > index) {
+        unawaited(ExplorePaletteCache.resolve(item.id, item.track.albumArtUrl));
       }
     }
   }

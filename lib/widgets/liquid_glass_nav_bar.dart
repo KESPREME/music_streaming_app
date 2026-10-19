@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 
@@ -50,16 +51,21 @@ class LiquidGlassNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    MusicProvider? musicProvider;
+    // Only the three things this bar shows. A full listen rebuilt the most
+    // expensive widget in the app (glass, refraction, the tab bar and the pill)
+    // on every provider notification - downloads, search, lyrics, the feed.
+    ({PaletteGenerator? palette, bool hasTrack, bool hideMini})? state;
     try {
-      musicProvider = Provider.of<MusicProvider>(context, listen: true);
+      state = context.select<MusicProvider, ({PaletteGenerator? palette, bool hasTrack, bool hideMini})>(
+        (p) => (palette: p.paletteGenerator, hasTrack: p.currentTrack != null, hideMini: p.hideMiniPlayer),
+      );
     } catch (_) {
       // In isolated tests without MusicProvider in context
     }
-    final palette = musicProvider?.paletteGenerator;
+    final palette = state?.palette;
     final targetAccent = ColorUtils.getVibrantAccent(palette, scheme.primary);
-    final hasTrack = musicProvider?.currentTrack != null;
-    final hideMiniPlayer = musicProvider?.hideMiniPlayer ?? false;
+    final hasTrack = state?.hasTrack ?? false;
+    final hideMiniPlayer = state?.hideMini ?? false;
     // Deliberately NOT gated on isPlayerExpanded, even though the accessory is
     // fully covered once the player is open.
     //

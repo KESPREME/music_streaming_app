@@ -8,6 +8,7 @@ import 'package:music_streaming_app/providers/theme_provider.dart';
 import 'package:music_streaming_app/theme/amoled_theme.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/ambient_backdrop.dart';
+import 'package:music_streaming_app/widgets/blurred_backdrop.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -248,14 +249,14 @@ void main() {
     testWidgets('off: the artwork wash is built (blurred art)', (tester) async {
       await tester.pumpWidget(mount(withArt(), amoled: false));
       await tester.pump();
-      expect(find.byType(ImageFiltered), findsOneWidget);
+      expect(find.byType(BlurredBackdrop), findsOneWidget);
     });
 
     testWidgets('on: nothing is built but black - no blur, no art', (tester) async {
       final key = GlobalKey();
       await tester.pumpWidget(mount(withArt(), amoled: true, key: key));
       await tester.pump();
-      expect(find.byType(ImageFiltered), findsNothing,
+      expect(find.byType(BlurredBackdrop), findsNothing,
           reason: 'the 48-sigma blur is the shell\'s most expensive op');
       expect(find.byType(DecoratedBox), findsNothing,
           reason: 'no scrim and no accent bloom either');
@@ -266,11 +267,11 @@ void main() {
     testWidgets('a cold start in either mode does not animate', (tester) async {
       await tester.pumpWidget(mount(withArt(), amoled: true));
       // First frame, no settling: already black.
-      expect(find.byType(ImageFiltered), findsNothing);
+      expect(find.byType(BlurredBackdrop), findsNothing);
 
       await tester.pumpWidget(Container()); // tear down
       await tester.pumpWidget(mount(withArt(), amoled: false));
-      expect(find.byType(ImageFiltered), findsOneWidget);
+      expect(find.byType(BlurredBackdrop), findsOneWidget);
     });
 
     testWidgets('switching on fades to black over the ambient duration',
@@ -285,7 +286,7 @@ void main() {
 
       // Mid-fade: the art is still there under a veil that is neither clear nor
       // opaque.
-      expect(find.byType(ImageFiltered), findsOneWidget);
+      expect(find.byType(BlurredBackdrop), findsOneWidget);
       final veils = tester
           .widgetList<ColoredBox>(find.byType(ColoredBox))
           .where((b) => b.color.a > 0.05 && b.color.a < 0.95)
@@ -293,7 +294,7 @@ void main() {
       expect(veils, isNotEmpty, reason: 'a partly-opaque black veil');
 
       await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(ImageFiltered), findsNothing,
+      expect(find.byType(BlurredBackdrop), findsNothing,
           reason: 'once black, the blur is dropped');
     });
 
@@ -301,12 +302,12 @@ void main() {
       final music = withArt();
       await tester.pumpWidget(mount(music, amoled: true));
       await tester.pump();
-      expect(find.byType(ImageFiltered), findsNothing);
+      expect(find.byType(BlurredBackdrop), findsNothing);
 
       await tester.pumpWidget(mount(music, amoled: false));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1000));
-      expect(find.byType(ImageFiltered), findsOneWidget);
+      expect(find.byType(BlurredBackdrop), findsOneWidget);
     });
 
     testWidgets('reduce motion: it cuts, it does not fade', (tester) async {
@@ -315,7 +316,7 @@ void main() {
       await tester.pump();
       await tester.pumpWidget(mount(music, amoled: true, reduceMotion: true));
       await tester.pump(); // one frame, no settling
-      expect(find.byType(ImageFiltered), findsNothing);
+      expect(find.byType(BlurredBackdrop), findsNothing);
     });
 
     testWidgets('with nothing playing it is black as well', (tester) async {

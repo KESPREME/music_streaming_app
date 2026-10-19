@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/foundation.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -40,6 +41,7 @@ class ExplorePaletteCache {
   ExplorePaletteCache._();
 
   static final Map<String, ExplorePalette> _cache = {};
+  static final Map<String, Future<ExplorePalette>> _inFlight = {};
   static const int _cap = 30;
 
   @visibleForTesting
@@ -47,14 +49,21 @@ class ExplorePaletteCache {
 
   static ExplorePalette? cached(String itemId) => _cache[itemId];
 
-  static Future<ExplorePalette> resolve(String itemId, String artworkUrl) async {
+  /// One resolve per card, however many ask while it runs. Read through the
+  /// image disk cache at 100 px (the card already downloaded the artwork); it
+  /// used to be a second download of the full image via `NetworkImage`.
+  static Future<ExplorePalette> resolve(String itemId, String artworkUrl) {
     final hit = _cache[itemId];
-    if (hit != null) return hit;
-    if (artworkUrl.isEmpty) return _store(itemId, ExplorePalette.neutral);
+    if (hit != null) return Future.value(hit);
+    if (artworkUrl.isEmpty) return Future.value(_store(itemId, ExplorePalette.neutral));
+    return _inFlight[itemId] ??= _resolve(itemId, artworkUrl).whenComplete(() => _inFlight.remove(itemId));
+  }
+
+  static Future<ExplorePalette> _resolve(String itemId, String artworkUrl) async {
     try {
       decodeCount++;
       final palette = await PaletteGenerator.fromImageProvider(
-        NetworkImage(artworkUrl),
+        ResizeImage(CachedNetworkImageProvider(artworkUrl), width: 100, height: 100),
         size: const Size(100, 100),
         maximumColorCount: 15,
       );
@@ -71,7 +80,10 @@ class ExplorePaletteCache {
   }
 
   @visibleForTesting
-  static void clearForTest() => _cache.clear();
+  static void clearForTest() {
+    _cache.clear();
+    _inFlight.clear();
+  }
 
   static HSLColor _darken(Color c) {
     final hsl = HSLColor.fromColor(c);
