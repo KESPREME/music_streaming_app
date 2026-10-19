@@ -467,7 +467,8 @@ class CollectionSortRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter - 8, 2, CollectionStyle.gutter - 4, 2),
       child: Row(
         children: [
-          Semantics(
+          Flexible(
+            child: Semantics(
             button: true,
             label: 'Sort: $label',
             excludeSemantics: true,
@@ -481,7 +482,12 @@ class CollectionSortRow extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(label, style: CollectionStyle.meta(size: 15.5, alpha: 0.8, w: FontWeight.w600)),
+                      Flexible(
+                        child: Text(label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: CollectionStyle.meta(size: 15.5, alpha: 0.8, w: FontWeight.w600)),
+                      ),
                       const SizedBox(width: 4),
                       Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white.withValues(alpha: 0.7)),
                     ],
@@ -489,9 +495,9 @@ class CollectionSortRow extends StatelessWidget {
                 ),
               ),
             ),
+            ),
           ),
-          const Spacer(),
-          if (trailing != null) trailing!,
+          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],
       ),
     );

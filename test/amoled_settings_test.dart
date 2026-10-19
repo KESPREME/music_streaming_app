@@ -26,7 +26,11 @@ void main() {
 
   // Built once, outside the test zone: see the note in amoled_test.dart.
   late MockMusicProvider music;
-  setUpAll(() => music = MockMusicProvider());
+  setUpAll(() {
+    // Before the provider exists: its start-up reads preferences at once.
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    music = MockMusicProvider();
+  });
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   /// Two debug-mode assertions the Settings screen raises that have nothing to do

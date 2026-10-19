@@ -32,6 +32,9 @@ import '../widgets/replay/replay_card.dart';
 import 'replay_screen.dart';
 import '../widgets/library/library_shelves.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/collection/collection_kit.dart' show CollectionStyle, showCollectionToast;
+import '../widgets/playlist/open_playlist.dart';
+import '../widgets/playlist/playlist_edit_sheet.dart';
 
 /// Mine Music — Library Screen.
 ///
@@ -248,17 +251,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  void _openPlaylist(BuildContext context, Playlist playlist) {
-    _push(
-      context,
-      ThemedPlaylistDetailScreen(
-        playlistId: playlist.id,
-        playlistName: playlist.name,
-        playlistImage: playlist.imageUrl,
-        cachedTracks: playlist.tracks,
-      ),
-    );
-  }
+  void _openPlaylist(BuildContext context, Playlist playlist) =>
+      openUserPlaylist(context, playlist);
 
   void _openAlbum(BuildContext context, Track track) {
     _push(
@@ -333,7 +327,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               subtitle: count(lists, 'playlist', 'playlists'),
               icon: Icons.queue_music_rounded,
               color: const Color(0xFF2F7BEA),
-              onTap: () => _showTab('Playlists'),
+              onTap: () => _push(context, const ThemedUserPlaylistScreen()),
             ),
             LibraryQuickTile(
               title: 'History',
@@ -428,7 +422,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               LibraryShelfHeader(
                 title: 'Your playlists',
                 horizontalPadding: gutter,
-                onSeeAll: playlists.isEmpty ? null : () => _showTab('Playlists'),
+                onSeeAll: playlists.isEmpty ? null : () => _push(context, const ThemedUserPlaylistScreen()),
               ),
               LibraryRail(
                 height: LibraryArtCard.heightFor(148),
@@ -607,17 +601,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ThemedPlaylistDetailScreen(
-              playlistId: playlist.id,
-              playlistName: playlist.name,
-              playlistImage: playlist.imageUrl,
-              cachedTracks: playlist.tracks,
-            ),
-          ),
-        );
+        openUserPlaylist(context, playlist);
       },
       onLongPress: () => _showPlaylistOptions(context, playlist),
       child: Container(
@@ -983,93 +967,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
   // PLAYLIST MANAGEMENT & CONTEXT DIALOGS (Zero Regressions)
   // ---------------------------------------------------------------------------
 
-  void _showCreatePlaylistDialog(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    final accent = Theme.of(context).colorScheme.primary;
-    final nameController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF16181F),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: Text(
-          'Create Playlist',
-          style: GoogleFonts.plusJakartaSans(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            labelText: 'Playlist name',
-            labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-            hintText: 'My Awesome Mix',
-            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: accent.withValues(alpha: 0.5)),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: accent),
-            ),
-          ),
-          textCapitalization: TextCapitalization.words,
-          onSubmitted: (v) {
-            if (v.trim().isNotEmpty) {
-              Navigator.pop(dialogContext);
-              _createPlaylist(context, musicProvider, v.trim());
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              final n = nameController.text.trim();
-              if (n.isNotEmpty) {
-                Navigator.pop(dialogContext);
-                _createPlaylist(context, musicProvider, n);
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
+  /// "New playlist": the same create sheet as everywhere else (name, description,
+  /// cover), then a way to open what was made.
+  Future<void> _showCreatePlaylistDialog(BuildContext context) async {
+    final made = await showPlaylistEditSheet(context);
+    if (made == null || !context.mounted) return;
+    showCollectionToast(
+      context,
+      'Created "${made.name}"',
+      icon: Icons.playlist_add_check_rounded,
+      action: SnackBarAction(
+        label: 'Open',
+        textColor: CollectionStyle.accent,
+        onPressed: () => openUserPlaylist(context, made),
       ),
     );
   }
-
-  void _createPlaylist(BuildContext context, MusicProvider musicProvider, String name) {
-    final accent = Theme.of(context).colorScheme.primary;
-    musicProvider.createPlaylist(name);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Playlist "$name" created'),
-        backgroundColor: accent,
-        action: SnackBarAction(
-          label: 'View',
-          textColor: Colors.white,
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ThemedUserPlaylistScreen()),
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showPlaylistOptions(BuildContext context, Playlist playlist) {
     showModalBottomSheet(
       context: context,

@@ -21,6 +21,7 @@ import '../../models/playlist.dart';
 import '../../utils/app_image_cache.dart';
 import '../../utils/image_quality_utils.dart';
 import '../home_sections.dart' show PressableScale;
+import '../playlist/playlist_cover.dart';
 
 const double kLibraryCardRadius = 18;
 
@@ -421,56 +422,8 @@ class LibraryPlaylistCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final n = playlist.tracks.length;
-    final covers = playlist.tracks
-        .map((t) => t.albumArtUrl)
-        .where((u) => u.isNotEmpty)
-        .toSet()
-        .take(4)
-        .toList(growable: false);
-
-    final Widget art;
-    if (playlist.imageUrl.isNotEmpty || covers.length < 4) {
-      art = _Art(
-        url: playlist.imageUrl.isNotEmpty
-            ? playlist.imageUrl
-            : (covers.isEmpty ? '' : covers.first),
-        size: size,
-        icon: Icons.queue_music_rounded,
-      );
-    } else {
-      final half = size / 2;
-      art = Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(kLibraryCardRadius),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(kLibraryCardRadius),
-          child: Wrap(
-            children: [
-              for (final c in covers)
-                CachedNetworkImage(
-                  imageUrl: c,
-                  width: half,
-                  height: half,
-                  fit: BoxFit.cover,
-                  memCacheWidth: AppImageCache.thumbnailMemCache,
-                  errorWidget: (_, __, ___) =>
-                      Container(color: const Color(0xFF15171D)),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
+    final art = PlaylistCover(
+        playlist: playlist, size: size, radius: kLibraryCardRadius, shadow: true);
 
     return Semantics(
       button: true,

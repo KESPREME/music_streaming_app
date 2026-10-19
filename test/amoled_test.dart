@@ -200,7 +200,8 @@ void main() {
     late MockMusicProvider playing;
     late MockMusicProvider idle;
     setUpAll(() {
-      playing = MockMusicProvider(initialTrack: sampleTrack());
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+    playing = MockMusicProvider(initialTrack: sampleTrack());
       idle = MockMusicProvider();
     });
 
