@@ -25,8 +25,32 @@ class SpotifyService {
   String? _accessToken;
   final InnerTubeService _innerTubeService = InnerTubeService();
 
-  SpotifyService();
+  final http.Client? _client;
+  final Future<String> Function()? _tokenOverride;
+  final Future<List<Track>> Function(String query)? _searchOverride;
 
+  SpotifyService({
+    http.Client? client,
+    Future<String> Function()? tokenProvider,
+    Future<List<Track>> Function(String query)? search,
+  })  : _client = client,
+        _tokenOverride = tokenProvider,
+        _searchOverride = search;
+
+  /// Whether this build carries Spotify credentials. Without them nothing can
+  /// connect, and the import screen says so up front.
+  static bool get isConfigured => _clientId.isNotEmpty && _clientSecret.isNotEmpty;
+
+  /// Signed in to Spotify in this session.
+  bool get isConnected => _accessToken != null;
+
+  Future<http.Response> _get(Uri uri, String token) =>
+      (_client?.get ?? http.get)(uri, headers: {'Authorization': 'Bearer $token'});
+
+  Future<String> _token() => _tokenOverride?.call() ?? _authenticate();
+
+  Future<List<Track>> _search(String q) =>
+      _searchOverride?.call(q) ?? _innerTubeService.searchSongs(q, limit: 3);
   Future<String> _authenticate() async {
     if (_accessToken != null) return _accessToken!;
 
@@ -97,108 +121,119 @@ class SpotifyService {
     }
   }
 
+  /// Every playlist the listener owns or follows (Spotify pages them 50 at a
+  /// time; all pages are read).
   Future<List<Map<String, dynamic>>> getUserPlaylists() async {
     try {
-      final token = await _authenticate();
-
-      final response = await http.get(
-        Uri.parse('$_apiBaseUrl/me/playlists?limit=50'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data['items']);
-      } else {
-        throw Exception('Failed to fetch playlists: ${response.body}');
+      final token = await _token();
+      final out = <Map<String, dynamic>>[];
+      Uri? next = Uri.parse('$_apiBaseUrl/me/playlists?limit=50');
+      var pages = 0;
+      while (next != null && pages < 20) {
+        pages++;
+        final response = await _get(next, token);
+        if (response.statusCode != 200) {
+          throw Exception('Failed to fetch playlists: ${response.statusCode}');
+        }
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        for (final item in (data['items'] as List? ?? const [])) {
+          if (item is Map<String, dynamic> && item['id'] is String) out.add(item);
+        }
+        final n = data['next'];
+        next = n is String && n.isNotEmpty ? Uri.parse(n) : null;
       }
+      return out;
     } catch (e) {
       debugPrint('Error fetching playlists: $e');
       throw Exception('Failed to fetch playlists: $e');
     }
   }
 
-  Future<Playlist> getPlaylistWithTracks(String playlistId, String playlistName, String imageUrl) async {
-    try {
-      final token = await _authenticate();
-
-      final response = await http.get(
-        Uri.parse('$_apiBaseUrl/playlists/$playlistId/tracks'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final items = data['items'] as List;
-
-        final tracks = items.where((item) => item['track'] != null).map((item) {
-          final track = item['track'];
-          final artists = track['artists'] as List;
-          final artistName = artists.isNotEmpty ? artists[0]['name'] : 'Unknown Artist';
-
-          return Track(
-            id: track['id'],
-            trackName: track['name'],
-            artistName: artistName,
-            albumName: track['album']['name'],
-            previewUrl: track['preview_url'] ?? '',
-            albumArtUrl: track['album']['images'].isNotEmpty
-                ? track['album']['images'][0]['url']
-                : '',
-            source: 'spotify', // Mark as Spotify source
-          );
-        }).toList();
-
-        // Convert Spotify tracks to YouTube tracks using InnerTube
-        List<Track> youtubeTracks = [];
-        for (var track in tracks) {
-          try {
-            // Search for the track on YouTube Music using InnerTube
-            final searchQuery = "${track.trackName} ${track.artistName}";
-            final searchResults = await _innerTubeService.searchSongs(searchQuery, limit: 3);
-
-            if (searchResults.isNotEmpty) {
-              // Use the first result but keep the original track name and artist
-              final youtubeTrack = Track(
-                id: searchResults[0].id,
-                trackName: track.trackName,
-                artistName: track.artistName,
-                albumName: track.albumName,
-                previewUrl: searchResults[0].previewUrl,
-                albumArtUrl: track.albumArtUrl, // Keep Spotify album art
-                source: 'youtube',
-              );
-              youtubeTracks.add(youtubeTrack);
-            } else {
-              // If no YouTube results, just add the original track
-              youtubeTracks.add(track);
-            }
-          } catch (e) {
-            debugPrint('Error converting track to YouTube: $e');
-            // Just add the original track if conversion fails
-            youtubeTracks.add(track);
-          }
-        }
-
-        return Playlist(
-          id: playlistId,
-          name: playlistName,
-          imageUrl: imageUrl,
-          tracks: youtubeTracks, // Use the converted tracks
-        );
-      } else {
-        throw Exception('Failed to fetch playlist tracks: ${response.body}');
+  /// A Spotify playlist as a playlist here: every page of its songs (Spotify
+  /// returns 100 at a time; this used to stop at the first page), each matched
+  /// to YouTube Music.
+  ///
+  /// [onProgress] reports songs matched so far out of the total. [isCancelled]
+  /// is checked between songs; a cancelled import throws [ImportCancelled] and
+  /// saves nothing. A song with no match is kept as a Spotify song: playback
+  /// already looks those up by name when they are played.
+  Future<Playlist> getPlaylistWithTracks(
+    String playlistId,
+    String playlistName,
+    String imageUrl, {
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final token = await _token();
+    final source = <Track>[];
+    Uri? next = Uri.parse('$_apiBaseUrl/playlists/$playlistId/tracks?limit=100');
+    var pages = 0;
+    while (next != null && pages < 100) {
+      pages++;
+      final response = await _get(next, token);
+      if (response.statusCode != 200) {
+        throw Exception('Failed to fetch playlist tracks: ${response.statusCode}');
       }
-    } catch (e) {
-      debugPrint('Error fetching playlist tracks: $e');
-      throw Exception('Failed to fetch playlist tracks: $e');
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      for (final item in (data['items'] as List? ?? const [])) {
+        final track = item is Map ? item['track'] : null;
+        if (track is! Map || track['id'] is! String) continue; // local files, removed songs
+        final artists = (track['artists'] as List?) ?? const [];
+        final album = track['album'] as Map?;
+        final images = (album?['images'] as List?) ?? const [];
+        source.add(Track(
+          id: track['id'] as String,
+          trackName: (track['name'] as String?) ?? '',
+          artistName: artists.isNotEmpty ? (artists[0]['name'] as String? ?? 'Unknown Artist') : 'Unknown Artist',
+          albumName: (album?['name'] as String?) ?? '',
+          previewUrl: (track['preview_url'] as String?) ?? '',
+          albumArtUrl: images.isNotEmpty ? (images[0]['url'] as String? ?? '') : '',
+          durationMs: track['duration_ms'] is int ? track['duration_ms'] as int : null,
+          isExplicit: track['explicit'] == true,
+          source: 'spotify',
+        ));
+      }
+      final n = data['next'];
+      next = n is String && n.isNotEmpty ? Uri.parse(n) : null;
     }
-  }
 
+    final total = source.length;
+    onProgress?.call(0, total);
+    final tracks = <Track>[];
+    for (var i = 0; i < source.length; i++) {
+      if (isCancelled?.call() ?? false) throw const ImportCancelled();
+      final s = source[i];
+      try {
+        final results = await _search('${s.trackName} ${s.artistName}');
+        if (results.isNotEmpty) {
+          tracks.add(Track(
+            id: results[0].id,
+            trackName: s.trackName,
+            artistName: s.artistName,
+            albumName: s.albumName,
+            previewUrl: results[0].previewUrl,
+            albumArtUrl: s.albumArtUrl,
+            durationMs: s.durationMs,
+            isExplicit: s.isExplicit,
+            source: 'youtube',
+          ));
+        } else {
+          tracks.add(s);
+        }
+      } catch (e) {
+        debugPrint('Error converting track to YouTube: $e');
+        tracks.add(s);
+      }
+      onProgress?.call(i + 1, total);
+    }
+
+    return Playlist(
+      id: playlistId,
+      name: playlistName,
+      imageUrl: imageUrl,
+      tracks: tracks,
+    );
+  }
   // Helper method to search for a track on YouTube
   Future<Track?> findYouTubeTrack(Track spotifyTrack) async {
     try {
@@ -225,13 +260,9 @@ class SpotifyService {
 
   Future<Map<String, dynamic>> getPlaylistMetadata(String playlistId) async {
     try {
-       final token = await _authenticate();
-       final response = await http.get(
-        Uri.parse('$_apiBaseUrl/playlists/$playlistId?fields=id,name,images'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
+       final token = await _token();
+       final response = await _get(
+          Uri.parse('$_apiBaseUrl/playlists/$playlistId?fields=id,name,images,tracks.total'), token);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -249,5 +280,17 @@ class SpotifyService {
   }
 }
 
+/// Thrown when an import is cancelled between songs.
+class ImportCancelled implements Exception {
+  const ImportCancelled();
+}
 
-
+/// The playlist id in a Spotify playlist link, or null.
+/// Accepts `open.spotify.com/playlist/ID`, `/intl-xx/playlist/ID`, a `?si=` suffix, and `spotify:playlist:ID`.
+String? spotifyPlaylistIdFrom(String input) {
+  final s = input.trim();
+  final uri = RegExp(r'^spotify:playlist:([A-Za-z0-9]{10,})$').firstMatch(s);
+  if (uri != null) return uri.group(1);
+  final m = RegExp(r'spotify\.com/(?:[a-z-]+/)?playlist/([A-Za-z0-9]{10,})').firstMatch(s);
+  return m?.group(1);
+}
