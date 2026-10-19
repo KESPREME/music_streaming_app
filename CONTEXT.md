@@ -24,6 +24,22 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 81
 
 ## CURRENT STATE (commit 7f6777a)
 
+### Library: back nav, delete, YouTube playlists, Spotify import, Local Files (plan: docs/PLAN-local-import-youtube.md)
+- Back: `ShellPageTracker.canPop` (root_navigator.dart) is observed on `mainNavigatorKey`; MainScreen's
+  PopScope reads `canPop()` live and calls `maybePop()` so a page's own PopScope (selection, open
+  album) runs first. Never `mainNav.pop()` from the shell.
+- `deletePlaylist` = `deletePlaylistWithUndo` (notify first, never stops playback). The old one awaited
+  `stopTrack()` first, so deleting the playing playlist looked broken.
+- YouTube Music playlists: `browseJson('FEmusic_liked_playlists')` -> `parseLibraryPlaylists`
+  (walks for `musicTwoRowItemRenderer` + `VL…` browseId; drops `VLSE`). Cached per
+  `AuthService.identityKey`; a reply for a previous account is dropped and reloaded. Read-only; "Save a
+  copy" makes an editable playlist. Response shape assumed from known InnerTube structure, not
+  captured from a device.
+- Import is Spotify-only (`--dart-define SPOTIFY_CLIENT_ID/SECRET`; without them the screen says so).
+  Unmatched songs are kept as Spotify tracks (playback resolves them by search).
+- Local Files: albums group by album name + folder (duets stay on the album), artist = majority lead or
+  "Various artists". `isUnknownTag` hides the scanner's "Unknown Artist/Album" fallbacks.
+
 ### Lyrics v2 (plan: docs/PLAN-lyrics-v2.md — 1463 tests, 186 analyzer issues / 0 errors; device pass PENDING)
 
 The old per-section notes (parity plan, SweptLine, old clock) are superseded; git history has them.
