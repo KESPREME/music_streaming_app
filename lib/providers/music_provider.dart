@@ -5001,13 +5001,40 @@ for (final track in releases)
     }
   }
 
-  void unlikeSong(String trackId) {
-    int count = _likedSongs.length;
-    _likedSongs.removeWhere((t) => t.id == trackId);
-    if (_likedSongs.length < count) {
-      _saveLikedSongs();
-      notifyListeners();
+  void unlikeSong(String trackId) => unlikeSongs([trackId]);
+
+  /// Removes every liked song in [trackIds] with one save and one notify, and
+  /// returns what was removed (with its position) so it can be put back.
+  List<RemovedLike> unlikeSongs(Iterable<String> trackIds) {
+    final ids = trackIds.toSet();
+    if (ids.isEmpty) return const [];
+    final removed = <RemovedLike>[];
+    for (var i = 0; i < _likedSongs.length; i++) {
+      if (ids.contains(_likedSongs[i].id)) {
+        removed.add(RemovedLike(index: i, track: _likedSongs[i]));
+      }
     }
+    if (removed.isEmpty) return const [];
+    _likedSongs.removeWhere((t) => ids.contains(t.id));
+    _saveLikedSongs();
+    notifyListeners();
+    return removed;
+  }
+
+  /// Undo for [unlikeSongs]: each song goes back where it was. A song liked
+  /// again in the meantime is not duplicated.
+  void restoreLikedSongs(List<RemovedLike> removed) {
+    if (removed.isEmpty) return;
+    final sorted = [...removed]..sort((a, b) => a.index.compareTo(b.index));
+    var changed = false;
+    for (final r in sorted) {
+      if (isSongLiked(r.track.id)) continue;
+      _likedSongs.insert(r.index.clamp(0, _likedSongs.length), r.track);
+      changed = true;
+    }
+    if (!changed) return;
+    _saveLikedSongs();
+    notifyListeners();
   }
 
   void toggleLike(Track track) =>
@@ -6523,4 +6550,12 @@ class _QuickPicksSignalAdapter implements QuickPicksSignalProvider {
 
   @override
   List<String> topGenres({int limit = 5}) => _service.topGenres(limit: limit);
+}
+
+/// A liked song removed by [MusicProvider.unlikeSongs], and where it was.
+class RemovedLike {
+  const RemovedLike({required this.index, required this.track});
+
+  final int index;
+  final Track track;
 }

@@ -219,13 +219,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  void _openLiked(BuildContext context) => _openCollection(
-        context,
-        id: 'library_liked_songs',
-        name: 'Liked Songs',
-        tracks: context.read<MusicProvider>().likedSongs,
-        whenEmpty: const ThemedLikedSongsScreen(),
-      );
+  /// Liked Songs has its own live screen (search, sort, filters, swipe to
+  /// remove with undo, multi-select) - never a snapshot.
+  void _openLiked(BuildContext context) =>
+      _push(context, const ThemedLikedSongsScreen());
 
   void _openRecents(BuildContext context) => _openCollection(
         context,

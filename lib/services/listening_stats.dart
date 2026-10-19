@@ -152,6 +152,18 @@ class ListeningStats extends ChangeNotifier {
   /// Metadata for every track in [records].
   Map<String, ListenedTrack> get tracks => Map.unmodifiable(_tracks);
 
+  /// Counted plays (>= [countedPlay]) per track id, over the whole log.
+  Map<String, int> playCounts() {
+    final counted = countedPlay.inMilliseconds;
+    final out = <String, int>{};
+    for (final r in _records) {
+      final id = r.trackId;
+      if (id == null || r.ms < counted) continue;
+      out[id] = (out[id] ?? 0) + 1;
+    }
+    return out;
+  }
+
   /// Minutes known only as a yearly total.
   Map<int, int> get untrackedMs => Map.unmodifiable(_untrackedMs);
 
