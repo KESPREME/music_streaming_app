@@ -3,15 +3,15 @@
 // IMPORT FROM SPOTIFY (glass). Plan: docs/PLAN-local-import-youtube.md §2.
 //
 // Two routes in, one result out:
-//   * Connect Spotify -> your Spotify playlists, tick any, "Import N".
-//   * Paste a playlist link.
-// Each playlist is read in full (every page) and every song is matched to
-// YouTube Music, with progress you can watch and cancel. The result says how
-// many matched; a song with no match is kept and looked up when it is played.
-// Re-importing a playlist updates the copy you already have.
-//
-// Spotify only, by request. If this build has no Spotify credentials the
-// screen says so before anything is tapped.
+//   * Paste a playlist link -> any public playlist, read without an account
+//     or build credentials (spotify_public.dart). Always available.
+//   * Connect Spotify -> your own Spotify playlists, tick any, "Import N".
+//     Only when this build carries Spotify credentials.
+// Each playlist is read in full and every song is matched to YouTube Music
+// (best title/artist/length match, a few at a time), with progress you can
+// watch and cancel. The result says how many matched; a song with no match is
+// kept and looked up when it is played. Re-importing updates the copy you
+// already have.
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import '../models/playlist.dart';
 import '../providers/music_provider.dart';
+import '../services/spotify_public.dart' show SpotifyPublicException;
 import '../services/spotify_service.dart';
 import '../theme/amoled_theme.dart';
 import '../widgets/collection/collection_kit.dart';
@@ -31,7 +32,13 @@ const Color _spotifyGreen = Color(0xFF1DB954);
 
 /// One finished import, for the results list.
 class ImportResult {
-  const ImportResult({required this.playlist, required this.matched, required this.total, this.updated = false});
+  const ImportResult({
+    required this.playlist,
+    required this.matched,
+    required this.total,
+    this.updated = false,
+    this.spotifyTotal,
+  });
 
   final Playlist playlist;
   final int matched;
@@ -40,14 +47,31 @@ class ImportResult {
   /// It replaced a copy imported before.
   final bool updated;
 
+  /// How many songs the playlist has on Spotify, when more than could be read.
+  final int? spotifyTotal;
+
   int get unmatched => total - matched;
 }
 
 /// "118 of 120 songs matched" and the rest explained.
 String importSummary(ImportResult r) {
-  if (r.total == 0) return 'No songs in this playlist';
-  if (r.unmatched == 0) return r.total == 1 ? '1 song matched' : 'All ${r.total} songs matched';
-  return '${r.matched} of ${r.total} matched · ${r.unmatched} will be looked up when played';
+  final base = r.total == 0
+      ? 'No songs in this playlist'
+      : r.unmatched == 0
+          ? (r.total == 1 ? '1 song matched' : 'All ${r.total} songs matched')
+          : '${r.matched} of ${r.total} matched · ${r.unmatched} will be looked up when played';
+  final all = r.spotifyTotal;
+  return all != null && all > r.total ? '$base · Spotify shared ${r.total} of its $all songs' : base;
+}
+
+/// One playlist to import: how to read and match it.
+class _ImportJob {
+  const _ImportJob({required this.id, required this.name, required this.load});
+
+  final String id;
+  final String name;
+  final Future<({Playlist playlist, int? total})> Function(
+      void Function(int done, int total) onProgress, bool Function() isCancelled) load;
 }
 
 class PlaylistImportScreen extends StatefulWidget {
@@ -81,6 +105,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
   int _total = 0;
   int _queueIndex = 0;
   int _queueLength = 0;
+  bool _reading = false;
   String? _importError;
   final List<ImportResult> _results = [];
 
@@ -115,10 +140,13 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
 
   static String _friendly(Object e) {
     final s = e.toString();
+    if (e is SpotifyPublicException) return s;
     if (s.contains('cancel')) return 'Spotify sign-in was cancelled.';
-    if (s.contains('Network') || s.contains('Socket')) return 'No connection. Check your network and try again.';
+    if (s.contains('Network') || s.contains('Socket') || s.contains('Timeout')) {
+      return 'No connection. Check your network and try again.';
+    }
     if (s.contains('credentials missing')) return 'Spotify import is not set up in this build.';
-    return 'Spotify did not respond. Try again in a moment.';
+    return 'Spotify didn\'t answer. Try again in a moment.';
   }
 
   static String _imageOf(Map<String, dynamic> m) {
@@ -134,7 +162,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
     return t is Map && t['total'] is int ? t['total'] as int : null;
   }
 
-  Future<void> _run(List<({String id, String name, String image})> jobs) async {
+  Future<void> _run(List<_ImportJob> jobs) async {
     if (jobs.isEmpty || _importing) return;
     HapticFeedback.mediumImpact();
     final provider = context.read<MusicProvider>();
@@ -152,32 +180,39 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
         _currentName = job.name;
         _done = 0;
         _total = 0;
+        _reading = false;
       });
       try {
         final existed = provider.playlistById(job.id) != null;
-        final pl = await _spotify.getPlaylistWithTracks(
-          job.id,
-          job.name,
-          job.image,
-          onProgress: (d, t) {
+        final loaded = await job.load(
+          (d, t) {
             if (!mounted) return;
             setState(() {
+              _reading = false;
               _done = d;
               _total = t;
             });
           },
-          isCancelled: () => _cancel || !mounted,
+          () => _cancel || !mounted,
         );
+        final pl = loaded.playlist;
         await provider.importPlaylist(pl);
         final matched = pl.tracks.where((t) => t.source == 'youtube').length;
         if (!mounted) return;
         setState(() => _results.insert(
-            0, ImportResult(playlist: pl, matched: matched, total: pl.tracks.length, updated: existed)));
+            0,
+            ImportResult(
+              playlist: pl,
+              matched: matched,
+              total: pl.tracks.length,
+              updated: existed,
+              spotifyTotal: loaded.total,
+            )));
       } on ImportCancelled {
         break;
       } catch (e) {
         if (!mounted) return;
-        setState(() => _importError = 'Couldn\'t import "${job.name}". ${_friendly(e)}');
+        setState(() => _importError = 'Couldn\'t import "$_currentName". ${_friendly(e)}');
       }
     }
     if (!mounted) return;
@@ -193,6 +228,16 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
     }
   }
 
+  _ImportJob _accountJob(String id, String name, String image) => _ImportJob(
+        id: id,
+        name: name,
+        load: (onProgress, isCancelled) => _spotify
+            .getPlaylistWithTracks(id, name, image, onProgress: onProgress, isCancelled: isCancelled)
+            .then((pl) => (playlist: pl, total: null)),
+      );
+
+  /// A pasted link. Read publicly first (no account, no build credentials);
+  /// the signed-in API only if that fails and this build has credentials.
   Future<void> _importLink() async {
     final id = spotifyPlaylistIdFrom(_link.text);
     if (id == null) {
@@ -200,15 +245,125 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
       return;
     }
     FocusScope.of(context).unfocus();
-    try {
-      final meta = await _spotify.getPlaylistMetadata(id);
-      final name = (meta['name'] as String?) ?? 'Spotify playlist';
-      await _run([(id: id, name: name, image: _imageOf(meta))]);
-      if (mounted && _importError == null) _link.clear();
-    } catch (e) {
-      if (mounted) setState(() => _importError = 'Couldn\'t open that playlist. ${_friendly(e)}');
-    }
+    await _run([
+      _ImportJob(
+        id: id,
+        name: 'Spotify playlist',
+        load: (onProgress, isCancelled) async {
+          try {
+            return await _spotify.getPublicPlaylistWithTracks(
+              id,
+              onName: (name) {
+                if (mounted) setState(() => _currentName = name);
+              },
+              onReading: (read, total) {
+                if (!mounted) return;
+                setState(() {
+                  _reading = true;
+                  _done = read;
+                  _total = total;
+                });
+              },
+              onProgress: onProgress,
+              isCancelled: isCancelled,
+            );
+          } on ImportCancelled {
+            rethrow;
+          } catch (e) {
+            if (!_configured) rethrow;
+            final meta = await _spotify.getPlaylistMetadata(id);
+            final name = (meta['name'] as String?) ?? 'Spotify playlist';
+            if (mounted) setState(() => _currentName = name);
+            final pl = await _spotify.getPlaylistWithTracks(id, name, _imageOf(meta),
+                onProgress: onProgress, isCancelled: isCancelled);
+            return (playlist: pl, total: null);
+          }
+        },
+      ),
+    ]);
+    if (mounted && _importError == null && !_cancel) _link.clear();
   }
+
+  /// The link field, its paste button and Import. Pasting a Spotify link
+  /// starts the import straight away: that is what the listener came to do.
+  Widget _linkField() => Padding(
+        padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 0, CollectionStyle.gutter, 0),
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 52,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.10), width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.link_rounded, color: Colors.white.withValues(alpha: 0.6)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _link,
+                        enabled: !_importing,
+                        cursorColor: _spotifyGreen,
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.go,
+                        onSubmitted: (_) => _importLink(),
+                        style: CollectionStyle.meta(size: 15, alpha: 0.95),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          hintText: 'open.spotify.com/playlist/…',
+                          hintStyle: CollectionStyle.meta(size: 15, alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Paste',
+                      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                      icon: Icon(Icons.content_paste_rounded, color: Colors.white.withValues(alpha: 0.7), size: 20),
+                      onPressed: _importing
+                          ? null
+                          : () async {
+                              final data = await Clipboard.getData(Clipboard.kTextPlain);
+                              final text = data?.text?.trim();
+                              if (text == null || text.isEmpty || !mounted) return;
+                              _link.text = text;
+                              if (spotifyPlaylistIdFrom(text) != null) {
+                                HapticFeedback.selectionClick();
+                                _importLink();
+                              } else {
+                                setState(() => _importError = 'That doesn\'t look like a Spotify playlist link.');
+                              }
+                            },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ListenableBuilder(
+              listenable: _link,
+              builder: (context, _) => Opacity(
+                opacity: _link.text.trim().isEmpty || _importing ? 0.4 : 1,
+                child: SizedBox(
+                  width: 108,
+                  child: CollectionPill(
+                    label: 'Import',
+                    icon: Icons.download_rounded,
+                    filled: true,
+                    onTap: () {
+                      if (_link.text.trim().isNotEmpty && !_importing) _importLink();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -283,44 +438,55 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                       ),
                     ),
                   ),
+                  if (_importing)
+                    SliverToBoxAdapter(
+                      child: _Progress(
+                        name: _currentName,
+                        done: _done,
+                        total: _total,
+                        reading: _reading,
+                        index: _queueIndex,
+                        count: _queueLength,
+                        onCancel: () => setState(() => _cancel = true),
+                        cancelling: _cancel,
+                      ),
+                    ),
+                  if (_importError != null)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 0, CollectionStyle.gutter, 12),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(_importError!,
+                              style: CollectionStyle.meta(size: 14, alpha: 0.9).copyWith(color: const Color(0xFFFF8A8A))),
+                        ),
+                      ),
+                    ),
+                  if (_results.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _Results(
+                        results: _results,
+                        onOpen: (r) {
+                          final pl = provider.playlistById(r.playlist.id) ?? r.playlist;
+                          openUserPlaylist(context, pl);
+                        },
+                      ),
+                    ),
+                  // 1. Paste a link: works for any public playlist, no account.
+                  const SliverToBoxAdapter(child: _SectionTitle('Paste a playlist link')),
+                  SliverToBoxAdapter(child: _linkField()),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter + 4, 10, CollectionStyle.gutter, 0),
+                      child: Text('In Spotify: ··· → Share → Copy link. Any public playlist works, no sign-in needed.',
+                          style: CollectionStyle.meta(size: 13, alpha: 0.5).copyWith(height: 1.35)),
+                    ),
+                  ),
+                  // 2. Your own library, when this build can sign in to Spotify.
+                  const SliverToBoxAdapter(child: _SectionTitle('Your Spotify playlists')),
                   if (!_configured)
                     const SliverToBoxAdapter(child: _NotConfigured())
                   else ...[
-                    if (_importing)
-                      SliverToBoxAdapter(
-                        child: _Progress(
-                          name: _currentName,
-                          done: _done,
-                          total: _total,
-                          index: _queueIndex,
-                          count: _queueLength,
-                          onCancel: () => setState(() => _cancel = true),
-                          cancelling: _cancel,
-                        ),
-                      ),
-                    if (_importError != null)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 0, CollectionStyle.gutter, 12),
-                          child: Semantics(
-                            liveRegion: true,
-                            child: Text(_importError!,
-                                style: CollectionStyle.meta(size: 14, alpha: 0.9).copyWith(color: const Color(0xFFFF8A8A))),
-                          ),
-                        ),
-                      ),
-                    if (_results.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: _Results(
-                          results: _results,
-                          onOpen: (r) {
-                            final pl = provider.playlistById(r.playlist.id) ?? r.playlist;
-                            openUserPlaylist(context, pl);
-                          },
-                        ),
-                      ),
-                    // 1. Your Spotify playlists.
-                    const SliverToBoxAdapter(child: _SectionTitle('Your Spotify playlists')),
                     if (lists == null)
                       SliverToBoxAdapter(
                         child: Padding(
@@ -406,81 +572,6 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                         ),
                       ),
                     ],
-                    // 2. Paste a link.
-                    const SliverToBoxAdapter(child: _SectionTitle('Or paste a playlist link')),
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 0, CollectionStyle.gutter, 0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                height: 52,
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.07),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.10), width: 0.8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.link_rounded, color: Colors.white.withValues(alpha: 0.6)),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _link,
-                                        enabled: !_importing,
-                                        cursorColor: _spotifyGreen,
-                                        keyboardType: TextInputType.url,
-                                        textInputAction: TextInputAction.go,
-                                        onSubmitted: (_) => _importLink(),
-                                        style: CollectionStyle.meta(size: 15, alpha: 0.95),
-                                        decoration: InputDecoration(
-                                          isCollapsed: true,
-                                          border: InputBorder.none,
-                                          hintText: 'open.spotify.com/playlist/…',
-                                          hintStyle: CollectionStyle.meta(size: 15, alpha: 0.4),
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Paste',
-                                      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                                      icon: Icon(Icons.content_paste_rounded, color: Colors.white.withValues(alpha: 0.7), size: 20),
-                                      onPressed: _importing
-                                          ? null
-                                          : () async {
-                                              final data = await Clipboard.getData(Clipboard.kTextPlain);
-                                              final text = data?.text?.trim();
-                                              if (text != null && text.isNotEmpty) _link.text = text;
-                                            },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            ListenableBuilder(
-                              listenable: _link,
-                              builder: (context, _) => Opacity(
-                                opacity: _link.text.trim().isEmpty || _importing ? 0.4 : 1,
-                                child: SizedBox(
-                                  width: 108,
-                                  child: CollectionPill(
-                                    label: 'Import',
-                                    icon: Icons.download_rounded,
-                                    filled: true,
-                                    onTap: () {
-                                      if (_link.text.trim().isNotEmpty && !_importing) _importLink();
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                   SliverToBoxAdapter(child: SizedBox(height: clearance + (_picked.isNotEmpty ? 84 : 20))),
                 ],
@@ -516,7 +607,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                           final chosen = [
                             for (final m in lists ?? const <Map<String, dynamic>>[])
                               if (_picked.contains(m['id']))
-                                (id: m['id'] as String, name: (m['name'] as String?) ?? 'Untitled', image: _imageOf(m)),
+                                _accountJob(m['id'] as String, (m['name'] as String?) ?? 'Untitled', _imageOf(m)),
                           ];
                           _run(chosen);
                         },
@@ -564,8 +655,8 @@ class _NotConfigured extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Spotify import isn\'t available in this build: it was built without Spotify credentials. '
-                'Your playlists here and from YouTube Music still work.',
+                'Signing in to see your own Spotify library isn\'t available in this build. '
+                'Public playlist links above work without it.',
                 style: CollectionStyle.meta(size: 14.5, alpha: 0.75).copyWith(height: 1.4),
               ),
             ),
@@ -712,6 +803,7 @@ class _Progress extends StatelessWidget {
     required this.count,
     required this.onCancel,
     required this.cancelling,
+    this.reading = false,
   });
 
   final String name;
@@ -722,9 +814,16 @@ class _Progress extends StatelessWidget {
   final VoidCallback onCancel;
   final bool cancelling;
 
+  /// Reading the songs past the first 100, before matching starts.
+  final bool reading;
+
   @override
   Widget build(BuildContext context) {
-    final line = total == 0 ? 'Reading the playlist…' : 'Matching $done of $total songs';
+    final line = total == 0
+        ? 'Reading the playlist…'
+        : reading
+            ? 'Reading songs $done of $total'
+            : 'Matching $done of $total songs';
     return Container(
       margin: const EdgeInsets.fromLTRB(CollectionStyle.gutter, 0, CollectionStyle.gutter, 14),
       padding: const EdgeInsets.fromLTRB(16, 14, 6, 14),

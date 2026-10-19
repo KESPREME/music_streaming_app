@@ -11,6 +11,7 @@ import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/providers/theme_provider.dart';
 import 'package:music_streaming_app/screens/playlist_import_screen.dart';
 import 'package:music_streaming_app/screens/user_playlist_detail_screen.dart';
+import 'package:music_streaming_app/services/spotify_public.dart';
 import 'package:music_streaming_app/services/spotify_service.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:provider/provider.dart';
@@ -92,10 +93,104 @@ MockClient _api({void Function(Uri)? onRequest}) => MockClient((req) async {
       return http.Response('not found', 404);
     });
 
-/// Matches every song except "Song s2".
+/// Matches every song except "Song s2", the way YouTube Music would answer:
+/// the same title and artist, the same length.
 Future<List<Track>> _search(String q) async => q.startsWith('Song s2')
     ? const []
-    : [Track(id: 'yt_${q.split(' ')[1]}', trackName: 'x', artistName: 'y', albumName: '', previewUrl: '')];
+    : [
+        Track(id: 'cover_${q.split(' ')[1]}', trackName: 'Totally different', artistName: 'Karaoke Kings', albumName: '', previewUrl: '', durationMs: 180000),
+        Track(id: 'yt_${q.split(' ')[1]}', trackName: 'Song ${q.split(' ')[1]}', artistName: 'Artist', albumName: '', previewUrl: '', durationMs: 181000),
+      ];
+
+/// A Spotify embed page carrying [entity] (and the anonymous token).
+String _embedPage(Map<String, dynamic> entity) => '<html><script id="__NEXT_DATA__" type="application/json">'
+    '${jsonEncode({
+      'props': {
+        'pageProps': {
+          'state': {
+            'data': {'entity': entity},
+            'settings': {
+              'session': {'accessToken': 'anon', 'isAnonymous': true}
+            },
+          }
+        }
+      }
+    })}</script></html>';
+
+Map<String, dynamic> _embedTrack(String id) => {
+      'uri': 'spotify:track:$id',
+      'title': 'Song $id',
+      'subtitle': 'Artist,\u00a0Guest',
+      'duration': 180000,
+      'isExplicit': id == 'e1',
+    };
+
+/// The public (no account) endpoints: a 2-song playlist "pubsmall", and a
+/// 102-song one "publarge" whose embed shows 100 and whose spclient list has
+/// all 102.
+MockClient _publicApi() => MockClient((req) async {
+      final u = req.url.toString();
+      if (u.contains('/embed/playlist/pubsmall')) {
+        return http.Response(
+            _embedPage({
+              'type': 'playlist',
+              'name': 'Public Mix',
+              'coverArt': {
+                'sources': [
+                  {'url': 'https://i.scdn.co/pub.jpg'}
+                ]
+              },
+              'trackList': [_embedTrack('a1'), _embedTrack('e1')],
+            }),
+            200);
+      }
+      if (u.contains('/embed/playlist/publarge')) {
+        return http.Response(
+            _embedPage({
+              'type': 'playlist',
+              'name': 'Big One',
+              'trackList': [for (var i = 0; i < 100; i++) _embedTrack('n$i')],
+            }),
+            200);
+      }
+      if (u.contains('spclient.wg.spotify.com/playlist/v2/playlist/publarge')) {
+        expect(req.headers['Authorization'], 'Bearer anon');
+        return http.Response(
+            jsonEncode({
+              'length': 102,
+              'contents': {
+                'items': [
+                  for (var i = 0; i < 100; i++) {'uri': 'spotify:track:n$i'},
+                  {'uri': 'spotify:track:x1'},
+                  {'uri': 'spotify:episode:pod'},
+                  {'uri': 'spotify:track:x2'},
+                ]
+              }
+            }),
+            200);
+      }
+      final track = RegExp(r'/embed/track/(\w+)').firstMatch(u);
+      if (track != null) {
+        final id = track.group(1)!;
+        return http.Response(
+            _embedPage({
+              'type': 'track',
+              'id': id,
+              'name': 'Song $id',
+              'artists': [
+                {'name': 'Artist'}
+              ],
+              'duration': 180000,
+              'visualIdentity': {
+                'image': [
+                  {'url': 'https://i.scdn.co/$id.jpg', 'maxWidth': 300}
+                ]
+              },
+            }),
+            200);
+      }
+      return http.Response('nope', 404);
+    });
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -148,11 +243,83 @@ void main() {
     });
 
     test('summary wording', () {
-      ImportResult r(int m, int t) => ImportResult(
-          playlist: Playlist(id: 'x', name: 'x', imageUrl: '', tracks: const []), matched: m, total: t);
+      ImportResult r(int m, int t, [int? all]) => ImportResult(
+          playlist: Playlist(id: 'x', name: 'x', imageUrl: '', tracks: const []), matched: m, total: t, spotifyTotal: all);
       expect(importSummary(r(3, 3)), 'All 3 songs matched');
       expect(importSummary(r(2, 3)), '2 of 3 matched · 1 will be looked up when played');
       expect(importSummary(r(0, 0)), 'No songs in this playlist');
+      expect(importSummary(r(100, 100, 150)), 'All 100 songs matched · Spotify shared 100 of its 150 songs');
+      expect(importSummary(r(3, 3, 3)), 'All 3 songs matched');
+    });
+  });
+
+  group('matching', () {
+    Track s(String title, String artist, [int? ms]) =>
+        Track(id: 's', trackName: title, artistName: artist, albumName: '', previewUrl: '', durationMs: ms, source: 'spotify');
+
+    test('the same song scores high whatever the decoration', () {
+      expect(spotifyMatchScore(s('Bohemian Rhapsody - Remastered 2011', 'Queen', 354000),
+          s('Bohemian Rhapsody', 'Queen', 355000)), greaterThan(0.9));
+      expect(spotifyMatchScore(s('expectations (feat. Chappell Roan)', 'Olivia Rodrigo, Chappell Roan', 223000),
+          s('expectations', 'Olivia Rodrigo', 224000)), greaterThan(0.9));
+    });
+
+    test('a cover or a different song stays below the bar', () {
+      expect(spotifyMatchScore(s('Yellow', 'Coldplay', 266000), s('Yellow (Karaoke Version)', 'Sing King', 300000)),
+          lessThan(kSpotifyMatchThreshold));
+      expect(spotifyMatchScore(s('Yellow', 'Coldplay', 266000), s('Fix You', 'Coldplay', 295000)),
+          lessThan(kSpotifyMatchThreshold));
+    });
+
+    test('a length far off rules it out', () {
+      expect(spotifyMatchScore(s('Intro', 'The xx', 128000), s('Intro', 'The xx', 600000)), lessThan(0));
+    });
+
+    test('non-Latin titles still compare', () {
+      expect(spotifyMatchScore(s('紅蓮華', 'LiSA', 239000), s('紅蓮華', 'LiSA', 240000)), greaterThan(0.9));
+    });
+
+    test('the best result is taken, not the first', () async {
+      final pl = await SpotifyService(client: _api(), tokenProvider: () async => 'tok', search: _search)
+          .getPlaylistWithTracks('p2', 'Gym', '');
+      expect(pl.tracks.map((t) => t.id), ['yt_g1', 'yt_g2']);
+    });
+  });
+
+  group('public link (no account)', () {
+    SpotifyService service() =>
+        SpotifyService(client: _publicApi(), tokenProvider: () async => throw 'no account', search: _search);
+
+    test('parses the embed page: name, cover, songs, both artists', () async {
+      final r = await service().getPublicPlaylistWithTracks('pubsmall');
+      expect(r.playlist.name, 'Public Mix');
+      expect(r.playlist.imageUrl, 'https://i.scdn.co/pub.jpg');
+      expect(r.playlist.tracks.map((t) => t.id), ['yt_a1', 'yt_e1']);
+      expect(r.playlist.tracks.first.artistName, 'Artist, Guest');
+      expect(r.playlist.tracks[1].isExplicit, isTrue);
+      expect(r.total, 2);
+    });
+
+    test('past 100 songs: the full list from spclient, the rest from track pages, in order', () async {
+      final reading = <(int, int)>[];
+      final r = await service().getPublicPlaylistWithTracks('publarge', onReading: (a, b) => reading.add((a, b)));
+      expect(r.playlist.tracks, hasLength(102));
+      expect(r.playlist.tracks[100].trackName, 'Song x1');
+      expect(r.playlist.tracks[101].trackName, 'Song x2');
+      expect(r.playlist.tracks[101].albumArtUrl, 'https://i.scdn.co/x2.jpg');
+      expect(reading.last, (102, 102));
+      expect(r.total, 102);
+    });
+
+    test('a private or missing playlist says so', () async {
+      expect(() => service().getPublicPlaylistWithTracks('gone12345678'),
+          throwsA(isA<SpotifyPublicException>().having((e) => e.message, 'message', contains('private'))));
+    });
+
+    test('pure parsers tolerate junk', () {
+      expect(parseEmbedPlaylist('<html>no data</html>', 'x'), isNull);
+      expect(parseEmbedTrack('<script id="__NEXT_DATA__" type="application/json">{bad</script>'), isNull);
+      expect(parseSpclientPlaylist('[]').ids, isEmpty);
     });
   });
 
@@ -178,7 +345,8 @@ void main() {
       }
     });
 
-    Future<void> pump(WidgetTester tester, {bool configured = true, Size size = const Size(412, 1600), double scale = 1}) async {
+    Future<void> pump(WidgetTester tester,
+        {bool configured = true, Size size = const Size(412, 1600), double scale = 1, SpotifyService? service}) async {
       await tester.binding.setSurfaceSize(size);
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(MultiProvider(
@@ -192,7 +360,7 @@ void main() {
               MediaQuery(data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)), child: child!),
           home: PlaylistImportScreen(
             configured: configured,
-            service: SpotifyService(client: _api(), tokenProvider: () async => 'tok', search: _search),
+            service: service ?? SpotifyService(client: _api(), tokenProvider: () async => 'tok', search: _search),
           ),
         ),
       ));
@@ -218,6 +386,21 @@ void main() {
       await pump(tester, configured: false);
       expect(find.textContaining('isn\'t available in this build'), findsOneWidget);
       expect(find.text('Connect Spotify'), findsNothing);
+      expect(find.byType(TextField), findsOneWidget, reason: 'a link still works');
+    });
+
+    testWidgets('without credentials a pasted public link imports', (tester) async {
+      await pump(tester,
+          configured: false,
+          service: SpotifyService(client: _publicApi(), tokenProvider: () async => throw 'no account', search: _search));
+      await tester.enterText(find.byType(TextField), 'https://open.spotify.com/playlist/pubsmall12345?si=x');
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Import'));
+      await realWait(tester);
+      await realWait(tester);
+      expect(p.playlistById('pubsmall12345')?.name, 'Public Mix');
+      expect(p.playlistById('pubsmall12345')!.tracks, hasLength(2));
+      expect(find.text('All 2 songs matched'), findsOneWidget);
     });
 
     testWidgets('connect, pick two, import: both saved with an honest summary', (tester) async {
