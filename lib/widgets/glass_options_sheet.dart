@@ -340,7 +340,7 @@ class GlassOptionsSheet extends StatelessWidget {
                         _buildOption(
                           context,
                           icon: Icons.playlist_add_rounded,
-                          label: 'Add to a playlist...',
+                          label: _addToPlaylistLabel(provider.playlistsContaining(track.id).length),
                           onTap: () async {
                             final rootContext = context;
                             Navigator.pop(context);
@@ -603,6 +603,11 @@ class GlassOptionsSheet extends StatelessWidget {
 },
 );
 }
+
+  /// "Add to a playlist..." - with how many of your playlists already have it.
+  static String _addToPlaylistLabel(int inCount) => inCount == 0
+      ? 'Add to a playlist...'
+      : 'Add to a playlist... (in $inCount)';
 
   Widget _buildOption(
     BuildContext context, {
