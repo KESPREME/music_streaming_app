@@ -504,7 +504,10 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
             return const SizedBox.shrink();
           }
 
-          return Material(
+          // Painted above the root navigator, so a sheet or dialog could never
+          // cover it: it steps aside while one is open.
+          return StepAsideForModals(
+            child: Material(
             type: MaterialType.transparency,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -530,6 +533,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                 // Keeps the pill floating above nav bars on routes that have one.
                 const SizedBox(height: GlassTokens.playerBottomInset),
               ],
+            ),
             ),
           );
         },

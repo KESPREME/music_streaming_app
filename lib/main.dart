@@ -560,6 +560,9 @@ class _MainScreenState extends State<MainScreen> {
               const AmbientBackdrop(),
               Navigator(
                 key: mainNavigatorKey,
+                // Sheets and dialogs shown from inside the shell open here,
+                // UNDER the nav bar and pill; this lets them step aside.
+                observers: [ModalRouteTracker.shell],
                 onGenerateRoute: (settings) {
                   return MaterialPageRoute(
                     settings: settings,
@@ -629,6 +632,9 @@ class _MainScreenState extends State<MainScreen> {
         ),
         bottomNavigationBar: SafeArea(
           top: false,
+          // The nav bar (and the pill it hosts) is painted over the shell's
+          // navigator, so a sheet opened from a tab could never cover it.
+          child: StepAsideForModals(
           child: themeProvider.isMaterialYou
               ? Row(
                   children: [
@@ -706,6 +712,7 @@ class _MainScreenState extends State<MainScreen> {
                     BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music_rounded), label: 'Library'),
                   ],
                 ),
+          ),
         ),
       ),
     );
