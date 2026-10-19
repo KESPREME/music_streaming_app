@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -17,41 +19,35 @@ import '../utils/image_quality_utils.dart';
 import '../widgets/covered_gate.dart';
 import '../widgets/material_you_playback_bar.dart';
 import '../widgets/mini_player.dart';
+import 'player_dock.dart';
 
 /// The mini-pill <-> Now Playing transition.
 ///
 /// ## What this is
 ///
-/// A full-screen surface that translates. The reference this is matched against
-/// (BitChord, `MainActivity.kt`) does exactly one thing: `showNowPlaying = true`
-/// mounts a `ModalBottomSheet` whose only motion is its own default offset
-/// animation - a single vertical translate of one pre-rastered layer, plus a
-/// flat scrim fading over the page. There is no shared element, no artwork
-/// flight, no size morph, and the player content is never told where the sheet
-/// is.
+/// A full-screen player that translates over the page, and - when both ends
+/// are on screen - BitChord's dock: the player's artwork flies between its
+/// place in the player and the mini player's cover while the rest of the
+/// player fades (`player_dock.dart`). Without a cover or an artwork to meet
+/// (pill hidden, lyrics or queue open, reduce motion, Material You) it is the
+/// plain translate it always was.
 ///
-/// ## Why it does not read the pill's position
+/// ## Where the two ends come from
 ///
-/// Because the pill is not where it used to be assumed to be. It has two hosts
-/// (the nav bar's `bottomAccessory`, and the floating fallback here), plus a
-/// search-mode variant, and the nav bar's copy is *scroll-driven*: it animates
-/// down and re-docks when the bar minimizes (`liquid_glass_nav_bar.dart`). So
-/// the pill's rect is a moving target owned by a third-party widget. Sampling it
-/// - even once per flight - hands the collapse a stale endpoint at the exact
-/// frame the eye is most sensitive to. Making the motion geometry-independent
-/// means the docked, floating and scroll-minimized cases run identical code
-/// with no special cases, which is the only way this stays correct when the
-/// nav bar moves under it.
+/// The pill has two hosts (the nav bar's `bottomAccessory` and the floating
+/// fallback here) and the nav bar's copy moves when the bar minimizes. So the
+/// cover's rect is not assumed: the cover reports its render box and it is read
+/// every frame of a flight, from the previous frame's layout, through every
+/// transform above it. A stale rect for one frame is a fraction of a pixel at
+/// flight speeds; a guessed one was the old "doubled pill".
 ///
 /// ## What that costs per frame
 ///
-/// Nothing. The page below (`widget.child`) sits outside the animated subtree,
-/// and the player is hoisted into `AnimatedBuilder.child`, so a tick changes one
-/// matrix on one cached layer and the alpha of one flat scrim. No build, no
-/// layout, no raster. That is the same bargain Compose makes by putting the
-/// sheet in its own window, reached without moving the player out of this
-/// overlay and so without disturbing the nested player navigator, the back
-/// handling, or the frozen Material You variant.
+/// The plain slide: one matrix on one cached layer and the alpha of one flat
+/// scrim (the page sits outside the animated subtree; the player is hoisted
+/// into `AnimatedBuilder.child`). The dock adds the player's alpha (one
+/// composite of its cached layer) and a small positioned image, laid out per
+/// frame. The page and the player are never rebuilt for a tick.
 class GlobalMusicOverlay extends StatefulWidget {
   final Widget child;
 
@@ -70,30 +66,22 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     value: 0.0,
   );
 
-  /// Critically damped, and tuned to the reference's pace rather than copied
-  /// from it.
+  /// Critically damped, stiffness 195: about 0.45 s of response, the pace of
+  /// Apple Music's player sheet (BitChord's `SLIDE_STIFFNESS`). It leaves
+  /// briskly and spends most of its time settling, which is when the eye is
+  /// following the artwork home.
   ///
-  /// Material's sheet is `tween(300ms, FastOutSlowInEasing)`. This is a spring
-  /// instead, for one reason: a tween has no velocity at its ends, so
+  /// A spring rather than a tween because a tween has no velocity at its ends:
   /// interrupting one mid-flight restarts from a standstill and reads as a
-  /// hitch. That is precisely the "jitter on a fast double-tap" complaint, and
-  /// it is a property of the curve rather than of the geometry. A spring
-  /// carries velocity through the reversal, so the same gesture that was
-  /// interrupted just continues.
-  ///
-  /// Damping ratio is c / (2*sqrt(k*m)) = 38 / 37.68 = 1.008, so it decelerates
-  /// into rest with no perceptible overshoot - an underdamped spring here reads
-  /// as a wobble. Settle time is ~310ms to 2%, which is why the perceived pace
-  /// is unchanged from the 300ms tween it replaces.
-  static const SpringDescription _kPanelSpring =
-      SpringDescription(mass: 1, stiffness: 355, damping: 38);
+  /// hitch. A spring carries velocity through a reversal, so an interrupted
+  /// gesture just continues. Critically damped (c = 2·sqrt(k·m)) so it never
+  /// wobbles from rest.
+  static final SpringDescription _kPanelSpring =
+      SpringDescription(mass: 1, stiffness: 195, damping: 2 * math.sqrt(195));
 
-  /// How far ahead a released drag is projected to pick its resting end.
-  ///
-  /// The standard "where would it coast to" test, in place of the old fixed
-  /// 500px/s + 0.3 guesswork, which made a deliberate slow drag to 40% snap
-  /// open while a fast short flick did not.
-  static const double _kProjectionSeconds = 0.12;
+  /// A release this fast (dp/s) decides the direction by itself; slower, the
+  /// finger's position decides (past halfway opens).
+  static const double _kFlingVelocity = 400;
 
   /// Black at the alpha Material's sheet scrim uses
   /// (`onSurface.copy(alpha = 0.32f)`). The reference dims the page; without
@@ -180,6 +168,10 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     // (see [PanelCover]); created here so it is listening from the first frame.
     _cover = PanelCover(_panelController, isFrozen: () => MorphFreeze.enabled);
 
+    // The nav-bar-hosted pill reports its pulls here (see player_dock.dart).
+    _dock.onPull = _onDockPull;
+    _dock.onPullEnd = _onDockPullEnd;
+
     // The harness parks the flight so a frame can be captured and compared.
     // Applied after the listener so the provider still learns the state.
     final pinned = MorphFreeze.pinned;
@@ -198,9 +190,16 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   }
 
   void _onProviderIntentChanged() {
-    if (!mounted || MorphFreeze.enabled) return;
+    // A finger on the panel owns it; the provider's intent catches up on
+    // release. Without this any unrelated notification mid-drag (a download's
+    // progress, a palette) re-ran the sync and pulled the panel out from under
+    // the finger.
+    if (!mounted || MorphFreeze.enabled || _dragging) return;
     _syncFromProvider(_provider.isPlayerExpanded);
   }
+
+  /// A finger is on the panel (or on the pill pulling it up).
+  bool _dragging = false;
 
   @override
   void dispose() {
@@ -208,6 +207,11 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     // listener left attached would keep this State reachable and fire against a
     // disposed controller.
     _provider.removeListener(_onProviderIntentChanged);
+    if (_dock.onPull == _onDockPull) {
+      _dock.onPull = null;
+      _dock.onPullEnd = null;
+    }
+    _dock.setDocking(false);
     _cover.dispose();
     _panelController.dispose();
     super.dispose();
@@ -250,6 +254,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
 
   void _handleVerticalDragUpdate(DragUpdateDetails details, double pageHeight) {
     if (_playerNavHasSubroute) return;
+    _dragging = true;
     // Clamped: an unclamped flick could drive the controller past either end,
     // putting the card at a position it has no frame for. Assigning `value`
     // stops any running simulation, so a drag always wins over a flight.
@@ -258,13 +263,17 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   }
 
   void _handleVerticalDragEnd(DragEndDetails details, double pageHeight) {
+    _dragging = false;
     if (_playerNavHasSubroute) return;
     // The drag runs 1:1, so the finger's velocity converts straight into the
     // controller's units - upward finger, increasing value - and seeds the
     // spring, which continues the gesture instead of restarting it.
-    final velocity = -(details.primaryVelocity ?? 0.0) / pageHeight;
-    final projected = _panelController.value + velocity * _kProjectionSeconds;
-    _animatePanelTo(projected > 0.5 ? 1.0 : 0.0, velocity: velocity);
+    final dpPerSecond = details.primaryVelocity ?? 0.0;
+    final velocity = -dpPerSecond / pageHeight;
+    final open = dpPerSecond.abs() >= _kFlingVelocity
+        ? dpPerSecond < 0
+        : _panelController.value > 0.5;
+    _animatePanelTo(open ? 1.0 : 0.0, velocity: velocity);
   }
 
   // --- Flight ----------------------------------------------------------------
@@ -395,32 +404,45 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
                     // the resting pill's, so leaving it mounted meant a second
                     // capsule painted over the first - a blurred wash instead of
                     // the pill's glass, plus a duplicate row.
-                    if (t <= 0.0) return const SizedBox.shrink();
+                    if (t <= 0.0) {
+                      _dock.setDocking(false);
+                      _lastCardOffset = null;
+                      return const SizedBox.shrink();
+                    }
+
+                    final cardOffset = (1.0 - t) * pageHeight;
+                    final frame = t < 1.0 ? _dockFrameFor(t, pageHeight) : null;
+                    // Both real artworks stand aside only while the copy flies.
+                    _dock.setDocking(frame != null);
+                    _lastCardOffset = cardOffset;
+                    final sleeve = _dock.sleeve;
 
                     return Stack(
                       children: [
                         // Flat scrim, own layer. Only its alpha moves.
                         _buildScrim(t),
 
-                        // The card. One translate, no scale, no animating clip,
-                        // no opacity.
+                        // The card: one translate on a cached layer. The
+                        // structure never changes between the plain slide and
+                        // the dock (only the alpha does), so the player's
+                        // navigator is never remounted mid-flight. Alpha 1 is
+                        // free: Opacity paints straight through at 255.
                         //
-                        // All three of those were measured costs, and all three
-                        // also happen to be what the reference does not do: a
-                        // changing scale re-rasters the subtree (and its two
-                        // full-screen blurs) at every new scale, a changing
-                        // corner radius re-rasters the clip, and an opacity
-                        // wrapper is a full-screen saveLayer per frame. A
-                        // translate on a cached layer is none of those.
-                        //
-                        // Square corners are also simply correct: the reference
-                        // passes `RectangleShape` for exactly this surface.
+                        // Square corners on purpose: the reference passes
+                        // `RectangleShape` for exactly this surface.
                         Positioned.fill(
-                          child: Transform.translate(
-                            offset: Offset(0, (1.0 - t) * pageHeight),
-                            child: RepaintBoundary(child: playerChild),
+                          child: Opacity(
+                            opacity: frame?.playerAlpha ?? 1.0,
+                            child: Transform.translate(
+                              offset: Offset(0, cardOffset),
+                              child: RepaintBoundary(child: playerChild),
+                            ),
                           ),
                         ),
+
+                        // The artwork flying between the player and the cover,
+                        // over the fading player (see player_dock.dart).
+                        if (frame != null && sleeve != null) _buildSleeve(frame, sleeve),
                       ],
                     );
                   },
@@ -443,11 +465,97 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
     child: RepaintBoundary(
       child: IgnorePointer(
         child: ColoredBox(
-          color: Colors.black.withValues(alpha: _kScrimPeak * t),
+          // Nothing at fully open: the player is opaque, and a full-screen
+          // blend under it would be paid every frame for nothing.
+          color: Colors.black.withValues(alpha: t >= 1.0 ? 0.0 : _kScrimPeak * t),
         ),
       ),
     ),
   );
+
+  // --- Dock ------------------------------------------------------------------
+
+  final PlayerDock _dock = PlayerDock.instance;
+
+  /// The card's offset in the last built frame: the player's artwork was laid
+  /// out (and measured) under it, so subtracting it gives the open position.
+  double? _lastCardOffset;
+
+  /// This frame of the artwork's trip, or null for the plain slide: reduce
+  /// motion, Material You, no cover on screen (pill hidden), no artwork in the
+  /// player (lyrics or queue open), a player subroute, or the first frame of
+  /// an open before the player has been laid out.
+  DockFrame? _dockFrameFor(double t, double pageHeight) {
+    if (MediaQuery.disableAnimationsOf(context)) return null;
+    if (!Provider.of<ThemeProvider>(context, listen: false).isGlassmorphism) return null;
+    if (_playerNavHasSubroute) return null;
+    final lastOffset = _lastCardOffset;
+    if (lastOffset == null) return null;
+    final mini = _dock.miniRect();
+    final art = _dock.artRect();
+    if (mini == null || art == null) return null;
+    return dockFrame(
+      t: t,
+      mini: mini,
+      open: art.shift(Offset(0, -lastOffset)),
+      travel: pageHeight,
+      miniCorner: _dock.miniCorner,
+      openCorner: _dock.artCorner,
+    );
+  }
+
+  /// The travelling artwork: the player's own image (same cache entry), its
+  /// soft bottom edge firming into the cover's hard one as it lands.
+  Widget _buildSleeve(DockFrame f, WidgetBuilder sleeve) {
+    final fade = f.edgeFade;
+    Widget art = SizedBox.expand(child: sleeve(context));
+    if (fade > 0.02) {
+      art = ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (bounds) => LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, Colors.white, Colors.white.withValues(alpha: 1 - fade)],
+          stops: const [0.0, 0.58, 1.0],
+        ).createShader(bounds),
+        child: art,
+      );
+    }
+    return Positioned.fromRect(
+      rect: f.rect,
+      child: IgnorePointer(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(f.corner),
+          child: art,
+        ),
+      ),
+    );
+  }
+
+  /// An upward pull on the nav-bar-hosted pill: the player follows the finger
+  /// from the bar, the same as a pull on the floating pill.
+  void _onDockPull(double dy) {
+    if (!mounted || _playerNavHasSubroute) return;
+    final h = screenHeight;
+    if (_panelController.value <= 0 && dy >= 0) return; // only upward starts one
+    _dragging = true;
+    _panelController.value = (_panelController.value - dy / h).clamp(0.0, 1.0);
+    _cover.sync();
+  }
+
+  void _onDockPullEnd(double velocity) {
+    if (!mounted) return;
+    if (_panelController.value <= 0 && !_panelController.isAnimating) return;
+    _dragging = false;
+    // As generous as the old fling-to-open on the pill (200 dp/s up opens);
+    // otherwise the same flick-or-halfway rule as the player.
+    final open = velocity <= -200
+        ? true
+        : velocity >= _kFlingVelocity
+            ? false
+            : _panelController.value > 0.5;
+    _animatePanelTo(open ? 1.0 : 0.0, velocity: -velocity / screenHeight);
+  }
 
   /// The player, built once per overlay build and hoisted into
   /// `AnimatedBuilder.child` so a tick never re-runs its build or layout.

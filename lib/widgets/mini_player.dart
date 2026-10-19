@@ -12,6 +12,7 @@ import '../screens/themed_now_playing_screen.dart';
 import '../utils/color_utils.dart';
 import '../utils/app_image_cache.dart';
 import 'covered_gate.dart';
+import 'player_dock.dart';
 import 'seek_zone.dart';
 import 'track_swap.dart';
 
@@ -209,9 +210,16 @@ class _PillBody extends StatelessWidget {
               }
             }
           },
+          // An upward pull brings the player up under the finger (the overlay
+          // follows it through the dock); without an overlay, a fling opens it.
+          onVerticalDragUpdate: (details) =>
+              PlayerDock.instance.onPull?.call(details.primaryDelta ?? 0),
           onVerticalDragEnd: (details) {
             final vel = details.primaryVelocity;
-            if (vel != null && vel < -200) {
+            final pullEnd = PlayerDock.instance.onPullEnd;
+            if (pullEnd != null) {
+              pullEnd(vel ?? 0);
+            } else if (vel != null && vel < -200) {
               _openFullPlayer(context);
             }
           },
@@ -359,8 +367,10 @@ class _PillBody extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Row(
         children: [
-          // Compact 32x32 rounded album art thumbnail
-          ClipRRect(
+          // Compact 32x32 rounded album art thumbnail (the dock's landing spot)
+          DockMiniArt(
+            corner: 8.0,
+            child: ClipRRect(
             borderRadius: BorderRadius.circular(8.0),
             child: currentTrack.albumArtUrl.isNotEmpty
                 ? CachedNetworkImage(
@@ -382,6 +392,7 @@ class _PillBody extends StatelessWidget {
                     height: 32,
                     color: Colors.grey[900],
                   ),
+          ),
           ),
           const SizedBox(width: 8),
 
@@ -448,8 +459,10 @@ class _PillBody extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Rounded album art thumbnail
-          ClipRRect(
+          // Rounded album art thumbnail (the open player's artwork docks here)
+          DockMiniArt(
+            corner: 10.0,
+            child: ClipRRect(
             borderRadius: BorderRadius.circular(10.0),
             child: currentTrack.albumArtUrl.isNotEmpty
                 ? CachedNetworkImage(
@@ -471,6 +484,7 @@ class _PillBody extends StatelessWidget {
                     height: 36,
                     color: Colors.grey[900],
                   ),
+          ),
           ),
           const SizedBox(width: 10),
 
@@ -598,12 +612,14 @@ class _PressSquish extends StatefulWidget {
   const _PressSquish({
     required this.onTap,
     required this.onHorizontalDragEnd,
+    this.onVerticalDragUpdate,
     this.onVerticalDragEnd,
     required this.child,
   });
 
   final VoidCallback onTap;
   final GestureDragEndCallback onHorizontalDragEnd;
+  final GestureDragUpdateCallback? onVerticalDragUpdate;
   final GestureDragEndCallback? onVerticalDragEnd;
   final Widget child;
 
@@ -620,6 +636,7 @@ class _PressSquishState extends State<_PressSquish> {
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
       onHorizontalDragEnd: widget.onHorizontalDragEnd,
+      onVerticalDragUpdate: widget.onVerticalDragUpdate,
       onVerticalDragEnd: widget.onVerticalDragEnd,
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) => setState(() => _pressed = false),

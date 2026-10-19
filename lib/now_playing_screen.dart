@@ -36,6 +36,7 @@ import '../services/lyrics/lyric_clock.dart';
 import '../services/lyrics/lyric_clock_feed.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/in_place_canvas_player.dart';
+import '../widgets/player_dock.dart';
 import '../screens/lyrics_screen.dart';
 import '../screens/queue_screen.dart';
 import '../utils/color_utils.dart';
@@ -1295,7 +1296,18 @@ child: Transform.scale(
                   top: lerpDouble(0.0, statusBarHeight + 32.0, t)!,
                   width: lerpDouble(totalW, 46.0, t)!,
                   height: lerpDouble(heroH, 46.0, t)!,
-                  child: Listener(
+                  // The artwork docks into the mini player on close (see
+                  // player_dock.dart) only from its resting place: not while
+                  // it is the lyric or queue header, and not over a canvas
+                  // video (a still would replace the moving picture).
+                  child: DockPlayerArt(
+                    enabled: t == 0.0 &&
+                        !_queueMorphOpen &&
+                        widget.onMinimize != null &&
+                        !musicProvider.animatedCanvasEnabled,
+                    corner: _kHeroStartRadius,
+                    sleeve: (_) => _buildAlbumArtImage(currentTrack),
+                    child: Listener(
                     onPointerDown: _onArtPointerDown,
                     onPointerMove: _onArtPointerMove,
                     onPointerUp: _onArtPointerUp,
@@ -1366,6 +1378,7 @@ child: Transform.scale(
                       ),
                     ),
                     ),
+                  ),
                   ),
                 ),
 
