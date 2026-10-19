@@ -5247,6 +5247,18 @@ for (final track in releases)
         _userPlaylists = (await compute(_jsonDecode, s))
             .map((j) => Playlist.fromJson(Map<String, dynamic>.from(j as Map)))
             .toList();
+      final played = p.getString(_kPlaylistPlayedKey);
+      if (played != null) {
+        final m = jsonDecode(played);
+        if (m is Map) {
+          _playlistPlayedAt
+            ..clear()
+            ..addAll({
+              for (final e in m.entries)
+                if (e.value is int) e.key as String: e.value as int,
+            });
+        }
+      }
       _bumpHomeContent();
     } catch (_) {
       _userPlaylists = [];
@@ -5272,21 +5284,53 @@ for (final track in releases)
       notifyListeners();
       return;
     }
+    await createPlaylistWith(
+        name: name, tracks: initialTracks, imageUrl: imageUrl);
+  }
+
+  /// Creates a playlist and returns it (null when [name] is empty or saving
+  /// failed). Songs are de-duplicated by id, keeping their order.
+  Future<Playlist?> createPlaylistWith({
+    required String name,
+    List<Track>? tracks,
+    String? imageUrl,
+    String description = '',
+  }) async {
+    if (name.trim().isEmpty) {
+      _errorMessage = "Name empty.";
+      notifyListeners();
+      return null;
+    }
     try {
+      var now = DateTime.now().millisecondsSinceEpoch;
+      // Ids are the creation time; two playlists made in one millisecond (an
+      // import loop, a fast double tap) must not share one.
+      while (playlistById('pl_$now') != null) {
+        now++;
+      }
+      final seen = <String>{};
       final pl = Playlist(
-          id: 'pl_${DateTime.now().millisecondsSinceEpoch}',
-          name: name.trim(),
-          imageUrl: imageUrl ?? '',
-          tracks: initialTracks ?? []);
+        id: 'pl_$now',
+        name: name.trim(),
+        imageUrl: imageUrl ?? '',
+        tracks: [
+          for (final t in tracks ?? const <Track>[])
+            if (seen.add(t.id)) t,
+        ],
+        description: description.trim(),
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
       _userPlaylists.add(pl);
-      await saveUserPlaylists();
       _errorMessage = "Playlist created.";
       notifyListeners();
+      unawaited(saveUserPlaylists());
+      return pl;
     } catch (e, stack) {
       debugPrint("Error creating playlist: $e\n$stack");
-      // PROACTIVE FIX: Showing runtimeType to identify "Instance of" errors
       _errorMessage = 'Failed to create (${e.runtimeType}): $e';
       notifyListeners();
+      return null;
     }
   }
 
@@ -5314,7 +5358,8 @@ for (final track in releases)
     final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
     if (i < 0) return;
     try {
-      _userPlaylists[i] = _userPlaylists[i].copyWith(name: newName.trim());
+      _userPlaylists[i] = _userPlaylists[i]
+          .copyWith(name: newName.trim(), updatedAtMs: _nowMs());
       await saveUserPlaylists();
       _errorMessage = "Renamed.";
       notifyListeners();
@@ -5340,7 +5385,8 @@ for (final track in releases)
     try {
       // Create a clean copy of the track to ensure no transient fields cause issues
       final cleanTrack = track.copyWith();
-      _userPlaylists[i] = pl.copyWith(tracks: [...pl.tracks, cleanTrack]);
+      _userPlaylists[i] = pl.copyWith(
+          tracks: [...pl.tracks, cleanTrack], updatedAtMs: _nowMs());
       await saveUserPlaylists();
       _errorMessage = "Added to ${pl.name}.";
       notifyListeners();
@@ -5361,7 +5407,7 @@ for (final track in releases)
     try {
       final uT = pl.tracks.where((t) => t.id != trackId).toList();
       if (uT.length < pl.tracks.length) {
-        _userPlaylists[i] = pl.copyWith(tracks: uT);
+        _userPlaylists[i] = pl.copyWith(tracks: uT, updatedAtMs: _nowMs());
         await saveUserPlaylists();
         _errorMessage = "Removed '$tN'.";
         if (_currentPlaylistId == playlistId && _currentTrack?.id == trackId)
@@ -5372,6 +5418,180 @@ for (final track in releases)
       _errorMessage = 'Failed to remove track: $e';
       notifyListeners();
     }
+  }
+
+  // --- Playlist editing (live screens, undo) ---------------------------------
+
+  static const String _kPlaylistPlayedKey = 'playlist_last_played_v1';
+  final Map<String, int> _playlistPlayedAt = {};
+
+  static int _nowMs() => DateTime.now().millisecondsSinceEpoch;
+
+  Playlist? playlistById(String id) {
+    for (final p in _userPlaylists) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// Your playlists that already contain [trackId].
+  List<Playlist> playlistsContaining(String trackId) =>
+      [for (final p in _userPlaylists) if (p.tracks.any((t) => t.id == trackId)) p];
+
+  /// When a playlist last started playing from a Library screen (epoch ms).
+  int? playlistLastPlayedMs(String id) => _playlistPlayedAt[id];
+
+  /// Records that [id] was played now (sorts "Recently played"). Cheap: its own
+  /// small preference, not the playlists blob.
+  void markPlaylistPlayed(String id) {
+    if (playlistById(id) == null) return;
+    _playlistPlayedAt[id] = _nowMs();
+    unawaited(() async {
+      try {
+        final p = await SharedPreferences.getInstance();
+        await p.setString(_kPlaylistPlayedKey, jsonEncode(_playlistPlayedAt));
+      } catch (_) {}
+    }());
+    notifyListeners();
+  }
+
+  /// Adds [tracks] to the playlist, skipping any it already has. Returns how
+  /// many were added. One save, one notify.
+  Future<int> addTracksToPlaylist(String playlistId, List<Track> tracks) async {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0) return 0;
+    final pl = _userPlaylists[i];
+    final have = pl.tracks.map((t) => t.id).toSet();
+    final fresh = <Track>[
+      for (final t in tracks)
+        if (have.add(t.id)) t.copyWith(),
+    ];
+    if (fresh.isEmpty) return 0;
+    _userPlaylists[i] =
+        pl.copyWith(tracks: [...pl.tracks, ...fresh], updatedAtMs: _nowMs());
+    notifyListeners();
+    // Not awaited: the screen must not wait on a disk write to confirm. A
+    // failed write goes to the retry queue inside saveUserPlaylists.
+    unawaited(saveUserPlaylists());
+    return fresh.length;
+  }
+
+  /// Removes songs from a playlist and returns what was removed (with its
+  /// position) so [restorePlaylistTracks] can put it back.
+  List<RemovedPlaylistTrack> removeTracksFromPlaylist(
+      String playlistId, Iterable<String> trackIds) {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0) return const [];
+    final ids = trackIds.toSet();
+    final pl = _userPlaylists[i];
+    final removed = <RemovedPlaylistTrack>[
+      for (var n = 0; n < pl.tracks.length; n++)
+        if (ids.contains(pl.tracks[n].id))
+          RemovedPlaylistTrack(index: n, track: pl.tracks[n]),
+    ];
+    if (removed.isEmpty) return const [];
+    _userPlaylists[i] = pl.copyWith(
+      tracks: [for (final t in pl.tracks) if (!ids.contains(t.id)) t],
+      updatedAtMs: _nowMs(),
+    );
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+    return removed;
+  }
+
+  void restorePlaylistTracks(
+      String playlistId, List<RemovedPlaylistTrack> removed) {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0 || removed.isEmpty) return;
+    final tracks = [..._userPlaylists[i].tracks];
+    final sorted = [...removed]..sort((a, b) => a.index.compareTo(b.index));
+    var changed = false;
+    for (final r in sorted) {
+      if (tracks.any((t) => t.id == r.track.id)) continue;
+      tracks.insert(r.index.clamp(0, tracks.length), r.track);
+      changed = true;
+    }
+    if (!changed) return;
+    _userPlaylists[i] =
+        _userPlaylists[i].copyWith(tracks: tracks, updatedAtMs: _nowMs());
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+  }
+
+  /// Moves one song (ReorderableListView semantics: [newIndex] is the slot in
+  /// the list BEFORE the move).
+  void reorderPlaylistTrack(String playlistId, int oldIndex, int newIndex) {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0) return;
+    final tracks = [..._userPlaylists[i].tracks];
+    if (oldIndex < 0 || oldIndex >= tracks.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    newIndex = newIndex.clamp(0, tracks.length - 1);
+    if (newIndex == oldIndex) return;
+    tracks.insert(newIndex, tracks.removeAt(oldIndex));
+    _userPlaylists[i] =
+        _userPlaylists[i].copyWith(tracks: tracks, updatedAtMs: _nowMs());
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+  }
+
+  /// Edits name / description / cover. Null leaves a field as it is.
+  Future<void> updatePlaylist(String playlistId,
+      {String? name, String? description, String? imageUrl}) async {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0) return;
+    final trimmed = name?.trim();
+    if (trimmed != null && trimmed.isEmpty) return;
+    _userPlaylists[i] = _userPlaylists[i].copyWith(
+      name: trimmed,
+      description: description?.trim(),
+      imageUrl: imageUrl,
+      updatedAtMs: _nowMs(),
+    );
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+  }
+
+  void setPlaylistPinned(String playlistId, bool pinned) {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0 || _userPlaylists[i].pinned == pinned) return;
+    // Pinning is arranging, not editing: "recently updated" is left alone.
+    _userPlaylists[i] = _userPlaylists[i].copyWith(pinned: pinned);
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+  }
+
+  /// The listener's own order (Sort > Custom): [orderedIds] first, in order.
+  void setPlaylistOrder(List<String> orderedIds) {
+    var changed = false;
+    for (var n = 0; n < orderedIds.length; n++) {
+      final i = _userPlaylists.indexWhere((p) => p.id == orderedIds[n]);
+      if (i < 0 || _userPlaylists[i].customOrder == n) continue;
+      _userPlaylists[i] = _userPlaylists[i].copyWith(customOrder: n);
+      changed = true;
+    }
+    if (!changed) return;
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+  }
+
+  /// Deletes a playlist without stopping playback, returning an undo token.
+  /// (The queue holds its own copy of the songs, so what is playing continues.)
+  RemovedPlaylist? deletePlaylistWithUndo(String playlistId) {
+    final i = _userPlaylists.indexWhere((p) => p.id == playlistId);
+    if (i < 0) return null;
+    final removed = RemovedPlaylist(index: i, playlist: _userPlaylists.removeAt(i));
+    notifyListeners();
+    unawaited(saveUserPlaylists());
+    return removed;
+  }
+
+  void restorePlaylist(RemovedPlaylist removed) {
+    if (playlistById(removed.playlist.id) != null) return;
+    _userPlaylists.insert(
+        removed.index.clamp(0, _userPlaylists.length), removed.playlist);
+    notifyListeners();
+    unawaited(saveUserPlaylists());
   }
 
   Future<void> importPlaylist(Playlist playlist) async {
@@ -6558,4 +6778,20 @@ class RemovedLike {
 
   final int index;
   final Track track;
+}
+
+/// A song removed from a playlist, and where it was.
+class RemovedPlaylistTrack {
+  const RemovedPlaylistTrack({required this.index, required this.track});
+
+  final int index;
+  final Track track;
+}
+
+/// A deleted playlist, and where it was in the list.
+class RemovedPlaylist {
+  const RemovedPlaylist({required this.index, required this.playlist});
+
+  final int index;
+  final Playlist playlist;
 }
