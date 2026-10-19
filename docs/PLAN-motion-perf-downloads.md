@@ -58,9 +58,10 @@ Design (`lib/services/downloads/chunked_downloader.dart`, pure Dart `HttpClient`
 local `HttpServer`):
 
 - Size from `clen=` in the URL, else a `Range: bytes=0-0` probe (`Content-Range` total).
-- Split into ≤ 4 MB ranges, 4 connections per file, each `Range: bytes=a-b` with the signing
-  client's User-Agent; written at offset into `<id>.part` (RandomAccessFile).
-- Resume: completed ranges recorded in `<id>.part.json`; a retry continues instead of restarting.
+- Split into ≤ 1 MB ranges, 4 connections per file, each `Range: bytes=a-b` with the signing
+  client's User-Agent; each range streams into its own `<id>.mp3.part<i>` file.
+- Resume: a range file is renamed from `.tmp` only when complete, so a retry fetches only what is
+  missing; a size marker stops a different format being spliced in.
 - Verify size == total, then atomic rename to the final name.
 - Per-range retry ×3 with backoff; a 403/410 invalidates the cached URL and re-resolves once.
 - Unknown size or no Range support → single streamed GET (still with UA, still `.part` + rename).

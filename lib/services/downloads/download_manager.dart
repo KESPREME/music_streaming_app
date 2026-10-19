@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/track.dart';
+import 'chunked_downloader.dart';
 
 String _jsonEncodeData(Object data) => jsonEncode(data);
 List<dynamic> _jsonDecodeData(String s) => jsonDecode(s) as List<dynamic>;
@@ -36,12 +37,31 @@ class DownloadManager extends ChangeNotifier {
     required this.isConnected,
     required this.stopActiveTrack,
     required this.removeLocalTrackByPath,
-  });
+    this.cachedStreamFile,
+    this.onStaleStream,
+    ChunkedDownloader? downloader,
+    Future<Directory> Function()? baseDirectory,
+  })  : _downloader = downloader ?? ChunkedDownloader(),
+        _baseDirectory = baseDirectory ?? getApplicationSupportDirectory;
+
+  /// The finished streaming-cache file of a song, if it has been played
+  /// through: copied instead of downloaded again.
+  final Future<String?> Function(String trackId)? cachedStreamFile;
+
+  /// A resolved URL turned out to be expired (403/410): forget it so the next
+  /// resolve gets a fresh one.
+  final void Function(String streamId)? onStaleStream;
+
+  final ChunkedDownloader _downloader;
+  final Future<Directory> Function() _baseDirectory;
 
   static const String _metadataKey = 'downloadedTracks';
-  static const int _maxConcurrent = 6;
+
+  /// Files at once. Each one uses [ChunkedDownloader.connections] connections,
+  /// so 3 is already 12 parallel ranges.
+  static const int _maxConcurrent = 3;
   static const int _minValidFileBytes = 50 * 1024;
-  static const Duration _progressThrottle = Duration(milliseconds: 250);
+  static const Duration _progressThrottle = Duration(milliseconds: 200);
 
   final Future<ResolvedDownload?> Function(Track track) resolveStreamForTrack;
   final void Function(String message) onMessage;
@@ -75,13 +95,16 @@ class DownloadManager extends ChangeNotifier {
   // --- Directory layout -----------------------------------------------------
 
   Future<Directory> getDownloadsDirectory() async {
-    final d = await getApplicationSupportDirectory();
+    final d = await _baseDirectory();
     final dl = Directory('${d.path}/offline_music');
     if (!await dl.exists()) await dl.create(recursive: true);
     return dl;
   }
 
   Future<String> _buildDownloadFilePath(String trackId) async =>
+      // `.mp3` whatever the container (it is usually m4a/opus): kept because
+      // existing downloads and the legacy artwork lookup rely on the name, and
+      // the player identifies the format from the bytes, not the extension.
       '${(await getDownloadsDirectory()).path}/$trackId.mp3';
 
   Future<String> _buildArtDownloadPath(String trackId) async =>
@@ -90,6 +113,7 @@ class DownloadManager extends ChangeNotifier {
   // --- Persistence ----------------------------------------------------------
 
   Future<void> loadMetadata() async {
+    unawaited(_sweepStalePartials());
     try {
       final p = await SharedPreferences.getInstance();
       final s = p.getString(_metadataKey);
@@ -157,14 +181,25 @@ class DownloadManager extends ChangeNotifier {
 
   void _invalidateCache() => _downloadedTracksCache = null;
 
+  /// Pieces of downloads that never finished (the app was closed and the song
+  /// was not downloaded again) are kept for a resume, but not forever.
+  Future<void> _sweepStalePartials() async {
+    try {
+      final dir = await getDownloadsDirectory();
+      final cutoff = DateTime.now().subtract(const Duration(days: 3));
+      await for (final e in dir.list()) {
+        if (e is! File) continue;
+        final name = e.uri.pathSegments.last;
+        if (!name.contains('.part') && !name.endsWith('.tmp')) continue;
+        if ((await e.stat()).modified.isBefore(cutoff)) await e.delete();
+      }
+    } catch (_) {}
+  }
+
   // --- Core operations ------------------------------------------------------
 
   Future<void> downloadTrack(Track track) async {
     final id = track.id;
-    if (await isTrackDownloaded(id)) {
-      onMessage("${track.trackName} downloaded.");
-      return;
-    }
     if (_isDownloading[id] == true) {
       onMessage("${track.trackName} downloading.");
       return;
@@ -172,6 +207,16 @@ class DownloadManager extends ChangeNotifier {
     if (track.source == 'local') {
       onMessage("Cannot download local files.");
       return;
+    }
+    // Only a song with metadata can already be downloaded; checking its file
+    // is the one await, and it is skipped for new songs so the slot below is
+    // taken in the same turn (a batch never overfills the limit).
+    if (_metadata.containsKey(id)) {
+      if (await isTrackDownloaded(id)) {
+        onMessage("${track.trackName} downloaded.");
+        return;
+      }
+      if (_isDownloading[id] == true) return;
     }
     if (isOffline() || !isConnected()) {
       onMessage('Offline: Cannot download.');
@@ -183,6 +228,10 @@ class DownloadManager extends ChangeNotifier {
     }
     await _runDownload(track);
   }
+
+  /// Downloads paused by a dropped connection: their finished ranges are kept
+  /// and they go back to the front of the queue (a user cancel discards).
+  final Set<String> _pausedIds = {};
 
   Future<void> _runDownload(Track track) async {
     final id = track.id;
@@ -198,73 +247,72 @@ class DownloadManager extends ChangeNotifier {
 
     String fP = '';
     try {
-      final resolved = await resolveStreamForTrack(track);
-      final sUrl = resolved?.url;
-      if (sUrl == null) throw Exception('No downloadable stream found.');
-
       fP = await _buildDownloadFilePath(id);
 
-      // Download artwork simultaneously (if available)
-      String aP = '';
-      if (track.albumArtUrl.isNotEmpty) {
-        aP = await _buildArtDownloadPath(id);
-        try {
-          await _downloadWithProgress(track.albumArtUrl, aP, cT, id);
-        } catch (e) {
-          if (kDebugMode) debugPrint('DownloadManager: Art download failed: $e');
-          aP = ''; // Fallback to network if local art fails
-        }
+      // Artwork in parallel and off the progress bar: it is a few KB and must
+      // never hold up, or be mistaken for, the song.
+      final art = _downloadArtwork(track, cT);
+
+      // Played all the way through already: the streaming cache has every
+      // byte. Copy it instead of fetching the song again.
+      final cached = await cachedStreamFile?.call(id);
+      if (cached != null && await File(cached).exists()) {
+        await File(cached).copy('$fP.tmp');
+        if (await File(fP).exists()) await File(fP).delete();
+        await File('$fP.tmp').rename(fP);
+        _setProgress(id, 1);
+      } else {
+        await _transfer(track, fP, cT);
       }
 
-      await _downloadWithProgress(sUrl, fP, cT, id);
+      final aP = await art;
+      if (cT.isCancelled) throw const DownloadCancelled();
 
-      if (!cT.isCancelled) {
-        // Validate file size before saving metadata
-        final file = File(fP);
-        if (await file.exists() && await file.length() > _minValidFileBytes) {
-          _metadata[id] = {
-            'track': track,
-            'filePath': fP,
-            'artPath': aP,
-            'downloadDate': DateTime.now()
-          };
-          await saveMetadata();
-          _invalidateCache();
-          onMessage("${track.trackName} downloaded.");
-        } else {
-          // File too small or missing - likely an error page or empty
-          if (await file.exists()) await file.delete();
-          throw Exception("Download failed: File corrupt or too small.");
-        }
+      // Validate file size before saving metadata
+      final file = File(fP);
+      if (await file.exists() && await file.length() > _minValidFileBytes) {
+        _metadata[id] = {
+          'track': track,
+          'filePath': fP,
+          'artPath': aP,
+          'downloadDate': DateTime.now()
+        };
+        await saveMetadata();
+        _invalidateCache();
+        onMessage("${track.trackName} downloaded.");
       } else {
-        onMessage("${track.trackName} cancelled.");
-        if (fP.isNotEmpty) {
-          try {
-            final f = File(fP);
-            if (await f.exists()) await f.delete();
-          } catch (_) {}
-        }
+        // File too small or missing - likely an error page or empty
+        if (await file.exists()) await file.delete();
+        throw Exception("Download failed: File corrupt or too small.");
       }
     } catch (e) {
-      if (!cT.isCancelled) {
+      final paused = _pausedIds.remove(id);
+      if (paused) {
+        // Connection dropped: keep the finished ranges, resume first.
+        if (!_downloadQueue.any((t) => t.id == id)) _downloadQueue.insert(0, track);
+      } else if (cT.isCancelled || e is DownloadCancelled) {
+        onMessage("${track.trackName} cancelled.");
+        if (fP.isNotEmpty) await ChunkedDownloader.discardPartial(fP);
+      } else {
         onMessage('Download failed: ${track.trackName}');
-        if (fP.isNotEmpty) {
-          try {
-            final f = File(fP);
-            if (await f.exists()) await f.delete();
-          } catch (_) {}
-        }
-        bool retry = e is DioException &&
-            [
-              DioExceptionType.connectionTimeout,
-              DioExceptionType.sendTimeout,
-              DioExceptionType.receiveTimeout,
-              DioExceptionType.connectionError,
-              DioExceptionType.unknown
-            ].contains(e.type);
-        if (retry) {
-          onTransientFailure('Download: ${track.trackName}',
-              () => downloadTrack(track));
+        final transient = e is SocketException ||
+            e is TimeoutException ||
+            e is HttpException ||
+            (e is DownloadHttpException && (e.status >= 500 || e.status == 429)) ||
+            (e is DioException &&
+                [
+                  DioExceptionType.connectionTimeout,
+                  DioExceptionType.sendTimeout,
+                  DioExceptionType.receiveTimeout,
+                  DioExceptionType.connectionError,
+                  DioExceptionType.unknown
+                ].contains(e.type));
+        if (transient) {
+          // Finished ranges stay on disk: the retry resumes, it does not
+          // start over.
+          onTransientFailure('Download: ${track.trackName}', () => downloadTrack(track));
+        } else if (fP.isNotEmpty) {
+          await ChunkedDownloader.discardPartial(fP);
         }
       }
     } finally {
@@ -272,6 +320,7 @@ class DownloadManager extends ChangeNotifier {
         _isDownloading.remove(id);
         _downloadProgress.remove(id);
         _downloadCancelTokens.remove(id);
+        _lastProgressNotify.remove(id);
         _currentlyDownloadingTracks.removeWhere((t) => t.id == id);
         _concurrentDownloads = max(0, _concurrentDownloads - 1);
       }
@@ -280,25 +329,61 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  Future<void> _downloadWithProgress(
-      String url, String savePath, CancelToken cT, String id) {
-    return _dio.download(url, savePath, cancelToken: cT,
-        onReceiveProgress: (received, total) {
-      if (total > 0 && _isDownloading[id] == true) {
-        _downloadProgress[id] = received / total;
-        final now = DateTime.now();
-        if (!_lastProgressNotify.containsKey(id) ||
-            now.difference(_lastProgressNotify[id]!) >= _progressThrottle) {
-          _lastProgressNotify[id] = now;
-          notifyListeners();
-        }
+  /// Resolves and fetches the song. An expired URL (403/410) is forgotten and
+  /// resolved once more; the finished ranges are reused if the new URL is the
+  /// same file.
+  Future<void> _transfer(Track track, String path, CancelToken cT) async {
+    for (var attempt = 0;; attempt++) {
+      final resolved = await resolveStreamForTrack(track);
+      final url = resolved?.url;
+      if (url == null) throw Exception('No downloadable stream found.');
+      if (cT.isCancelled) throw const DownloadCancelled();
+      try {
+        await _downloader.download(
+          url: Uri.parse(url),
+          path: path,
+          userAgent: resolved!.userAgent,
+          isCancelled: () => cT.isCancelled,
+          onProgress: (received, total) {
+            if (total > 0) _setProgress(track.id, received / total);
+          },
+        );
+        return;
+      } on DownloadHttpException catch (e) {
+        if (!e.expired || attempt >= 1) rethrow;
+        onStaleStream?.call(resolved!.streamId ?? track.id);
       }
-    });
+    }
+  }
+
+  Future<String> _downloadArtwork(Track track, CancelToken cT) async {
+    if (track.albumArtUrl.isEmpty || !track.albumArtUrl.contains('://')) return '';
+    try {
+      final aP = await _buildArtDownloadPath(track.id);
+      await _dio.download(track.albumArtUrl, aP, cancelToken: cT);
+      return aP;
+    } catch (e) {
+      if (kDebugMode) debugPrint('DownloadManager: Art download failed: $e');
+      return ''; // the network artwork is used instead
+    }
+  }
+
+  void _setProgress(String id, double value) {
+    if (_isDownloading[id] != true) return;
+    _downloadProgress[id] = value.clamp(0.0, 1.0);
+    final now = DateTime.now();
+    final last = _lastProgressNotify[id];
+    if (last == null || now.difference(last) >= _progressThrottle || value >= 1) {
+      _lastProgressNotify[id] = now;
+      notifyListeners();
+    }
   }
 
   void cancelDownload(String trackId) {
     _downloadQueue.removeWhere((t) => t.id == trackId);
+    _pausedIds.remove(trackId);
     _downloadCancelTokens[trackId]?.cancel('Cancelled by user.');
+    notifyListeners();
   }
 
   Future<void> deleteDownloadedTrack(String trackId) async {
@@ -410,15 +495,20 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<void> _processQueue() async {
-    if (_downloadQueue.isEmpty ||
-        isOffline() ||
-        !isConnected() ||
-        _concurrentDownloads >= _maxConcurrent) {
-      return;
+    // Fill every free slot, not one per finished download.
+    while (_downloadQueue.isNotEmpty &&
+        !isOffline() &&
+        isConnected() &&
+        _concurrentDownloads < _maxConcurrent) {
+      final t = _downloadQueue.removeAt(0);
+      notifyListeners();
+      final before = _concurrentDownloads;
+      unawaited(downloadTrack(t));
+      // downloadTrack takes its slot only after an await (the downloaded
+      // check); stop here rather than overfill, the finishing download calls
+      // back in.
+      if (_concurrentDownloads == before) break;
     }
-    final t = _downloadQueue.removeAt(0);
-    notifyListeners();
-    await downloadTrack(t);
   }
 
   /// Kick the queue after connectivity/offline state changes.
@@ -426,12 +516,12 @@ class DownloadManager extends ChangeNotifier {
 
   void pauseAllDownloads({bool clearQueue = false}) {
     final ids = List<String>.from(_downloadCancelTokens.keys);
-    int c = 0;
     for (final id in ids) {
+      // Not a user cancel: keep what has been fetched and resume it first.
+      if (!clearQueue) _pausedIds.add(id);
       _downloadCancelTokens[id]?.cancel("Downloads paused");
-      c++;
     }
-    if (c > 0) debugPrint("Paused $c downloads.");
+    if (ids.isNotEmpty && kDebugMode) debugPrint("Paused ${ids.length} downloads.");
     if (clearQueue && _downloadQueue.isNotEmpty) {
       _downloadQueue.clear();
       notifyListeners();
@@ -455,5 +545,9 @@ class DownloadManager extends ChangeNotifier {
 class ResolvedDownload {
   final String url;
   final String? userAgent;
-  const ResolvedDownload({required this.url, this.userAgent});
+
+  /// The id the URL was resolved for (a Spotify song resolves to a YouTube
+  /// id), so an expired URL can be forgotten.
+  final String? streamId;
+  const ResolvedDownload({required this.url, this.userAgent, this.streamId});
 }

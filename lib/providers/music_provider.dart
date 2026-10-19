@@ -691,6 +691,8 @@ for (final track in releases)
         notifyListeners();
       }
     },
+    cachedStreamFile: (id) => _audioService.cachedAudioFile(id),
+    onStaleStream: (streamId) => _streamResolution.invalidate(streamId),
   );
   DownloadManager get downloads => _downloads;
 
@@ -712,7 +714,7 @@ for (final track in releases)
     ));
     if (dlResolved == null) return null;
     return ResolvedDownload(
-        url: dlResolved.url, userAgent: dlResolved.userAgent);
+        url: dlResolved.url, userAgent: dlResolved.userAgent, streamId: sId);
   }
 
   // Cast State
