@@ -24,6 +24,27 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 81
 
 ## CURRENT STATE (commit 7f6777a)
 
+### Glass detail pages (plan: docs/PLAN-glass-detail-pages.md)
+- **Full bleed, ONE surface** (`bitchord_detail/immersive_header.dart`): album and artist use `ImmersiveHeader`.
+  `MergeBand`, `ArtworkFootFade`, `BitchordSliverAppBar` still exist (old tests pin them) but are NOT used
+  by these pages: the old stack's 88% fade + opaque `MergeBand` stripe WAS the dark band. The fade ends at
+  alpha exactly 1.0 and ONE gradient runs `kImmersiveFootBleed` past the photo's last row.
+  Never add a separate "foot" box under it: two abutting anti-aliased edges at the same fractional row
+  cover only ~77% of the pixel and leak the photo (measured: a stray row of 112 between rows of 29).
+  `test/immersive_header_seam_test.dart` renders a PURE WHITE photo, reads pixels, also at a fractional
+  scroll offset. Any header change must keep it green. The page's `ArtworkWash` must use
+  `seamOverhang: 160, meshInset: 120` so no colour blob tints the join.
+- **Glass chrome** (`detail_glass.dart`): `GlassButton` (liquid_glass_widgets) with the BOTTOM BAR's
+  material settings, so tap / hold / drag physics match it. Capsule = one glass body + per-slot tap
+  targets. Top bar is an overlay ABOVE the scroll view; standard quality (package rule: premium is for
+  static surfaces). The jelly's FEEL is unverified on a device.
+- **Widget tests: use `tester.view.physicalSize` + `devicePixelRatio`.** `binding.setSurfaceSize` does not
+  apply in this Flutter (probe showed 800x600), so tests built on it ran at the wrong size.
+- Album: Sort (`AlbumSort`, `sortAlbumTracks`): Play and row taps queue the order SHOWN; numbers stay the
+  album's. Shelves: `parseDetailShelves` types items by browse id (the artist parser guesses from the
+  shelf title and would call "You might also like" artists). Response shape assumed, fails closed.
+- Home: local files never feed Jump back in (`planHomeShelves`); a guest's streamable plays still do.
+
 ### Art, canvas, dock, Home, detail pages, fonts (plan: docs/PLAN-art-canvas-home-detail-fonts.md)
 - Local songs: the current local track is swapped for a copy whose `albumArtUrl` is a 720px file in
   `<tmp>/local_art/` (`_ensureCurrentLocalArt`, single-flight per id). The lock screen gets `file://`.
