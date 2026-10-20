@@ -80,8 +80,7 @@ class HomeShelfPlan {
   final List<Track> localQuickPicks;
 
   /// The app's own "Jump back in" tracks. Everything played here when the feed
-  /// has no history shelf; otherwise only what a YouTube shelf cannot hold
-  /// (local files).
+  /// has no history shelf, and then only streamable plays; never local files.
   final List<Track> localHistory;
 }
 
@@ -166,14 +165,20 @@ HomeShelfPlan planHomeShelves({
   }
 
   // History: fold what was played here into the feed's shelf.
-  var localHistory = recents;
+  //
+  // Local files never feed a Jump back in shelf of their own. That shelf is
+  // hidden whenever the feed has a history shelf, and a local play used to
+  // bring it back on its own (a file cannot live in a YouTube shelf, so it was
+  // given a shelf instead). It stays hidden: local plays remain in Library and
+  // Replay, which is where a file is looked for.
+  var localHistory = recents.where(isStreamableTrack).toList();
   if (historyShelf != null) {
     final mine = recents.where(isStreamableTrack).toList(growable: false);
     final merged = mine.isEmpty ? historyShelf : mergeHistory(historyShelf, mine);
     final at = sections.indexWhere((s) => identical(s, historyShelf));
     if (at >= 0) sections[at] = merged;
     historyShelf = merged;
-    localHistory = recents.where((t) => !isStreamableTrack(t)).toList();
+    localHistory = const [];
   } else if (heroRole == HomeShelfRole.history) {
     // The hero IS the history shelf.
     localHistory = const [];

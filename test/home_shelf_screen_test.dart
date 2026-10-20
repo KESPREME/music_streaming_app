@@ -163,7 +163,7 @@ void main() {
       expect(find.text('Title 10'), findsOneWidget);
     });
 
-    testWidgets('local-file plays a YouTube shelf cannot hold stay in Jump back in',
+    testWidgets('local-file plays do not bring the hidden Jump back in back',
         (tester) async {
       final p = RecordingProvider()
         ..setTestHomeFeed(feedOf([
@@ -178,7 +178,8 @@ void main() {
       await pumpHome(tester, p);
 
       expect(find.text('Listen again'), findsOneWidget);
-      expect(find.text('Jump back in'), findsOneWidget);
+      expect(find.text('Jump back in'), findsNothing,
+          reason: 'a local file must not resurrect the hidden shelf');
       expect(find.text('Title 10'), findsOneWidget,
           reason: 'the streamable play is in Listen again');
     });

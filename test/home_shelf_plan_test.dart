@@ -180,23 +180,32 @@ void main() {
       expect(ids.skip(kHistoryLocalLead).first, vid(1));
     });
 
-    test('plays a YouTube shelf cannot hold stay in Jump back in', () {
+    test('local files never bring Jump back in back', () {
       final local = track('/storage/song.mp3', source: 'local');
       final p = plan(
         feed: [shelf('Listen again', [vid(1), vid(2)])],
         recents: [local, track(vid(7))],
       );
-      expect(p.localHistory, [local]);
-      expect(p.feedSections.single.items.first.videoId, vid(7));
+      expect(p.localHistory, isEmpty, reason: 'hidden, local plays or not');
+      expect(p.feedSections.single.items.first.videoId, vid(7),
+          reason: 'the streamable play is still folded into Listen again');
     });
 
-    test('the feed sent none - the app\'s Jump back in is untouched', () {
-      final recents = [track(vid(7)), track('x', source: 'local')];
+    test('only local plays and no history shelf: still no Jump back in', () {
       final p = plan(
         feed: [shelf('New releases', [vid(1), vid(2)])],
-        recents: recents,
+        recents: [track('/a.mp3', source: 'local'), track('/b.mp3', source: 'local')],
       );
-      expect(p.localHistory, recents);
+      expect(p.localHistory, isEmpty);
+    });
+
+    test('the feed sent none - Jump back in keeps the streamable plays only', () {
+      final streamed = track(vid(7));
+      final p = plan(
+        feed: [shelf('New releases', [vid(1), vid(2)])],
+        recents: [streamed, track('x', source: 'local')],
+      );
+      expect(p.localHistory, [streamed]);
       expect(p.historySection, isNull);
     });
 
