@@ -2,9 +2,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_font.dart';
 import 'glass_snackbar.dart';
 
 /// Modal sheet for Multi-Language Audio & Quality Control.
@@ -178,7 +178,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                           children: [
                             Text(
                               'Audio & Quality Control',
-                              style: GoogleFonts.plusJakartaSans(
+                              style: AppFont.style(
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -187,7 +187,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                             const SizedBox(height: 2),
                             Text(
                               'Multi-language audio stream & bitrate resolution',
-                              style: GoogleFonts.plusJakartaSans(
+                              style: AppFont.style(
                                 color: Colors.white60,
                                 fontSize: 13,
                               ),
@@ -229,7 +229,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
         const SizedBox(width: 8),
         Text(
           title,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Colors.white54,
             fontSize: 11,
             fontWeight: FontWeight.w700,
@@ -272,7 +272,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                     children: [
                       Text(
                         title,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight:
@@ -289,7 +289,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                         ),
                         child: Text(
                           item['badge']!,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white,
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -301,7 +301,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                   const SizedBox(height: 3),
                   Text(
                     '${item['bitrate']!} • ${item['desc']!}',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white60,
                       fontSize: 12,
                     ),
@@ -359,7 +359,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                     children: [
                       Text(
                         title,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight:
@@ -376,7 +376,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                         ),
                         child: Text(
                           item['tag']!,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white70,
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
@@ -388,7 +388,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
                   const SizedBox(height: 3),
                   Text(
                     item['desc']!,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white60,
                       fontSize: 12,
                     ),

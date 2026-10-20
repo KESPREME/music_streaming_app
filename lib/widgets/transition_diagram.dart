@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../services/transition/fade_curves.dart';
 import '../services/transition/transition_settings.dart';
@@ -117,7 +117,7 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: GoogleFonts.plusJakartaSans(
+        style: AppFont.style(
           color: Colors.white38,
           fontSize: 10,
           fontWeight: FontWeight.w800,

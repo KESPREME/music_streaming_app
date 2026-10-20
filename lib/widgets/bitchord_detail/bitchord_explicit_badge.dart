@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 /// An explicit badge [E] matching BitChord 1:1 design.
 ///
@@ -34,7 +34,7 @@ class BitchordExplicitBadge extends StatelessWidget {
       ),
       child: Text(
         'E',
-        style: GoogleFonts.plusJakartaSans(
+        style: AppFont.style(
           fontSize: size * 0.64,
           fontWeight: FontWeight.w800,
           color: textColor,

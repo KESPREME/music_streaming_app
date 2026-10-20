@@ -10,7 +10,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../services/transition/transition_engine.dart';
 import '../services/transition/transition_planner.dart';
@@ -118,7 +118,7 @@ class _TransitionTraceCardState extends State<TransitionTraceCard> {
                               Expanded(
                                 child: Text(
                                   'Last transition',
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 15,
@@ -130,7 +130,7 @@ class _TransitionTraceCardState extends State<TransitionTraceCard> {
                                 child: Text(
                                   _copied ? 'Copied' : 'Tap to copy',
                                   key: ValueKey<bool>(_copied),
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     color: _copied
                                         ? accent
                                         : Colors.white38,
@@ -152,7 +152,7 @@ class _TransitionTraceCardState extends State<TransitionTraceCard> {
                                     width: 58,
                                     child: Text(
                                       line.label,
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: AppFont.style(
                                         color: accent.withValues(alpha: 0.85),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
@@ -162,7 +162,7 @@ class _TransitionTraceCardState extends State<TransitionTraceCard> {
                                   Expanded(
                                     child: Text(
                                       line.text,
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: AppFont.style(
                                         color: Colors.white70,
                                         fontSize: 12.5,
                                         height: 1.35,

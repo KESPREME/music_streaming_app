@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart'
     show LiquidGlassFlex, LiquidGlassTouch, liquidGlassSpringStep;
 
+import '../theme/app_font.dart';
 import '../design/glass/lens_surface.dart';
 
 // Shared liquid-glass bottom controls for Now Playing and Queue.
@@ -75,7 +75,7 @@ List<GlassSegment> queueControlSegments({
       icon: repeatOne
           ? Text(
               '1',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.black,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,

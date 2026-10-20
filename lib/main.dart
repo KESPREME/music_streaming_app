@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:audio_service/audio_service.dart' as svc;
 import 'services/playback/mine_audio_handler.dart';
 import 'dart:async';
@@ -22,6 +21,7 @@ import 'services/deep_link_service.dart';
 import 'screens/search_screen.dart';
 import 'widgets/themed_artist_detail_screen.dart';
 import 'widgets/themed_playlist_detail_screen.dart';
+import 'theme/app_font.dart';
 import 'theme/glass_theme.dart';
 import 'services/auth_service.dart';
 import 'services/equalizer_service.dart'; // Equalizer
@@ -298,8 +298,11 @@ class _MyAppState extends State<MyApp> {
     // Selected, not watched: only this one flag rebuilds the app's theme, not
     // every unrelated ThemeProvider change.
     final amoled = context.select<ThemeProvider, bool>((t) => t.isAmoled);
-    final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(Theme.of(context).textTheme);
-    final textTheme = baseTextTheme.copyWith(
+    // The font setting (Settings > Appearance): watched so a change rebuilds
+    // the theme, and with it every style that inherits from it.
+    context.select<ThemeProvider, (String, int)>((t) => (t.fontFamily, t.fontWeightDelta));
+    final baseTextTheme = AppFont.textTheme(Theme.of(context).textTheme, shiftWeights: false);
+    final textTheme = AppFont.shiftTextTheme(baseTextTheme.copyWith(
       headlineLarge: baseTextTheme.headlineLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
       headlineMedium: baseTextTheme.headlineMedium?.copyWith(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
       headlineSmall: baseTextTheme.headlineSmall?.copyWith(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
@@ -310,7 +313,7 @@ class _MyAppState extends State<MyApp> {
       bodyMedium: baseTextTheme.bodyMedium?.copyWith(fontSize: 14, color: Colors.white.withValues(alpha: 0.70)),
       bodySmall: baseTextTheme.bodySmall?.copyWith(fontSize: 12, color: Colors.white.withValues(alpha: 0.60)),
       labelLarge: baseTextTheme.labelLarge?.copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
-    );
+    ));
 
     return MaterialApp(
       navigatorKey: rootNavigatorKey, // Assigned Key

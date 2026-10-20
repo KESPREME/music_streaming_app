@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../liquid_switch.dart';
 
@@ -107,7 +107,7 @@ class GlassSettingsRow extends StatelessWidget {
                     Flexible(
                       child: Text(
                         title,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
@@ -127,7 +127,7 @@ class GlassSettingsRow extends StatelessWidget {
                         ),
                         child: Text(
                           badge!,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: accent,
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
@@ -141,7 +141,7 @@ class GlassSettingsRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                       color: Colors.white54, fontSize: 12),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,

@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../screens/themed_now_playing_screen.dart';
@@ -392,7 +392,7 @@ class _PillBody extends StatelessWidget {
                 identity: currentTrack.id,
                 child: Text(
                   currentTrack.trackName,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     fontSize: 13.0,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
@@ -467,7 +467,7 @@ class _PillBody extends StatelessWidget {
                   identity: currentTrack.id,
                   child: Text(
                     currentTrack.trackName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
@@ -483,7 +483,7 @@ class _PillBody extends StatelessWidget {
                   lag: 0.18,
                   child: Text(
                     currentTrack.artistName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w500,
                       color: Colors.white.withValues(alpha: 0.65),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../theme/app_font.dart';
 import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -537,7 +537,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               const SizedBox(height: 12),
               Text(
                 'No playlists yet',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white54,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -632,7 +632,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 children: [
                   Text(
                     playlist.name,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
@@ -643,7 +643,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   const SizedBox(height: 2),
                   Text(
                     '${playlist.tracks.length} tracks',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white.withValues(alpha: 0.45),
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
@@ -679,7 +679,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             child: Center(
               child: Text(
                 'No artists found in library',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white54,
                   fontSize: 15,
                 ),
@@ -772,7 +772,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           const SizedBox(height: 12),
                           Text(
                             name,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
                               fontSize: 13.5,
@@ -814,7 +814,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             child: Center(
               child: Text(
                 'No albums found in library',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white54,
                   fontSize: 15,
                 ),
@@ -903,7 +903,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               children: [
                                 Text(
                                   track.albumName,
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 14,
@@ -914,7 +914,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   track.artistName,
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     color: Colors.white.withValues(alpha: 0.45),
                                     fontSize: 12,
                                     fontWeight: FontWeight.w400,
@@ -985,7 +985,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   leading: const Icon(Icons.edit_rounded, color: Colors.white),
                   title: Text(
                     'Rename',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
                     ),
@@ -999,7 +999,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   leading: const Icon(Icons.delete_rounded, color: Colors.redAccent),
                   title: Text(
                     'Delete',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.redAccent,
                       fontWeight: FontWeight.w600,
                     ),

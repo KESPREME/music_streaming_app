@@ -12,7 +12,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../models/playlist.dart';
 import '../../utils/app_image_cache.dart';
@@ -76,7 +76,7 @@ class PlaylistCover extends StatelessWidget {
         ),
       ),
       child: Text(initial,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
               color: Colors.white.withValues(alpha: 0.9), fontSize: size * 0.4, fontWeight: FontWeight.w800)),
     );
   }

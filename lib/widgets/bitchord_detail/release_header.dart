@@ -12,7 +12,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../utils/app_image_cache.dart';
 
@@ -239,7 +239,7 @@ class ReleaseActionRow extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       'Play',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.black,
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -419,7 +419,7 @@ class LatestReleaseCard extends StatelessWidget {
                         eyebrow,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white.withValues(alpha: 0.62),
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
@@ -430,7 +430,7 @@ class LatestReleaseCard extends StatelessWidget {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white,
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
@@ -443,7 +443,7 @@ class LatestReleaseCard extends StatelessWidget {
                       caption,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(alpha: 0.62),
                         fontSize: 14,
                       ),

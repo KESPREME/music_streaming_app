@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../theme/glass_tokens.dart';
 import 'glass_surface.dart';
@@ -30,7 +30,7 @@ class GlassSnackBar extends StatelessWidget {
         ),
         child: Text(
           message,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w600,
             fontSize: 13.5,

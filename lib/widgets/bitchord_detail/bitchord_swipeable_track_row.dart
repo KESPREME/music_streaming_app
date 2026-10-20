@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../theme/app_font.dart';
 import '../../models/track.dart';
 import '../../providers/music_provider.dart';
 import '../../utils/artwork_palette_resolver.dart';
@@ -62,7 +62,7 @@ class BitchordSwipeableTrackRow extends StatelessWidget {
                   message,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Colors.white,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
@@ -133,7 +133,7 @@ class BitchordSwipeableTrackRow extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               'Queue',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -152,7 +152,7 @@ class BitchordSwipeableTrackRow extends StatelessWidget {
           children: [
             Text(
               'Queue',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,

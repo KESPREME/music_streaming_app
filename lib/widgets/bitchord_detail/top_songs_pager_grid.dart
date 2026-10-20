@@ -1,6 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../models/track.dart';
 import '../../utils/app_image_cache.dart';
@@ -52,7 +52,7 @@ class TopSongsPagerGrid extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
           child: Text(
             'Top songs',
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -158,7 +158,7 @@ class TopSongsPagerGrid extends StatelessWidget {
                                             song.trackName,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: GoogleFonts.plusJakartaSans(
+                                            style: AppFont.style(
                                               color: isCurrent ? accentColor : Colors.white,
                                               fontSize: 15,
                                               fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
@@ -172,7 +172,7 @@ class TopSongsPagerGrid extends StatelessWidget {
                                       song.artistName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: AppFont.style(
                                         color: Colors.white.withValues(alpha: 0.6),
                                         fontSize: 13,
                                         fontWeight: FontWeight.w400,

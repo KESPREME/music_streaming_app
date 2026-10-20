@@ -27,14 +27,14 @@
 // scale, which cost nothing.
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 /// Builds a base style for a size and weight. Injected so tests can run without
 /// resolving the real face.
 typedef LyricFontBuilder = TextStyle Function(double fontSize, FontWeight weight);
 
 TextStyle _defaultLyricFont(double fontSize, FontWeight weight) =>
-    GoogleFonts.plusJakartaSans(fontSize: fontSize, fontWeight: weight);
+    AppFont.style(fontSize: fontSize, fontWeight: weight);
 
 /// The lyric type scale.
 class LyricTypography {

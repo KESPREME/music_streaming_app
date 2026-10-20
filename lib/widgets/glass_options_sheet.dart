@@ -1,8 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../theme/app_font.dart';
 import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/track.dart';
@@ -253,7 +253,7 @@ class GlassOptionsSheet extends StatelessWidget {
                               children: [
                                 Text(
                                   track.trackName,
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 17,
                                     color: colorScheme.onSurface,
@@ -264,7 +264,7 @@ class GlassOptionsSheet extends StatelessWidget {
                                 const SizedBox(height: 3),
                                 Text(
                                   track.artistName,
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w500,
                                     color: colorScheme.onSurfaceVariant,
@@ -634,7 +634,7 @@ class GlassOptionsSheet extends StatelessWidget {
           children: [
             Text(
               label,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: effectiveColor,
                 fontWeight: FontWeight.w500,
                 fontSize: 15.5,
@@ -743,7 +743,7 @@ class GlassOptionsSheet extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Sleep Timer',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -754,7 +754,7 @@ class GlassOptionsSheet extends StatelessWidget {
                 (mins) => ListTile(
                   title: Text(
                     '$mins Minutes',
-                    style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                    style: AppFont.style(color: Colors.white),
                   ),
                   onTap: () {
                     provider.setSleepTimer(mins);
@@ -766,7 +766,7 @@ class GlassOptionsSheet extends StatelessWidget {
               ListTile(
                 title: Text(
                   'End of Track',
-                  style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                  style: AppFont.style(color: Colors.white),
                 ),
                 onTap: () {
                   provider.setSleepTimer(0);
@@ -777,7 +777,7 @@ class GlassOptionsSheet extends StatelessWidget {
               ListTile(
                 title: Text(
                   'Turn Off',
-                  style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+                  style: AppFont.style(color: Colors.white54),
                 ),
                 onTap: () {
                   provider.setSleepTimer(-1);
@@ -849,7 +849,7 @@ class SongInfoDialog extends StatelessWidget {
                       children: [
                         Text(
                           track.trackName,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -860,7 +860,7 @@ class SongInfoDialog extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           track.artistName,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white70,
                             fontSize: 13,
                           ),
@@ -906,7 +906,7 @@ class SongInfoDialog extends StatelessWidget {
                   ),
                   child: Text(
                     'Close',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -929,7 +929,7 @@ class SongInfoDialog extends StatelessWidget {
             width: 76,
             child: Text(
               label,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white54,
                 fontSize: 13,
               ),
@@ -938,7 +938,7 @@ class SongInfoDialog extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -1049,7 +1049,7 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
                   Expanded(
                     child: Text(
                       playlistName,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                         color: colorScheme.onSurface,
@@ -1150,7 +1150,7 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
       leading: Icon(icon, color: effectiveColor),
       title: Text(
         label,
-        style: GoogleFonts.plusJakartaSans(
+        style: AppFont.style(
           color: effectiveColor,
           fontWeight: FontWeight.w500,
           fontSize: 16,

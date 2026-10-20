@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../stagger_in.dart';
 
@@ -146,7 +146,7 @@ class LibraryActionCard extends StatelessWidget {
                                   title,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: AppFont.style(
                                     fontWeight: FontWeight.w700,
                                     fontSize: titleSize,
                                     letterSpacing: -0.2,
@@ -160,7 +160,7 @@ class LibraryActionCard extends StatelessWidget {
                                 subtitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.plusJakartaSans(
+                                style: AppFont.style(
                                   color: Colors.white.withValues(alpha: 0.48),
                                   fontSize: subtitleSize,
                                   fontWeight: FontWeight.w400,

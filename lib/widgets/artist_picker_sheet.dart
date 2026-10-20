@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../theme/glass_tokens.dart';
 import 'glass_surface.dart';
@@ -158,7 +158,7 @@ class ArtistPickerSheet extends StatelessWidget {
                   const SizedBox(width: 16),
                   Text(
                     'Select Artist',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
                       color: colorScheme.onSurface,
@@ -200,7 +200,7 @@ class ArtistPickerSheet extends StatelessWidget {
       ),
       title: Text(
         artist,
-        style: GoogleFonts.plusJakartaSans(
+        style: AppFont.style(
           color: colorScheme.onSurface,
           fontWeight: FontWeight.w500,
           fontSize: 16,

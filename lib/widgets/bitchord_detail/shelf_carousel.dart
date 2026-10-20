@@ -1,6 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../models/bitchord_page_models.dart';
 import '../../utils/app_image_cache.dart';
@@ -40,7 +40,7 @@ class ShelfCarousel extends StatelessWidget {
                   shelf.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Colors.white,
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
@@ -61,7 +61,7 @@ class ShelfCarousel extends StatelessWidget {
                   ),
                   child: Text(
                     'Show all',
-                    style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w600),
+                    style: AppFont.style(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
             ],
@@ -192,7 +192,7 @@ class _ShelfCardBody extends StatelessWidget {
               item.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -204,7 +204,7 @@ class _ShelfCardBody extends StatelessWidget {
               item.subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
@@ -234,7 +234,7 @@ class ShelfGridScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         title: Text(
           shelf.title,
-          style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+          style: AppFont.style(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
         ),
       ),
       body: LayoutBuilder(

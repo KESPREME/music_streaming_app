@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 import '../theme/amoled_theme.dart';
 
 class SpotifyPlaylistSelectionScreen extends StatelessWidget {
@@ -79,7 +79,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                                   children: [
                                     Text(
                                       name,
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: AppFont.style(
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 16,
@@ -87,7 +87,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                                     ),
                                     Text(
                                       '$trackCount tracks',
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: AppFont.style(
                                         color: Colors.white54,
                                         fontSize: 12,
                                       ),
@@ -142,7 +142,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   "Select Playlist",
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                     color: Colors.white,

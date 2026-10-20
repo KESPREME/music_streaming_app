@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 void showLiquidSnackBar(BuildContext context, String message, {bool isError = false}) {
   ScaffoldMessenger.of(context).showSnackBar(
@@ -46,7 +46,7 @@ void showLiquidSnackBar(BuildContext context, String message, {bool isError = fa
                 Expanded(
                   child: Text(
                     message,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,

@@ -14,10 +14,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../services/auth_service.dart';
 import '../services/listening_stats.dart';
@@ -186,7 +186,7 @@ class _ReplayScreenState extends State<ReplayScreen> {
                                       icon: Text(
                                         p.label,
                                         maxLines: 1,
-                                        style: GoogleFonts.plusJakartaSans(
+                                        style: AppFont.style(
                                           fontSize: 13.5,
                                           fontWeight: FontWeight.w700,
                                           color: p == _period
@@ -537,7 +537,7 @@ class _PlayAll extends StatelessWidget {
               const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 20),
               const SizedBox(width: 4),
               Text('Play',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                       color: Colors.black, fontWeight: FontWeight.w800, fontSize: 14)),
             ],
           ),
@@ -654,7 +654,7 @@ class _RankRow extends StatelessWidget {
           SizedBox(
             width: 30,
             child: Text('$rank',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                   color: rank == 1 ? ReplayStyle.rankOne : Colors.white.withValues(alpha: 0.45),

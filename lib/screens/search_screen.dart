@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../theme/app_font.dart';
 import '../services/search_history_store.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
@@ -145,7 +145,7 @@ class ArtistSearchTile extends StatelessWidget {
             children: [
               Text(
                 artistName,
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
                   color: isGlass ? Colors.white : colorScheme.onSurface,
@@ -154,7 +154,7 @@ class ArtistSearchTile extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 "Artist",
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color:
                       isGlass ? Colors.white54 : colorScheme.onSurfaceVariant,
                   fontSize: 12,
@@ -547,7 +547,7 @@ class _SearchScreenState extends State<SearchScreen>
                               child: TextField(
                                 controller: _searchController,
                                 focusNode: _dockFocusNode,
-                                style: GoogleFonts.plusJakartaSans(
+                                style: AppFont.style(
                                     color: Colors.white,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500),
@@ -555,7 +555,7 @@ class _SearchScreenState extends State<SearchScreen>
                                     Theme.of(context).colorScheme.primary,
                                 decoration: InputDecoration(
                                   hintText: 'Search songs, artists...',
-                                  hintStyle: GoogleFonts.plusJakartaSans(
+                                  hintStyle: AppFont.style(
                                       color:
                                           Colors.white.withValues(alpha: 0.45),
                                       fontWeight: FontWeight.w400),
@@ -1071,7 +1071,7 @@ class _SuggestionOrSpinner extends StatelessWidget {
                           isTypedRow ? 'Search "$term"' : term,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.85),
                             fontSize: 15,
                             fontWeight:
@@ -1207,7 +1207,7 @@ class SearchTabContent extends StatelessWidget {
                   children: [
                     Text(
                       "Recent Searches",
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 18),
@@ -1215,7 +1215,7 @@ class SearchTabContent extends StatelessWidget {
                     TextButton(
                       onPressed: onClearHistory,
                       child: Text("Clear All",
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                               color: Theme.of(context).colorScheme.primary)),
                     ),
                   ],
@@ -1334,7 +1334,7 @@ class _RecentSearchRow extends StatelessWidget {
                       entry.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 16.5,
                         fontWeight: FontWeight.w600,
@@ -1347,7 +1347,7 @@ class _RecentSearchRow extends StatelessWidget {
                         entry.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white.withValues(alpha: 0.55),
                           fontSize: 14,
                           height: 1.3,
@@ -1403,7 +1403,7 @@ class _SearchIdleView extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.4), fontSize: 15),
           ),
         ],
@@ -1433,13 +1433,13 @@ class _SearchEmptyView extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                   color: Colors.white.withValues(alpha: 0.65), fontSize: 15),
             ),
             const SizedBox(height: 4),
             Text(
               'Try a different search.',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                   color: Colors.white.withValues(alpha: 0.35), fontSize: 13),
             ),
           ],
@@ -1469,7 +1469,7 @@ class _SearchErrorView extends StatelessWidget {
             Text(
               "Couldn't complete the search",
               textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                   color: Colors.white.withValues(alpha: 0.65), fontSize: 15),
             ),
             const SizedBox(height: 12),
@@ -1477,7 +1477,7 @@ class _SearchErrorView extends StatelessWidget {
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text('Try again',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                       fontWeight: FontWeight.w600, fontSize: 14)),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.primary,

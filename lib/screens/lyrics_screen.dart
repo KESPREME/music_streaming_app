@@ -30,9 +30,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../models/lyrics_entry.dart';
 import '../providers/music_provider.dart';
 import '../services/lyrics/lyric_clock.dart';
@@ -958,7 +958,7 @@ class _LyricsScreenState extends State<LyricsScreen>
             const SizedBox(height: 16),
             Text(
               'No lyrics for this track',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 16,
                 fontWeight: FontWeight.w600,

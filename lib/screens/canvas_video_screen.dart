@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../theme/app_font.dart';
 import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 
@@ -282,7 +282,7 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
                 children: [
                   Text(
                     track.trackName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
@@ -293,7 +293,7 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
                   const SizedBox(height: 2),
                   Text(
                     track.artistName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white.withValues(alpha: 0.65),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -324,7 +324,7 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
             semanticLabel: 'Pronunciation',
             child: Text(
               'aあ',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
@@ -472,7 +472,7 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
                       const SizedBox(width: 5),
                       Text(
                         hasActiveVideo ? 'Canvas' : (_isLoading ? 'Loading...' : 'Visualizer'),
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -541,7 +541,7 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
           // Elapsed time
           Text(
             _formatTime(pos),
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white70,
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -574,7 +574,7 @@ class _CanvasVideoScreenState extends State<CanvasVideoScreen> {
           // Remaining time
           Text(
             '-${_formatTime(remaining)}',
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white70,
               fontSize: 12,
               fontWeight: FontWeight.w600,

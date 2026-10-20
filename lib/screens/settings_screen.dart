@@ -1,9 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
@@ -15,6 +15,7 @@ import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/liquid_switch.dart';
 import '../widgets/lyric_providers_sheet.dart';
+import '../widgets/settings/font_picker_sheet.dart';
 import '../widgets/settings/settings_search.dart';
 import '../theme/amoled_theme.dart';
 
@@ -45,6 +46,8 @@ const List<SettingsEntry> settingsSearchEntries = <SettingsEntry>[
     SettingsEntry('source', ['Source', 'innertube', 'powered by']),
     SettingsEntry('prefs.theme', ['Theme', 'appearance', 'dark mode', 'accent', 'colour', 'color']),
     SettingsEntry('prefs.dynamic', ['Dynamic Colors', 'material you', 'wallpaper']),
+  SettingsEntry('prefs.font', ['Font', 'typeface', 'typography', 'Inter', 'Manrope']),
+  SettingsEntry('prefs.weight', ['Text weight', 'bold', 'bolder', 'lighter', 'font weight']),
   SettingsEntry('prefs.amoled', ['Pure black', 'AMOLED', 'OLED', 'black', 'true black', 'dark', 'battery', 'background']),
     SettingsEntry('accent.card', ['Accent', 'colour', 'color', 'swatch', 'album art']),
     SettingsEntry('playback.transitions', ['Song Transitions', 'crossfade', 'automix', 'fade', 'gapless', 'blend', 'mix', 'loudness', 'balance', 'beat', 'tempo', 'bpm', 'level', 'transition']),
@@ -129,7 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Expanded(
                         child: Text(
                           'Settings',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             fontSize: 36,
                             fontWeight: FontWeight.w900,
                             letterSpacing: -1,
@@ -207,7 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
                       'PREFERENCES',
-                      style: GoogleFonts.plusJakartaSans(color: accent.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6),
+                      style: AppFont.style(color: accent.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6),
                     ),
                   ),
                 ),
@@ -216,7 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               // Appearance group — grounded elevated, only switches are glass
               if (index.matchesAny(
-                  const ['prefs.theme', 'prefs.dynamic', 'prefs.amoled']))
+                  const ['prefs.theme', 'prefs.dynamic', 'prefs.amoled', 'prefs.font', 'prefs.weight']))
                 SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -269,6 +272,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onTap: () => themeProvider.setAmoled(!themeProvider.isAmoled),
                             trailing: LiquidSwitch(value: themeProvider.isAmoled, onChanged: (v) => themeProvider.setAmoled(v)),
                           ),
+                        ),
+                        _divider(),
+                        _GlassRow(
+                          key: const ValueKey('settings_font'),
+                          icon: Icons.text_fields_rounded,
+                          iconBg: accent.withValues(alpha: 0.18),
+                          iconColor: accent,
+                          title: 'Font',
+                          subtitle: themeProvider.fontFamily,
+                          onTap: () => FontPickerSheet.show(context),
+                          trailing: Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.4)),
+                        ),
+                        _divider(),
+                        _GlassRow(
+                          key: const ValueKey('settings_weight'),
+                          icon: Icons.format_bold_rounded,
+                          iconBg: accent.withValues(alpha: 0.18),
+                          iconColor: accent,
+                          title: 'Text weight',
+                          subtitle: FontPickerSheet.weightLabel(themeProvider.fontWeightDelta),
+                          onTap: () => FontPickerSheet.show(context),
+                          trailing: Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.4)),
                         ),
                         // The "Album-Art Adaptive" row that used to sit here
                         // is gone: AccentSettingsCard a few lines below already
@@ -400,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             icon: const Icon(Icons.cleaning_services_rounded, size: 20, color: Colors.white70),
                             onPressed: () async {
                               await musicProvider.clearAllCaches();
-                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cache cleared', style: GoogleFonts.plusJakartaSans(color: Colors.white)), backgroundColor: Colors.grey[900]));
+                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cache cleared', style: AppFont.style(color: Colors.white)), backgroundColor: Colors.grey[900]));
                             },
                           ),
                         ),
@@ -417,7 +442,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
                     'MOTION ARTWORK & LYRICS',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: accent.withValues(alpha: 0.85),
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -549,7 +574,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text('COMMUNITY & SUPPORT', style: GoogleFonts.plusJakartaSans(color: accent.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+                  child: Text('COMMUNITY & SUPPORT', style: AppFont.style(color: accent.withValues(alpha: 0.85), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
@@ -607,13 +632,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             borderRadius: BorderRadius.circular(20),
             side: AmoledTheme.edge(context),
           ),
-          title: Text('${isWifi ? "Wi-Fi" : "Cellular"} Quality', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w800)),
+          title: Text('${isWifi ? "Wi-Fi" : "Cellular"} Quality', style: AppFont.style(color: Colors.white, fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                title: Text('Auto', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w600)),
-                subtitle: isAuto ? Text('Adjusts automatically', style: GoogleFonts.plusJakartaSans(color: Colors.white38, fontSize: 12)) : null,
+                title: Text('Auto', style: AppFont.style(color: Colors.white, fontWeight: FontWeight.w600)),
+                subtitle: isAuto ? Text('Adjusts automatically', style: AppFont.style(color: Colors.white38, fontSize: 12)) : null,
                 leading: Icon(isAuto ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: isAuto ? accent : Colors.white38),
                 onTap: () { provider.setAutoBitrate(true); Navigator.pop(context); },
               ),
@@ -621,7 +646,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ...options.map((b) {
                 final sel = !isAuto && b == current;
                 return ListTile(
-                  title: Text('$b kbps', style: GoogleFonts.plusJakartaSans(color: Colors.white)),
+                  title: Text('$b kbps', style: AppFont.style(color: Colors.white)),
                   leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: sel ? accent : Colors.white38),
                   onTap: () { if (isWifi) provider.setWifiBitrate(b); else provider.setCellularBitrate(b); Navigator.pop(context); },
                 );
@@ -659,7 +684,7 @@ class _ProfileCard extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: accent.withValues(alpha: 0.35)),
               ),
-              child: Center(child: Text(isLoggedIn ? 'Y' : 'U', style: GoogleFonts.plusJakartaSans(color: accent, fontWeight: FontWeight.w900, fontSize: 22))),
+              child: Center(child: Text(isLoggedIn ? 'Y' : 'U', style: AppFont.style(color: accent, fontWeight: FontWeight.w900, fontSize: 22))),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -668,17 +693,17 @@ class _ProfileCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(isLoggedIn ? 'YouTube Account' : 'User Profile', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                      Text(isLoggedIn ? 'YouTube Account' : 'User Profile', style: AppFont.style(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8), border: Border.all(color: accent.withValues(alpha: 0.35))),
-                        child: Text(isLoggedIn ? 'MANAGE' : 'PROFILE', style: GoogleFonts.plusJakartaSans(color: accent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                        child: Text(isLoggedIn ? 'MANAGE' : 'PROFILE', style: AppFont.style(color: accent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(isLoggedIn ? _connectedLabel(authService) : 'Mine Music Account & Media', style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12.5)),
+                  Text(isLoggedIn ? _connectedLabel(authService) : 'Mine Music Account & Media', style: AppFont.style(color: Colors.white54, fontSize: 12.5)),
                 ],
               ),
             ),
@@ -721,9 +746,9 @@ class _QuickTile extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            Text(title, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+            Text(title, style: AppFont.style(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 2),
-            Text(subtitle, style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 11.5)),
+            Text(subtitle, style: AppFont.style(color: Colors.white54, fontSize: 11.5)),
           ],
         ),
       ),
@@ -733,6 +758,7 @@ class _QuickTile extends StatelessWidget {
 
 class _GlassRow extends StatelessWidget {
   const _GlassRow({
+    super.key,
     required this.icon,
     required this.iconBg,
     required this.iconColor,
@@ -757,7 +783,7 @@ class _GlassRow extends StatelessWidget {
         children: [
           Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 18, color: iconColor)),
           const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)), const SizedBox(height: 2), Text(subtitle, style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)])),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: AppFont.style(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)), const SizedBox(height: 2), Text(subtitle, style: AppFont.style(color: Colors.white54, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)])),
           const SizedBox(width: 12),
           trailing,
         ],
@@ -822,9 +848,9 @@ class _NavTile extends StatelessWidget {
           children: [
             Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 18, color: Colors.white70)),
             const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)), if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 12))]])),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: AppFont.style(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)), if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: AppFont.style(color: Colors.white54, fontSize: 12))]])),
             if (badge != null) ...[
-              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: badge == 'LIVE' ? Colors.blue.withValues(alpha: 0.18) : accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8), border: Border.all(color: badge == 'LIVE' ? Colors.blue.withValues(alpha: 0.4) : accent.withValues(alpha: 0.32))), child: Text(badge!, style: GoogleFonts.plusJakartaSans(color: badge == 'LIVE' ? Colors.blue[300] : accent, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.6))),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: badge == 'LIVE' ? Colors.blue.withValues(alpha: 0.18) : accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8), border: Border.all(color: badge == 'LIVE' ? Colors.blue.withValues(alpha: 0.4) : accent.withValues(alpha: 0.32))), child: Text(badge!, style: AppFont.style(color: badge == 'LIVE' ? Colors.blue[300] : accent, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.6))),
               const SizedBox(width: 10),
             ],
             Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.28), size: 20),
@@ -850,12 +876,12 @@ class _MusicSourcePill extends StatelessWidget {
         child: Stack(children: [
           AnimatedAlign(duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic, alignment: current == MusicSource.youtube ? Alignment.centerLeft : Alignment.centerRight, child: FractionallySizedBox(widthFactor: 0.5, child: Container(margin: const EdgeInsets.all(4), decoration: BoxDecoration(gradient: RadialGradient(center: Alignment.center, radius: 2.5, colors: [accent.withValues(alpha: 0.28), accent.withValues(alpha: 0.10)]), borderRadius: BorderRadius.circular(24), border: Border.all(color: accent.withValues(alpha: 0.38)), boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.15), blurRadius: 12)])))),
           Row(children: [
-            Expanded(child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () => musicProvider.setMusicSource(MusicSource.youtube), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.cloud_queue_rounded, size: 18, color: current == MusicSource.youtube ? accent : Colors.white54), const SizedBox(width: 8), Text('Stream', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.youtube ? accent : Colors.white54))])))),
-            Expanded(child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () => musicProvider.setMusicSource(MusicSource.local), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.folder_open_rounded, size: 18, color: current == MusicSource.local ? accent : Colors.white54), const SizedBox(width: 8), Text('Local', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.local ? accent : Colors.white54))])))),
+            Expanded(child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () => musicProvider.setMusicSource(MusicSource.youtube), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.cloud_queue_rounded, size: 18, color: current == MusicSource.youtube ? accent : Colors.white54), const SizedBox(width: 8), Text('Stream', style: AppFont.style(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.youtube ? accent : Colors.white54))])))),
+            Expanded(child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () => musicProvider.setMusicSource(MusicSource.local), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.folder_open_rounded, size: 18, color: current == MusicSource.local ? accent : Colors.white54), const SizedBox(width: 8), Text('Local', style: AppFont.style(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.local ? accent : Colors.white54))])))),
           ]),
         ]),
       ),
-      Padding(padding: const EdgeInsets.only(left: 16, top: 10, right: 16), child: Text(current == MusicSource.youtube ? 'Streaming from YouTube Music (InnerTube).' : 'Playing files from your device storage.', style: GoogleFonts.plusJakartaSans(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic))),
+      Padding(padding: const EdgeInsets.only(left: 16, top: 10, right: 16), child: Text(current == MusicSource.youtube ? 'Streaming from YouTube Music (InnerTube).' : 'Playing files from your device storage.', style: AppFont.style(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic))),
     ]);
   }
 }
@@ -871,7 +897,7 @@ class _MadeByFooter extends StatelessWidget {
       InkWell(
         onTap: () async { final uri = Uri.parse('https://github.com/KESPREME'); if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication); },
         borderRadius: BorderRadius.circular(8),
-        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: RichText(textAlign: TextAlign.center, text: TextSpan(style: GoogleFonts.plusJakartaSans(color: Colors.white54, fontSize: 13), children: [const TextSpan(text: 'Made with ❤️ using Flutter by '), TextSpan(text: 'KESPREME', style: GoogleFonts.plusJakartaSans(color: const Color(0xFFB388FF), fontWeight: FontWeight.w800, decoration: TextDecoration.underline))]))),
+        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: RichText(textAlign: TextAlign.center, text: TextSpan(style: AppFont.style(color: Colors.white54, fontSize: 13), children: [const TextSpan(text: 'Made with ❤️ using Flutter by '), TextSpan(text: 'KESPREME', style: AppFont.style(color: const Color(0xFFB388FF), fontWeight: FontWeight.w800, decoration: TextDecoration.underline))]))),
       ),
     ]);
   }

@@ -16,7 +16,7 @@
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../models/track.dart';
 import '../services/transition/transition_engine.dart';
@@ -158,7 +158,7 @@ class MixBadge extends StatelessWidget {
                         const SizedBox(width: 5),
                         Text(
                           'AutoMix',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.9),
                             fontSize: 11,
                             fontWeight: FontWeight.w700,

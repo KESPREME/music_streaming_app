@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 /// In-page search input pill matching BitChord DetailSearchField
 class DetailSearchField extends StatelessWidget {
@@ -46,7 +46,7 @@ class DetailSearchField extends StatelessWidget {
                 controller: controller,
                 autofocus: true,
                 onChanged: onChanged,
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
@@ -54,7 +54,7 @@ class DetailSearchField extends StatelessWidget {
                 cursorColor: accentColor,
                 decoration: InputDecoration(
                   hintText: hintText,
-                  hintStyle: GoogleFonts.plusJakartaSans(
+                  hintStyle: AppFont.style(
                     color: Colors.white.withValues(alpha: 0.45),
                     fontSize: 15,
                   ),

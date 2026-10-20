@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 import '../../utils/artwork_palette_resolver.dart';
 
 /// Row of stat chips for artist header matching BitChord ArtistStatsRow.
@@ -109,7 +109,7 @@ class ArtistStatsRow extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             text,
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: textColor,
               fontSize: 12.5,
               fontWeight: FontWeight.w600,

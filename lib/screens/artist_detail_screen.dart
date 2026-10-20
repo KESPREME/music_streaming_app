@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_image_cache.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -411,7 +411,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                       children: [
                         Icon(Icons.person_off_rounded, size: 56, color: Colors.white.withValues(alpha: 0.4)),
                         const SizedBox(height: 16),
-                        Text(_error!, style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 16)),
+                        Text(_error!, style: AppFont.style(color: Colors.white70, fontSize: 16)),
                         const SizedBox(height: 16),
                         TextButton(
                           onPressed: () {
@@ -448,7 +448,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                           textAlign: TextAlign.center,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white,
                             fontSize: 34,
                             fontWeight: FontWeight.w800,

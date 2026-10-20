@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../models/track.dart';
 import 'bitchord_detail/bitchord_explicit_badge.dart';
@@ -71,7 +71,7 @@ class SearchResultRow extends StatelessWidget {
                             track.trackName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: isPlaying ? accent : Colors.white,
                               fontSize: 16.5,
                               fontWeight: isPlaying
@@ -88,7 +88,7 @@ class SearchResultRow extends StatelessWidget {
                       subtitle ?? _defaultSubtitle(track),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 14,
                         fontWeight: FontWeight.w400,

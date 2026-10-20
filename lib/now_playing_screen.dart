@@ -4,11 +4,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:palette_generator/palette_generator.dart';
 
+import 'theme/app_font.dart';
 import '../models/track.dart';
 import '../core/perf_trace.dart';
 import '../providers/music_provider.dart';
@@ -1442,7 +1442,7 @@ child: Transform.scale(
                           identity: currentTrack.id,
                           child: Text(
                             currentTrack.trackName,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: Colors.white,
                               fontSize: lerpDouble(24.0, 15.0, t)!,
                               fontWeight: FontWeight.w700,
@@ -1459,7 +1459,7 @@ child: Transform.scale(
                           lag: 0.18,
                           child: Text(
                             currentTrack.artistName,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: Colors.white.withValues(
                                   alpha: lerpDouble(0.68, 0.65, t)!),
                               fontSize: lerpDouble(17.0, 13.0, t)!,
@@ -1742,13 +1742,21 @@ child: Transform.scale(
     return _backdropProvider;
   }
 
-  /// Built once. The scrubber rebuilds with every position tick, and a font
-  /// lookup per label per tick is allocation for no change.
-  static final TextStyle _scrubberTimeStyle = GoogleFonts.plusJakartaSans(
-    color: Colors.white.withValues(alpha: 0.55),
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
-  );
+  /// Built once per font setting. The scrubber rebuilds with every position
+  /// tick, and a font lookup per label per tick is allocation for no change.
+  static TextStyle? _scrubberTimeStyleCache;
+  static int _scrubberTimeStyleRev = -1;
+  static TextStyle get _scrubberTimeStyle {
+    if (_scrubberTimeStyleRev != AppFont.revision.value || _scrubberTimeStyleCache == null) {
+      _scrubberTimeStyleRev = AppFont.revision.value;
+      _scrubberTimeStyleCache = AppFont.style(
+        color: Colors.white.withValues(alpha: 0.55),
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      );
+    }
+    return _scrubberTimeStyleCache!;
+  }
 
   // ── Transport Controls (Previous, Play/Pause, Next) (Image 1) ───────────
 
@@ -1893,7 +1901,7 @@ onDragStart: () {
           button: true,
           child: Text(
             audio.activeName,
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white.withValues(alpha: 0.55),
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -2263,7 +2271,7 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
                   children: [
                     Text(
                       currentTrack.trackName,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white,
                         fontSize: lerpDouble(24.0, 15.0, q)!,
                         fontWeight: FontWeight.w700,
@@ -2276,7 +2284,7 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
                     SizedBox(height: lerpDouble(3.0, 2.0, q)!),
                     Text(
                       currentTrack.artistName,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(
                             alpha: lerpDouble(0.68, 0.65, q)!),
                         fontSize: lerpDouble(17.0, 13.0, q)!,

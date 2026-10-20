@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../screens/song_transitions_screen.dart';
 import '../services/transition/transition_settings.dart';
@@ -102,7 +102,7 @@ class TransitionChip extends StatelessWidget {
                     child: Text(
                       text,
                       key: ValueKey<String>(text),
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: on
                             ? Colors.white
                             : Colors.white.withValues(alpha: 0.8),

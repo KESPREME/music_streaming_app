@@ -17,7 +17,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../screens/song_transitions_screen.dart';
 import '../services/transition/transition_engine.dart';
@@ -147,7 +147,7 @@ class _Line extends StatelessWidget {
                           const SizedBox(width: 6),
                           Text(
                             label,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: color,
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
@@ -161,7 +161,7 @@ class _Line extends StatelessWidget {
                         Text(
                           detail!,
                           textAlign: TextAlign.center,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.42),
                             fontSize: 11,
                             height: 1.25,
@@ -225,7 +225,7 @@ class _Tip extends StatelessWidget {
                       children: [
                         Text(
                           'Blend your songs',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white,
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -234,7 +234,7 @@ class _Tip extends StatelessWidget {
                         const SizedBox(height: 1),
                         Text(
                           'Crossfade or AutoMix, so one song flows into the next.',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white60,
                             fontSize: 12,
                             height: 1.3,

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 /// Scroll-interpolated frosted top bar matching BitChord's FrostedTopBar and TopFadeBlur.
 ///
@@ -100,7 +100,7 @@ class BitchordSliverAppBar extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Colors.white,
             fontSize: 17,
             fontWeight: FontWeight.w700,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../utils/artwork_palette_resolver.dart';
 
@@ -94,7 +94,7 @@ class PlayPill extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               'Play',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,

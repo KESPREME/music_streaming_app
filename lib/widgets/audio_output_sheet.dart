@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../services/audio_output_service.dart';
 import 'device_volume_slider.dart';
 
@@ -69,7 +69,7 @@ class AudioOutputSheet extends StatelessWidget {
               const SizedBox(height: 14),
               Text(
                 'Audio output',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -83,7 +83,7 @@ class AudioOutputSheet extends StatelessWidget {
                   child: Center(
                     child: Text(
                       'No outputs found',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(alpha: 0.55),
                         fontSize: 14,
                       ),
@@ -174,7 +174,7 @@ class _OutputRow extends StatelessWidget {
                     children: [
                       Text(
                         device.displayName,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
@@ -185,7 +185,7 @@ class _OutputRow extends StatelessWidget {
                       if (device.isActive)
                         Text(
                           'Playing here',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color:
                                 Colors.white.withValues(alpha: 0.55),
                             fontSize: 13,

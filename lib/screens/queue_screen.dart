@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../theme/app_font.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../widgets/blurred_backdrop.dart';
@@ -128,7 +128,7 @@ class QueueScreen extends StatelessWidget {
                             ),
                             child: Text(
                               'Playing Now',
-                              style: GoogleFonts.plusJakartaSans(
+                              style: AppFont.style(
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w700,
@@ -272,7 +272,7 @@ class QueueScreen extends StatelessWidget {
         children: [
           Text(
             'Queue',
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -302,7 +302,7 @@ class QueueScreen extends StatelessWidget {
                     ),
                     child: Text(
                       'Clear',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -337,7 +337,7 @@ class QueueScreen extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4, bottom: 6),
             child: Text(
               'Now playing',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
@@ -438,7 +438,7 @@ child: _wrapHeaderArt(
                 children: [
                   Text(
                     track.trackName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
@@ -449,7 +449,7 @@ child: _wrapHeaderArt(
                   const SizedBox(height: 2),
                   Text(
                     track.artistName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white.withValues(alpha: 0.65),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -480,7 +480,7 @@ child: _wrapHeaderArt(
             semanticLabel: 'Pronunciation',
             child: Text(
               'aあ',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
@@ -675,7 +675,7 @@ child: _wrapHeaderArt(
       child: ExcludeSemantics(
         child: Text(
           title,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Colors.white.withValues(alpha: 0.75),
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -867,7 +867,7 @@ child: _wrapHeaderArt(
               const SizedBox(width: 8),
               Text(
                 'Autoplay',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: enabled ? Colors.white : Colors.white70,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -877,7 +877,7 @@ child: _wrapHeaderArt(
               Flexible(
                 child: Text(
                   sublabel,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Colors.white.withValues(alpha: 0.50),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -982,7 +982,7 @@ child: Column(
                         Flexible(
                           child: Text(
                             track.trackName,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               // Current track: full white, matching BitChord's
                               // isCurrent branch rather than an accent tint.
                               color: isCurrent
@@ -1016,7 +1016,7 @@ child: Column(
                       Expanded(
                         child: Text(
                           track.artistName,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.60),
                             fontSize: 13,
                             fontWeight: FontWeight.w400,
@@ -1181,7 +1181,7 @@ child: Column(
           const SizedBox(height: 16),
           Text(
             'Queue is empty',
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white.withValues(alpha: 0.7),
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -1190,7 +1190,7 @@ child: Column(
           const SizedBox(height: 6),
           Text(
             'Songs you play next will appear here',
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white.withValues(alpha: 0.4),
               fontSize: 13,
             ),
@@ -1211,21 +1211,21 @@ child: Column(
         ),
         title: Text(
           'Clear Queue?',
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
           'Are you sure you want to clear all upcoming songs?',
-          style: GoogleFonts.plusJakartaSans(color: Colors.white70),
+          style: AppFont.style(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(
               'Cancel',
-              style: GoogleFonts.plusJakartaSans(color: Colors.white60),
+              style: AppFont.style(color: Colors.white60),
             ),
           ),
           TextButton(
@@ -1236,7 +1236,7 @@ child: Column(
             },
             child: Text(
               'Clear',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.redAccent,
                 fontWeight: FontWeight.bold,
               ),

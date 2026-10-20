@@ -15,7 +15,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../models/track.dart';
 import '../../theme/glass_tokens.dart';
@@ -36,7 +36,7 @@ abstract final class CollectionStyle {
   static const double pill = 52;
 
   static TextStyle title(double size, {FontWeight w = FontWeight.w800}) =>
-      GoogleFonts.plusJakartaSans(
+      AppFont.style(
         color: Colors.white,
         fontSize: size,
         fontWeight: w,
@@ -44,7 +44,7 @@ abstract final class CollectionStyle {
       );
 
   static TextStyle meta({double size = 13.5, double alpha = 0.55, FontWeight w = FontWeight.w500}) =>
-      GoogleFonts.plusJakartaSans(
+      AppFont.style(
         color: Colors.white.withValues(alpha: alpha),
         fontSize: size,
         fontWeight: w,
@@ -375,7 +375,7 @@ class CollectionPill extends StatelessWidget {
                 child: Text(label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.plusJakartaSans(color: fg, fontSize: 16, fontWeight: FontWeight.w800)),
+                    style: AppFont.style(color: fg, fontSize: 16, fontWeight: FontWeight.w800)),
               ),
             ],
           ),
@@ -556,7 +556,7 @@ class CollectionChips extends StatelessWidget {
                       const SizedBox(width: 6),
                     ],
                     Text(c.label,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: on ? Colors.black : Colors.white.withValues(alpha: 0.85),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w700,
@@ -728,7 +728,7 @@ class CollectionTrackRow extends StatelessWidget {
                               borderRadius: BorderRadius.circular(3),
                             ),
                             child: Text('E',
-                                style: GoogleFonts.plusJakartaSans(
+                                style: AppFont.style(
                                     color: Colors.black, fontSize: 9.5, fontWeight: FontWeight.w800)),
                           ),
                           const SizedBox(width: 6),

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../theme/app_font.dart';
 import '../../providers/music_provider.dart';
 
 /// Hero editorial typography and living liquid glass depth artwork for LibraryScreen.
@@ -89,7 +90,7 @@ class LibraryHeroArtwork extends StatelessWidget {
                 children: [
                   Text(
                     'ALL YOUR SOUNDS,\nIN ONE PLACE',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.4,
@@ -100,7 +101,7 @@ class LibraryHeroArtwork extends StatelessWidget {
                   const SizedBox(height: 5),
                   RichText(
                     text: TextSpan(
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         fontSize: 33,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1.0,

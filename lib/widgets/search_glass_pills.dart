@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../design/glass/glass_surface.dart';
 import '../providers/music_provider.dart';
 import '../utils/color_utils.dart';
@@ -159,12 +159,12 @@ class SearchScopeSegmented extends StatelessWidget {
               indicatorPinchStrength: 0.45,
               indicatorExpansion:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              selectedTextStyle: GoogleFonts.plusJakartaSans(
+              selectedTextStyle: AppFont.style(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
               ),
-              unselectedTextStyle: GoogleFonts.plusJakartaSans(
+              unselectedTextStyle: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.55),
                 fontWeight: FontWeight.w500,
                 fontSize: 15,
@@ -269,7 +269,7 @@ class SearchFilterChips extends StatelessWidget {
                 child: Center(
                   child: AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 180),
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: selected
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.65),

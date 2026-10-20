@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../models/track.dart';
 
@@ -69,7 +69,7 @@ class _SearchMediaGridCardState extends State<SearchMediaGridCard> {
               widget.track.trackName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 15.5,
                 fontWeight: FontWeight.w700,
@@ -81,7 +81,7 @@ class _SearchMediaGridCardState extends State<SearchMediaGridCard> {
               widget.subtitle ?? 'Playlist',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 13.5,
                 fontWeight: FontWeight.w400,
@@ -174,7 +174,7 @@ class _SearchArtistGridCardState extends State<SearchArtistGridCard> {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -187,7 +187,7 @@ class _SearchArtistGridCardState extends State<SearchArtistGridCard> {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 13.5,
                 fontWeight: FontWeight.w400,

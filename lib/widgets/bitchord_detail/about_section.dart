@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 /// Collapsible editorial blurb matching BitChord's AboutSection
 class AboutSection extends StatefulWidget {
@@ -42,7 +42,7 @@ class _AboutSectionState extends State<AboutSection> {
         children: [
           Text(
             widget.title,
-            style: GoogleFonts.plusJakartaSans(
+            style: AppFont.style(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -57,7 +57,7 @@ class _AboutSectionState extends State<AboutSection> {
               cleaned,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.78),
                 fontSize: 14.5,
                 height: 1.45,
@@ -66,7 +66,7 @@ class _AboutSectionState extends State<AboutSection> {
             ),
             secondChild: Text(
               cleaned,
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white.withValues(alpha: 0.78),
                 fontSize: 14.5,
                 height: 1.45,
@@ -81,7 +81,7 @@ class _AboutSectionState extends State<AboutSection> {
               padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: Text(
                 _expanded ? 'Less' : 'More',
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: widget.accentColor,
                   fontSize: 14.5,
                   fontWeight: FontWeight.w700,

@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../providers/accent_controller.dart';
 import '../providers/music_provider.dart';
 import '../services/lyrics/lyrics_service.dart';
@@ -312,7 +312,7 @@ class _LiveProvidersSheetState extends State<_LiveProvidersSheet> {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
         child: Text(
           'No lyric sources are enabled.',
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Colors.white.withValues(alpha: 0.5),
             fontSize: 13,
           ),
@@ -346,7 +346,7 @@ class _LiveProvidersSheetState extends State<_LiveProvidersSheet> {
                   children: [
                     Text(
                       'Choose lyrics provider',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white,
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
@@ -357,7 +357,7 @@ class _LiveProvidersSheetState extends State<_LiveProvidersSheet> {
                       data.current == null
                           ? (data.loading ? 'Searching\u2026' : 'No source yet')
                           : 'Showing ${data.current!.displayName}',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white.withValues(alpha: 0.55),
                         fontSize: 12.5,
                       ),
@@ -489,7 +489,7 @@ class _LiveProvidersSheetState extends State<_LiveProvidersSheet> {
                       provider.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white
                             .withValues(alpha: enabled || isCurrent ? 1 : 0.55),
                         fontSize: 15,
@@ -502,7 +502,7 @@ class _LiveProvidersSheetState extends State<_LiveProvidersSheet> {
                       status,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white
                             .withValues(alpha: isCurrent ? 0.7 : 0.5),
                         fontSize: 12,
@@ -754,7 +754,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                     children: [
                       Text(
                         'Lyric Providers',
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
@@ -765,7 +765,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                         'Sources are tried in this order. Drag to reorder them. '
                         'The first source with lyrics wins unless syllable '
                         'lyrics are prioritized.',
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white.withValues(alpha: 0.55),
                           fontSize: 12.5,
                         ),
@@ -780,7 +780,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                       size: 16, color: accentColor),
                   label: Text(
                     'Reset',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: accentColor,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -908,7 +908,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                           provider.displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: isEnabled
                                 ? Colors.white
                                 : Colors.white.withValues(alpha: 0.4),
@@ -928,7 +928,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                           ),
                           child: Text(
                             'PRIMARY',
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: accentColor,
                               fontSize: 9.5,
                               fontWeight: FontWeight.w800,
@@ -944,7 +944,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                     needsKey
                         ? '${provider.description} \u00b7 API key required'
                         : provider.description,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: isEnabled
                           ? Colors.white.withValues(alpha: 0.5)
                           : Colors.white.withValues(alpha: 0.25),
@@ -1003,7 +1003,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                         ? MaterialYouTypography.titleMedium(
                             colorScheme.onSurface,
                           )
-                        : GoogleFonts.plusJakartaSans(
+                        : AppFont.style(
                             color: Colors.white,
                             fontSize: 14.5,
                             fontWeight: FontWeight.w600,
@@ -1017,7 +1017,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                         ? MaterialYouTypography.bodySmall(
                             colorScheme.onSurfaceVariant,
                           )
-                        : GoogleFonts.plusJakartaSans(
+                        : AppFont.style(
                             color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 12,
                           ),
@@ -1075,7 +1075,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                             ? MaterialYouTypography.titleMedium(
                                 colorScheme.onSurface,
                               )
-                            : GoogleFonts.plusJakartaSans(
+                            : AppFont.style(
                                 color: Colors.white,
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w600,
@@ -1088,7 +1088,7 @@ class _SettingsProvidersSheetState extends State<_SettingsProvidersSheet> {
                             ? MaterialYouTypography.bodySmall(
                                 colorScheme.onSurfaceVariant,
                               )
-                            : GoogleFonts.plusJakartaSans(
+                            : AppFont.style(
                                 color: Colors.white.withValues(alpha: 0.5),
                                 fontSize: 12,
                               ),

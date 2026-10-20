@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../theme/glass_tokens.dart';
 import '../utils/format.dart';
@@ -22,7 +22,7 @@ class WavyBarStyle {
 
   /// Glassmorphism look (default): plusJakartaSans white labels.
   static TextStyle glassLabel(BuildContext context, Color color) =>
-      GoogleFonts.plusJakartaSans(
+      AppFont.style(
         color: color,
         fontSize: 12,
         fontWeight: FontWeight.w600,
@@ -30,7 +30,7 @@ class WavyBarStyle {
 
   /// Material You look - theme-aware labels, softer glow.
   static WavyBarStyle materialYou(BuildContext context) => WavyBarStyle(
-        labelStyleBuilder: (ctx, color) => GoogleFonts.plusJakartaSans(
+        labelStyleBuilder: (ctx, color) => AppFont.style(
           color: Theme.of(ctx).colorScheme.onSurfaceVariant,
           fontSize: 12,
           fontWeight: FontWeight.w600,

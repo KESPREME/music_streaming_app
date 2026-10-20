@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../theme/app_font.dart';
 import '../../providers/music_provider.dart';
 import '../stagger_in.dart';
 import 'library_hero_artwork.dart';
@@ -101,7 +101,7 @@ class LibraryBrandPromoCard extends StatelessWidget {
                   children: [
                     Text(
                       'YOUR MUSIC.\nYOUR WORLD.',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         fontSize: 9.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.4,
@@ -112,7 +112,7 @@ class LibraryBrandPromoCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       'Listen\nyour way.',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         fontSize: 25,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.6,

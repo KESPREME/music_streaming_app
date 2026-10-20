@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../providers/accent_controller.dart';
 
 /// Accent color control block: preset swatches, custom hex, and the
@@ -18,7 +18,7 @@ class AccentSettingsCard extends StatelessWidget {
       children: [
         Text(
           'ACCENT COLOR',
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Colors.white54,
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -64,7 +64,7 @@ class AccentSettingsCard extends StatelessWidget {
                 dense: true,
                 title: Text(
                   'Album-Art Adaptive',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
@@ -72,7 +72,7 @@ class AccentSettingsCard extends StatelessWidget {
                 ),
                 subtitle: Text(
                   'Accent follows the playing song\'s artwork',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Colors.white54,
                     fontSize: 12,
                   ),
@@ -99,7 +99,7 @@ class AccentSettingsCard extends StatelessWidget {
     final color = await showDialog<Color>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Custom Accent', style: GoogleFonts.plusJakartaSans()),
+        title: Text('Custom Accent', style: AppFont.style()),
         content: TextField(
           controller: textController,
           autofocus: true,

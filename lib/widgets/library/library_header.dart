@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../glass_circle_button.dart';
 
@@ -49,7 +49,7 @@ class LibraryHeader extends StatelessWidget {
                 const SizedBox(width: 8),
                 RichText(
                   text: TextSpan(
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontSize: 16,
                       letterSpacing: -0.2,
                     ),

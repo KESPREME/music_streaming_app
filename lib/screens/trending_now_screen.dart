@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/skeleton.dart';
@@ -43,13 +43,13 @@ class TrendingNowScreen extends StatelessWidget {
                  musicProvider.errorMessage != null && musicProvider.errorMessage!.toLowerCase().contains("trending")
                     ? SliverFillRemaining(
                         child: Center(
-                          child: Text('Could not load trending tracks', style: GoogleFonts.plusJakartaSans(color: Colors.white54)),
+                          child: Text('Could not load trending tracks', style: AppFont.style(color: Colors.white54)),
                         ),
                       )
                     : (musicProvider.tracks.isEmpty && !musicProvider.isLoadingLocal)
                         ? SliverFillRemaining(
                             child: Center(
-                              child: Text('No trending tracks available', style: GoogleFonts.plusJakartaSans(color: Colors.white54)),
+                              child: Text('No trending tracks available', style: AppFont.style(color: Colors.white54)),
                             ),
                           )
                         // The list's own shape while it loads, not a spinner.
@@ -111,7 +111,7 @@ class TrendingNowScreen extends StatelessWidget {
                 titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 16),
                 title: Text(
                   'Trending Now',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                     fontSize: 20 + (8 * percentage),

@@ -1,8 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../services/innertube/innertube_service.dart';
 import '../models/track.dart';
@@ -110,7 +110,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                         child: Center(
                           child: Text(
                             'Could not load artists',
-                            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+                            style: AppFont.style(color: Colors.white54),
                           ),
                         ),
                       );
@@ -120,7 +120,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                         child: Center(
                           child: Text(
                             'No artists found',
-                            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+                            style: AppFont.style(color: Colors.white54),
                           ),
                         ),
                       );
@@ -183,7 +183,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                 titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 16),
                 title: Text(
                   'Top Artists',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                     fontSize: 20 + (8 * percentage),
@@ -270,7 +270,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                     children: [
                       Text(
                         artistName,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
                           color: Colors.white,
@@ -279,7 +279,7 @@ class _AllArtistsScreenState extends State<AllArtistsScreen> {
                       const SizedBox(height: 4),
                       Text(
                         "Artist", // Simple subtitle
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           fontSize: 13,
                           color: Colors.white54,
                           letterSpacing: 0.5,

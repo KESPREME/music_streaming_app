@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../glass_circle_button.dart';
 import '../glass_surface.dart';
@@ -73,7 +73,7 @@ class LibraryFilterBar extends StatelessWidget {
                 const SizedBox(height: 16),
                 Text(
                   'Sort by',
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
@@ -92,7 +92,7 @@ class LibraryFilterBar extends StatelessWidget {
                     ),
                     title: Text(
                       option.label,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: currentSort == option
                             ? Colors.white
                             : Colors.white.withValues(alpha: 0.75),
@@ -198,7 +198,7 @@ class LibraryFilterBar extends StatelessWidget {
                                 child: Center(
                                   child: AnimatedDefaultTextStyle(
                                     duration: const Duration(milliseconds: 160),
-                                    style: GoogleFonts.plusJakartaSans(
+                                    style: AppFont.style(
                                       fontSize: 13,
                                       fontWeight: selectedCategory == categories[i]
                                           ? FontWeight.w700

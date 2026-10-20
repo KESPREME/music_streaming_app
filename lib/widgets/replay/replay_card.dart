@@ -15,7 +15,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/replay/replay_summary.dart';
@@ -33,14 +33,14 @@ abstract final class ReplayStyle {
   static const double cardRadius = 26;
   static const double cardAspect = 0.63; // height / width
 
-  static TextStyle eyebrow() => GoogleFonts.plusJakartaSans(
+  static TextStyle eyebrow() => AppFont.style(
         color: Colors.white.withValues(alpha: 0.72),
         fontSize: 12.5,
         fontWeight: FontWeight.w700,
         letterSpacing: 1.8,
       );
 
-  static TextStyle display(double size) => GoogleFonts.plusJakartaSans(
+  static TextStyle display(double size) => AppFont.style(
         color: Colors.white,
         fontSize: size,
         height: 1.02,
@@ -56,7 +56,7 @@ abstract final class ReplayStyle {
         ],
       );
 
-  static TextStyle caps() => GoogleFonts.plusJakartaSans(
+  static TextStyle caps() => AppFont.style(
         color: Colors.white.withValues(alpha: 0.72),
         fontSize: 13,
         fontWeight: FontWeight.w700,
@@ -64,7 +64,7 @@ abstract final class ReplayStyle {
       );
 
   static TextStyle title(double size, {FontWeight weight = FontWeight.w800}) =>
-      GoogleFonts.plusJakartaSans(
+      AppFont.style(
         color: Colors.white,
         fontSize: size,
         fontWeight: weight,
@@ -72,7 +72,7 @@ abstract final class ReplayStyle {
       );
 
   static TextStyle meta({double size = 13.5, double alpha = 0.55}) =>
-      GoogleFonts.plusJakartaSans(
+      AppFont.style(
         color: Colors.white.withValues(alpha: alpha),
         fontSize: size,
         fontWeight: FontWeight.w500,

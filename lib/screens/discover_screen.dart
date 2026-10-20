@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../models/track.dart';
 import '../presentation/explore/explore_screen.dart';
 import '../providers/music_provider.dart';
@@ -99,12 +99,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     Text('Explore',
-                                        style: GoogleFonts.plusJakartaSans(
+                                        style: AppFont.style(
                                             fontSize: 20,
                                             fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 4),
                                     Text('Swipe through new music',
-                                        style: GoogleFonts.plusJakartaSans(
+                                        style: AppFont.style(
                                             fontSize: 13,
                                             color: Colors.white
                                                 .withValues(alpha: 0.6))),
@@ -165,7 +165,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         Center(
           child: Text(
             'Could not load Discover',
-            style: GoogleFonts.plusJakartaSans(color: Colors.white54),
+            style: AppFont.style(color: Colors.white54),
           ),
         ),
         const SizedBox(height: 16),
@@ -182,7 +182,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
         child: Text(
           title,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -344,7 +344,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       width: 80,
                       child: Text(
                         track.artistName,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../services/transition/transition_engine.dart';
 import '../services/transition/transition_settings.dart';
@@ -104,7 +104,7 @@ class _Body extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Song Transitions',
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.8,
@@ -290,7 +290,7 @@ class _Body extends StatelessWidget {
             child: Text(
               'Transitions happen when a song runs out. Tapping next or '
               'previous, seeking, or starting a new song never blends.',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                   color: Colors.white38, fontSize: 12, height: 1.45),
             ),
           ),
@@ -309,7 +309,7 @@ class _SectionLabel extends StatelessWidget {
         padding: const EdgeInsets.only(left: 4),
         child: Text(
           text,
-          style: GoogleFonts.plusJakartaSans(
+          style: AppFont.style(
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.85),
             fontSize: 12,
             fontWeight: FontWeight.w800,
@@ -468,7 +468,7 @@ class _StyleCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 title,
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -477,7 +477,7 @@ class _StyleCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 blurb,
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                     color: Colors.white54, fontSize: 12, height: 1.35),
               ),
             ],
@@ -533,7 +533,7 @@ class _LengthCardState extends State<_LengthCard> {
                   children: [
                     Text(
                       widget.automix ? 'Fallback length' : 'Crossfade length',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
@@ -544,7 +544,7 @@ class _LengthCardState extends State<_LengthCard> {
                       widget.automix
                           ? "Used when a song just stops, or hasn't been analysed yet"
                           : 'How long the two songs overlap',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: AppFont.style(
                           color: Colors.white54, fontSize: 12),
                     ),
                   ],
@@ -557,7 +557,7 @@ class _LengthCardState extends State<_LengthCard> {
                 child: Text(
                   '$shown s',
                   key: ValueKey<int>(shown),
-                  style: GoogleFonts.plusJakartaSans(
+                  style: AppFont.style(
                     color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w800,
                     fontSize: 20,
@@ -595,7 +595,7 @@ class _LengthCardState extends State<_LengthCard> {
                 for (final t in const ['1 s', '12 s'])
                   Text(
                     t,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                         color: Colors.white38,
                         fontSize: 11,
                         fontWeight: FontWeight.w600),

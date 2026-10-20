@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_font.dart';
+
 /// Theme modes available in the app
 enum AppThemeMode {
   glassmorphism,
@@ -12,6 +14,8 @@ class ThemeProvider extends ChangeNotifier {
   static const String _themePreferenceKey = 'app_theme_mode';
   static const String _dynamicColorPreferenceKey = 'dynamic_color_enabled';
   static const String _amoledPreferenceKey = 'amoled_black_enabled';
+  static const String _fontFamilyKey = 'font_family';
+  static const String _fontWeightDeltaKey = 'font_weight_delta';
 
   AppThemeMode _currentTheme = AppThemeMode.glassmorphism; // Default to glassmorphism
   bool _isDynamicColorEnabled = true;
@@ -25,6 +29,10 @@ class ThemeProvider extends ChangeNotifier {
   /// album art until the listener asks for black. See `AmoledTheme`.
   bool get isAmoled => _isAmoled;
   bool get isInitialized => _isInitialized;
+
+  /// The app typeface and weight step (see [AppFont]).
+  String get fontFamily => AppFont.family;
+  int get fontWeightDelta => AppFont.weightDelta;
 
   /// Check if current theme is glassmorphism
   bool get isGlassmorphism => _currentTheme == AppThemeMode.glassmorphism;
@@ -50,6 +58,12 @@ class ThemeProvider extends ChangeNotifier {
 
       // Load pure-black preference
       _isAmoled = prefs.getBool(_amoledPreferenceKey) ?? false;
+
+      // Font: a family that is no longer offered falls back to the default.
+      AppFont.apply(
+        family: prefs.getString(_fontFamilyKey) ?? AppFont.defaultFamily,
+        weightDelta: prefs.getInt(_fontWeightDeltaKey) ?? 0,
+      );
 
       _isInitialized = true;
       notifyListeners();
@@ -116,6 +130,47 @@ class ThemeProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error saving pure black preference: $e');
     }
+  }
+
+  /// Switches the app typeface. The face is fetched first (once; the device
+  /// keeps it), so nothing redraws in a fallback; returns false and changes
+  /// nothing when it cannot be had.
+  Future<bool> setFontFamily(String family, {Future<bool> Function(String family)? preload}) async {
+    if (family == AppFont.family) return true;
+    if (!AppFont.isKnown(family)) return false;
+    final ok = await (preload ?? AppFont.preload)(family);
+    if (!ok) return false;
+    AppFont.apply(family: family);
+    _afterFontChange();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_fontFamilyKey, family);
+    } catch (e) {
+      debugPrint('Error saving font preference: $e');
+    }
+    return true;
+  }
+
+  /// Lighter (-1), default (0) or bolder (+1) text.
+  Future<void> setFontWeightDelta(int delta) async {
+    final d = delta.clamp(AppFont.minWeightDelta, AppFont.maxWeightDelta);
+    if (d == AppFont.weightDelta) return;
+    AppFont.apply(weightDelta: d);
+    _afterFontChange();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_fontWeightDeltaKey, d);
+    } catch (e) {
+      debugPrint('Error saving text weight preference: $e');
+    }
+  }
+
+  void _afterFontChange() {
+    notifyListeners();
+    // Styles built in build methods (AppFont.style) are re-read on rebuild;
+    // rebuild every element in place so no screen keeps the old face.
+    WidgetsBinding.instance.addPostFrameCallback((_) => AppFont.rebuildAll());
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   /// Get theme name for display

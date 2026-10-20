@@ -10,9 +10,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../theme/app_font.dart';
 import '../../models/playlist.dart';
 import '../../models/track.dart';
 import '../../providers/music_provider.dart';
@@ -268,7 +268,7 @@ class _EditBodyState extends State<_EditBody> {
                   decoration: InputDecoration(
                     counterText: '',
                     hintText: 'Description',
-                    hintStyle: GoogleFonts.plusJakartaSans(color: Colors.white.withValues(alpha: 0.35), fontSize: 15.5),
+                    hintStyle: AppFont.style(color: Colors.white.withValues(alpha: 0.35), fontSize: 15.5),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),

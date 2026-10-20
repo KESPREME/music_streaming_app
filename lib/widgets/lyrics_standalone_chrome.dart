@@ -13,7 +13,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_font.dart';
 
 import '../models/track.dart';
 import '../providers/music_provider.dart';
@@ -162,7 +162,7 @@ class LyricsMiniHeader extends StatelessWidget {
                 children: [
                   Text(
                     track.trackName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
@@ -173,7 +173,7 @@ class LyricsMiniHeader extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     track.artistName,
-                    style: GoogleFonts.plusJakartaSans(
+                    style: AppFont.style(
                       color: Colors.white.withValues(alpha: 0.65),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -206,7 +206,7 @@ class LyricsMiniHeader extends StatelessWidget {
             },
             child: Text(
               'a\u3042',
-              style: GoogleFonts.plusJakartaSans(
+              style: AppFont.style(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
@@ -350,7 +350,7 @@ class LyricsMiniScrubber extends StatelessWidget {
     );
   }
 
-  static TextStyle get _timeStyle => GoogleFonts.plusJakartaSans(
+  static TextStyle get _timeStyle => AppFont.style(
         color: Colors.white.withValues(alpha: 0.70),
         fontSize: 12,
         fontWeight: FontWeight.w600,

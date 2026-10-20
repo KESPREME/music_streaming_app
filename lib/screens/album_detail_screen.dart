@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../theme/app_font.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/canvas_resolution_service.dart';
@@ -555,7 +555,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           textAlign: TextAlign.center,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white,
                             fontSize: 26,
                             fontWeight: FontWeight.w800,
@@ -576,7 +576,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.plusJakartaSans(
+                              style: AppFont.style(
                                 color: Color.lerp(accentColor, Colors.white, 0.35),
                                 fontSize: 20,
                                 fontWeight: FontWeight.w500,
@@ -593,7 +593,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                             metadataLine,
                             key: const ValueKey('album_meta'),
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: AppFont.style(
                               color: Colors.white.withValues(alpha: 0.62),
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
@@ -642,7 +642,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 32),
                     child: Column(
                       children: [
-                        Text(_error!, style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 16)),
+                        Text(_error!, style: AppFont.style(color: Colors.white70, fontSize: 16)),
                         const SizedBox(height: 12),
                         TextButton(
                           onPressed: () {
@@ -744,7 +744,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                       )
                                                     : Text(
                                                         '$originalTrackNumber',
-                                                        style: GoogleFonts.plusJakartaSans(
+                                                        style: AppFont.style(
                                                           color: Colors.white.withValues(alpha: 0.45),
                                                           fontSize: 16,
                                                           fontWeight: FontWeight.w500,
@@ -769,7 +769,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                         track.trackName,
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
-                                                        style: GoogleFonts.plusJakartaSans(
+                                                        style: AppFont.style(
                                                           color: isPlayingThis ? accentColor : Colors.white,
                                                           fontSize: 16,
                                                           fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
@@ -783,7 +783,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                   track.artistName,
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
-                                                  style: GoogleFonts.plusJakartaSans(
+                                                  style: AppFont.style(
                                                     color: Colors.white.withValues(alpha: 0.55),
                                                     fontSize: 13.5,
                                                     fontWeight: FontWeight.w400,
@@ -830,7 +830,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       children: [
                         Text(
                           _formatTotalDuration(),
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -842,7 +842,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           _resolvedYear != null
                               ? '℗ $_resolvedYear ${_resolvedArtist ?? title}'
                               : '℗ ${_resolvedArtist ?? title}',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.35),
                             fontSize: 12,
                           ),

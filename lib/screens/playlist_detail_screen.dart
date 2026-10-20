@@ -1,9 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_font.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../utils/app_image_cache.dart';
@@ -397,7 +397,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       children: [
                         Icon(Icons.queue_music_rounded, size: 56, color: Colors.white.withValues(alpha: 0.4)),
                         const SizedBox(height: 16),
-                        Text(_error!, style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 16)),
+                        Text(_error!, style: AppFont.style(color: Colors.white70, fontSize: 16)),
                         const SizedBox(height: 16),
                         TextButton(
                           onPressed: () {
@@ -435,7 +435,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 textAlign: TextAlign.center,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.plusJakartaSans(
+                                style: AppFont.style(
                                   color: Colors.white,
                                   fontSize: 28,
                                   fontWeight: FontWeight.w800,
@@ -454,7 +454,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.plusJakartaSans(
+                                style: AppFont.style(
                                   color: accentColor,
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,
@@ -469,7 +469,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               child: Text(
                                 metadataLine,
                                 textAlign: TextAlign.center,
-                                style: GoogleFonts.plusJakartaSans(
+                                style: AppFont.style(
                                   color: Colors.white.withValues(alpha: 0.6),
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
@@ -645,7 +645,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                                         track.trackName,
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
-                                                        style: GoogleFonts.plusJakartaSans(
+                                                        style: AppFont.style(
                                                           color: isPlayingThis ? accentColor : Colors.white,
                                                           fontSize: 16,
                                                           fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
@@ -659,7 +659,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                                   track.artistName,
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
-                                                  style: GoogleFonts.plusJakartaSans(
+                                                  style: AppFont.style(
                                                     color: Colors.white.withValues(alpha: 0.55),
                                                     fontSize: 13.5,
                                                     fontWeight: FontWeight.w400,
@@ -673,7 +673,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                           if (track.durationText.isNotEmpty)
                                             Text(
                                               track.durationText,
-                                              style: GoogleFonts.plusJakartaSans(
+                                              style: AppFont.style(
                                                 color: Colors.white.withValues(alpha: 0.5),
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w400,
@@ -715,7 +715,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
                       child: Text(
                         'Suggested',
-                        style: GoogleFonts.plusJakartaSans(
+                        style: AppFont.style(
                           color: Colors.white,
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -755,7 +755,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                         song.trackName,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.plusJakartaSans(
+                                        style: AppFont.style(
                                           color: Colors.white,
                                           fontSize: 15,
                                           fontWeight: FontWeight.w600,
@@ -765,7 +765,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                         song.artistName,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.plusJakartaSans(
+                                        style: AppFont.style(
                                           color: Colors.white54,
                                           fontSize: 13,
                                         ),
@@ -805,7 +805,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       children: [
                         Text(
                           _formatTotalDuration(),
-                          style: GoogleFonts.plusJakartaSans(
+                          style: AppFont.style(
                             color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,

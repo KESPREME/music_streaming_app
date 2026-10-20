@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 /// Home design tokens (spec #68): every dimension the Home UI uses, in one
 /// place. Values are proportions of available content width where the
@@ -101,7 +101,7 @@ static const double headerToContent = 10.0;
   /// Page header "Home". 34/w800 with tight tracking: BitChord's display
   /// title, which is what makes its page read as one confident heading over
   /// quiet shelves.
-  static TextStyle homeTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle homeTitle(BuildContext context) => AppFont.style(
         fontSize: 34,
         fontWeight: FontWeight.w800,
         letterSpacing: -0.8,
@@ -110,7 +110,7 @@ static const double headerToContent = 10.0;
       );
 
   /// Hero card title (up to 2 lines).
-  static TextStyle heroTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle heroTitle(BuildContext context) => AppFont.style(
         fontSize: 26,
         fontWeight: FontWeight.w700,
         height: 1.15,
@@ -118,7 +118,7 @@ static const double headerToContent = 10.0;
       );
 
   /// Hero contextual label (Picked for you / eyebrow).
-  static TextStyle heroLabel(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle heroLabel(BuildContext context) => AppFont.style(
         fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 1.1,
@@ -126,14 +126,14 @@ static const double headerToContent = 10.0;
       );
 
   /// Hero artist/subtitle.
-  static TextStyle heroSubtitle(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle heroSubtitle(BuildContext context) => AppFont.style(
         fontSize: 15,
         fontWeight: FontWeight.w400,
         color: Colors.white.withValues(alpha: 0.8),
       );
 
   /// Section header title.
-  static TextStyle sectionTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle sectionTitle(BuildContext context) => AppFont.style(
         fontSize: sectionTitleSize,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
@@ -217,14 +217,14 @@ static const double headerToContent = 10.0;
 
   /// Section description (secondary, muted).
   static TextStyle sectionDescription(BuildContext context) =>
-      GoogleFonts.plusJakartaSans(
+      AppFont.style(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         color: mutedColor(context),
       );
 
   /// Standard card title.
-  static TextStyle cardTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle cardTitle(BuildContext context) => AppFont.style(
         fontSize: 16,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.2,
@@ -233,7 +233,7 @@ static const double headerToContent = 10.0;
       );
 
   /// Card metadata (artist, muted — never bold).
-  static TextStyle cardMetadata(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle cardMetadata(BuildContext context) => AppFont.style(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         height: 1.25,
@@ -241,7 +241,7 @@ static const double headerToContent = 10.0;
       );
 
   /// Compact list row title.
-  static TextStyle compactTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle compactTitle(BuildContext context) => AppFont.style(
         fontSize: 15,
         fontWeight: FontWeight.w600,
         height: 1.2,
@@ -249,7 +249,7 @@ static const double headerToContent = 10.0;
       );
 
   /// Compact list row metadata.
-  static TextStyle compactMetadata(BuildContext context) => GoogleFonts.plusJakartaSans(
+  static TextStyle compactMetadata(BuildContext context) => AppFont.style(
         fontSize: 13,
         fontWeight: FontWeight.w400,
         color: mutedColor(context),

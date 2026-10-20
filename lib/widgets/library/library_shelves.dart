@@ -15,7 +15,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../theme/app_font.dart';
 
 import '../../models/playlist.dart';
 import '../../utils/app_image_cache.dart';
@@ -25,14 +25,14 @@ import '../playlist/playlist_cover.dart';
 
 const double kLibraryCardRadius = 18;
 
-TextStyle _title() => GoogleFonts.plusJakartaSans(
+TextStyle _title() => AppFont.style(
       color: Colors.white,
       fontSize: 13.5,
       fontWeight: FontWeight.w700,
       letterSpacing: -0.1,
     );
 
-TextStyle _meta() => GoogleFonts.plusJakartaSans(
+TextStyle _meta() => AppFont.style(
       color: Colors.white.withValues(alpha: 0.52),
       fontSize: 12,
       fontWeight: FontWeight.w500,
@@ -163,7 +163,7 @@ class LibraryShelfHeader extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.plusJakartaSans(
+                style: AppFont.style(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
