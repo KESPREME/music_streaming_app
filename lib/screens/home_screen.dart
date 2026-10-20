@@ -13,6 +13,7 @@ import '../services/auth_service.dart';
 import '../services/innertube/innertube_service.dart';
 import '../services/recommendation/quick_picks_engine.dart'
     show kCandidateVersion, kRankerVersion;
+import '../presentation/home/home_collections.dart';
 import '../presentation/home/home_playback.dart'
     show HomePlaybackController, HomePlayAction;
 import '../presentation/home/home_presentation.dart';
@@ -25,6 +26,10 @@ import '../screens/account_switcher_sheet.dart';
 import '../screens/login_screen.dart';
 import '../theme/glass_tokens.dart';
 import '../widgets/account_button.dart';
+import '../widgets/collection_options_sheet.dart';
+import '../widgets/glass_snackbar.dart';
+import '../widgets/home_collection_play_disc.dart';
+import '../widgets/themed_album_detail_screen.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/section_view_toggle.dart';
 import '../widgets/home_layout_switch.dart';
@@ -435,6 +440,114 @@ void _pushGuarded(
   }
 }
 
+/// The page a collection card opens: an album's page for album ids, a playlist's
+/// for everything else. (The playlist page hands album ids on to the album page
+/// itself, but going straight there keeps the artist the feed named.)
+Widget _homeCollectionPage(HomeItem item) {
+  final id = homeCollectionId(item);
+  if (homeCollectionIdIsAlbum(id)) {
+    return ThemedAlbumDetailScreen(
+      albumId: id,
+      albumName: item.title,
+      artistName: homeItemArtist(item),
+      albumImage: item.artworkUrl,
+    );
+  }
+  return ThemedPlaylistDetailScreen(
+    playlistId: id,
+    playlistName: item.title,
+    playlistImage: item.artworkUrl,
+  );
+}
+
+/// What a TAP on any Home card does. One place, so no shelf can drop a case:
+/// songs and videos play (the dispatcher does that), albums and playlists open
+/// their page, artists open theirs, and anything else ANSWERS - a card never goes
+/// inert. (The rail used to call the dispatcher and ignore "navigate", which is
+/// why a New releases album did nothing at all.)
+void _activateHomeItem(
+  BuildContext context,
+  HomeItem item, {
+  required String sectionTitle,
+  List<Track>? contextPlaylist,
+}) {
+  final action = HomePlaybackController.activate(
+    context,
+    item,
+    sectionTitle: sectionTitle,
+    contextPlaylist: contextPlaylist,
+  );
+  switch (action) {
+    case HomePlayAction.playSong:
+    case HomePlayAction.playVideo:
+      return;
+    case HomePlayAction.navigateCollection:
+      HapticFeedback.selectionClick();
+      _pushGuarded(context, (_) => _homeCollectionPage(item));
+    case HomePlayAction.navigateArtist:
+      HapticFeedback.selectionClick();
+      final browse = item.browseId;
+      _pushGuarded(
+        context,
+        (_) => ThemedArtistDetailScreen(
+          artistId: (browse != null && browse.startsWith('UC')) ? browse : 'artist_${item.title}',
+          artistName: item.title,
+          artistImage: item.artworkUrl,
+          searchByName: browse == null || !browse.startsWith('UC'),
+        ),
+      );
+    case HomePlayAction.none:
+      showGlassSnackBar(context, "Can't open \"${item.title}\" from here");
+  }
+}
+
+/// What TOUCH-AND-HOLD on a Home card does: a song opens its options, an album or
+/// playlist opens the collection sheet (Play, Shuffle, Play next, ...).
+void _holdHomeItem(BuildContext context, HomeItem item) {
+  if (homeItemHasSongs(item)) {
+    HapticFeedback.mediumImpact();
+    final provider = context.read<MusicProvider>();
+    showCollectionOptionsSheet(
+      context,
+      title: item.title,
+      subtitle: item.subtitle,
+      artworkUrl: item.artworkUrl,
+      collectionId: homeCollectionId(item),
+      artistName: homeItemArtist(item),
+      loadTracks: () => loadHomeCollectionTracks(provider, item),
+    );
+    return;
+  }
+  final track = homeItemToTrack(item);
+  if (track != null) {
+    HapticFeedback.mediumImpact();
+    ThemedOptionsSheet.show(context, track: track);
+  }
+}
+
+/// Artwork with the quick-play disc on albums and playlists whose songs can be
+/// fetched (YouTube Music puts it in the same corner).
+class _ArtWithDisc extends StatelessWidget {
+  const _ArtWithDisc({required this.item, required this.child});
+
+  final HomeItem item;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!homeItemHasSongs(item)) return child;
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          right: 2,
+          bottom: 2,
+          child: HomeCollectionPlayDisc(item: item),
+        ),
+      ],
+    );
+  }
+}
 /// One curated-feed shelf rendered through the presentation planner
 /// (spec #3/#41): semantic classification → layout kind → geometry.
 /// The section's own title displays verbatim; provenance never re-titles.
@@ -548,7 +661,7 @@ class _SquareRailSection extends StatelessWidget {
                 key: ValueKey('rail_${item.id}'),
                 padding: const EdgeInsets.only(right: 14),
                 child: PressableScale(
-                  onTap: () => HomePlaybackController.activate(
+                  onTap: () => _activateHomeItem(
                     context,
                     item,
                     sectionTitle: section.title,
@@ -557,12 +670,7 @@ class _SquareRailSection extends StatelessWidget {
                         .whereType<Track>()
                         .toList(),
                   ),
-                  onLongPress: () {
-                    final track = homeItemToTrack(item);
-                    if (track != null) {
-                      ThemedOptionsSheet.show(context, track: track);
-                    }
-                  },
+                  onLongPress: () => _holdHomeItem(context, item),
                   child: SizedBox(
                     // Responsive square card ~46% content width
                     width: t.HomeTokens.contentWidth(
@@ -571,7 +679,7 @@ class _SquareRailSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ClipRRect(
+                        _ArtWithDisc(item: item, child: ClipRRect(
                           borderRadius:
                               BorderRadius.circular(t.HomeTokens.cardRadius),
                           child: AspectRatio(
@@ -595,7 +703,7 @@ class _SquareRailSection extends StatelessWidget {
                                         color: Colors.white24),
                                   ),
                           ),
-                        ),
+                        )),
                         const SizedBox(height: 8),
                         Text(
                           item.title,
@@ -745,12 +853,13 @@ class _PlaylistShelf extends StatelessWidget {
                       playlistImage: item.artworkUrl,
                     ),
                   ),
+                  onLongPress: () => _holdHomeItem(context, item),
                   child: SizedBox(
                     width: 168,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ClipRRect(
+                        _ArtWithDisc(item: item, child: ClipRRect(
                           borderRadius:
                               BorderRadius.circular(t.HomeTokens.cardRadius),
                           child: AspectRatio(
@@ -768,7 +877,7 @@ class _PlaylistShelf extends StatelessWidget {
                                     color:
                                         Colors.white.withValues(alpha: 0.05)),
                           ),
-                        ),
+                        )),
                         const SizedBox(height: 8),
                         Text(
                           item.title,
@@ -825,27 +934,16 @@ class _VideoShelf extends StatelessWidget {
                 child: PressableScale(
                   // Unified dispatcher: playable items play (videoId via
                   // song pipeline), collections navigate. No fake affordance.
-                  onTap: () {
-                    final action = HomePlaybackController.activate(
-                      context,
-                      item,
-                      sectionTitle: section.title,
-                      contextPlaylist: section.items
-                          .map(homeItemToTrack)
-                          .whereType<Track>()
-                          .toList(),
-                    );
-                    if (action == HomePlayAction.navigateCollection) {
-                      _pushGuarded(
-                        context,
-                        (_) => ThemedPlaylistDetailScreen(
-                          playlistId: item.browseId ?? item.id,
-                          playlistName: item.title,
-                          playlistImage: item.artworkUrl,
-                        ),
-                      );
-                    }
-                  },
+                  onTap: () => _activateHomeItem(
+                    context,
+                    item,
+                    sectionTitle: section.title,
+                    contextPlaylist: section.items
+                        .map(homeItemToTrack)
+                        .whereType<Track>()
+                        .toList(),
+                  ),
+                  onLongPress: () => _holdHomeItem(context, item),
                   child: SizedBox(
                     width: 216,
                     child: Column(
@@ -1786,33 +1884,16 @@ Widget _albumGridBody(BuildContext context, HomeSection section) {
               SizedBox(
                 width: tileW,
                 child: PressableScale(
-                  onTap: () {
-                    final action = HomePlaybackController.activate(
-                      context,
-                      item,
-                      sectionTitle: section.title,
-                    );
-                    if (action == HomePlayAction.navigateCollection) {
-                      _pushGuarded(
-                        context,
-                        (_) => ThemedPlaylistDetailScreen(
-                          playlistId: item.browseId ?? item.id,
-                          playlistName: item.title,
-                          playlistImage: item.artworkUrl,
-                        ),
-                      );
-                    }
-                  },
-                  onLongPress: () {
-                    final track = homeItemToTrack(item);
-                    if (track != null) {
-                      ThemedOptionsSheet.show(context, track: track);
-                    }
-                  },
+                  onTap: () => _activateHomeItem(
+                    context,
+                    item,
+                    sectionTitle: section.title,
+                  ),
+                  onLongPress: () => _holdHomeItem(context, item),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
+                      _ArtWithDisc(item: item, child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: AspectRatio(
                           aspectRatio: 1,
@@ -1833,7 +1914,7 @@ Widget _albumGridBody(BuildContext context, HomeSection section) {
                                   child: const Icon(Icons.album_rounded,
                                       color: Colors.white24)),
                         ),
-                      ),
+                      )),
                       const SizedBox(height: 9),
                       Text(
                         item.title,

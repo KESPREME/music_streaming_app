@@ -858,6 +858,33 @@ The playlist page (`PlaylistDetailScreen`) now has the album page's recipe: `Imm
 
 ---
 
+## SHEETS THAT CHAIN, AND HOME CARDS THAT ANSWER (plan: docs/PLAN-home-collections-and-playlist-flow.md)
+
+- THE DEAD-CONTEXT RULE. A sheet that closes itself and then opens another (song options > Add to a
+  playlist > New playlist; options > Sleep Timer > a confirmation) must NOT keep its own `BuildContext`
+  for what comes after: the sheet is removed ~300 ms after it pops, long before a person has chosen. A
+  later `ctx.mounted` can only be false, so the next step silently never happens. Capture
+  `Navigator.of(context).context` BEFORE popping (the navigator outlives every sheet; `Navigator.of`
+  accepts a navigator's own context) and use that for the next sheet and for toasts.
+  Reproduced and pinned by `test/options_to_playlist_flow_test.dart` (waits like a person: ~2 s).
+- Home cards: `_activateHomeItem` (tap) and `_holdHomeItem` (touch-and-hold) in `home_screen.dart` are the
+  ONE place that decides what a card does. Song/video play; album/playlist open their page; artist opens
+  the artist; anything else answers with a toast (a card is never inert). Never call
+  `HomePlaybackController.activate` and drop its result - it only CLASSIFIES, the widget must act (the
+  New releases rail did, and every album card was dead).
+- Album/playlist cards: the artwork carries a quick-play disc (`HomeCollectionPlayDisc`, YouTube Music's
+  corner) and touch-and-hold opens `showCollectionOptionsSheet` (Play, Shuffle, Play next, Add to queue,
+  Add to a playlist..., Download, Share, Go to artist). Songs are fetched once, when the sheet opens
+  (`loadHomeCollectionTracks`). Mood / genre tiles are typed `playlist` by the feed but their ids
+  (`FEmusic_moods...`) open a category: `homeItemHasSongs` keeps them off the disc and the sheet.
+- A rail renders only from 3 items (`_feedSectionRenders`): a test shelf with fewer collapses to nothing.
+- A `Semantics` without `container: true` MERGES into the card above it - a button inside a pressable
+  card must set `container: true` or a screen reader finds one card and no button.
+- Sharing a song sends `https://music.youtube.com/watch?v=<id>` (`lib/utils/share_text.dart`); the old text
+  sent `previewUrl`, which is '' for every YouTube track.
+
+---
+
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
