@@ -1,44 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../jelly_press.dart';
 import '../../theme/app_font.dart';
 
 import '../../utils/artwork_palette_resolver.dart';
 
-/// Tactile squish-on-press wrapper for BitChord action buttons
-class _SquishButton extends StatefulWidget {
+/// Jelly press for BitChord action buttons (see [JellyPress]); one light tap.
+class _SquishButton extends StatelessWidget {
   final Widget child;
   final VoidCallback onTap;
+  final JellyProfile profile;
 
   const _SquishButton({
     required this.child,
     required this.onTap,
+    this.profile = JellyProfile.pill,
   });
 
   @override
-  State<_SquishButton> createState() => _SquishButtonState();
-}
-
-class _SquishButtonState extends State<_SquishButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: () {
-        HapticFeedback.lightImpact();
-        widget.onTap();
-      },
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOutCubic,
-        child: widget.child,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => JellyPress(
+        profile: profile,
+        haptic: JellyHaptic.light,
+        behavior: HitTestBehavior.deferToChild,
+        onTap: onTap,
+        child: child,
+      );
 }
 
 /// BitChord Play Pill button
@@ -136,6 +121,7 @@ class CircleIconButton extends StatelessWidget {
 
     return _SquishButton(
       onTap: onTap,
+      profile: JellyProfile.circle,
       child: Container(
         width: size,
         height: size,

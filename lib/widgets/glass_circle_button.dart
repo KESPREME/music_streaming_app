@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'glass_surface.dart';
-import 'stagger_in.dart';
+import 'jelly_press.dart';
 
 /// Floating liquid-glass circle button - the shared chrome atom.
 ///
-/// Refined with Apple-grade tactile spring physics (`SquishOnPress`),
-/// authentic chrome glass tier (`GlassSurface`), and instant haptic feedback.
+/// Floating glass flexes under the finger like the bottom bar (`JellyPress`,
+/// chrome profile: compress, hold, stretch toward the finger, a light under it,
+/// wobble on release), on the authentic chrome glass tier (`GlassSurface`),
+/// with ONE haptic per tap.
 ///
 /// [isActive] fills the circle solid white with a black glyph - the same
 /// "white means on" language as the segmented-pill thumb. [haptic] lets
@@ -65,11 +66,11 @@ class GlassCircleButton extends StatelessWidget {
       label: semanticLabel,
       button: true,
       selected: isActive,
-      child: SquishOnPress(
-        onTap: () {
-          if (haptic) HapticFeedback.lightImpact();
-          onTap();
-        },
+      child: JellyPress(
+        profile: JellyProfile.chrome,
+        haptic: haptic ? JellyHaptic.light : JellyHaptic.none,
+        borderRadius: size / 2,
+        onTap: onTap,
         child: isActive
             ? Container(
                 width: size,

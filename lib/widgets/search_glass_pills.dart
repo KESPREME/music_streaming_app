@@ -8,6 +8,7 @@ import '../design/glass/glass_surface.dart';
 import '../providers/music_provider.dart';
 import '../utils/color_utils.dart';
 import 'animated_equalizer_icon.dart';
+import 'jelly_press.dart';
 import 'glass_circle_button.dart';
 
 /// Muzo-parity glass pills for Search: scope segmented, filter chips, dock.
@@ -28,9 +29,9 @@ Color searchPillAccentOf(BuildContext context) {
   }
 }
 
-/// Press interaction shared by search pills: springy scale-down +
-/// selection haptic.
-class SearchPillPressable extends StatefulWidget {
+/// Press interaction shared by search pills: the house jelly (compress, lean
+/// after the finger, wobble on release) + one selection tick.
+class SearchPillPressable extends StatelessWidget {
   final VoidCallback onTap;
   final Widget child;
 
@@ -41,31 +42,8 @@ class SearchPillPressable extends StatefulWidget {
   });
 
   @override
-  State<SearchPillPressable> createState() => _SearchPillPressableState();
-}
-
-class _SearchPillPressableState extends State<SearchPillPressable> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: () {
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
-        child: widget.child,
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      JellyPress(profile: JellyProfile.pill, onTap: onTap, child: child);
 }
 
 /// Mine Music | Library segmented control with authentic liquid glass optics,

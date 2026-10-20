@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/app_font.dart';
 
 import '../glass_circle_button.dart';
@@ -80,10 +79,8 @@ class LibraryHeader extends StatelessWidget {
             icon: Icons.add_rounded,
             size: 44,
             iconSize: 22,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              onCreatePlaylist();
-            },
+            // GlassCircleButton plays the tap haptic: calling it here too buzzed twice.
+            onTap: onCreatePlaylist,
             semanticLabel: 'Create playlist',
           ),
           const SizedBox(width: 8),
@@ -91,10 +88,7 @@ class LibraryHeader extends StatelessWidget {
             icon: Icons.search_rounded,
             size: 44,
             iconSize: 20,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              onSearchTap();
-            },
+            onTap: onSearchTap,
             semanticLabel: 'Search library',
           ),
         ],

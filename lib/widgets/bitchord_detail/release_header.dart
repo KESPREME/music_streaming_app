@@ -11,8 +11,8 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/app_font.dart';
+import '../jelly_press.dart';
 
 import '../../models/track.dart';
 import '../../providers/music_provider.dart';
@@ -46,7 +46,8 @@ String releaseDurationText(int totalSeconds) {
   return m == 0 ? '$h hr' : '$h hr $m min';
 }
 
-class _Press extends StatefulWidget {
+/// The latest-release card's press: the house jelly, one light tap.
+class _Press extends StatelessWidget {
   const _Press({required this.onTap, required this.child, this.semanticLabel});
 
   final VoidCallback onTap;
@@ -54,33 +55,16 @@ class _Press extends StatefulWidget {
   final String? semanticLabel;
 
   @override
-  State<_Press> createState() => _PressState();
-}
-
-class _PressState extends State<_Press> {
-  bool _down = false;
-
-  @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: widget.semanticLabel,
-      excludeSemantics: widget.semanticLabel != null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _down = true),
-        onTapUp: (_) => setState(() => _down = false),
-        onTapCancel: () => setState(() => _down = false),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          widget.onTap();
-        },
-        child: AnimatedScale(
-          scale: _down ? 0.94 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOutCubic,
-          child: widget.child,
-        ),
+      label: semanticLabel,
+      excludeSemantics: semanticLabel != null,
+      child: JellyPress(
+        profile: JellyProfile.pill,
+        haptic: JellyHaptic.light,
+        onTap: onTap,
+        child: child,
       ),
     );
   }

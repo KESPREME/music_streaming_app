@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'jelly_press.dart';
+
 /// Fade + slide-up entrance, staggered by [index] (40ms per step, capped).
 /// Transform/opacity only — no layout animation.
 class StaggerIn extends StatefulWidget {
@@ -70,34 +72,21 @@ class _StaggerInState extends State<StaggerIn>
   }
 }
 
-/// Scale-to-0.96 while pressed; springs back on release.
-class SquishOnPress extends StatefulWidget {
+/// Jelly press for bare glyph buttons (see [JellyPress]); no haptic of its own.
+class SquishOnPress extends StatelessWidget {
   const SquishOnPress({super.key, required this.child, this.onTap});
 
   final Widget child;
   final VoidCallback? onTap;
 
   @override
-  State<SquishOnPress> createState() => _SquishOnPressState();
-}
-
-class _SquishOnPressState extends State<SquishOnPress> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: widget.onTap,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.96 : 1.0,
-        duration: const Duration(milliseconds: 110),
-        curve: Curves.easeOutCubic,
-        child: widget.child,
-      ),
+    // Silent: every caller plays its own haptic (navigation calls, toggles).
+    return JellyPress(
+      profile: JellyProfile.icon,
+      haptic: JellyHaptic.none,
+      onTap: onTap,
+      child: child,
     );
   }
 }
