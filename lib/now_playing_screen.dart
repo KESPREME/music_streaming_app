@@ -35,6 +35,7 @@ import '../widgets/scroll_collapse_tracker.dart';
 import '../services/lyrics/lyric_clock.dart';
 import '../services/lyrics/lyric_clock_feed.dart';
 import '../widgets/stagger_in.dart';
+import '../widgets/jelly_press.dart';
 import '../widgets/in_place_canvas_player.dart';
 import '../widgets/player_dock.dart';
 import '../screens/lyrics_screen.dart';
@@ -145,7 +146,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
 
   int _currentTab = -1; // Default: Album mode has no active bottom tab
-  bool _isPlayPressed = false;
   double? _draggedPositionSec;
   bool _isScrubbing = false;
   String? _lastAttachedTrackId;
@@ -1773,16 +1773,9 @@ child: Transform.scale(
         Semantics(
           label: 'Previous track',
           button: true,
-          child: IconButton(
-            iconSize: 44,
-            icon: const Icon(
-              Icons.skip_previous_rounded,
-              color: Colors.white,
-            ),
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              provider.skipToPrevious();
-            },
+          child: _transportGlyph(
+            icon: Icons.skip_previous_rounded,
+            onTap: provider.skipToPrevious,
           ),
         ),
 
@@ -1790,31 +1783,24 @@ child: Transform.scale(
         Semantics(
           label: isPlaying ? 'Pause' : 'Play',
           button: true,
-          child: GestureDetector(
-            onTapDown: (_) => setState(() => _isPlayPressed = true),
-            onTapUp: (_) => setState(() => _isPlayPressed = false),
-            onTapCancel: () => setState(() => _isPlayPressed = false),
+          child: JellyPress(
+            profile: JellyProfile.icon,
+            haptic: JellyHaptic.light,
             onTap: () {
-              HapticFeedback.lightImpact();
               if (isPlaying) {
                 provider.pauseTrack();
               } else {
                 provider.resumeTrack();
               }
             },
-            child: AnimatedScale(
-              scale: _isPlayPressed ? 0.90 : 1.0,
-              duration: const Duration(milliseconds: 140),
-              curve: Curves.easeOutCubic,
-              child: Container(
-                width: 72,
-                height: 72,
-                alignment: Alignment.center,
-                child: Icon(
-                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 58,
-                ),
+            child: Container(
+              width: 72,
+              height: 72,
+              alignment: Alignment.center,
+              child: Icon(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 58,
               ),
             ),
           ),
@@ -1824,19 +1810,27 @@ child: Transform.scale(
         Semantics(
           label: 'Next track',
           button: true,
-          child: IconButton(
-            iconSize: 44,
-            icon: const Icon(
-              Icons.skip_next_rounded,
-              color: Colors.white,
-            ),
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              provider.skipToNext();
-            },
+          child: _transportGlyph(
+            icon: Icons.skip_next_rounded,
+            onTap: provider.skipToNext,
           ),
         ),
       ],
+    );
+  }
+
+  /// Prev / next: a 44dp glyph in a 52dp target that flexes like the rest of the
+  /// player's controls (the old IconButton only splashed).
+  Widget _transportGlyph({required IconData icon, required VoidCallback onTap}) {
+    return JellyPress(
+      profile: JellyProfile.icon,
+      haptic: JellyHaptic.light,
+      onTap: onTap,
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: Icon(icon, color: Colors.white, size: 44),
+      ),
     );
   }
 
@@ -2461,7 +2455,11 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
     return Semantics(
       label: semanticLabel,
       button: true,
-      child: GestureDetector(
+      // The callers play their own haptic. The jelly wraps the sized circle
+      // and never owns the size (it animates 42 -> 36 with the morph).
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.none,
         onTap: onTap,
         child: Container(
           width: size,

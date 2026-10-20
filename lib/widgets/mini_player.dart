@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
@@ -14,6 +13,7 @@ import '../screens/themed_now_playing_screen.dart';
 import '../utils/color_utils.dart';
 import '../utils/app_image_cache.dart';
 import 'covered_gate.dart';
+import 'jelly_press.dart';
 import 'player_dock.dart';
 import 'seek_zone.dart';
 import 'track_swap.dart';
@@ -410,21 +410,13 @@ class _PillBody extends StatelessWidget {
           Semantics(
             label: musicProvider.isPlaying ? 'Pause' : 'Play',
             button: true,
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(
-                minWidth: 36,
-                minHeight: 36,
-              ),
-              icon: Icon(
-                musicProvider.isPlaying
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
-              onPressed: () {
-                HapticFeedback.selectionClick();
+            child: _MiniGlyph(
+              icon: musicProvider.isPlaying
+                  ? Icons.pause_rounded
+                  : Icons.play_arrow_rounded,
+              target: 36,
+              size: 28,
+              onTap: () {
                 if (musicProvider.isPlaying) {
                   musicProvider.pauseTrack();
                 } else {
@@ -503,42 +495,24 @@ class _PillBody extends StatelessWidget {
               Semantics(
                 label: 'Previous track',
                 button: true,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                  icon: const Icon(
-                    Icons.skip_previous_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    musicProvider.skipToPrevious();
-                  },
+                child: _MiniGlyph(
+                  icon: Icons.skip_previous_rounded,
+                  target: 32,
+                  size: 22,
+                  onTap: musicProvider.skipToPrevious,
                 ),
               ),
               const SizedBox(width: 2),
               Semantics(
                 label: musicProvider.isPlaying ? 'Pause' : 'Play',
                 button: true,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
-                  icon: Icon(
-                    musicProvider.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
+                child: _MiniGlyph(
+                  icon: musicProvider.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  target: 36,
+                  size: 28,
+                  onTap: () {
                     if (musicProvider.isPlaying) {
                       musicProvider.pauseTrack();
                     } else {
@@ -551,26 +525,47 @@ class _PillBody extends StatelessWidget {
               Semantics(
                 label: 'Next track',
                 button: true,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                  icon: const Icon(
-                    Icons.skip_next_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    musicProvider.skipToNext();
-                  },
+                child: _MiniGlyph(
+                  icon: Icons.skip_next_rounded,
+                  target: 32,
+                  size: 22,
+                  onTap: musicProvider.skipToNext,
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A transport glyph inside the pill: flexes like the rest of the player's
+/// controls. Its movement is a passive listener, so the pill's own swipe-to-skip
+/// and pull-up keep every drag; only the tap is taken, as the IconButton did.
+class _MiniGlyph extends StatelessWidget {
+  const _MiniGlyph({
+    required this.icon,
+    required this.target,
+    required this.size,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final double target;
+  final double size;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return JellyPress(
+      profile: JellyProfile.icon,
+      haptic: JellyHaptic.selection,
+      onTap: onTap,
+      child: SizedBox(
+        width: target,
+        height: target,
+        child: Icon(icon, color: Colors.white, size: size),
       ),
     );
   }
