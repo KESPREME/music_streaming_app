@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/home_sections.dart' show PressableScale;
 import '../widgets/jelly_icon_button.dart';
 import '../theme/app_font.dart';
 import '../theme/amoled_theme.dart';
@@ -49,7 +50,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: GestureDetector(
+                      child: PressableScale(
                         onTap: () => onPlaylistSelected(playlist),
                         child: Container(
                           padding: const EdgeInsets.all(12),

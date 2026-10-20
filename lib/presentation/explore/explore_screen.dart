@@ -20,6 +20,7 @@ import '../../services/innertube/innertube_service.dart';
 import '../../widgets/artist_picker_sheet.dart';
 import '../../widgets/glass_circle_button.dart';
 import '../../widgets/glass_surface.dart';
+import '../../widgets/jelly_press.dart';
 import '../../widgets/themed_options_sheet.dart';
 import 'explore_feed_card.dart';
 import 'explore_tokens.dart';
@@ -841,7 +842,9 @@ class _ExploreHeader extends StatelessWidget {
             Semantics(
               label: 'Explore options',
               button: true,
-              child: GestureDetector(
+              child: JellyPress(
+                profile: JellyProfile.circle,
+                haptic: JellyHaptic.none,
                 onTap: () {
                   final c = context.read<ExploreController>();
                   final active = c.session?.active;
@@ -853,7 +856,6 @@ class _ExploreHeader extends StatelessWidget {
                     );
                   }
                 },
-                behavior: HitTestBehavior.opaque,
                 child: const SizedBox(
                   width: 44,
                   height: 44,

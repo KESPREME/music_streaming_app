@@ -4,6 +4,7 @@ import '../../theme/app_font.dart';
 
 import '../../models/bitchord_page_models.dart';
 import '../../utils/app_image_cache.dart';
+import '../home_sections.dart' show PressableScale;
 import '../themed_album_detail_screen.dart';
 import '../themed_artist_detail_screen.dart';
 import '../themed_playlist_detail_screen.dart';
@@ -153,7 +154,7 @@ class _ShelfCardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cardWidth = width;
-    return GestureDetector(
+    return PressableScale(
       onTap: () => openDetailShelfItem(context, item, artistNameHint: artistNameHint),
       child: SizedBox(
         width: cardWidth,

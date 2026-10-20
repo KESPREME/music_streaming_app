@@ -16,6 +16,7 @@ import '../../services/explore/explore_palette.dart';
 import '../../utils/app_image_cache.dart';
 import '../../widgets/covered_gate.dart';
 import '../../widgets/blurred_backdrop.dart';
+import '../../widgets/jelly_press.dart';
 
 /// Full-screen discovery card representing a song in the vertical feed.
 /// Features full-bleed blurred album art background or video canvas loop,
@@ -300,11 +301,13 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
                       label: 'Play',
                       button: true,
                       excludeSemantics: true,
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          widget.onTogglePlay();
-                        },
+                      // Floating glass over the canvas: the full chrome jelly, with the
+                      // light blooming under the fingertip.
+                      child: JellyPress(
+                        profile: JellyProfile.chrome,
+                        haptic: JellyHaptic.light,
+                        borderRadius: 38,
+                        onTap: widget.onTogglePlay,
                         child: ClipOval(
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),

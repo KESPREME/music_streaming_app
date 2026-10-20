@@ -26,6 +26,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'jelly_press.dart';
+
 /// What a transform button can be in.
 enum TransformButtonState {
   /// Never asked, or asked and cleared.
@@ -133,8 +135,9 @@ class _TransformDiscState extends State<TransformDisc> {
       enabled: !disabled,
       label: semanticLabel,
       excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.none,
         // No haptic HERE. Whether a tap earns feedback depends on what it did - a
         // tap on a disc that is already loading does nothing and must be silent,
         // and a successful toggle has its own - so `SubLineController` decides.

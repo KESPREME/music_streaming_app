@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_font.dart';
+import 'home_sections.dart' show PressableScale;
 
 import '../services/transition/transition_engine.dart';
 import '../services/transition/transition_planner.dart';
@@ -99,8 +100,7 @@ class _TransitionTraceCardState extends State<TransitionTraceCard> {
               : Semantics(
                   button: true,
                   label: 'Last transition details. Double tap to copy.',
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  child: PressableScale(
                     onTap: () => _copy(t),
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),

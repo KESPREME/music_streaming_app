@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_font.dart';
+import '../jelly_press.dart';
 
 /// In-page search input pill matching BitChord DetailSearchField
 class DetailSearchField extends StatelessWidget {
@@ -64,7 +65,9 @@ class DetailSearchField extends StatelessWidget {
                 ),
               ),
             ),
-            GestureDetector(
+            JellyPress(
+              profile: JellyProfile.circle,
+              haptic: JellyHaptic.none,
               onTap: () {
                 if (controller.text.isNotEmpty) {
                   controller.clear();

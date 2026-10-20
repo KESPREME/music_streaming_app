@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_font.dart';
+import '../jelly_press.dart';
 
 /// Collapsible editorial blurb matching BitChord's AboutSection
 class AboutSection extends StatefulWidget {
@@ -75,7 +76,9 @@ class _AboutSectionState extends State<AboutSection> {
             ),
           ),
           const SizedBox(height: 4),
-          GestureDetector(
+          JellyPress(
+            profile: JellyProfile.pill,
+            haptic: JellyHaptic.selection,
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4.0),

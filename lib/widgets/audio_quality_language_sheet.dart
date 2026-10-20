@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_font.dart';
 import 'glass_snackbar.dart';
+import 'home_sections.dart' show PressableScale;
 
 /// Modal sheet for Multi-Language Audio & Quality Control.
 class AudioQualityLanguageSheet extends StatefulWidget {
@@ -244,7 +245,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
     final title = item['title']!;
     final isSelected = _currentQuality == title;
 
-    return GestureDetector(
+    return PressableScale(
       onTap: () => _setQuality(title),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -331,7 +332,7 @@ class _AudioQualityLanguageSheetState extends State<AudioQualityLanguageSheet> {
     final title = item['title']!;
     final isSelected = _currentLanguage == title;
 
-    return GestureDetector(
+    return PressableScale(
       onTap: () => _setLanguage(title),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
