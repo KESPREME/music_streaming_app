@@ -24,6 +24,13 @@ class ArtworkWash extends StatelessWidget {
   /// Flat-wash hold past the seam in logical px (see [kSeamOverhang]).
   final double seamOverhang;
 
+  /// Pushes the mesh blobs down by this many logical px. A blob's glow reaches a
+  /// full radius (80% of the width) above its centre, so on a page whose photo
+  /// dissolves into the wash it would tint the rows just under the photo and the
+  /// join would show as a faint step. Pages with a full-bleed header set this so
+  /// no blob reaches the join.
+  final double meshInset;
+
   const ArtworkWash({
     super.key,
     required this.backgroundColor,
@@ -33,6 +40,7 @@ class ArtworkWash extends StatelessWidget {
     this.washFraction = 0.62,
     this.imageUrl,
     this.seamOverhang = kSeamOverhang,
+    this.meshInset = 0.0,
   });
 
   @override
@@ -46,6 +54,7 @@ class ArtworkWash extends StatelessWidget {
         elevatedColor: elevatedColor,
         washFraction: washFraction,
         seamOverhang: seamOverhang,
+        meshInset: meshInset,
       ),
     );
   }
@@ -63,6 +72,7 @@ class _ArtworkWashPainter extends CustomPainter {
   final Color elevatedColor;
   final double washFraction;
   final double seamOverhang;
+  final double meshInset;
 
   _ArtworkWashPainter({
     required this.backgroundColor,
@@ -71,6 +81,7 @@ class _ArtworkWashPainter extends CustomPainter {
     required this.elevatedColor,
     required this.washFraction,
     required this.seamOverhang,
+    this.meshInset = 0.0,
   });
 
   @override
@@ -128,7 +139,7 @@ class _ArtworkWashPainter extends CustomPainter {
     required Offset at,
     required double radiusFraction,
   }) {
-    final center = Offset(at.dx * size.width, at.dy * size.height);
+    final center = Offset(at.dx * size.width, at.dy * size.height + meshInset);
     final radius = size.width * radiusFraction;
 
     final blobGradient = RadialGradient(
@@ -154,6 +165,7 @@ class _ArtworkWashPainter extends CustomPainter {
         oldDelegate.accentColor != accentColor ||
         oldDelegate.elevatedColor != elevatedColor ||
         oldDelegate.washFraction != washFraction ||
-        oldDelegate.seamOverhang != seamOverhang;
+        oldDelegate.seamOverhang != seamOverhang ||
+        oldDelegate.meshInset != meshInset;
   }
 }
