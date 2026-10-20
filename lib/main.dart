@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'design/glass/chrome_glass.dart';
 import 'services/app_platform.dart';
+import 'services/update/update_service.dart';
+import 'widgets/update/update_coordinator.dart';
 import 'services/session/session_store.dart';
 import 'package:video_player_win/video_player_win.dart';
 
@@ -195,6 +197,10 @@ void main() async {
           ChangeNotifierProvider(
             create: (context) => HomeViewModeStore(),
           ),
+          // Software updates (GitHub releases): the state machine behind
+          // Settings > Software update and the update sheets. Loads lazily; the
+          // UpdateCoordinator starts it after the first frame.
+          ChangeNotifierProvider(create: (context) => UpdateService()),
         ],
         child: const MyApp(),
       ),
@@ -346,7 +352,9 @@ class _MyAppState extends State<MyApp> {
       builder: (context, child) {
         return Material(
           type: MaterialType.transparency,
-          child: GlobalMusicOverlay(child: child!),
+          // Checks for an update after the first frame and, politely, tells
+          // you about it once (see UpdateCoordinator).
+          child: UpdateCoordinator(child: GlobalMusicOverlay(child: child!)),
         );
       },
       home: const MainScreen(),
