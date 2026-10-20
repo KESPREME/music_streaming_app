@@ -478,7 +478,7 @@ void main() {
         loggedIn: false, // Guest / anonymous mode
       );
 
-      final recentTrack = sampleTrack(id: 'recent_12345', title: 'Recent Track');
+      final recentTrack = sampleTrack(id: 'recent_1234', title: 'Recent Track');
       final quickPickTrack = sampleTrack(id: 'qp_track_1', title: 'Pick Track');
       provider.setTestRecentlyPlayed([recentTrack]);
       // The hero ("For you") falls back to the quick picks when there are no
