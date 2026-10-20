@@ -53,6 +53,13 @@ class AudioService {
     return dir;
   }
 
+  /// The media session's artwork URI: a URL as it is, a file path as `file://`
+  /// (`Uri.parse('/storage/…')` has no scheme, and the notification drops it).
+  static Uri? _artUri(String? art) {
+    if (art == null || art.isEmpty) return null;
+    return art.contains('://') ? Uri.parse(art) : Uri.file(art);
+  }
+
   /// The finished cache file of [id], or null. A song that has been played (or
   /// is playing and fully buffered) is already on disk; analysis reads that
   /// instead of fetching the song a second time. Same completeness rule as
@@ -565,7 +572,7 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
       id: (id != null && id.isNotEmpty) ? id : url,
       title: title ?? 'Unknown Track',
       artist: artist ?? 'Unknown Artist',
-      artUri: (artUri != null && artUri.isNotEmpty) ? Uri.parse(artUri) : null,
+      artUri: _artUri(artUri),
     );
 
     if (isLocal) {
@@ -624,7 +631,7 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
       id: (id != null && id.isNotEmpty) ? id : url,
       title: title ?? 'Unknown Track',
       artist: artist ?? 'Unknown Artist',
-      artUri: (artUri != null && artUri.isNotEmpty) ? Uri.parse(artUri) : null,
+      artUri: _artUri(artUri),
     );
     if (source is LockCachingAudioSource) {
       // cacheFile is a Future<File> on the getter but the constructor takes a

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -377,26 +379,7 @@ class _PillBody extends StatelessWidget {
             corner: 8.0,
             child: ClipRRect(
             borderRadius: BorderRadius.circular(8.0),
-            child: currentTrack.albumArtUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: currentTrack.albumArtUrl,
-                    width: 32,
-                    height: 32,
-                    memCacheWidth: AppImageCache.thumbnailMemCache,
-                    memCacheHeight: AppImageCache.thumbnailMemCache,
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 150),
-                    errorWidget: (_, __, ___) => Container(
-                      width: 32,
-                      height: 32,
-                      color: Colors.grey[900],
-                    ),
-                  )
-                : Container(
-                    width: 32,
-                    height: 32,
-                    color: Colors.grey[900],
-                  ),
+            child: _pillArt(currentTrack.albumArtUrl, 32),
           ),
           ),
           const SizedBox(width: 8),
@@ -469,26 +452,7 @@ class _PillBody extends StatelessWidget {
             corner: 10.0,
             child: ClipRRect(
             borderRadius: BorderRadius.circular(10.0),
-            child: currentTrack.albumArtUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: currentTrack.albumArtUrl,
-                    width: 36,
-                    height: 36,
-                    memCacheWidth: AppImageCache.thumbnailMemCache,
-                    memCacheHeight: AppImageCache.thumbnailMemCache,
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 150),
-                    errorWidget: (_, __, ___) => Container(
-                      width: 36,
-                      height: 36,
-                      color: Colors.grey[900],
-                    ),
-                  )
-                : Container(
-                    width: 36,
-                    height: 36,
-                    color: Colors.grey[900],
-                  ),
+            child: _pillArt(currentTrack.albumArtUrl, 36),
           ),
           ),
           const SizedBox(width: 10),
@@ -656,3 +620,33 @@ class _PressSquishState extends State<_PressSquish> {
   }
 }
 
+
+/// The pill's cover: a URL from the network cache, or a file on the device
+/// (a local song's embedded cover, a download's saved art).
+Widget _pillArt(String url, double size) {
+  final placeholder = Container(width: size, height: size, color: Colors.grey[900]);
+  if (url.isEmpty) return placeholder;
+  if (!url.contains('://')) {
+    final f = File(url);
+    if (!f.existsSync()) return placeholder;
+    return Image.file(
+      f,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      cacheWidth: AppImageCache.thumbnailMemCache,
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => placeholder,
+    );
+  }
+  return CachedNetworkImage(
+    imageUrl: url,
+    width: size,
+    height: size,
+    memCacheWidth: AppImageCache.thumbnailMemCache,
+    memCacheHeight: AppImageCache.thumbnailMemCache,
+    fit: BoxFit.cover,
+    fadeInDuration: const Duration(milliseconds: 150),
+    errorWidget: (_, __, ___) => placeholder,
+  );
+}

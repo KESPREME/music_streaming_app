@@ -44,7 +44,7 @@ class _Local extends MusicProvider {
   @override
   bool get localLoadedOnce => fakeLoadedOnce;
   @override
-  Future<Uint8List?> localArtwork(String path) => Future.value(null);
+  Future<Uint8List?> localArtwork(String path, {int size = 200}) => Future.value(null);
   @override
   Future<void> loadLocalMusicFiles({bool forceRescan = false}) async => scans++;
   @override

@@ -2440,11 +2440,13 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
   }) {
     final art = ImageQualityUtils.getHighResArtwork(track.albumArtUrl);
     if (art.isEmpty) return _buildArtPlaceholder();
+    final size = cacheSize ?? AppImageCache.heroMemCache;
     if (!art.contains('://')) {
       final f = File(art);
-      if (f.existsSync()) return Image.file(f, fit: fit);
+      if (f.existsSync()) {
+        return Image.file(f, fit: fit, cacheWidth: size, gaplessPlayback: true);
+      }
     }
-    final size = cacheSize ?? AppImageCache.heroMemCache;
     return CachedNetworkImage(
       imageUrl: art,
       fit: fit,

@@ -16,6 +16,7 @@ import 'package:flutter/material.dart'
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 // For network diagnostics
 import 'package:collection/collection.dart'; // For firstWhereOrNull
 
@@ -762,8 +763,8 @@ for (final track in releases)
     }
 
     if (imageProvider == null && track.source == 'local') {
-      // 2. Local device track artwork (via MediaStore)
-      final bytes = await _localMusicService.getTrackArtwork(track.id);
+      // 2. Local device track artwork (via MediaStore), through the shared cache
+      final bytes = await localArtwork(track.previewUrl.isNotEmpty ? track.previewUrl : track.id);
       if (bytes != null) {
         imageProvider = MemoryImage(bytes);
         isLocalFile = true;
@@ -2865,12 +2866,20 @@ for (final track in releases)
       if (t.source == 'local' || await isTrackDownloaded(t.id)) {
         final path = await _localFileFor(t);
         if (path == null || path.isEmpty) return null;
+        // A local file's cover lives in the file: give the lock screen and the
+        // notification a picture (briefly waited for; MediaStore is quick).
+        var art = t.albumArtUrl;
+        if (art.isEmpty && t.source == 'local') {
+          art = await localArtworkFile(t)
+                  .timeout(const Duration(milliseconds: 1500), onTimeout: () => null) ??
+              '';
+        }
         return _audioService.buildSource(
           url: path,
           isLocal: true,
           title: t.trackName,
           artist: t.artistName,
-          artUri: t.albumArtUrl,
+          artUri: art,
           id: t.id,
           cacheWrites: !forTransition,
         );
@@ -5267,18 +5276,67 @@ for (final track in releases)
   final Map<String, Uint8List?> _localArt = {};
   final Map<String, Future<Uint8List?>> _localArtPending = {};
 
-  /// The embedded cover of a file on this device (MediaStore), cached. Null when
-  /// it has none. Bounded: the oldest 300 are let go.
-  Future<Uint8List?> localArtwork(String path) {
-    if (_localArt.containsKey(path)) return Future.value(_localArt[path]);
-    return _localArtPending[path] ??= _localMusicService.getTrackArtwork(path).then((bytes) {
-      _localArtPending.remove(path);
+  /// The embedded cover of a file on this device (MediaStore), cached per
+  /// [size]. Null when it has none. Bounded: the oldest 300 are let go.
+  Future<Uint8List?> localArtwork(String path, {int size = 200}) {
+    final key = size == 200 ? path : '$path@$size';
+    if (_localArt.containsKey(key)) return Future.value(_localArt[key]);
+    return _localArtPending[key] ??= _localMusicService.getTrackArtwork(path, size: size).then((bytes) {
+      _localArtPending.remove(key);
       if (_localArt.length >= 300) _localArt.remove(_localArt.keys.first);
-      _localArt[path] = bytes;
+      _localArt[key] = bytes;
       return bytes;
     }).catchError((Object _) {
-      _localArtPending.remove(path);
+      _localArtPending.remove(key);
       return null;
+    });
+  }
+
+  /// The cover of a local track as an image file (written once to the temp
+  /// directory), or null when the file has no embedded art. Everything that
+  /// draws "the current track" reads `albumArtUrl`, and every one of those
+  /// already accepts a file path, so this is what gives a local song its
+  /// cover in the mini player, the full player, the backdrop and the lock
+  /// screen.
+  Future<String?> localArtworkFile(Track track) {
+    final path = track.previewUrl.isNotEmpty ? track.previewUrl : track.id;
+    return _localArtFiles[path] ??= () async {
+      try {
+        final bytes = await localArtwork(path, size: 720);
+        if (bytes == null || bytes.isEmpty) return null;
+        final dir = Directory('${(await getTemporaryDirectory()).path}/local_art');
+        if (!await dir.exists()) await dir.create(recursive: true);
+        final name = path.replaceAll(RegExp(r'[^A-Za-z0-9]'), '_');
+        final file = File('${dir.path}/${name.length > 90 ? name.substring(name.length - 90) : name}_${bytes.length}.jpg');
+        if (!await file.exists()) await file.writeAsBytes(bytes, flush: true);
+        return file.path;
+      } catch (e) {
+        if (kDebugMode) debugPrint('MusicProvider: local art file failed for $path: $e');
+        return null;
+      }
+    }();
+  }
+
+  final Map<String, Future<String?>> _localArtFiles = {};
+  String? _localArtFor;
+
+  /// A local track became current without a cover: give it one (see
+  /// [localArtworkFile]). Once per track; the swap keeps everything else.
+  void _ensureCurrentLocalArt() {
+    final t = _currentTrack;
+    if (t == null || t.source != 'local') return;
+    if (_localArtFor == t.id) return;
+    _localArtFor = t.id;
+    // A cover written in an earlier session may have been cleared with the
+    // temp directory: then it is fetched again.
+    final art = t.albumArtUrl;
+    if (art.isNotEmpty && (art.contains('://') || File(art).existsSync())) return;
+    localArtworkFile(t).then((file) {
+      final now = _currentTrack;
+      if (file == null || now == null || now.id != t.id) return;
+      if (now.albumArtUrl == file) return;
+      _currentTrack = now.copyWith(albumArtUrl: file);
+      notifyListeners();
     });
   }
 
@@ -6736,6 +6794,7 @@ for (final track in releases)
     // Unawaited async paths (init, local-music scan) can outlive dispose;
     // notifying a dead controller crashes. Drop late notifications.
     if (_disposed) return;
+    _ensureCurrentLocalArt();
     _playback.projectFromProvider(this);
     super.notifyListeners();
   }

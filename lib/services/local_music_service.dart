@@ -330,8 +330,9 @@ class LocalMusicService {
   // --- Artwork Resolution ---
 
   /// The embedded cover of the file at [path], or null. Looked up by MediaStore
-  /// id; at most [_maxArtworkJobs] run at once.
-  Future<Uint8List?> getTrackArtwork(String path) async {
+  /// id; at most [_maxArtworkJobs] run at once. [size] is the longest edge in
+  /// pixels: 200 for a row, more for the player and the lock screen.
+  Future<Uint8List?> getTrackArtwork(String path, {int size = 200}) async {
     if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return null;
     try {
       final id = await _idFor(path);
@@ -347,7 +348,7 @@ class LocalMusicService {
           id,
           ArtworkType.AUDIO,
           format: ArtworkFormat.JPEG,
-          size: 200, // a 56 dp row at 3x, and enough for palette generation
+          size: size,
         );
         return bytes == null || bytes.isEmpty ? null : bytes;
       } finally {
