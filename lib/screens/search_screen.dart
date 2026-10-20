@@ -16,6 +16,7 @@ import '../widgets/search_glass_pills.dart';
 import '../widgets/search_grid_cards.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/song_sheet_plan.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../core/navigation/root_navigator.dart';
@@ -731,7 +732,7 @@ class _SearchScreenState extends State<SearchScreen>
                 }
                 provider.playTrack(video, playlistTracks: videos);
               },
-              onMore: () => ThemedOptionsSheet.show(context, track: video),
+              onMore: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.search, track: video),
             );
           },
         );
@@ -1007,7 +1008,7 @@ class _LibraryScopeBody extends StatelessWidget {
               track: track,
               isPlaying: isPlaying,
               onTap: () => provider.playTrack(track, playlistTracks: tracks),
-              onMore: () => ThemedOptionsSheet.show(context, track: track),
+              onMore: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.liked, track: track),
             );
           },
         );
@@ -1184,7 +1185,7 @@ class SearchTabContent extends StatelessWidget {
                   onResultTapped?.call(track);
                   musicProvider.playTrack(track, playlistTracks: searchResults);
                 },
-                onMore: () => ThemedOptionsSheet.show(context, track: track),
+                onMore: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.search, track: track),
               );
             },
           );

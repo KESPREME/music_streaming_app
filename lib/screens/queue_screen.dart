@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart' hide RepeatMode;
+import '../widgets/song_sheet_plan.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -505,6 +506,7 @@ child: _wrapHeaderArt(
                 context,
                 track: track,
                 isInQueueContext: true,
+                origin: SongSheetOrigin.queue,
               );
             },
           ),

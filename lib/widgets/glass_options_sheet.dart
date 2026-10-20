@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'jelly_icon_button.dart';
+import 'jelly_press.dart';
+import 'song_sheet_plan.dart';
 import '../theme/app_font.dart';
 import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +35,11 @@ class GlassOptionsSheet extends StatelessWidget {
   final Color? accentColor;
   final Color? dominantColor;
 
+  /// Where the sheet was opened from, which decides which rows it offers (see
+  /// song_sheet_plan.dart). [SongSheetOrigin.auto] works it out from the other
+  /// arguments; an unclassified caller gets everything that could apply.
+  final SongSheetOrigin origin;
+
   const GlassOptionsSheet({
     super.key,
     this.parentContext,
@@ -43,7 +50,18 @@ class GlassOptionsSheet extends StatelessWidget {
     this.onDislike,
     this.accentColor,
     this.dominantColor,
+    this.origin = SongSheetOrigin.auto,
   });
+
+  /// [origin] with `auto` resolved from the rest of the arguments.
+  SongSheetOrigin get resolvedOrigin {
+    if (origin != SongSheetOrigin.auto) return origin;
+    if (playlistId != null) return SongSheetOrigin.playlist;
+    if (isInQueueContext) return SongSheetOrigin.queue;
+    if (isRecentlyPlayedContext) return SongSheetOrigin.history;
+    if (track.source == 'local') return SongSheetOrigin.device;
+    return SongSheetOrigin.generic;
+  }
 
   /// Helper to show the options sheet while hiding the mini player
   static Future<void> show(
@@ -55,6 +73,7 @@ class GlassOptionsSheet extends StatelessWidget {
     VoidCallback? onDislike,
     Color? accentColor,
     Color? dominantColor,
+    SongSheetOrigin origin = SongSheetOrigin.auto,
   }) async {
     final provider = Provider.of<MusicProvider>(context, listen: false);
 
@@ -94,6 +113,7 @@ class GlassOptionsSheet extends StatelessWidget {
           onDislike: onDislike,
           accentColor: effectiveAccent,
           dominantColor: effectiveDominant,
+          origin: origin,
         ),
       );
     } finally {
@@ -106,15 +126,11 @@ class GlassOptionsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     // Check if liked (requires listening to provider or passing in state,
     // but Consumer is safer for up-to-date state in a sheet)
 
     return Consumer<MusicProvider>(
       builder: (context, provider, child) {
-        final isLiked = provider.isSongLiked(track.id);
-
         final dynAccent = accentColor ??
             ColorUtils.getVibrantAccent(
               provider.paletteGenerator,
@@ -170,13 +186,12 @@ class GlassOptionsSheet extends StatelessWidget {
                                 sigmaX: 45,
                                 sigmaY: 45,
                               ),
-                                child: CachedNetworkImage(
-                                  imageUrl: ImageQualityUtils.getHighResArtwork(
-                                    track.albumArtUrl,
-                                  ),
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: AppImageCache.heroMemCache,
-                                  memCacheHeight: AppImageCache.heroMemCache,
+                              child: CachedNetworkImage(
+                                imageUrl: ImageQualityUtils.getHighResArtwork(
+                                  track.albumArtUrl,
+                                ),
+                                fit: BoxFit.cover,
+                                memCacheWidth: AppImageCache.heroMemCache,
                                 errorWidget: (_, __, ___) =>
                                     const SizedBox.shrink(),
                               ),
@@ -202,492 +217,560 @@ class GlassOptionsSheet extends StatelessWidget {
                     ),
                   ),
 
-                // GlassSurface overlay & rows
+                // GlassSurface overlay & content
                 GlassSurface(
                   tier: GlassTier.sheet,
                   borderRadius: 32,
                   child: SafeArea(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Handle Bar
-                        Container(
-                          margin: const EdgeInsets.symmetric(vertical: 10),
-                          width: 36,
-                          height: 4.5,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(2.25),
-                          ),
-                        ),
-
-                    // Header (Track Info matching Image 3)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(22, 6, 20, 16),
-                      child: Row(
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                              child: CachedNetworkImage(
-                                imageUrl: ImageQualityUtils.getHighResArtwork(
-                                  track.albumArtUrl,
-                                ),
-                                width: 52,
-                                memCacheWidth: AppImageCache.thumbnailMemCache,
-                                memCacheHeight: AppImageCache.thumbnailMemCache,
-                              height: 52,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => Container(
-                                width: 52,
-                                height: 52,
-                                color: Colors.grey[900],
-                                child: const Icon(
-                                  Icons.music_note,
-                                  color: Colors.white24,
-                                ),
-                              ),
+                          // Handle Bar
+                          Container(
+                            margin: const EdgeInsets.symmetric(vertical: 10),
+                            width: 36,
+                            height: 4.5,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(2.25),
                             ),
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.trackName,
-                                  style: AppFont.style(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 17,
-                                    color: colorScheme.onSurface,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  track.artistName,
-                                  style: AppFont.style(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          JellyIconButton(
-                            onPressed: () {
-                              HapticFeedback.lightImpact();
-                              provider.toggleLike(track);
-                            },
-                            icon: Icon(
-                              isLiked
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              color: isLiked
-                                  ? dynAccent
-                                  : Colors.white,
-                              size: 26,
+                          Flexible(
+                            child: SongOptionsContent(
+                              track: track,
+                              provider: provider,
+                              accent: dynAccent,
+                              origin: resolvedOrigin,
+                              parentContext: parentContext,
+                              playlistId: playlistId,
+                              isHistory: isRecentlyPlayedContext ||
+                                  resolvedOrigin == SongSheetOrigin.history,
+                              onDislike: onDislike,
                             ),
                           ),
                         ],
                       ),
-                    ),
-
-                    Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-
-                    // Options List matching Image 3
-                    Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Play next (hidden if song is currently playing)
-                        if (provider.currentTrack?.id != track.id)
-                          _buildOption(
-                            context,
-                            icon: Icons.playlist_play_rounded,
-                            label: 'Play next',
-                            onTap: () {
-                              Navigator.pop(context);
-                              provider.playNext(track);
-                              showGlassSnackBar(
-                                context,
-                                'Playing "${track.trackName}" next',
-                              );
-                            },
-                          ),
-
-                        // Add to queue
-                        _buildOption(
-                          context,
-                          icon: Icons.queue_music_rounded,
-                          label: 'Add to queue',
-                          onTap: () {
-                            Navigator.pop(context);
-                            provider.addToQueue(track);
-                            showGlassSnackBar(
-                              context,
-                              'Added "${track.trackName}" to queue',
-                            );
-                          },
-                        ),
-
-                        // 1. Add to a playlist...
-                        _buildOption(
-                          context,
-                          icon: Icons.playlist_add_rounded,
-                          label: _addToPlaylistLabel(provider.playlistsContaining(track.id).length),
-                          onTap: () async {
-                            // The navigator's context outlives this sheet; this
-                            // sheet's own does not (see showAddToPlaylistSheet).
-                            final host = Navigator.of(context).context;
-                            Navigator.pop(context);
-                            await Future.delayed(
-                              const Duration(milliseconds: 100),
-                            );
-                            if (host.mounted) {
-                              await showPlaylistSelectionDialog(host, track);
-                            }
-                          },
-                        ),
-
-                        // 2. Mine Music Code
-                        _buildOption(
-                          context,
-                          icon: Icons.qr_code_2_rounded,
-                          label: 'Mine Music Code',
-                          fallbackLabel: 'Muzo Code',
-                          onTap: () {
-                            Navigator.pop(context);
-                            final accent = ColorUtils.getVibrantAccent(
-                              provider.paletteGenerator,
-                              const Color(0xFFE89838),
-                            );
-                            showDialog(
-                              context: context,
-                              builder: (_) => SongCodeDialog(
-                                track: track,
-                                accent: accent,
-                              ),
-                            );
-                          },
-                        ),
-
-                        // 3. Go to album
-                        if (track.albumName.isNotEmpty &&
-                            track.albumName != 'Unknown Album')
-                          _buildOption(
-                            context,
-                            icon: Icons.album_outlined,
-                            label: 'Go to album',
-                            fallbackLabel: 'Go to Album',
-                            onTap: () {
-                              final targetCtx = parentContext ?? context;
-                              Navigator.pop(context);
-                              _navigateToAlbum(
-                                targetCtx,
-                                provider,
-                                track,
-                              );
-                            },
-                          ),
-
-                        // 4. Go to artist
-                        if (track.artistName.isNotEmpty &&
-                            track.artistName != 'Unknown Artist')
-                          _buildOption(
-                            context,
-                            icon: Icons.person_outline_rounded,
-                            label: 'Go to artist',
-                            onTap: () {
-                              final targetCtx = parentContext ?? context;
-                              if (ArtistPickerSheet.hasMultipleArtists(track.artistName)) {
-                                Navigator.pop(context);
-                                ArtistPickerSheet.showIfNeeded(
-                                  targetCtx,
-                                  provider,
-                                  track.artistName,
-                                  fallbackImage: track.albumArtUrl,
-                                );
-                              } else {
-                                Navigator.pop(context);
-                                _navigateToArtist(
-                                  targetCtx,
-                                  provider,
-                                  track.artistName,
-                                  fallbackImage: track.albumArtUrl,
-                                );
-                              }
-                            },
-                          ),
-
-                        // 4. Download
-                        Builder(
-                          builder: (context) {
-                            final isDownloaded = provider.isTrackDownloadedSync(
-                              track.id,
-                            );
-                            final isDownloading =
-                                provider.isDownloading[track.id] == true;
-                            final isQueued = provider.downloadQueue.any(
-                              (t) => t.id == track.id,
-                            );
-                            final progress =
-                                provider.downloadProgress[track.id] ?? 0.0;
-
-                            String label = 'Download';
-                            IconData icon = Icons.file_download_outlined;
-                            Color? color;
-
-                            if (isDownloaded) {
-                              label = 'Downloaded';
-                              icon = Icons.download_done_rounded;
-                              color = Colors.green;
-                            } else if (isDownloading) {
-                              label =
-                                  'Downloading... ${(progress * 100).toInt()}%';
-                              icon = Icons.downloading_rounded;
-                              color = colorScheme.primary;
-                            } else if (isQueued) {
-                              label = 'Queued';
-                              icon = Icons.hourglass_top_rounded;
-                            }
-
-                            return _buildOption(
-                              context,
-                              icon: icon,
-                              label: label,
-                              color: color,
-                              onTap: isDownloaded || isDownloading || isQueued
-                                  ? () {
-                                      Navigator.pop(context);
-                                      if (isDownloaded) {
-                                        showGlassSnackBar(
-                                          context,
-                                          '${track.trackName} already downloaded',
-                                        );
-                                      } else {
-                                        showGlassSnackBar(
-                                          context,
-                                          'Download in progress',
-                                        );
-                                      }
-                                    }
-                                  : () async {
-                                      Navigator.pop(context);
-                                      showGlassSnackBar(
-                                        context,
-                                        'Starting download: ${track.trackName}',
-                                      );
-                                      await provider.downloadTrack(track);
-                                    },
-                            );
-                          },
-                        ),
-
-                        // 5. Share
-                        _buildOption(
-                          context,
-                          icon: Icons.ios_share_rounded,
-                          label: 'Share',
-                          onTap: () {
-                            Navigator.pop(context);
-                            SharePlus.instance.share(
-                              ShareParams(text: songShareText(track)),
-                            );
-                          },
-                        ),
-
-                        if (onDislike != null)
-                          _buildOption(
-                            context,
-                            icon: Icons.heart_broken_rounded,
-                            label: 'Not interested',
-                            onTap: () {
-                              Navigator.pop(context);
-                              onDislike!.call();
-                            },
-                          ),
-
-                        // 6. Song Info
-                        _buildOption(
-                          context,
-                          icon: Icons.info_outline_rounded,
-                          label: 'Song Info',
-                          onTap: () {
-                            Navigator.pop(context);
-                            showDialog(
-                              context: context,
-                              builder: (_) => SongInfoDialog(track: track),
-                            );
-                          },
-                        ),
-
-
-                        // 8. Sleep Timer
-                        _buildOption(
-                          context,
-                          icon: Icons.timer_outlined,
-                          label: 'Sleep Timer',
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showSleepTimerSheet(context, provider);
-                          },
-                        ),
-
-                        // Contextual items
-                        if (isInQueueContext)
-                          _buildOption(
-                            context,
-                            icon: Icons.delete_sweep_rounded,
-                            label: 'Remove from Queue',
-                            color: colorScheme.error,
-                            onTap: () {
-                              provider.removeFromQueue(track);
-                              Navigator.pop(context);
-                            },
-                          ),
-
-                        if (playlistId != null)
-                          _buildOption(
-                            context,
-                            icon: Icons.remove_circle_outline_rounded,
-                            label: 'Remove from Playlist',
-                            color: colorScheme.error,
-                            onTap: () {
-                              provider.removeTrackFromPlaylist(
-                                playlistId!,
-                                track.id,
-                              );
-                              Navigator.pop(context);
-                            },
-                          ),
-
-                        if (isRecentlyPlayedContext)
-                          _buildOption(
-                            context,
-                            icon: Icons.history_toggle_off_rounded,
-                            label: 'Remove from History',
-                            color: colorScheme.error,
-                            onTap: () {
-                              provider.removeFromRecentlyPlayed(track.id);
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Removed from Recently Played'),
-                                ),
-                              );
-                            },
-                          ),
-
-
-                        const SizedBox(height: 20),
-                      ],
                     ),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
-    ),
-  ),
-);
-},
-);
+        );
+      },
+    );
+  }
 }
 
-  /// "Add to a playlist..." - with how many of your playlists already have it.
-  static String _addToPlaylistLabel(int inCount) => inCount == 0
-      ? 'Add to a playlist...'
-      : 'Add to a playlist... (in $inCount)';
+/// "Add to a playlist..." - with how many of your playlists already have it.
+String _addToPlaylistLabel(int inCount) => inCount == 0
+    ? 'Add to a playlist...'
+    : 'Add to a playlist... (in $inCount)';
 
-  Widget _buildOption(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color? color,
-    Color? iconColor,
-    String? fallbackLabel,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final effectiveColor = color ?? colorScheme.onSurface;
-    final effectiveIconColor = color ?? iconColor ?? effectiveColor;
-    return Material(
-      color: Colors.transparent,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 0),
-        visualDensity: const VisualDensity(vertical: -1.5),
-        minLeadingWidth: 28,
-        horizontalTitleGap: 14,
-        leading: Icon(icon, color: effectiveIconColor, size: 22),
-        title: Stack(
-          alignment: Alignment.centerLeft,
-          children: [
-            Text(
-              label,
-              style: AppFont.style(
-                color: effectiveColor,
-                fontWeight: FontWeight.w500,
-                fontSize: 15.5,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (fallbackLabel != null)
-              Opacity(
-                opacity: 0.0,
-                child: Text(
-                  fallbackLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            if (label == 'Go to artist')
-              const Opacity(
-                opacity: 0,
-                child: Text(
-                  'Go to Artist',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-        ),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
+enum _Dl { idle, queued, running, done }
+
+/// The sheet's header, quick tiles and grouped rows.
+///
+/// Stateful for two reasons only: the entrance (tiles pop in, groups fade up) and
+/// the beat a finished instant action stays on screen as a check before the sheet
+/// closes. Everything it shows comes from [planSongSheet].
+class SongOptionsContent extends StatefulWidget {
+  const SongOptionsContent({
+    super.key,
+    required this.track,
+    required this.provider,
+    required this.accent,
+    required this.origin,
+    this.parentContext,
+    this.playlistId,
+    this.isHistory = false,
+    this.onDislike,
+  });
+
+  final Track track;
+  final MusicProvider provider;
+  final Color accent;
+  final SongSheetOrigin origin;
+  final BuildContext? parentContext;
+  final String? playlistId;
+  final bool isHistory;
+  final VoidCallback? onDislike;
+
+  @override
+  State<SongOptionsContent> createState() => _SongOptionsContentState();
+}
+
+class _SongOptionsContentState extends State<SongOptionsContent> with SingleTickerProviderStateMixin {
+  /// How long a finished instant action shows its check before the sheet closes.
+  /// Short on purpose: long enough to be seen, short enough that nothing waits.
+  static const Duration _checkBeat = Duration(milliseconds: 340);
+
+  late final AnimationController _enter = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+
+  /// One staggered slot per block: four tiles, then four groups.
+  late final List<Animation<double>> _slots = [
+    for (var i = 0; i < 8; i++)
+      CurvedAnimation(
+        parent: _enter,
+        curve: Interval(0.06 * i, (0.06 * i + 0.5).clamp(0.0, 1.0), curve: Curves.easeOutCubic),
       ),
+  ];
+
+  /// Instant actions that have happened: shown as "Added" / "Playing next" with a check.
+  final Map<SongAction, String> _done = {};
+  Timer? _closeTimer;
+  bool _started = false;
+
+  Track get track => widget.track;
+  MusicProvider get provider => widget.provider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _enter.value = 1;
+    } else {
+      _enter.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _closeTimer?.cancel();
+    _enter.dispose();
+    super.dispose();
+  }
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
+  /// The navigator's context: it outlives this sheet, which is gone ~300 ms after
+  /// it pops (see showAddToPlaylistSheet for what that cost once).
+  BuildContext get _host => Navigator.of(context).context;
+
+  void _toast(String message) {
+    final host = _host;
+    if (host.mounted) showGlassSnackBar(host, message);
+  }
+
+  /// Does [run] now, shows [doneLabel] with a check on the tile, then closes.
+  void _instant(SongAction action, String doneLabel, VoidCallback run) {
+    if (_done.containsKey(action)) return;
+    HapticFeedback.lightImpact();
+    run();
+    setState(() => _done[action] = doneLabel);
+    _closeTimer?.cancel();
+    _closeTimer = Timer(_checkBeat, () {
+      if (mounted) Navigator.pop(context);
+    });
+  }
+
+  void _playNext() => _instant(SongAction.playNext, 'Playing next', () {
+        provider.playNext(track);
+        _toast('Playing "${track.trackName}" next');
+      });
+
+  void _addToQueue() => _instant(SongAction.addToQueue, 'Added', () {
+        provider.addToQueue(track);
+        _toast('Added "${track.trackName}" to queue');
+      });
+
+  void _share() {
+    Navigator.pop(context);
+    SharePlus.instance.share(ShareParams(text: songShareText(track)));
+  }
+
+  Future<void> _addToPlaylist() async {
+    final host = _host;
+    Navigator.pop(context);
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (host.mounted) await showPlaylistSelectionDialog(host, track);
+  }
+
+  void _code() {
+    Navigator.pop(context);
+    final accent = ColorUtils.getVibrantAccent(provider.paletteGenerator, const Color(0xFFE89838));
+    showDialog(
+      context: context,
+      builder: (_) => SongCodeDialog(track: track, accent: accent),
     );
   }
 
-  void _navigateToAlbum(
-    BuildContext context,
-    MusicProvider provider,
-    Track track,
-  ) {
+  void _info() {
+    Navigator.pop(context);
+    showDialog(context: context, builder: (_) => SongInfoDialog(track: track));
+  }
+
+  void _sleep() {
+    Navigator.pop(context);
+    _showSleepTimerSheet(context, provider);
+  }
+
+  void _notInterested() {
+    Navigator.pop(context);
+    widget.onDislike?.call();
+  }
+
+  void _goToAlbum() {
+    final target = widget.parentContext ?? context;
+    Navigator.pop(context);
+    _navigateToAlbum(target, provider, track);
+  }
+
+  void _goToArtist() {
+    final target = widget.parentContext ?? context;
+    Navigator.pop(context);
+    if (ArtistPickerSheet.hasMultipleArtists(track.artistName)) {
+      ArtistPickerSheet.showIfNeeded(target, provider, track.artistName, fallbackImage: track.albumArtUrl);
+    } else {
+      _navigateToArtist(target, provider, track.artistName, fallbackImage: track.albumArtUrl);
+    }
+  }
+
+  void _removeFromQueue() => _instant(SongAction.removeFromQueue, 'Removed', () {
+        provider.removeFromQueue(track);
+        _toast('Removed from the queue');
+      });
+
+  void _removeFromPlaylist() => _instant(SongAction.removeFromPlaylist, 'Removed', () {
+        provider.removeTrackFromPlaylist(widget.playlistId!, track.id);
+        _toast('Removed from the playlist');
+      });
+
+  void _removeFromHistory() => _instant(SongAction.removeFromHistory, 'Removed', () {
+        provider.removeFromRecentlyPlayed(track.id);
+        _toast('Removed from Recently Played');
+      });
+
+  // ── Downloads: one tile that morphs through its states ────────────────────
+
+  _Dl get _dlState {
+    if (provider.isTrackDownloadedSync(track.id)) return _Dl.done;
+    if (provider.isDownloading[track.id] == true) return _Dl.running;
+    if (provider.downloadQueue.any((t) => t.id == track.id)) return _Dl.queued;
+    return _Dl.idle;
+  }
+
+  Future<void> _downloadTap(_Dl state) async {
+    switch (state) {
+      case _Dl.idle:
+        _instant(SongAction.download, 'Queued', () {
+          _toast('Starting download: ${track.trackName}');
+          provider.downloadTrack(track);
+        });
+      case _Dl.queued:
+      case _Dl.running:
+        HapticFeedback.lightImpact();
+        provider.cancelDownload(track.id);
+        _toast('Download cancelled');
+      case _Dl.done:
+        await _confirmAndRemoveDownload();
+    }
+  }
+
+  /// A downloaded song asks before it is deleted (the old row only said "already
+  /// downloaded", with no way to act on it). Deleting keeps the sheet open, so the
+  /// tile visibly turns back into "Download".
+  Future<void> _confirmAndRemoveDownload({bool closeAfter = false}) async {
+    HapticFeedback.lightImpact();
+    final host = _host;
+    final ok = await confirmRemoveDownload(context, track);
+    if (!ok) return;
+    await provider.deleteDownloadedTrack(track.id);
+    HapticFeedback.mediumImpact();
+    if (host.mounted) showGlassSnackBar(host, 'Download removed');
+    if (closeAfter && mounted) Navigator.pop(context);
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLiked = provider.isSongLiked(track.id);
+    final plan = planSongSheet(
+      origin: widget.origin,
+      track: track,
+      isCurrent: provider.currentTrack?.id == track.id,
+      inUpNext: provider.upNext.any((t) => t.id == track.id),
+      hasDislike: widget.onDislike != null,
+      hasPlaylistId: widget.playlistId != null,
+      isHistory: widget.isHistory,
+    );
+
+    final tiles = plan.tiles.map(_tile).toList();
+    final groups = <Widget>[
+      if (plan.library.isNotEmpty) _group(plan.library, 4),
+      if (plan.navigate.isNotEmpty) _group(plan.navigate, 5),
+      if (plan.more.isNotEmpty) _group(plan.more, 6),
+      if (plan.danger.isNotEmpty) _group(plan.danger, 7),
+    ];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header (track info)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 6, 14, 14),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: CachedNetworkImage(
+                  imageUrl: ImageQualityUtils.getHighResArtwork(track.albumArtUrl),
+                  width: 52,
+                  memCacheWidth: AppImageCache.thumbnailMemCache,
+                  height: 52,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => Container(
+                    width: 52,
+                    height: 52,
+                    color: Colors.grey[900],
+                    child: const Icon(Icons.music_note, color: Colors.white24),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.trackName,
+                      style: AppFont.style(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                        color: scheme.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      track.artistName,
+                      style: AppFont.style(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              _LikeButton(
+                liked: isLiked,
+                accent: widget.accent,
+                onTap: () => provider.toggleLike(track),
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.10)),
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Column(
+              children: [
+                if (tiles.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < tiles.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 10),
+                          Expanded(child: _Reveal(animation: _slots[i], scale: true, child: tiles[i])),
+                        ],
+                      ],
+                    ),
+                  ),
+                ...groups,
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _group(List<SongAction> actions, int slot) {
+    final rows = [for (final a in actions) _row(a)];
+    final danger = actions.every((a) =>
+        a == SongAction.removeFromQueue ||
+        a == SongAction.removeFromPlaylist ||
+        a == SongAction.removeFromHistory);
+    return _Reveal(
+      animation: _slots[slot],
+      child: _GroupCard(danger: danger, children: rows),
+    );
+  }
+
+  // ── Tiles ──────────────────────────────────────────────────────────────────
+
+  Widget _tile(SongAction a) {
+    switch (a) {
+      case SongAction.playNext:
+        return _QuickTile(
+          icon: Icons.playlist_play_rounded,
+          label: 'Play next',
+          doneLabel: _done[a],
+          accent: widget.accent,
+          onTap: _playNext,
+        );
+      case SongAction.addToQueue:
+        return _QuickTile(
+          icon: Icons.queue_music_rounded,
+          label: 'Add to queue',
+          doneLabel: _done[a],
+          accent: widget.accent,
+          onTap: _addToQueue,
+        );
+      case SongAction.share:
+        return _QuickTile(
+          icon: Icons.ios_share_rounded,
+          label: 'Share',
+          accent: widget.accent,
+          onTap: _share,
+        );
+      case SongAction.removeDownload:
+        return _QuickTile(
+          icon: Icons.delete_outline_rounded,
+          label: 'Remove',
+          destructive: true,
+          accent: widget.accent,
+          onTap: () => _confirmAndRemoveDownload(closeAfter: true),
+        );
+      case SongAction.download:
+        return _downloadTile();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _downloadTile() {
+    final state = _dlState;
+    final progress = (provider.downloadProgress[track.id] ?? 0.0).clamp(0.0, 1.0);
+    final done = _done[SongAction.download];
+    final String label;
+    final Widget glyph;
+    switch (state) {
+      case _Dl.idle:
+        label = 'Download';
+        glyph = const Icon(Icons.file_download_outlined, key: ValueKey('dl_idle'), size: 24);
+      case _Dl.queued:
+        label = 'Queued';
+        glyph = Icon(Icons.hourglass_top_rounded, key: const ValueKey('dl_queued'), size: 24, color: widget.accent);
+      case _Dl.running:
+        label = '${(progress * 100).round()}%';
+        glyph = SizedBox(
+          key: const ValueKey('dl_running'),
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            value: progress <= 0 ? null : progress,
+            strokeWidth: 2.6,
+            color: widget.accent,
+            backgroundColor: Colors.white.withValues(alpha: 0.14),
+          ),
+        );
+      case _Dl.done:
+        label = 'Downloaded';
+        glyph = const Icon(Icons.download_done_rounded, key: ValueKey('dl_done'), size: 24, color: Color(0xFF4ADE80));
+    }
+    return _QuickTile(
+      glyph: glyph,
+      label: label,
+      doneLabel: done,
+      accent: widget.accent,
+      onTap: () => _downloadTap(state),
+    );
+  }
+
+  // ── Rows ───────────────────────────────────────────────────────────────────
+
+  Widget _row(SongAction a) {
+    final scheme = Theme.of(context).colorScheme;
+    switch (a) {
+      case SongAction.addToPlaylist:
+        return _SheetRow(
+          icon: Icons.playlist_add_rounded,
+          label: _addToPlaylistLabel(provider.playlistsContaining(track.id).length),
+          onTap: _addToPlaylist,
+        );
+      case SongAction.goToAlbum:
+        return _SheetRow(
+          icon: Icons.album_outlined,
+          label: 'Go to album',
+          fallbackLabel: 'Go to Album',
+          // Which album, not which artist: the artist is already the header's line.
+          subtitle: track.albumName,
+          onTap: _goToAlbum,
+        );
+      case SongAction.goToArtist:
+        return _SheetRow(
+          icon: Icons.person_outline_rounded,
+          label: 'Go to artist',
+          fallbackLabel: 'Go to Artist',
+          onTap: _goToArtist,
+        );
+      case SongAction.code:
+        return _SheetRow(
+          icon: Icons.qr_code_2_rounded,
+          label: 'Mine Music Code',
+          fallbackLabel: 'Muzo Code',
+          onTap: _code,
+        );
+      case SongAction.songInfo:
+        return _SheetRow(icon: Icons.info_outline_rounded, label: 'Song Info', onTap: _info);
+      case SongAction.sleepTimer:
+        return _SheetRow(icon: Icons.timer_outlined, label: 'Sleep Timer', onTap: _sleep);
+      case SongAction.notInterested:
+        return _SheetRow(icon: Icons.heart_broken_rounded, label: 'Not interested', onTap: _notInterested);
+      case SongAction.removeFromQueue:
+        return _SheetRow(
+          icon: Icons.delete_sweep_rounded,
+          label: _done.containsKey(a) ? 'Removed' : 'Remove from Queue',
+          color: scheme.error,
+          onTap: _removeFromQueue,
+        );
+      case SongAction.removeFromPlaylist:
+        return _SheetRow(
+          icon: Icons.remove_circle_outline_rounded,
+          label: _done.containsKey(a) ? 'Removed' : 'Remove from Playlist',
+          color: scheme.error,
+          onTap: _removeFromPlaylist,
+        );
+      case SongAction.removeFromHistory:
+        return _SheetRow(
+          icon: Icons.history_toggle_off_rounded,
+          label: _done.containsKey(a) ? 'Removed' : 'Remove from History',
+          color: scheme.error,
+          onTap: _removeFromHistory,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  // ── Navigation helpers (the sheet is already closed when these run) ───────
+
+  void _navigateToAlbum(BuildContext context, MusicProvider provider, Track track) {
     provider.setHideMiniPlayer(false);
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
     final primaryArtist = ArtistPickerSheet.getPrimaryArtist(track.artistName);
-    final nav = mainNavigatorKey.currentState ??
-        rootNavigatorKey.currentState ??
-        Navigator.of(context);
+    final nav = mainNavigatorKey.currentState ?? rootNavigatorKey.currentState ?? Navigator.of(context);
     nav.push(
       MaterialPageRoute(
         builder: (_) => ThemedAlbumDetailScreen(
-          albumId: track.albumId?.isNotEmpty == true
-              ? track.albumId!
-              : 'album_${track.albumName}',
+          albumId: track.albumId?.isNotEmpty == true ? track.albumId! : 'album_${track.albumName}',
           albumName: track.albumName,
           artistName: primaryArtist,
           albumImage: track.albumArtUrl,
@@ -706,9 +789,7 @@ class GlassOptionsSheet extends StatelessWidget {
     provider.setHideMiniPlayer(false);
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
-    final nav = mainNavigatorKey.currentState ??
-        rootNavigatorKey.currentState ??
-        Navigator.of(context);
+    final nav = mainNavigatorKey.currentState ?? rootNavigatorKey.currentState ?? Navigator.of(context);
     nav.push(
       MaterialPageRoute(
         builder: (_) => ThemedArtistDetailScreen(
@@ -792,6 +873,298 @@ class GlassOptionsSheet extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks before a downloaded song is deleted. Same words as the Downloads screen.
+Future<bool> confirmRemoveDownload(BuildContext context, Track track) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Remove this download?'),
+      content: Text('"${track.trackName}" will no longer play offline. You can download it again any time.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(c, true),
+          child: const Text('Remove', style: TextStyle(color: Color(0xFFFF3B5C))),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// One block's entrance: fades up (and, for tiles, pops in) on its slot of the stagger.
+class _Reveal extends StatelessWidget {
+  const _Reveal({required this.animation, required this.child, this.scale = false});
+
+  final Animation<double> animation;
+  final Widget child;
+  final bool scale;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget out = SlideTransition(
+      position: Tween<Offset>(begin: const Offset(0, 0.10), end: Offset.zero).animate(animation),
+      child: child,
+    );
+    if (scale) {
+      out = ScaleTransition(scale: Tween<double>(begin: 0.9, end: 1).animate(animation), child: out);
+    }
+    return FadeTransition(opacity: animation, child: out);
+  }
+}
+
+/// The like star: a jelly circle whose glyph morphs (a bounce into colour) when toggled.
+class _LikeButton extends StatelessWidget {
+  const _LikeButton({required this.liked, required this.accent, required this.onTap});
+
+  final bool liked;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      toggled: liked,
+      label: liked ? 'Unlike' : 'Like',
+      excludeSemantics: true,
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.light,
+        onTap: onTap,
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.elasticOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: anim,
+                child: RotationTransition(turns: Tween<double>(begin: -0.08, end: 0).animate(anim), child: child),
+              ),
+              child: Icon(
+                liked ? Icons.star_rounded : Icons.star_outline_rounded,
+                key: ValueKey(liked),
+                color: liked ? accent : Colors.white,
+                size: 28,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A glass tile: a glyph over a label. Morphs to a check and a past-tense label for
+/// a beat when its action has happened ([doneLabel]).
+class _QuickTile extends StatelessWidget {
+  const _QuickTile({
+    this.icon,
+    this.glyph,
+    required this.label,
+    required this.onTap,
+    required this.accent,
+    this.doneLabel,
+    this.destructive = false,
+  }) : assert(icon != null || glyph != null);
+
+  final IconData? icon;
+
+  /// Replaces [icon] (the download tile's ring). Give it a key: the glyph morphs
+  /// between states with a scale-and-fade, and the key is what tells it they differ.
+  final Widget? glyph;
+  final String label;
+  final String? doneLabel;
+  final Color accent;
+  final bool destructive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final confirmed = doneLabel != null;
+    final fg = destructive ? scheme.error : scheme.onSurface;
+    final shownLabel = doneLabel ?? label;
+    return Semantics(
+      button: true,
+      label: shownLabel,
+      excludeSemantics: true,
+      child: JellyPress(
+        profile: JellyProfile.pill,
+        haptic: JellyHaptic.none,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          height: 78,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: confirmed ? accent.withValues(alpha: 0.22) : Colors.white.withValues(alpha: 0.07),
+            border: Border.all(
+              color: confirmed ? accent.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.10),
+              width: 0.8,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutBack,
+                transitionBuilder: (c, a) => ScaleTransition(scale: a, child: FadeTransition(opacity: a, child: c)),
+                child: confirmed
+                    ? Icon(Icons.check_rounded, key: const ValueKey('done'), size: 26, color: accent)
+                    : IconTheme(
+                        key: ValueKey(glyph?.key ?? icon),
+                        data: IconThemeData(color: fg, size: 24),
+                        child: glyph ?? Icon(icon, size: 24),
+                      ),
+              ),
+              const SizedBox(height: 7),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    shownLabel,
+                    maxLines: 1,
+                    style: AppFont.style(
+                      color: confirmed ? accent : fg,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An inset rounded group of rows (iOS settings style), hairlines between.
+class _GroupCard extends StatelessWidget {
+  const _GroupCard({required this.children, this.danger = false});
+
+  final List<Widget> children;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: danger ? scheme.error.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: danger ? scheme.error.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.08),
+          width: 0.8,
+        ),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) Divider(height: 0.5, thickness: 0.5, indent: 56, color: Colors.white.withValues(alpha: 0.08)),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A row inside a [_GroupCard]. Rows keep Material ink (they are rows, not controls
+/// floating on glass).
+class _SheetRow extends StatelessWidget {
+  const _SheetRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.fallbackLabel,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final String? fallbackLabel;
+  final Color? color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fg = color ?? scheme.onSurface;
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          child: Row(
+            children: [
+              Icon(icon, color: color ?? fg, size: 22),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        Text(
+                          label,
+                          style: AppFont.style(color: fg, fontWeight: FontWeight.w500, fontSize: 15.5),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // The pre-redesign casing, kept so anything that looks a row up by
+                        // either spelling still finds it. Invisible and never hit.
+                        if (fallbackLabel != null)
+                          Opacity(
+                            opacity: 0.0,
+                            child: Text(fallbackLabel!, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppFont.style(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (color == null) Icon(Icons.chevron_right_rounded, size: 20, color: Colors.white.withValues(alpha: 0.28)),
             ],
           ),
         ),

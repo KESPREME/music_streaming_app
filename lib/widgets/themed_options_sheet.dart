@@ -4,6 +4,7 @@ import '../providers/theme_provider.dart';
 import '../models/track.dart';
 import 'glass_options_sheet.dart';
 import 'material_you_options_sheet.dart';
+import 'song_sheet_plan.dart';
 
 /// Theme-aware options sheet wrapper
 /// Conditionally renders GlassOptionsSheet or MaterialYouOptionsSheet based on theme
@@ -13,12 +14,17 @@ class ThemedOptionsSheet extends StatelessWidget {
   final bool isInQueueContext;
   final bool isRecentlyPlayedContext;
 
+  /// Where the sheet was opened from; the glass sheet shows only the rows that
+  /// make sense there (song_sheet_plan.dart). Material You ignores it.
+  final SongSheetOrigin origin;
+
   const ThemedOptionsSheet({
     super.key,
     required this.track,
     this.playlistId,
     this.isInQueueContext = false,
     this.isRecentlyPlayedContext = false,
+    this.origin = SongSheetOrigin.auto,
   });
 
   /// Helper to show the appropriate options sheet based on the current theme
@@ -29,6 +35,7 @@ class ThemedOptionsSheet extends StatelessWidget {
     bool isInQueueContext = false,
     bool isRecentlyPlayedContext = false,
     VoidCallback? onDislike, // glass sheet only; MY variant frozen
+    SongSheetOrigin origin = SongSheetOrigin.auto,
   }) async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
 
@@ -40,6 +47,7 @@ class ThemedOptionsSheet extends StatelessWidget {
         isInQueueContext: isInQueueContext,
         isRecentlyPlayedContext: isRecentlyPlayedContext,
         onDislike: onDislike,
+        origin: origin,
       );
     } else {
       await MaterialYouOptionsSheet.show(
@@ -62,6 +70,7 @@ class ThemedOptionsSheet extends StatelessWidget {
             playlistId: playlistId,
             isInQueueContext: isInQueueContext,
             isRecentlyPlayedContext: isRecentlyPlayedContext,
+            origin: origin,
           );
         } else {
           return MaterialYouOptionsSheet(

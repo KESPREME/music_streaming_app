@@ -40,6 +40,7 @@ import '../widgets/track_list_column.dart';
 import '../widgets/themed_all_genres_screen.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/song_sheet_plan.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/themed_settings_screen.dart';
 import '../widgets/themed_trending_now_screen.dart';
@@ -356,7 +357,7 @@ static bool _hasHero(MusicProvider provider) =>
                   parallaxFactor: 0.16,
                   onPlay: () => _play(context, track, picks),
                   onOverflow: () =>
-                      ThemedOptionsSheet.show(context, track: track),
+                      ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
                 ),
               );
             },
@@ -521,7 +522,7 @@ void _holdHomeItem(BuildContext context, HomeItem item) {
   final track = homeItemToTrack(item);
   if (track != null) {
     HapticFeedback.mediumImpact();
-    ThemedOptionsSheet.show(context, track: track);
+    ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track);
   }
 }
 
@@ -758,7 +759,7 @@ class _CompactListSection extends StatelessWidget {
                     .read<MusicProvider>()
                     .playTrack(track, playlistTracks: tracks);
               },
-              onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+              onLongPress: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
             )),
       ],
     );
@@ -1306,8 +1307,7 @@ const _LowerSections({
               playlistTracks: plan.localHistory,
               playlistId: 'jump_back_in',
             ),
-        onOptions: (track) => ThemedOptionsSheet.show(
-          context,
+        onOptions: (track) => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home,
           track: track,
           isRecentlyPlayedContext: true,
         ),
@@ -1327,7 +1327,7 @@ const _LowerSections({
         title: 'Quick picks',
         tracks: picks,
         onPlay: (track) => _play(context, track, picks),
-        onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+        onOptions: (track) => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
         viewMode: viewModes.modeOf(HomeViewSection.quickPicks),
         onToggleView: () => viewModes.toggle(HomeViewSection.quickPicks),
         playingId: playingId,
@@ -1375,7 +1375,7 @@ const _LowerSections({
           isPlaying: (t) =>
               provider.currentTrack?.id == t.id && provider.isPlaying,
           onPlay: (track) => _play(context, track, mfyFallback),
-          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+          onOptions: (track) => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
         ));
       }
 
@@ -1410,7 +1410,7 @@ const _LowerSections({
         sections.add(_WhatsHotSection(
           tracks: trending,
           onPlay: (track) => _play(context, track, trending),
-          onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+          onOptions: (track) => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
           onSeeAll: () => _pushGuarded(
             context,
             (_) => const ThemedTrendingNowScreen(),
@@ -1744,7 +1744,7 @@ class _FeedQuickPicks extends StatelessWidget {
       title: section.title,
       tracks: tracks,
       onPlay: (track) => _LowerSections._play(context, track, tracks),
-      onOptions: (track) => ThemedOptionsSheet.show(context, track: track),
+      onOptions: (track) => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
       viewMode: viewModes.modeOf(HomeViewSection.quickPicks),
       onToggleView: () => viewModes.toggle(HomeViewSection.quickPicks),
       playingId: playingId,
@@ -1982,7 +1982,7 @@ class _HistoryFeedSection extends StatelessWidget {
               onPlay: (track) =>
                   _LowerSections._play(context, track, tracks),
               onOptions: (track) =>
-                  ThemedOptionsSheet.show(context, track: track),
+                  ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
               isPlaying: (t) => t.id == playingId,
             ),
           ),
@@ -2254,7 +2254,7 @@ class _MoodTracksScreen extends StatelessWidget {
                   .read<MusicProvider>()
                   .playTrack(track, playlistTracks: tracks);
             },
-            onLongPress: () => ThemedOptionsSheet.show(context, track: track),
+            onLongPress: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.home, track: track),
           );
         },
       ),

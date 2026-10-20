@@ -22,6 +22,7 @@ import '../../widgets/glass_circle_button.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/jelly_press.dart';
 import '../../widgets/themed_options_sheet.dart';
+import '../../widgets/song_sheet_plan.dart';
 import 'explore_feed_card.dart';
 import 'explore_tokens.dart';
 import 'explore_top_pill.dart';
@@ -624,7 +625,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                     onRefreshFeed: () => controller.refresh(),
                     onAddToPlaylist: () {
                       if (active != null) {
-                        ThemedOptionsSheet.show(context, track: active.track);
+                        ThemedOptionsSheet.show(context, origin: SongSheetOrigin.explore, track: active.track);
                       }
                     },
                   ),
@@ -756,7 +757,7 @@ class _ExploreScreenState extends State<ExploreScreen>
       ExploreController controller, Track track) async {
     _buzz();
     if (!context.mounted) return;
-    await ThemedOptionsSheet.show(context, track: track, onDislike: () {
+    await ThemedOptionsSheet.show(context, origin: SongSheetOrigin.explore, track: track, onDislike: () {
       _invalidateSnap();
       context.read<ExploreController>().dislikeCurrent();
     });
@@ -851,8 +852,7 @@ class _ExploreHeader extends StatelessWidget {
                   final c = context.read<ExploreController>();
                   final active = c.session?.active;
                   if (active != null) {
-                    ThemedOptionsSheet.show(
-                      context,
+                    ThemedOptionsSheet.show(context, origin: SongSheetOrigin.explore,
                       track: active.track,
                       onDislike: () => c.dislikeCurrent(),
                     );

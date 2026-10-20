@@ -8,6 +8,7 @@ import '../../utils/app_image_cache.dart';
 import '../../utils/artwork_palette_resolver.dart';
 import '../animated_equalizer_icon.dart';
 import '../themed_options_sheet.dart';
+import '../song_sheet_plan.dart';
 import 'bitchord_explicit_badge.dart';
 
 /// Multi-column horizontal pager grid for artist Top Songs matching BitChord and Screenshot 7.
@@ -88,7 +89,7 @@ class TopSongsPagerGrid extends StatelessWidget {
                       child: InkWell(
                         onTap: () => onSongTap(top, songIndex),
                         onLongPress: () {
-                          ThemedOptionsSheet.show(context, track: song);
+                          ThemedOptionsSheet.show(context, origin: SongSheetOrigin.artist, track: song);
                         },
                         borderRadius: BorderRadius.circular(10),
                         child: Padding(
@@ -190,7 +191,7 @@ class TopSongsPagerGrid extends StatelessWidget {
                                   size: 20,
                                 ),
                                 onPressed: () {
-                                  ThemedOptionsSheet.show(context, track: song);
+                                  ThemedOptionsSheet.show(context, origin: SongSheetOrigin.artist, track: song);
                                 },
                               ),
                             ],

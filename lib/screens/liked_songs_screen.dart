@@ -32,6 +32,7 @@ import '../widgets/global_music_overlay.dart';
 import '../widgets/playlist/add_to_playlist_sheet.dart';
 import '../widgets/playlist/playlist_edit_sheet.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/song_sheet_plan.dart';
 
 const String kLikedContextId = 'liked_songs';
 const String kLikedSortPref = 'liked_sort_v1';
@@ -432,7 +433,7 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                                       HapticFeedback.mediumImpact();
                                       setState(() => _selected.add(t.id));
                                     },
-                                    onOptions: () => ThemedOptionsSheet.show(context, track: t),
+                                    onOptions: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.liked, track: t),
                                     onQueue: () => _queue([t]),
                                     onRemove: () => _remove([t.id]),
                                   );

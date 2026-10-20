@@ -11,6 +11,7 @@ import '../widgets/jelly_icon_button.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/song_sheet_plan.dart';
 import '../widgets/glass_options_sheet.dart';
 import 'album_detail_screen.dart';
 
@@ -518,7 +519,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                           color: Colors.white.withValues(alpha: 0.5),
                           size: 20,
                         ),
-                        onPressed: () => ThemedOptionsSheet.show(context, track: track),
+                        onPressed: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.remotePlaylist, track: track),
                       ),
                     ],
                   ),

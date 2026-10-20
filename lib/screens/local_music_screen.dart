@@ -32,6 +32,7 @@ import '../widgets/home_sections.dart' show PressableScale;
 import '../widgets/local_artwork.dart';
 import '../widgets/playlist/add_to_playlist_sheet.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/song_sheet_plan.dart';
 
 const String kLocalContextId = 'local_files';
 
@@ -271,7 +272,7 @@ class _LocalMusicScreenState extends State<LocalMusicScreen> {
                 HapticFeedback.mediumImpact();
                 setState(() => _selected.add(t.id));
               },
-              onOptions: () => ThemedOptionsSheet.show(context, track: t),
+              onOptions: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.device, track: t),
               onQueue: () => _queue([t]),
               onRemove: () {},
             );

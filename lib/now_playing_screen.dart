@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart' hide RepeatMode;
+import 'widgets/song_sheet_plan.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
@@ -1525,6 +1526,7 @@ child: Transform.scale(
                         context,
                         track: currentTrack,
                         accentColor: accentColor,
+                        origin: SongSheetOrigin.nowPlaying,
                       );
                     },
                   ),

@@ -19,6 +19,7 @@ import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
 import '../widgets/fallback_network_image.dart';
 import '../widgets/themed_options_sheet.dart';
+import '../widgets/song_sheet_plan.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/artist_picker_sheet.dart';
 import '../core/navigation/root_navigator.dart';
@@ -753,7 +754,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       JellyIconButton(
                         tooltip: 'More',
                         icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.5), size: 20),
-                        onPressed: () => ThemedOptionsSheet.show(context, track: track),
+                        onPressed: () => ThemedOptionsSheet.show(context, origin: SongSheetOrigin.album, track: track),
                       ),
                     ],
                   ),

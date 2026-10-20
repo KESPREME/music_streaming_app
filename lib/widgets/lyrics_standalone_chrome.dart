@@ -12,6 +12,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'song_sheet_plan.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_font.dart';
 
@@ -219,7 +220,7 @@ class LyricsMiniHeader extends StatelessWidget {
             semanticLabel: 'Options',
             onTap: () {
               HapticFeedback.lightImpact();
-              GlassOptionsSheet.show(context, track: track);
+              GlassOptionsSheet.show(context, track: track, origin: SongSheetOrigin.lyrics);
             },
             child: const Icon(
               Icons.more_vert_rounded,
