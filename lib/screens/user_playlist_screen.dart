@@ -33,6 +33,7 @@ import '../widgets/collection/collection_kit.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/global_music_overlay.dart';
 import '../widgets/home_sections.dart' show PressableScale;
+import '../widgets/jelly_press.dart';
 import '../widgets/playlist/open_playlist.dart';
 import '../widgets/playlist/playlist_cover.dart';
 import '../widgets/playlist/playlist_edit_sheet.dart';
@@ -627,8 +628,9 @@ class _ViewToggle extends StatelessWidget {
       selected: on,
       label: label,
       excludeSemantics: true,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.selection,
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),

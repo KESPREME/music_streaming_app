@@ -4,6 +4,7 @@ import '../../theme/app_font.dart';
 
 import '../glass_circle_button.dart';
 import '../glass_surface.dart';
+import '../jelly_press.dart';
 
 enum LibrarySortOption {
   recentlyAdded('Recently Added', Icons.access_time_rounded),
@@ -189,12 +190,12 @@ class LibraryFilterBar extends StatelessWidget {
                         children: [
                           for (int i = 0; i < categories.length; i++)
                             Expanded(
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  onCategorySelected(categories[i]);
-                                },
+                              // The whole cell is the target; only the label flexes (the
+                              // sliding glass behind it is the visible body).
+                              child: JellyPress(
+                                profile: JellyProfile.icon,
+                                haptic: JellyHaptic.selection,
+                                onTap: () => onCategorySelected(categories[i]),
                                 child: Center(
                                   child: AnimatedDefaultTextStyle(
                                     duration: const Duration(milliseconds: 160),

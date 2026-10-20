@@ -23,6 +23,7 @@ import '../../utils/app_image_cache.dart';
 import '../../utils/image_quality_utils.dart';
 import '../glass_circle_button.dart';
 import '../glass_surface.dart';
+import '../jelly_press.dart';
 import '../home_sections.dart' show PressableScale;
 
 /// Tokens shared by the collection screens.
@@ -472,8 +473,11 @@ class CollectionSortRow extends StatelessWidget {
             button: true,
             label: 'Sort: $label',
             excludeSemantics: true,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
+            // Opens a sheet, which is a navigation rather than a state change, so
+            // it stays silent like the rest of the sheet openers.
+            child: JellyPress(
+              profile: JellyProfile.pill,
+              haptic: JellyHaptic.none,
               onTap: onSort,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
@@ -536,7 +540,9 @@ class CollectionChips extends StatelessWidget {
             selected: on,
             label: 'Filter: ${c.label}',
             excludeSemantics: true,
-            child: PressableScale(
+            child: JellyPress(
+              profile: JellyProfile.pill,
+              haptic: JellyHaptic.selection,
               onTap: () => onTap(c),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),

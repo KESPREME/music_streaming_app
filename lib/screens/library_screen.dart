@@ -31,6 +31,7 @@ import '../services/replay/replay_summary.dart';
 import '../widgets/replay/replay_card.dart';
 import 'replay_screen.dart';
 import '../widgets/library/library_shelves.dart';
+import '../widgets/home_sections.dart' show PressableScale;
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../widgets/collection/collection_kit.dart' show CollectionStyle, showCollectionToast;
@@ -576,7 +577,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildLiquidPlaylistCard(BuildContext context, Playlist playlist) {
-    return GestureDetector(
+    return PressableScale(
       onTap: () {
         HapticFeedback.lightImpact();
         openUserPlaylist(context, playlist);
@@ -712,7 +713,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
                 return StaggerIn(
                   index: index,
-                  child: GestureDetector(
+                  child: PressableScale(
                     onTap: () {
                       HapticFeedback.lightImpact();
                       Navigator.push(
@@ -842,7 +843,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 final track = albums[index];
                 return StaggerIn(
                   index: index,
-                  child: GestureDetector(
+                  child: PressableScale(
                     onTap: () {
                       HapticFeedback.lightImpact();
                       Navigator.push(

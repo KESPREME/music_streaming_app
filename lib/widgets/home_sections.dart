@@ -5,6 +5,7 @@ import '../design/tokens/motion.dart';
 import 'package:flutter/physics.dart' show SpringSimulation;
 import '../presentation/home/home_tokens.dart' as t;
 import 'glass_surface.dart';
+import 'jelly_press.dart';
 
 /// Shared Home section pieces (spec #67). Geometry comes from
 /// [t.HomeTokens]; typography from the token scale; no magic numbers.
@@ -60,9 +61,10 @@ class HomeSectionHeader extends StatelessWidget {
                   child: trailing!,
                 )
               else if (onViewAll != null)
-                GestureDetector(
+                JellyPress(
                   onTap: onViewAll,
-                  behavior: HitTestBehavior.opaque,
+                  profile: JellyProfile.pill,
+                  haptic: JellyHaptic.selection,
                   child: Padding(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 4, vertical: 4),

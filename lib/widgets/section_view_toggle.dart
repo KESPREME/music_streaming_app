@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../design/glass/glass_materials.dart' show GlassTier;
 import '../design/glass/glass_surface.dart' as design;
 import '../design/tokens/motion.dart';
 import '../presentation/home/home_view_mode.dart';
+import 'jelly_press.dart';
 
 /// Switches one Home section between compact rows and large artwork cards.
 ///
@@ -44,8 +44,6 @@ class SectionViewToggle extends StatefulWidget {
 }
 
 class _SectionViewToggleState extends State<SectionViewToggle> {
-  bool _pressed = false;
-
   HomeSectionViewMode get _destination => widget.mode.toggled;
 
   /// Identity of the glyph currently on screen. The departing glyph keeps the
@@ -67,77 +65,69 @@ class _SectionViewToggleState extends State<SectionViewToggle> {
           (_destination == HomeSectionViewMode.card
               ? 'Switch to card view'
               : 'Switch to list view'),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          widget.onToggle();
-        },
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        child: AnimatedScale(
-          // Deeper than a card's 0.98: this is a control, not content, and a
-          // control that barely moves reads as having missed the tap.
-          scale: _pressed ? 0.90 : 1.0,
-          duration: Motion.fast,
-          curve: Curves.easeOut,
-          child: SizedBox(
-            // 34 rather than the reference's 32: 34 clears the 48dp touch
-            // guidance comfortably inside the header's line height without
-            // making the heading look like it has a button stapled on.
-            width: 34,
-            height: 34,
-            child: design.GlassSurface(
-              tier: GlassTier.card,
-              borderRadius: 17,
-              padding: EdgeInsets.zero,
-              child: Center(
-                child: AnimatedSwitcher(
-                  duration: Motion.normal,
-                  // Monotonic, and NOT the overshooting spring curve. See
-                  // sectionLayoutTransition in home_layout_switch.dart: an
-                  // overshoot passes its target at ~60% of the clock, so the new
-                  // glyph was fully formed while the old one was still there.
-                  switchInCurve: Motion.enter,
-                  switchOutCurve: Motion.exit,
-                  transitionBuilder: (child, animation) {
-                    // AnimatedSwitcher runs the arriving glyph 0 -> 1 and the
-                    // departing one 1 -> 0, and reports the same status for
-                    // both, so the role is read off the child's key instead of
-                    // guessed from the animation. Guessing backwards shrank the
-                    // new glyph to nothing while the old one sat at full size.
-                    final isLeaving = child.key != _destinationKey;
-                    final curve = isLeaving ? Motion.exit : Motion.enter;
-                    return AnimatedBuilder(
-                      animation: animation,
-                      child: child,
-                      builder: (context, child) {
-                        // No inversion: for the departing glyph the value
-                        // already runs 1 -> 0, so it shrinks out of existence
-                        // rather than growing back to full size on the way.
-                        final v = curve.transform(animation.value.clamp(0.0, 1.0));
-                        return Transform.rotate(
-                          // A quarter turn, so the change reads as the same
-                          // control re-pointing rather than as one glyph
-                          // replacing another. It turns out on the way too.
-                          angle: (isLeaving ? 0.25 : -0.25) * (1 - v),
-                          child: Transform.scale(
-                            scale: isLeaving ? v : 0.6 + 0.4 * v,
-                            child: child,
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  child: Icon(
-                    _destination == HomeSectionViewMode.card
-                        ? Icons.grid_view_rounded
-                        : Icons.view_agenda_outlined,
-                    key: _destinationKey,
-                    size: 17,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+      child: JellyPress(
+        // Deeper than a card's 0.97: this is a control, not content, and a
+        // control that barely moves reads as having missed the tap. The jelly
+        // circle profile also stretches toward the finger, which the old
+        // fixed 0.90 scale could not.
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.selection,
+        onTap: widget.onToggle,
+        child: SizedBox(
+          // 34 rather than the reference's 32: 34 clears the 48dp touch
+          // guidance comfortably inside the header's line height without
+          // making the heading look like it has a button stapled on.
+          width: 34,
+          height: 34,
+          child: design.GlassSurface(
+            tier: GlassTier.card,
+            borderRadius: 17,
+            padding: EdgeInsets.zero,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: Motion.normal,
+                // Monotonic, and NOT the overshooting spring curve. See
+                // sectionLayoutTransition in home_layout_switch.dart: an
+                // overshoot passes its target at ~60% of the clock, so the new
+                // glyph was fully formed while the old one was still there.
+                switchInCurve: Motion.enter,
+                switchOutCurve: Motion.exit,
+                transitionBuilder: (child, animation) {
+                  // AnimatedSwitcher runs the arriving glyph 0 -> 1 and the
+                  // departing one 1 -> 0, and reports the same status for
+                  // both, so the role is read off the child's key instead of
+                  // guessed from the animation. Guessing backwards shrank the
+                  // new glyph to nothing while the old one sat at full size.
+                  final isLeaving = child.key != _destinationKey;
+                  final curve = isLeaving ? Motion.exit : Motion.enter;
+                  return AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) {
+                      // No inversion: for the departing glyph the value
+                      // already runs 1 -> 0, so it shrinks out of existence
+                      // rather than growing back to full size on the way.
+                      final v = curve.transform(animation.value.clamp(0.0, 1.0));
+                      return Transform.rotate(
+                        // A quarter turn, so the change reads as the same
+                        // control re-pointing rather than as one glyph
+                        // replacing another. It turns out on the way too.
+                        angle: (isLeaving ? 0.25 : -0.25) * (1 - v),
+                        child: Transform.scale(
+                          scale: isLeaving ? v : 0.6 + 0.4 * v,
+                          child: child,
+                        ),
+                      );
+                    },
+                  );
+                },
+                child: Icon(
+                  _destination == HomeSectionViewMode.card
+                      ? Icons.grid_view_rounded
+                      : Icons.view_agenda_outlined,
+                  key: _destinationKey,
+                  size: 17,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ),

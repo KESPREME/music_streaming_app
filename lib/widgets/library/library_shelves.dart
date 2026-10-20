@@ -21,6 +21,7 @@ import '../../models/playlist.dart';
 import '../../utils/app_image_cache.dart';
 import '../../utils/image_quality_utils.dart';
 import '../home_sections.dart' show PressableScale;
+import '../jelly_press.dart';
 import '../playlist/playlist_cover.dart';
 
 const double kLibraryCardRadius = 18;
@@ -177,12 +178,10 @@ class LibraryShelfHeader extends StatelessWidget {
               button: true,
               label: 'See all $title',
               excludeSemantics: true,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  onSeeAll!();
-                },
+              child: JellyPress(
+                profile: JellyProfile.pill,
+                haptic: JellyHaptic.selection,
+                onTap: onSeeAll,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 44),
                   child: Padding(
