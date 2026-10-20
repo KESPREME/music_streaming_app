@@ -27,6 +27,8 @@ import '../screens/login_screen.dart';
 import '../theme/glass_tokens.dart';
 import '../widgets/account_button.dart';
 import '../widgets/collection_options_sheet.dart';
+import '../widgets/collection_play_disc.dart';
+import '../widgets/playlist/playlist_options_sheet.dart';
 import '../widgets/glass_snackbar.dart';
 import '../widgets/home_collection_play_disc.dart';
 import '../widgets/themed_album_detail_screen.dart';
@@ -2016,6 +2018,7 @@ class _PlaylistsSection extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: PressableScale(
+                  onLongPress: () => showUserPlaylistSheet(context, playlist),
                   onTap: () => _pushGuarded(
                     context,
                     (_) => ThemedPlaylistDetailScreen(
@@ -2030,7 +2033,9 @@ class _PlaylistsSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ClipRRect(
+                        Stack(
+                          children: [
+                            ClipRRect(
                           borderRadius:
                               BorderRadius.circular(t.HomeTokens.cardRadius),
                           child: AspectRatio(
@@ -2049,6 +2054,18 @@ class _PlaylistsSection extends StatelessWidget {
                                     child: const Icon(Icons.queue_music_rounded,
                                         color: Colors.white24)),
                           ),
+                        ),
+                            Positioned(
+                              right: 2,
+                              bottom: 2,
+                              child: CollectionPlayDisc(
+                                title: playlist.name,
+                                emptyMessage: '"${playlist.name}" is empty',
+                                loadTracks: () async => List<Track>.of(playlist.tracks),
+                                play: (mp, tracks) => playUserPlaylist(mp, playlist, tracks),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         Text(

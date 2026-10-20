@@ -244,6 +244,20 @@ class LibraryRail extends StatelessWidget {
 
 // ── Cards ──────────────────────────────────────────────────────────────────
 
+/// [card] with [overlay] floated over its artwork's bottom-right corner. The overlay is
+/// a sibling of the card, not inside it: the card is xcludeSemantics, which would
+/// swallow the disc's own button node, and its tap would compete with the disc's.
+Widget _withDisc(double size, Widget? overlay, Widget card) {
+  if (overlay == null) return card;
+  const t = 44.0;
+  return Stack(
+    children: [
+      card,
+      Positioned(left: size - t - 2, top: size - t - 2, child: overlay),
+    ],
+  );
+}
+
 class _Art extends StatelessWidget {
   const _Art({required this.url, required this.size, this.icon = Icons.music_note_rounded, this.circle = false});
 
@@ -307,7 +321,12 @@ class LibraryArtCard extends StatelessWidget {
     this.size = 148,
     this.icon = Icons.music_note_rounded,
     this.playing = false,
+    this.overlay,
   });
+
+  /// Sits in the artwork's bottom-right corner, OUTSIDE the card's own semantics and
+  /// tap (a play disc: its own button, its own node). See [CollectionPlayDisc].
+  final Widget? overlay;
 
   final String imageUrl;
   final String title;
@@ -324,7 +343,10 @@ class LibraryArtCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    return Semantics(
+    return _withDisc(
+      size,
+      overlay,
+      Semantics(
       button: true,
       selected: playing,
       label: '$title, $subtitle',
@@ -353,7 +375,7 @@ class LibraryArtCard extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -411,7 +433,11 @@ class LibraryPlaylistCard extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.size = 148,
+    this.overlay,
   });
+
+  /// See [LibraryArtCard.overlay].
+  final Widget? overlay;
 
   final Playlist playlist;
   final VoidCallback onTap;
@@ -424,7 +450,10 @@ class LibraryPlaylistCard extends StatelessWidget {
     final art = PlaylistCover(
         playlist: playlist, size: size, radius: kLibraryCardRadius, shadow: true);
 
-    return Semantics(
+    return _withDisc(
+      size,
+      overlay,
+      Semantics(
       button: true,
       label: '${playlist.name}, ${n == 1 ? '1 song' : '$n songs'}',
       excludeSemantics: true,
@@ -450,7 +479,7 @@ class LibraryPlaylistCard extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

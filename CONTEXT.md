@@ -885,6 +885,44 @@ The playlist page (`PlaylistDetailScreen`) now has the album page's recipe: `Imm
 
 ---
 
+## COVERS, SHEETS THAT KNOW WHERE THEY ARE, PROFILE ON SEARCH (plan: docs/PLAN-sheets-covers-search.md)
+
+- COVERS. Never show a flat box at the first bad link. `FallbackNetworkImage` tries the upgraded URL, then the
+  ORIGINAL, then a placeholder; the artist hero, the album cover and Now Playing use it. `ImageQualityUtils`
+  rewrites a ytimg thumbnail to `maxresdefault` ONLY when the link is unsigned (no `?`): a signed
+  `?sqp=...&rs=...` link edited after signing is refused, and maxres does not exist for many videos.
+  `exploreBackdropUrl` is anchored on the slash (the old regex made `mqmqdefault.jpg`). Decode by WIDTH only
+  (`memCacheWidth`): with a height too, a 16:9 thumbnail is squashed to a square before the crop.
+  An artist reached by NAME (Now Playing, Explore, the song sheet) gets `fallbackImage` = the song's cover and
+  uses it when the lookup finds nothing. Material You's artist page is separate and untouched.
+- THE SONG SHEET knows its origin. `SongSheetOrigin` + the pure `planSongSheet` (`song_sheet_plan.dart`, table
+  test `song_sheet_plan_test.dart`) decide the rows: Home / Search / Explore get no Sleep Timer or Song Info;
+  the player gets Sleep Timer and Song Info and no "queue the song that is playing"; Downloads gets Remove;
+  a local file gets no Download / Share / Go to album; the album page has no Go to album, the artist page no Go to
+  artist; Remove from Queue only for a song that IS upcoming. `generic` (an unclassified caller) keeps
+  everything. PASS `origin:` at every new call site of `ThemedOptionsSheet.show`. The old tests pin exact strings
+  (`Add to a playlist...`, `Mine Music Code` + hidden `Muzo Code`, `Go to artist` + hidden `Go to Artist`,
+  `Download`, `Share`, `Song Info`, `Sleep Timer`), ONE `GlassSurface`, the title and artist once each: Go to
+  album shows the ALBUM name as its subtitle, never the artist's.
+- Layout: header (like star = jelly circle that morphs) -> four glass tiles (Play next, Add to queue, Download,
+  Share) -> inset rounded groups (playlist / go to / more) -> a red group. A finished instant action turns its
+  tile into a check with a past-tense label for 340 ms, THEN the sheet closes (the toast is raised first so it is
+  there when the sheet is gone). The Download tile is one control that morphs: arrow -> ring with % -> check.
+  A downloaded song asks "Remove this download?" before it deletes; a running download can be cancelled.
+- Timing in tests: a pop started by a timer needs `pump(); pumpAndSettle()` - one big `pump(900ms)` fires the timer
+  but gives the exit animation no frames.
+- COLLECTIONS. `CollectionPlayDisc` (any title + loader) is on Home feed albums and playlists, Home "Your
+  playlists", and the Library (own playlists rail + grid, account playlists). `showCollectionOptionsSheet` takes
+  `extraRows` / `dangerRows` / `cover` / `play`: `showUserPlaylistSheet` adds Pin, Edit details, Delete (Undo) for
+  your own playlists; account playlists add Save as playlist. Search's ALBUM and PLAYLIST results open the
+  collection sheet (they are pseudo-tracks: the song sheet had nothing to act on). No share link -> no Share row.
+- Library cards put the disc OUTSIDE the card (`_withDisc`): the card is `excludeSemantics`, which swallows a
+  child's node.
+- SEARCH top-right: the scope row ends in the account avatar (`AccountButton`, via `_SearchAccountButton`), not an
+  equalizer. `SearchScopeSegmented.trailing` is a plain slot.
+
+---
+
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 
@@ -7,9 +6,7 @@ import '../theme/app_font.dart';
 import '../design/glass/glass_surface.dart';
 import '../providers/music_provider.dart';
 import '../utils/color_utils.dart';
-import 'animated_equalizer_icon.dart';
 import 'jelly_press.dart';
-import 'glass_circle_button.dart';
 
 /// Muzo-parity glass pills for Search: scope segmented, filter chips, dock.
 enum SearchScope { mineMusic, library }
@@ -47,7 +44,7 @@ class SearchPillPressable extends StatelessWidget {
 }
 
 /// Mine Music | Library segmented control with authentic liquid glass optics,
-/// organic squash/stretch, spring overshoot, and companion equalizer button.
+/// organic squash/stretch and spring overshoot, and an optional [trailing] control.
 ///
 /// Mirrors the bottom nav bar's [lgw.GlassTabBar] indicator physics and token
 /// layers.
@@ -59,16 +56,17 @@ class SearchScopeSegmented extends StatelessWidget {
   /// the bottom nav's language.
   final Color accent;
 
-  /// Optional tap handler for the companion equalizer button. Defaults
-  /// to expanding the mini player if music is active.
-  final VoidCallback? onEqualizerTap;
+  /// A control at the trailing edge, 48dp wide: Search puts the account avatar here
+  /// (the same button as Home's). It used to be an animated equalizer whose only job
+  /// was to open the player - which the mini player already does, one tap away.
+  final Widget? trailing;
 
   const SearchScopeSegmented({
     super.key,
     required this.scope,
     required this.onChanged,
     this.accent = muzoMauve,
-    this.onEqualizerTap,
+    this.trailing,
   });
 
   @override
@@ -100,14 +98,6 @@ class SearchScopeSegmented extends StatelessWidget {
       glassColor: accent.withValues(alpha: 0.28),
     );
 
-    MusicProvider? musicProvider;
-    try {
-      musicProvider = Provider.of<MusicProvider>(context, listen: true);
-    } catch (_) {
-      // In isolated tests or previews without MusicProvider
-    }
-    final hasTrack = musicProvider?.currentTrack != null;
-    final isPlaying = musicProvider?.isPlaying ?? false;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -149,22 +139,10 @@ class SearchScopeSegmented extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          GlassCircleButton(
-            size: 48,
-            onTap: onEqualizerTap ??
-                () {
-                  if (hasTrack) {
-                    musicProvider?.setPlayerExpanded(true);
-                  }
-                },
-            child: AnimatedEqualizerIcon(
-              isPlaying: isPlaying,
-              color:
-                  hasTrack ? accent : Colors.white.withValues(alpha: 0.6),
-              size: 18,
-            ),
-          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 10),
+            trailing!,
+          ],
         ],
       ),
     );

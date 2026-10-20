@@ -7,9 +7,9 @@ import 'package:music_streaming_app/widgets/search_glass_pills.dart';
 
 void main() {
   group('SearchScopeSegmented Widget Tests', () {
-    testWidgets('renders GlassSegmentedControl with Mine Music and Library and companion equalizer', (tester) async {
+    testWidgets('renders GlassSegmentedControl with Mine Music and Library and the trailing control', (tester) async {
       SearchScope currentScope = SearchScope.mineMusic;
-      bool eqTapped = false;
+      bool trailingTapped = false;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -21,7 +21,13 @@ void main() {
                   onChanged: (newScope) {
                     setState(() => currentScope = newScope);
                   },
-                  onEqualizerTap: () => eqTapped = true,
+                  // Search puts the account avatar here; any 48dp control fits.
+                  trailing: GlassCircleButton(
+                    size: 48,
+                    semanticLabel: 'Account',
+                    onTap: () => trailingTapped = true,
+                    child: const Icon(Icons.person_outline_rounded),
+                  ),
                 );
               },
             ),
@@ -35,19 +41,32 @@ void main() {
       expect(find.text('Mine Music'), findsOneWidget);
       expect(find.text('Library'), findsOneWidget);
 
-      // Verify companion button and AnimatedEqualizerIcon
+      // The trailing control is there - and the equalizer that used to be is not.
       expect(find.byType(GlassCircleButton), findsOneWidget);
-      expect(find.byType(AnimatedEqualizerIcon), findsOneWidget);
+      expect(find.byType(AnimatedEqualizerIcon), findsNothing);
 
       // Tap 'Library' to verify segment switching
       await tester.tap(find.text('Library'));
       await tester.pumpAndSettle();
       expect(currentScope, equals(SearchScope.library));
 
-      // Tap companion equalizer button
+      // Tap the trailing control
       await tester.tap(find.byType(GlassCircleButton));
       await tester.pump();
-      expect(eqTapped, isTrue);
+      expect(trailingTapped, isTrue);
+    });
+
+    testWidgets('with no trailing control the row is just the segmented control', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SearchScopeSegmented(scope: SearchScope.mineMusic, onChanged: (_) {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(GlassCircleButton), findsNothing);
+      expect(find.byType(AnimatedEqualizerIcon), findsNothing);
     });
   });
 

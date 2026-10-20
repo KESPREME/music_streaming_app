@@ -48,8 +48,12 @@ String? homeItemArtist(HomeItem item) {
 
 /// The songs of a collection card. Empty (never throws) when they cannot be loaded,
 /// so every caller has one failure path: say so, do not crash, do not go quiet.
-Future<List<Track>> loadHomeCollectionTracks(MusicProvider provider, HomeItem item) async {
-  final id = homeCollectionId(item);
+Future<List<Track>> loadHomeCollectionTracks(MusicProvider provider, HomeItem item) =>
+    loadCollectionTracks(provider, homeCollectionId(item));
+
+/// The songs of the album or playlist [id] (Search results and the Library's account
+/// playlists use this too). Empty - never an exception - when they cannot be loaded.
+Future<List<Track>> loadCollectionTracks(MusicProvider provider, String id) async {
   if (id.isEmpty) return const [];
   try {
     if (homeCollectionIdIsAlbum(id)) {

@@ -30,16 +30,52 @@ import '../utils/app_image_cache.dart';
 import '../utils/image_quality_utils.dart';
 import '../utils/share_text.dart';
 import 'artist_picker_sheet.dart';
+import 'collection_play_disc.dart' show CollectionPlay;
 import 'glass_snackbar.dart';
 import 'glass_surface.dart';
 import 'jelly_press.dart';
 import 'playlist/add_to_playlist_sheet.dart';
 import 'themed_artist_detail_screen.dart';
 
+/// What an extra row of the sheet is handed when it runs.
+class CollectionSheetCall {
+  const CollectionSheetCall({required this.host, required this.provider, required this.tracks});
+
+  /// The navigator's context: it outlives the sheet, which has closed by now.
+  final BuildContext host;
+  final MusicProvider provider;
+
+  /// The collection's songs; empty unless the row said it [CollectionSheetRow.needsTracks].
+  final List<Track> tracks;
+}
+
+/// A row a particular kind of collection adds (a playlist of yours: Pin, Edit, Delete;
+/// one from YouTube Music: Save as playlist).
+class CollectionSheetRow {
+  const CollectionSheetRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+    this.needsTracks = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool destructive;
+
+  /// Wait for the songs before running (a spinner shows meanwhile).
+  final bool needsTracks;
+  final Future<void> Function(CollectionSheetCall call) onTap;
+}
+
 /// Opens the sheet for one album or playlist.
 ///
 /// [loadTracks] is called once, when the sheet opens. [collectionId] only builds the
-/// share link. [artistName] enables "Go to artist".
+/// share link (no link, no Share row). [artistName] enables "Go to artist".
+/// [cover] replaces the artwork in the header (a playlist's own collage); [play] is how
+/// Play and Shuffle start; [extraRows] sit after Download, [dangerRows] last in red;
+/// [emptyMessage] is what a collection with nothing in it says.
 Future<void> showCollectionOptionsSheet(
   BuildContext context, {
   required String title,
@@ -48,6 +84,11 @@ Future<void> showCollectionOptionsSheet(
   required String collectionId,
   required Future<List<Track>> Function() loadTracks,
   String? artistName,
+  Widget? cover,
+  CollectionPlay? play,
+  List<CollectionSheetRow> extraRows = const [],
+  List<CollectionSheetRow> dangerRows = const [],
+  String? emptyMessage,
 }) async {
   final provider = Provider.of<MusicProvider>(context, listen: false);
   // The navigator outlives this sheet; the sheet's own context does not. Every
@@ -73,6 +114,11 @@ Future<void> showCollectionOptionsSheet(
         collectionId: collectionId,
         artistName: artistName,
         loadTracks: loadTracks,
+        cover: cover,
+        play: play,
+        extraRows: extraRows,
+        dangerRows: dangerRows,
+        emptyMessage: emptyMessage,
       ),
     );
   } finally {
@@ -90,8 +136,18 @@ class _CollectionSheet extends StatefulWidget {
     required this.collectionId,
     required this.loadTracks,
     this.artistName,
+    this.cover,
+    this.play,
+    this.extraRows = const [],
+    this.dangerRows = const [],
+    this.emptyMessage,
   });
 
+  final Widget? cover;
+  final CollectionPlay? play;
+  final List<CollectionSheetRow> extraRows;
+  final List<CollectionSheetRow> dangerRows;
+  final String? emptyMessage;
   final BuildContext host;
   final MusicProvider provider;
   final String title;
@@ -171,7 +227,32 @@ class _CollectionSheetState extends State<_CollectionSheet> {
 
   Future<void> _play(List<Track> tracks, {bool shuffle = false}) async {
     final list = shuffle ? (List<Track>.of(tracks)..shuffle()) : tracks;
-    await widget.provider.playTrackList(list, initialIndex: 0);
+    final custom = widget.play;
+    if (custom != null) {
+      await custom(widget.provider, list);
+    } else {
+      await widget.provider.playTrackList(list, initialIndex: 0);
+    }
+  }
+
+  /// A row a kind of collection adds. It closes the sheet first (so what it opens is
+  /// what the listener sees) and runs with the navigator's context.
+  Widget _extra(CollectionSheetRow r) {
+    Future<void> run(List<Track> tracks) =>
+        r.onTap(CollectionSheetCall(host: widget.host, provider: widget.provider, tracks: tracks));
+    return _Row(
+      icon: r.icon,
+      label: r.label,
+      destructive: r.destructive,
+      busy: _waiting == 'x:${r.label}',
+      onTap: r.needsTracks
+          ? () => _withTracks('x:${r.label}', run)
+          : () {
+              HapticFeedback.lightImpact();
+              Navigator.pop(context);
+              run(const []);
+            },
+    );
   }
 
   Future<void> _playNext(List<Track> tracks) async {
@@ -313,7 +394,8 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                               child: SizedBox(
                                 width: 64,
                                 height: 64,
-                                child: hasArt
+                                child: widget.cover ??
+                                    (hasArt
                                     ? CachedNetworkImage(
                                         imageUrl: ImageQualityUtils.getHighResArtwork(widget.artworkUrl),
                                         fit: BoxFit.cover,
@@ -321,7 +403,7 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                                         memCacheHeight: AppImageCache.thumbnailMemCache,
                                         errorWidget: (_, __, ___) => const _CoverFallback(),
                                       )
-                                    : const _CoverFallback(),
+                                    : const _CoverFallback()),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -398,7 +480,7 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  "Couldn't load the songs. Tap an option to try again.",
+                                  widget.emptyMessage ?? "Couldn't load the songs. Tap an option to try again.",
                                   style: AppFont.style(fontSize: 13, color: scheme.onSurfaceVariant),
                                 ),
                               ),
@@ -434,14 +516,16 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                                 busy: _waiting == 'download',
                                 onTap: () => _withTracks('download', _download),
                               ),
-                              _Row(
-                                icon: Icons.ios_share_rounded,
-                                label: 'Share',
-                                onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  _share();
-                                },
-                              ),
+                              for (final r in widget.extraRows) _extra(r),
+                              if (collectionShareLink(widget.collectionId) != null)
+                                _Row(
+                                  icon: Icons.ios_share_rounded,
+                                  label: 'Share',
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    _share();
+                                  },
+                                ),
                               if (hasArtist)
                                 _Row(
                                   icon: Icons.person_outline_rounded,
@@ -451,6 +535,10 @@ class _CollectionSheetState extends State<_CollectionSheet> {
                                     _goToArtist();
                                   },
                                 ),
+                              if (widget.dangerRows.isNotEmpty) ...[
+                                Divider(height: 18, thickness: 0.5, color: Colors.white.withValues(alpha: 0.10)),
+                                for (final r in widget.dangerRows) _extra(r),
+                              ],
                               const SizedBox(height: 16),
                             ],
                           ),
@@ -481,16 +569,24 @@ class _CoverFallback extends StatelessWidget {
 /// A sheet row: icon, label; a spinner in place of the icon while it waits on the
 /// songs. Rows keep Material ink (they are rows, not controls floating on glass).
 class _Row extends StatelessWidget {
-  const _Row({required this.icon, required this.label, required this.onTap, this.busy = false});
+  const _Row({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.busy = false,
+    this.destructive = false,
+  });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool busy;
+  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurface;
+    final scheme = Theme.of(context).colorScheme;
+    final color = destructive ? scheme.error : scheme.onSurface;
     return Semantics(
       button: true,
       label: label,

@@ -11,7 +11,6 @@ import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/global_music_overlay.dart';
-import '../widgets/glass_surface.dart';
 import '../widgets/stagger_in.dart';
 import '../theme/glass_tokens.dart';
 import '../widgets/themed_liked_songs_screen.dart';
@@ -31,6 +30,10 @@ import '../services/replay/replay_summary.dart';
 import '../widgets/replay/replay_card.dart';
 import 'replay_screen.dart';
 import '../widgets/library/library_shelves.dart';
+import '../widgets/collection_options_sheet.dart';
+import '../widgets/collection_play_disc.dart';
+import '../widgets/playlist/playlist_options_sheet.dart';
+import '../presentation/home/home_collections.dart' show loadCollectionTracks;
 import '../widgets/home_sections.dart' show PressableScale;
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
@@ -398,11 +401,39 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   // Yours first, then the signed-in account's YouTube Music ones.
                   if (i > playlists.length) {
                     final y = youtube[i - 1 - playlists.length];
+                    final provider = context.read<MusicProvider>();
+                    Future<List<Track>> load() => loadCollectionTracks(provider, y.browseId);
                     return LibraryArtCard(
                       imageUrl: y.thumbnailUrl,
                       title: y.title,
                       subtitle: 'YouTube Music',
                       icon: Icons.queue_music_rounded,
+                      overlay: CollectionPlayDisc(title: y.title, loadTracks: load),
+                      onLongPress: () => showCollectionOptionsSheet(
+                        context,
+                        title: y.title,
+                        subtitle: 'Playlist \u00b7 YouTube Music',
+                        artworkUrl: y.thumbnailUrl,
+                        collectionId: y.browseId,
+                        loadTracks: load,
+                        extraRows: [
+                          CollectionSheetRow(
+                            icon: Icons.library_add_rounded,
+                            label: 'Save as playlist',
+                            needsTracks: true,
+                            onTap: (c) async {
+                              final made = await c.provider
+                                  .createPlaylistWith(name: y.title, tracks: c.tracks, imageUrl: y.thumbnailUrl);
+                              if (!c.host.mounted) return;
+                              showCollectionToast(
+                                c.host,
+                                made == null ? "Couldn't save the playlist" : 'Saved "${y.title}" to your playlists',
+                                icon: Icons.playlist_add_check_rounded,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                       onTap: () => _push(
                         context,
                         ThemedPlaylistDetailScreen(
@@ -417,7 +448,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   return LibraryPlaylistCard(
                     playlist: playlist,
                     onTap: () => _openPlaylist(context, playlist),
-                    onLongPress: () => _showPlaylistOptions(context, playlist),
+                    onLongPress: () => showUserPlaylistSheet(context, playlist),
+                    overlay: _playlistDisc(context, playlist),
                   );
                 },
               ),
@@ -576,13 +608,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  /// The quick-play disc for one of the listener's own playlists. Its songs are
+  /// already here (no fetch); an empty playlist says so rather than doing nothing.
+  Widget _playlistDisc(BuildContext context, Playlist playlist) {
+    final provider = context.read<MusicProvider>();
+    return CollectionPlayDisc(
+      title: playlist.name,
+      emptyMessage: '"${playlist.name}" is empty',
+      loadTracks: () async => List<Track>.of(provider.playlistById(playlist.id)?.tracks ?? playlist.tracks),
+      play: (mp, tracks) => playUserPlaylist(mp, playlist, tracks),
+    );
+  }
+
   Widget _buildLiquidPlaylistCard(BuildContext context, Playlist playlist) {
     return PressableScale(
       onTap: () {
         HapticFeedback.lightImpact();
         openUserPlaylist(context, playlist);
       },
-      onLongPress: () => _showPlaylistOptions(context, playlist),
+      onLongPress: () => showUserPlaylistSheet(context, playlist),
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
@@ -604,7 +648,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: ClipRRect(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: playlist.imageUrl.isNotEmpty
                       ? CachedNetworkImage(
@@ -624,6 +671,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           child: Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
                         ),
                       ),
+              ),
+                  // Inside the card's own rounded corner, over the cover.
+                  Positioned(right: 4, bottom: 4, child: _playlistDisc(context, playlist)),
+                ],
               ),
             ),
             Padding(
@@ -957,131 +1008,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         label: 'Open',
         textColor: CollectionStyle.accent,
         onPressed: () => openUserPlaylist(context, made),
-      ),
-    );
-  }
-  void _showPlaylistOptions(BuildContext context, Playlist playlist) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => GlassSurface(
-        tier: GlassTier.chrome,
-        borderRadius: 24,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  leading: const Icon(Icons.edit_rounded, color: Colors.white),
-                  title: Text(
-                    'Rename',
-                    style: AppFont.style(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showRenamePlaylistDialog(context, playlist);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_rounded, color: Colors.redAccent),
-                  title: Text(
-                    'Delete',
-                    style: AppFont.style(
-                      color: Colors.redAccent,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showDeleteConfirmation(context, playlist);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showRenamePlaylistDialog(BuildContext context, Playlist playlist) {
-    final accent = Theme.of(context).colorScheme.primary;
-    final c = TextEditingController(text: playlist.name);
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF16181F),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text(
-          'Rename Playlist',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-        content: TextField(
-          controller: c,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Playlist name',
-            hintStyle: TextStyle(color: Colors.grey[400]),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey[700]!)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          TextButton(
-            child: Text('Save', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
-            onPressed: () {
-              final n = c.text.trim();
-              if (n.isNotEmpty && n != playlist.name) {
-                context.read<MusicProvider>().renamePlaylist(playlist.id, n);
-              }
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteConfirmation(BuildContext context, Playlist playlist) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF16181F),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text('Delete Playlist', style: TextStyle(color: Colors.white)),
-        content: Text('Delete "${playlist.name}"?', style: const TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          TextButton(
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700)),
-            onPressed: () {
-              context.read<MusicProvider>().deletePlaylist(playlist.id);
-              Navigator.pop(context);
-            },
-          ),
-        ],
       ),
     );
   }

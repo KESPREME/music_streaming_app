@@ -17,6 +17,12 @@ import '../widgets/search_grid_cards.dart';
 import '../widgets/glass_circle_button.dart';
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/song_sheet_plan.dart';
+import '../services/auth_service.dart';
+import '../widgets/account_button.dart';
+import '../widgets/themed_settings_screen.dart';
+import 'account_switcher_sheet.dart';
+import '../widgets/collection_options_sheet.dart';
+import '../presentation/home/home_collections.dart' show loadCollectionTracks;
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/themed_playlist_detail_screen.dart';
 import '../core/navigation/root_navigator.dart';
@@ -347,8 +353,26 @@ class _SearchScreenState extends State<SearchScreen>
         playlistImage: album.albumArtUrl,
       ));
     } else {
-      ThemedOptionsSheet.show(context, track: album);
+      ThemedOptionsSheet.show(context, origin: SongSheetOrigin.search, track: album);
     }
+  }
+
+  /// Touch-and-hold on an ALBUM or PLAYLIST result. These are pseudo-tracks (the id is
+  /// a browse id), so the SONG sheet's rows - Play next, Download, Song Info - had
+  /// nothing to act on. They get the collection sheet: Play, Shuffle, Play next,
+  /// Add to queue, Add to a playlist..., Download, Share.
+  void _openResultSheet(Track result, {required bool isAlbum}) {
+    final provider = context.read<MusicProvider>();
+    final artist = result.artistName.trim();
+    showCollectionOptionsSheet(
+      context,
+      title: result.trackName,
+      subtitle: isAlbum ? (artist.isEmpty ? 'Album' : 'Album \u00b7 $artist') : 'Playlist',
+      artworkUrl: result.albumArtUrl,
+      collectionId: result.id,
+      artistName: isAlbum && artist.isNotEmpty ? artist : null,
+      loadTracks: () => loadCollectionTracks(provider, result.id),
+    );
   }
 
   @override
@@ -483,6 +507,7 @@ class _SearchScreenState extends State<SearchScreen>
                               SearchScopeSegmented(
                                 scope: _scope,
                                 accent: accent,
+                                trailing: const _SearchAccountButton(),
                                 onChanged: (scope) {
                                   if (scope == _scope) return;
                                   setState(() => _scope = scope);
@@ -790,7 +815,7 @@ class _SearchScreenState extends State<SearchScreen>
                 }
                 _openAlbumResult(album);
               },
-              onLongPress: () => ThemedOptionsSheet.show(context, track: album),
+              onLongPress: () => _openResultSheet(album, isAlbum: true),
             );
           },
         );
@@ -927,8 +952,7 @@ class _SearchScreenState extends State<SearchScreen>
                   playlistImage: playlist.albumArtUrl,
                 ));
               },
-              onLongPress: () =>
-                  ThemedOptionsSheet.show(context, track: playlist),
+              onLongPress: () => _openResultSheet(playlist, isAlbum: false),
             );
           },
         );
@@ -1254,6 +1278,34 @@ class SearchTabContent extends StatelessWidget {
 /// The shape follows the tab - a circle for artists, a 16:9 tile for videos -
 /// so switching tabs mid-search does not show square tiles for rows that are
 /// about to be circular.
+/// The account avatar at the end of Search's scope row: the same button, and the same
+/// thing it does, as Home's. Signed in it opens the account quick-switch (and a
+/// vertical swipe steps between channels); signed out it goes to Settings, where
+/// sign-in lives. (It replaced an animated equalizer whose only job was to open the
+/// player, which the mini player already does.)
+class _SearchAccountButton extends StatelessWidget {
+  const _SearchAccountButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = AuthService();
+    // Not a Provider lookup: this must work wherever Search is mounted.
+    return ListenableBuilder(
+      listenable: auth,
+      builder: (context, _) => AccountButton(
+        auth: auth,
+        onTap: () {
+          if (auth.isLoggedIn) {
+            AccountSwitcherSheet.show(context);
+          } else {
+            pushAboveShell<void>(context, const ThemedSettingsScreen());
+          }
+        },
+      ),
+    );
+  }
+}
+
 class _SearchLoadingView extends StatelessWidget {
   final bool circular;
   final bool isVideo;

@@ -109,3 +109,19 @@ The equalizer circle (it only opened the player, which the mini player already d
 - The sheet is pinned by ~8 tests (exact strings, one `GlassSurface`, title/artist once, `Muzo Code` hidden duplicate). Kept; the
   album's name is shown under "Go to album", never the artist's.
 - Material You stays untouched (own sheets, own artist page).
+
+## 6. Outcome
+| Phase | Result |
+|---|---|
+| H1 | `FallbackNetworkImage`; URL rules (signed links untouched, `//` fixed); Explore regex; Now Playing decodes by width; the artist page takes the song's cover as a fallback and sets the found avatar inside `setState`. 16 tests. |
+| H2 | `SongSheetOrigin` + `planSongSheet`; the redesigned sheet (tiles, groups, morphs, stagger); the download tile; delete-with-prompt; a running download can be cancelled; origins passed at 30+ call sites; the Downloads list reloads when the sheet closes. 37 tests. |
+| H3 | `CollectionPlayDisc` on Home playlists and Library (rail + grid + account playlists); the collection sheet takes extra rows; the user-playlist sheet; Search album / playlist results open it. 10 + 3 tests. |
+| H4 | Search's equalizer is the account avatar. 3 tests. |
+
+Found along the way: the queue header opens the sheet for the PLAYING song, so its "Remove from Queue" was a no-op
+(now only for upcoming songs); Library's playlist menu had no Play; Home's own playlists had no touch-and-hold.
+
+Not done on purpose: Material You (own sheets and artist page); touch-and-hold on artist portraits, the Library's
+album and artist cards (no menu exists for them yet); a shared-element morph from the card to the sheet's header
+(needs a hero across a modal route - a follow-up); the disc on Search's album and playlist result cards (asked for
+Home and Library). Not proven here (no device): how the motion feels.
