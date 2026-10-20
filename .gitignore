@@ -50,3 +50,9 @@ Metrolist-main/
 Muzza-main/
 Muzo/
 BitChord-main/
+
+# Release signing material (never commit)
+android/release.jks
+android/key.properties
+tool/release/keystore.base64.txt
+build/release/

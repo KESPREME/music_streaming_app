@@ -1,0 +1,193 @@
+name: Release
+
+# PUSH -> TEST -> SIGNED APK -> GITHUB RELEASE -> THE APP OFFERS IT.
+#
+# Every push to master/main (or a pushed v* tag) that passes CI becomes a release:
+#   * a signed universal APK and its SHA-256,
+#   * release notes (a hand-written release/notes/<version>.md if there is one,
+#     otherwise the commits since the last release, as plain sentences),
+#   * a banner and screenshots (release/images/, banner generated if missing),
+#   * update.json - the file the app reads to show "Software Update" with the
+#     notes and pictures, and to verify the download before installing it.
+#
+# Setup is one time: see docs/RELEASING.md (tool/release/setup-signing.ps1).
+# Skip a release for one push with "[skip release]" in the commit message.
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.kiro/**'
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Publish on the beta channel (marked pre-release)'
+        type: boolean
+        default: false
+
+# One release at a time, in order. A second push waits; it never cancels a
+# release that is half published.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.1'
+  # Installs already in the wild have versionCode 1; build numbers start above it.
+  BUILD_OFFSET: '100'
+
+jobs:
+  verify:
+    name: Verify
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Build and publish
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      # An APK signed with the wrong key installs fine on a clean phone and is
+      # then refused as an update by every phone that already has the app. Better
+      # to stop here than to publish that.
+      - name: Require the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          missing=""
+          [ -z "$KEYSTORE_BASE64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -z "$KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$KEY_PASSWORD" ] && missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error title=Signing secrets missing::Add these repository secrets:$missing. Run tool/release/setup-signing.ps1 (see docs/RELEASING.md)."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Decide the version
+        id: plan
+        shell: bash
+        run: |
+          flags=""
+          if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then flags="--prerelease"; fi
+          dart run tool/release/prepare.dart plan \
+            --ref "$GITHUB_REF" \
+            --run-number "$GITHUB_RUN_NUMBER" \
+            --offset "$BUILD_OFFSET" $flags | tee plan.txt
+          cat plan.txt >> "$GITHUB_OUTPUT"
+
+      - name: Banner
+        shell: bash
+        run: |
+          mkdir -p release/images
+          if ls release/images/banner.* >/dev/null 2>&1; then
+            echo "using the committed banner"
+          else
+            bash tool/release/make_banner.sh "${{ steps.plan.outputs.name }}" release/images/banner.png \
+              || echo "::warning::banner generation failed; the release goes out without one"
+          fi
+
+      - name: Build the APK
+        env:
+          REQUIRE_RELEASE_SIGNING: 'true'
+        run: |
+          flutter build apk --release --no-pub \
+            --build-name "${{ steps.plan.outputs.name }}" \
+            --build-number "${{ steps.plan.outputs.build }}"
+
+      - name: Check the signature
+        shell: bash
+        continue-on-error: true
+        run: |
+          tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$tools/apksigner" verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk \
+            | tee signature.txt
+          {
+            echo "### Signing certificate"
+            echo '```'
+            grep -E 'certificate SHA-256 digest' signature.txt | head -1
+            echo '```'
+            echo "Installed copies only accept updates signed with this same certificate."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release notes, checksum and update.json
+        shell: bash
+        run: |
+          tag="${{ steps.plan.outputs.tag }}"
+          prev=$(git tag --list 'v[0-9]*' --sort=-creatordate | grep -vxF "$tag" | head -1 || true)
+          echo "previous release tag: ${prev:-none}"
+          flags=""
+          if [ "${{ steps.plan.outputs.prerelease }}" = "true" ]; then flags="--prerelease true"; fi
+          dart run tool/release/prepare.dart notes \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "${{ steps.plan.outputs.name }}" \
+            --build "${{ steps.plan.outputs.build }}" \
+            --tag "$tag" \
+            --apk build/app/outputs/flutter-apk/app-release.apk \
+            --out build/release \
+            --from "$prev" --to HEAD \
+            --min-sdk 24 $flags
+          {
+            echo "### Mine Music ${{ steps.plan.outputs.name }} (build ${{ steps.plan.outputs.build }})"
+            echo
+            cat build/release/notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.plan.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Mine Music ${{ steps.plan.outputs.name }}
+          body_path: build/release/notes.md
+          prerelease: ${{ steps.plan.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.plan.outputs.prerelease == 'true' && 'false' || 'true' }}
+          fail_on_unmatched_files: true
+          files: |
+            build/release/MineMusic-*
+            build/release/update.json
+
+      - name: Keep the APK as a workflow artifact too
+        uses: actions/upload-artifact@v4
+        with:
+          name: MineMusic-${{ steps.plan.outputs.fileId }}
+          path: |
+            build/release/MineMusic-*.apk
+            build/release/MineMusic-*.apk.sha256
+          retention-days: 14
