@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_font.dart';
+import '../services/session/session_store.dart';
 import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -73,6 +75,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void initState() {
     super.initState();
+    // Where the listener left the Library: the filter and sort they chose.
+    final saved = SessionStore.instance.ui;
+    if (LibraryFilterBar.categories.contains(saved.libraryFilter)) {
+      _selectedFilter = saved.libraryFilter;
+    }
+    if (saved.librarySort >= 0 &&
+        saved.librarySort < LibrarySortOption.values.length) {
+      _currentSort = LibrarySortOption.values[saved.librarySort];
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final p = Provider.of<MusicProvider>(context, listen: false);
@@ -140,10 +151,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   selectedCategory: _selectedFilter,
                   onCategorySelected: (category) {
                     setState(() => _selectedFilter = category);
+                    _rememberLibraryView();
                   },
                   currentSort: _currentSort,
                   onSortChanged: (sort) {
                     setState(() => _currentSort = sort);
+                    _rememberLibraryView();
                   },
                 ),
               ),
@@ -245,6 +258,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void _showTab(String tab) {
     HapticFeedback.selectionClick();
     setState(() => _selectedFilter = tab);
+    _rememberLibraryView();
+  }
+
+  void _rememberLibraryView() {
+    final session = SessionStore.instance;
+    unawaited(session.saveUi(session.ui.copyWith(
+      libraryFilter: _selectedFilter,
+      librarySort: _currentSort.index,
+    )));
   }
 
   List<Widget> _buildAllTabSlivers(BuildContext context, double gutter) {

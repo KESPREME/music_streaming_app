@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the folder the in-app updater downloads into. Deliberately narrow:
+     the installer gets read access to one APK, never to the cache. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

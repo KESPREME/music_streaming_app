@@ -18,6 +18,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
+    <!-- In-app updates: hand the downloaded APK to the system installer. The
+         user still confirms every install, and 'Install unknown apps' is
+         per-app, so this grants nothing by itself. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- For notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -54,7 +59,7 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode|colorMode|navigation|touchscreen"
             android:hardwareAccelerated="true"
             android:enableOnBackInvokedCallback="true"
             android:windowSoftInputMode="adjustResize">
@@ -74,6 +79,17 @@
                 <data android:scheme="minemusic" />
             </intent-filter>
         </activity>
+
+        <!-- The downloaded update APK, readable by the installer only. -->
+        <provider
+            android:name="com.example.music_streaming_app.UpdateFileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
 
         <!-- Add this activity for flutter_web_auth_2 -->
         <activity

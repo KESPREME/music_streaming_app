@@ -45,6 +45,9 @@ public class MainActivity extends AudioServiceFragmentActivity {
         super.configureFlutterEngine(flutterEngine);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
+        // Version, ABIs, install hand-off, move-to-background.
+        AppChannel.register(this, flutterEngine.getDartExecutor().getBinaryMessenger());
+
         // Analysis decode: file in, small mono PCM out. See AudioDecoder.
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DECODE)
                 .setMethodCallHandler((call, result) -> {

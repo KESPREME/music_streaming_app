@@ -8,6 +8,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'design/glass/chrome_glass.dart';
+import 'services/app_platform.dart';
+import 'services/session/session_store.dart';
 import 'package:video_player_win/video_player_win.dart';
 
 import 'core/navigation/root_navigator.dart';
@@ -159,6 +161,13 @@ void main() async {
   // swallows its own errors and falls back to the defaults.
   final themeProvider = ThemeProvider();
   await themeProvider.initialize();
+
+  // Persist and restore the session (what was playing, which tab). Switched on
+  // here and nowhere else, so tests and previews never write preferences.
+  // preload is a couple of small reads; the heavy part (the queue) is read
+  // later, by the provider, off the critical path.
+  SessionStore.instance.enable();
+  await SessionStore.instance.preload();
 
   runApp(
     // Wrap outside MaterialApp: `brightnessResolver` is invoked with a context
@@ -389,7 +398,10 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  // Home or Library, whichever the listener left on. Explore is never restored
+  // into: it takes over the player and starts a session of its own, which is not
+  // something an app should do unannounced.
+  int _currentIndex = SessionStore.instance.ui.tab == 2 ? 2 : 0;
   bool _searchMode = false;
   bool _searchSuspended = false;
   final TextEditingController _searchController = TextEditingController();
@@ -400,7 +412,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    _tabState = ValueNotifier((index: 0, searchMode: false));
+    _tabState = ValueNotifier((index: _currentIndex, searchMode: false));
     _minimizeController = lgw.GlassTabBarMinimizeController(
       behavior: lgw.GlassBarMinimizeBehavior.onScrollDown,
     );
@@ -448,6 +460,8 @@ class _MainScreenState extends State<MainScreen> {
     final isExplore = index == 1;
     setState(() => _currentIndex = index);
     _tabState.value = (index: index, searchMode: false);
+    final session = SessionStore.instance;
+    unawaited(session.saveUi(session.ui.copyWith(tab: index == 1 ? 0 : index)));
     if (isExplore) {
       context.read<MusicProvider>().setHideMiniPlayer(true);
     } else if (wasExplore) {
@@ -538,7 +552,10 @@ class _MainScreenState extends State<MainScreen> {
     final showSearchOverlay = _searchMode && !_searchSuspended;
 
     return PopScope(
-      canPop: (_currentIndex == 0 && !_searchMode && !isPanelOpen && !canPopInner),
+      // Never 	rue: with nothing left to close, back must send the app to the
+      // background (see AppPlatform.leaveApp), not finish the activity and throw
+      // the Flutter view away. The exit decision is made below, in one place.
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
@@ -570,7 +587,7 @@ class _MainScreenState extends State<MainScreen> {
           case ShellBackAction.goHome:
             _onItemTapped(0);
           case ShellBackAction.none:
-            break;
+            unawaited(AppPlatform.leaveApp());
         }
       },
       child: Scaffold(

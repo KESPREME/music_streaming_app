@@ -38,6 +38,8 @@ import '../services/auth_service.dart';
 import '../services/stream_resolution_service.dart';
 import '../services/window_filler.dart';
 import '../services/playback/mine_audio_handler.dart';
+import '../services/session/session_snapshot.dart';
+import '../services/session/session_store.dart';
 import '../services/transition/analysis_service.dart';
 import '../services/transition/audio_service_decks.dart';
 import '../services/transition/provider_hooks.dart';
@@ -118,6 +120,103 @@ class MusicProvider
     implements MusicProviderLike {
   /// Album-art accent feed (null when not injected).
   final AccentController? _accentController;
+
+  // ── Session: where the listener was ───────────────────────────────────────
+  final SessionStore _sessionStore;
+
+  /// Writes the session when it changes (see [SessionRecorder]). Inert unless
+  /// the store was enabled, which only main() does.
+  late final SessionRecorder _session = SessionRecorder(
+    store: _sessionStore,
+    capture: _captureSession,
+    positionMs: () => _position.inMilliseconds,
+  );
+
+  /// Where the restored track should start when the listener presses play. Null
+  /// when there is nothing to restore (the normal case).
+  ({String trackId, Duration at})? _resumeStart;
+
+  SessionCore? _captureSession() {
+    final track = _currentTrack;
+    if (track == null) return null;
+    final active = _getActivePlaylist();
+    return SessionCore(
+      track: track,
+      context: List<Track>.of(_currentPlayingTracks ?? const <Track>[]),
+      order: _shuffleEnabled && active.isNotEmpty
+          ? [for (final t in active) t.id]
+          : const <String>[],
+      playlistId: _currentPlaylistId,
+      queue: List<Track>.of(_queue),
+      shuffle: _shuffleEnabled,
+      repeat: _repeatMode.index,
+      durationMs: _duration.inMilliseconds,
+    );
+  }
+
+  /// Puts the player back where the listener left it - paused, never playing.
+  ///
+  /// Loads no audio and starts nothing: the mini player appears with the song,
+  /// the queue and the playhead, and pressing play does the rest (see
+  /// [resumeTrack]). A restore that played by itself would be the app speaking
+  /// before it is spoken to.
+  Future<void> _restoreSession() async {
+    try {
+      final snap = await _sessionStore.loadPlayback();
+      if (snap == null || _disposed) return;
+      // The listener started something while the disk was being read.
+      if (_currentTrack != null) return;
+      final core = snap.core;
+
+      _currentTrack = core.track;
+      _currentPlayingTracks =
+          core.context.isEmpty ? null : List<Track>.of(core.context);
+      _currentPlaylistId = core.playlistId;
+      _queue
+        ..clear()
+        ..addAll(core.queue);
+      if (_shuffleEnabled && _currentPlayingTracks != null) {
+        final byId = {for (final t in _currentPlayingTracks!) t.id: t};
+        final ordered = [
+          for (final id in core.order)
+            if (byId[id] != null) byId[id]!
+        ];
+        if (ordered.length == byId.length) {
+          _shuffledPlaylist = ordered;
+          _rebuildTrackIndex();
+          _updateCurrentIndex();
+        } else {
+          _shufflePlaylist();
+        }
+      } else {
+        _rebuildTrackIndex();
+        _updateCurrentIndex();
+      }
+      final at = snap.resumeAt;
+      _position = at;
+      _duration = Duration(milliseconds: core.durationMs);
+      _isPlaying = false;
+      _resumeStart = at > Duration.zero
+          ? (trackId: core.track.id, at: at)
+          : null;
+      notifyListeners();
+      unawaited(updatePalette());
+    } catch (e) {
+      if (kDebugMode) debugPrint('MusicProvider: session restore failed: ');
+    }
+  }
+
+  /// Where a restored session will start when play is pressed (null: nothing
+  /// restored, or it starts from the top).
+  @visibleForTesting
+  Duration? get restoredResumePoint => _resumeStart?.at;
+
+  /// The start position for [trackId] if it is the restored track. Peeked, not
+  /// taken: a failed attempt that is retried must start in the same place.
+  Duration _resumeStartFor(String trackId) {
+    final r = _resumeStart;
+    return r != null && r.trackId == trackId ? r.at : Duration.zero;
+  }
 
   final GlobalKey<NavigatorState> playerNavigatorKey =
       GlobalKey<NavigatorState>();
@@ -1488,7 +1587,9 @@ for (final track in releases)
     AccentController? accentController,
     @visibleForTesting LyricsService? lyricsService,
     @visibleForTesting TransitionSettings? transitionSettings,
+    @visibleForTesting SessionStore? sessionStore,
   })  : _accentController = accentController,
+        _sessionStore = sessionStore ?? SessionStore.instance,
         _lyricsService = lyricsService ?? LyricsService(),
         transitionSettings = transitionSettings ?? TransitionSettings.shared {
     _paletteService.clearAlbumAccentOnEmptyArt = () {
@@ -1720,6 +1821,9 @@ for (final track in releases)
     unawaited(listeningStats.load());
     await _loadLikedSongs();
     await _loadRecentlyPlayed();
+    // Before the network, before the playlists: the mini player should be on
+    // screen with the last song in the time it takes to read one preference.
+    await _restoreSession();
     await loadUserPlaylists();
     await _downloads.loadMetadata();
     await _loadRecentlyShownIds(); // For You diversity persistence
@@ -1736,6 +1840,13 @@ for (final track in releases)
 
     // BATTERY FIX: Register lifecycle observer
     WidgetsBinding.instance.addObserver(this);
+
+    // The cached Home feed is read from disk and published BEFORE the network is
+    // asked for anything. It used to follow the three awaited fetches below, so
+    // a slow connection showed a skeleton for as long as they took even though a
+    // full feed was sitting in preferences - which looks exactly like the app
+    // having forgotten everything.
+    unawaited(loadHomeFeed());
 
     final isConnected = _networkService.isConnected;
     if (isConnected && !_isOfflineMode) {
@@ -1754,7 +1865,6 @@ for (final track in releases)
           if (kDebugMode) debugPrint('MusicProvider: initial load failed: $e');
         })),
       );
-      unawaited(loadHomeFeed());
     } else {
       _errorMessage = _isOfflineMode
           ? (_userManuallySetOffline
@@ -1798,6 +1908,9 @@ for (final track in releases)
         // NOT muted, so the retry poller has to be stopped explicitly or it
         // keeps waking the device (and hitting the network) in the pocket.
         _retryTimer?.cancel();
+        // The OS may take the process at any point from here. Everything the
+        // listener would want back goes to disk now, not at the next tick.
+        unawaited(_session.flush());
         // Note: Palette generation is now skipped in updatePalette() via isInBackground check
         break;
       case AppLifecycleState.resumed:
@@ -1810,6 +1923,7 @@ for (final track in releases)
         break;
       case AppLifecycleState.detached:
         _retryTimer?.cancel();
+        unawaited(_session.flush());
         break;
     }
   }
@@ -3795,11 +3909,14 @@ for (final track in releases)
           await _audioService.playSources(
             [headSource],
             initialIndex: 0,
+            initialPosition: _resumeStartFor(effectiveTrack.id),
             title: effectiveTrack.trackName,
             artist: effectiveTrack.artistName,
             artUri: effectiveTrack.albumArtUrl,
             id: effectiveTrack.id,
           );
+          // Used: the player started there.
+          if (_resumeStart?.trackId == effectiveTrack.id) _resumeStart = null;
           break;
         } catch (e) {
           if (gen != _playbackGeneration) return;
@@ -4122,6 +4239,14 @@ for (final track in releases)
       await playTrack(t,
           playlistTracks: _currentPlayingTracks,
           playlistId: _currentPlaylistId);
+      // A restored session starts where it was left. The streamed path hands the
+      // position to the player with the source (no blip from zero); a local file
+      // takes this fallback.
+      final pending = _resumeStart;
+      if (pending != null && pending.trackId == t.id) {
+        _resumeStart = null;
+        await seekTo(pending.at);
+      }
       return;
     }
     await _audioService.resume();
@@ -4306,6 +4431,8 @@ for (final track in releases)
   Future<void> stopAndClearTrack() async {
     await stopTrack();
     _currentTrack = null;
+    _resumeStart = null;
+    await _session.clear();
     notifyListeners();
   }
 
@@ -6830,6 +6957,7 @@ for (final track in releases)
   void dispose() {
     debugPrint('MusicProvider: Disposing...');
     _disposed = true;
+    _session.dispose();
     WidgetsBinding.instance.removeObserver(this); // Stop lifecycle updates
     _unbindMediaSession();
     transitionSettings.removeListener(_applyTransitionPrefs);
@@ -6877,6 +7005,10 @@ for (final track in releases)
     _ensureCurrentLocalArt();
     _playback.projectFromProvider(this);
     super.notifyListeners();
+    // Every change the provider announces is also a chance to note the session.
+    // One hook rather than a call at each of the dozens of places the queue or
+    // track can change; the recorder keeps only what actually differs.
+    _session.note(playing: _isPlaying);
   }
 
   // --- Preloading Logic ---
