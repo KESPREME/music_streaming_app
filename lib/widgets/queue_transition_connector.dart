@@ -16,6 +16,7 @@
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_font.dart';
 
@@ -243,7 +244,7 @@ class _Tip extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
+                  JellyIconButton(
                     tooltip: 'Dismiss',
                     visualDensity: VisualDensity.compact,
                     onPressed: () {

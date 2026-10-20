@@ -14,6 +14,7 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_font.dart';
 
@@ -435,7 +436,7 @@ class CollectionSearchField extends StatelessWidget {
                 ),
               ),
               if (controller.text.isNotEmpty)
-                IconButton(
+                JellyIconButton(
                   tooltip: 'Clear search',
                   icon: Icon(Icons.cancel_rounded, color: Colors.white.withValues(alpha: 0.55), size: 20),
                   onPressed: () {
@@ -775,7 +776,7 @@ class CollectionTrackRow extends StatelessWidget {
           if (reorderHandle != null)
             reorderHandle!
           else if (!selecting)
-            IconButton(
+            JellyIconButton(
               tooltip: 'More options for ${track.trackName}',
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.7)),

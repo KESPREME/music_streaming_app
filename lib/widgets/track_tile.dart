@@ -1,6 +1,7 @@
 // Keep, might be used for local artwork in future
 // import 'package:cached_network_image/cached_network_image.dart'; // Commented out
 import 'package:flutter/material.dart';
+import 'jelly_icon_button.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
@@ -106,7 +107,7 @@ class TrackTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             )
           : null,
-      trailing: IconButton(
+      trailing: JellyIconButton(
         icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withValues(alpha: 0.7)),
         onPressed: () {
           ThemedOptionsSheet.show(

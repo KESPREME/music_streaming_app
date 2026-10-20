@@ -15,6 +15,7 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -320,7 +321,7 @@ class _PlaylistImportScreenState extends State<PlaylistImportScreen> {
                         ),
                       ),
                     ),
-                    IconButton(
+                    JellyIconButton(
                       tooltip: 'Paste',
                       constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                       icon: Icon(Icons.content_paste_rounded, color: Colors.white.withValues(alpha: 0.7), size: 20),

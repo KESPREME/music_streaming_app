@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
+import 'jelly_icon_button.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -1328,7 +1329,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             autofocus: true,
             decoration: InputDecoration(
               labelText: widget.configured ? 'Replace the saved key' : 'API key',
-              suffixIcon: IconButton(
+              suffixIcon: JellyIconButton(
                 tooltip: _obscure ? 'Show key' : 'Hide key',
                 icon: Icon(_obscure
                     ? Icons.visibility_rounded

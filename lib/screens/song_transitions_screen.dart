@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +8,7 @@ import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
 import '../services/transition/transition_engine.dart';
 import '../services/transition/transition_settings.dart';
+import '../widgets/home_sections.dart' show PressableScale;
 import '../widgets/settings/glass_settings_group.dart';
 import '../widgets/thin_slider.dart';
 import '../widgets/transition_diagram.dart';
@@ -95,7 +97,7 @@ class _Body extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 10, 20, 8),
             child: Row(
               children: [
-                IconButton(
+                JellyIconButton(
                   tooltip: 'Back',
                   onPressed: () => Navigator.maybePop(context),
                   icon: const Icon(Icons.arrow_back_ios_new_rounded,
@@ -407,8 +409,7 @@ class _StyleCard extends StatelessWidget {
       button: true,
       selected: selected,
       label: '$title. $blurb',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: PressableScale(
         onTap: () {
           if (!selected) HapticFeedback.selectionClick();
           onTap();

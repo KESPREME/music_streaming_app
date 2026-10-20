@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import '../theme/app_font.dart';
 import '../theme/amoled_theme.dart';
 
@@ -134,7 +135,7 @@ class SpotifyPlaylistSelectionScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                IconButton(
+                JellyIconButton(
                   icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
                   color: Colors.white,
                   onPressed: () => Navigator.pop(context),

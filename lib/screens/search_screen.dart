@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_font.dart';
 import '../services/search_history_store.dart';
@@ -563,7 +564,7 @@ class _SearchScreenState extends State<SearchScreen>
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,
-                                  prefixIcon: IconButton(
+                                  prefixIcon: JellyIconButton(
                                     icon: const Icon(Icons.search_outlined,
                                         color: Colors.white54, size: 22),
                                     onPressed: () {
@@ -577,7 +578,7 @@ class _SearchScreenState extends State<SearchScreen>
                                   prefixIconConstraints: const BoxConstraints(
                                       minWidth: 44, minHeight: 44),
                                   suffixIcon: _searchQuery.isNotEmpty
-                                      ? IconButton(
+                                      ? JellyIconButton(
                                           icon: const Icon(Icons.clear_rounded,
                                               color: Colors.white54, size: 20),
                                           onPressed: () {
@@ -1357,7 +1358,7 @@ class _RecentSearchRow extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
+              JellyIconButton(
                 icon: const Icon(Icons.close_rounded,
                     size: 18, color: Colors.white30),
                 splashRadius: 18,

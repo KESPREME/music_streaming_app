@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../theme/app_font.dart';
 import '../providers/accent_controller.dart';
+import 'jelly_press.dart';
 
 /// Accent color control block: preset swatches, custom hex, and the
 /// album-art adaptive toggle.
@@ -145,7 +146,9 @@ class _AccentDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return JellyPress(
+      profile: JellyProfile.circle,
+      haptic: JellyHaptic.selection,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

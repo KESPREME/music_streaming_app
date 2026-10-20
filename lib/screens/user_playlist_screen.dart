@@ -17,6 +17,7 @@
 // Built from the collection kit. Material You has its own screen.
 
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -759,7 +760,7 @@ class _PlaylistRow extends StatelessWidget {
             ),
           ),
           handle ??
-              IconButton(
+              JellyIconButton(
                 tooltip: 'More options for ${p.name}',
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.7)),
@@ -1091,7 +1092,7 @@ class _YouTubeSection extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
+                JellyIconButton(
                   tooltip: 'More options for ${y.title}',
                   constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                   icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.7)),

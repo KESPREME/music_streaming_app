@@ -42,7 +42,32 @@ class JellyPress extends StatefulWidget {
     this.borderRadius = 0,
     this.behavior = HitTestBehavior.opaque,
     this.semanticLabel,
-  });
+  })  : passive = false,
+        quietInk = false;
+
+  /// The body flexes; the tap stays the child's. For a control that already owns
+  /// its gesture, semantics and tooltip (an [IconButton], an [InkWell] row) and
+  /// should keep them untouched - the tests and screen readers find it as they
+  /// always did. It listens to raw pointers only, so it adds nothing to the
+  /// gesture arena and cannot swallow or steal a tap. No haptic: the child's own
+  /// handler owns that.
+  ///
+  /// [quietInk] switches the Material splash and press-overlay off for the child
+  /// subtree: the body's give IS the feedback, and the ink on top of it reads as
+  /// two answers to one touch.
+  const JellyPress.passive({
+    super.key,
+    required this.child,
+    this.profile = JellyProfile.icon,
+    this.enabled = true,
+    this.quietInk = false,
+  })  : onTap = null,
+        onLongPress = null,
+        haptic = JellyHaptic.none,
+        borderRadius = 0,
+        behavior = HitTestBehavior.opaque,
+        semanticLabel = null,
+        passive = true;
 
   final Widget child;
   final VoidCallback? onTap;
@@ -56,6 +81,10 @@ class JellyPress extends StatefulWidget {
   final double borderRadius;
   final HitTestBehavior behavior;
   final String? semanticLabel;
+
+  /// See [JellyPress.passive].
+  final bool passive;
+  final bool quietInk;
 
   @override
   State<JellyPress> createState() => _JellyPressState();
@@ -76,7 +105,7 @@ class _JellyPressState extends State<JellyPress> with SingleTickerProviderStateM
   /// drag across it is exactly what the body is meant to follow.)
   final List<ValueNotifier<bool>> _scrolling = [];
 
-  bool get _live => widget.enabled && (widget.onTap != null || widget.onLongPress != null);
+  bool get _live => widget.enabled && (widget.passive || widget.onTap != null || widget.onLongPress != null);
 
   @override
   void didChangeDependencies() {
@@ -194,7 +223,7 @@ class _JellyPressState extends State<JellyPress> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final body = widget.child;
+    final body = widget.quietInk ? _QuietInk(child: widget.child) : widget.child;
     if (!_live) return body;
 
     final profile = widget.profile;
@@ -233,12 +262,39 @@ class _JellyPressState extends State<JellyPress> with SingleTickerProviderStateM
       onPointerMove: _move,
       onPointerUp: (_) => _letGo(),
       onPointerCancel: (_) => _letGo(),
-      child: GestureDetector(
-        behavior: widget.behavior,
-        onTap: widget.onTap == null ? null : _tap,
-        onLongPress: widget.onLongPress,
-        child: animated,
+      child: widget.passive
+          ? animated
+          : GestureDetector(
+              behavior: widget.behavior,
+              onTap: widget.onTap == null ? null : _tap,
+              onLongPress: widget.onLongPress,
+              child: animated,
+            ),
+    );
+  }
+}
+
+/// Material ink off for a subtree: no splash, no press overlay. Only what the
+/// jelly body replaces - hover and focus keep their normal look.
+class _QuietInk extends StatelessWidget {
+  const _QuietInk({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context);
+    final quiet = (base.iconButtonTheme.style ?? const ButtonStyle()).copyWith(
+      overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+      splashFactory: NoSplash.splashFactory,
+    );
+    return Theme(
+      data: base.copyWith(
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        iconButtonTheme: IconButtonThemeData(style: quiet),
       ),
+      child: child,
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'jelly_icon_button.dart';
 import '../theme/app_font.dart';
 import '../utils/app_image_cache.dart';
 import 'package:flutter/services.dart';
@@ -275,7 +276,7 @@ class GlassOptionsSheet extends StatelessWidget {
                               ],
                             ),
                           ),
-                          IconButton(
+                          JellyIconButton(
                             onPressed: () {
                               HapticFeedback.lightImpact();
                               provider.toggleLike(track);

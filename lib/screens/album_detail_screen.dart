@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -752,7 +753,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           ),
                         ),
                       ],
-                      IconButton(
+                      JellyIconButton(
                         tooltip: 'More',
                         icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.5), size: 20),
                         onPressed: () => ThemedOptionsSheet.show(context, track: track),

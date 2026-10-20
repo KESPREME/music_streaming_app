@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
@@ -92,7 +93,7 @@ class TrendingNowScreen extends StatelessWidget {
           color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
-        child: IconButton(
+        child: JellyIconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           padding: EdgeInsets.zero,
           onPressed: () => Navigator.pop(context),

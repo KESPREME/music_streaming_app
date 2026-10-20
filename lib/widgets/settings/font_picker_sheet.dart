@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/test_environment.dart';
 import '../../providers/theme_provider.dart';
 import '../../theme/app_font.dart';
+import '../jelly_press.dart';
 
 /// Settings > Appearance > Font: the typeface, and the weight of all text.
 ///
@@ -252,9 +253,10 @@ class _WeightSegments extends StatelessWidget {
                 button: true,
                 label: 'Text weight ${FontPickerSheet.weightLabel(d)}',
                 excludeSemantics: true,
-                child: GestureDetector(
+                child: JellyPress(
                   key: ValueKey('weight_$d'),
-                  behavior: HitTestBehavior.opaque,
+                  profile: JellyProfile.pill,
+                  haptic: JellyHaptic.selection,
                   onTap: () => onChanged(d),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'jelly_icon_button.dart';
 import '../theme/app_font.dart';
 
 import '../models/track.dart';
@@ -99,7 +100,7 @@ class SearchResultRow extends StatelessWidget {
                 ),
               ),
               if (onMore != null)
-                IconButton(
+                JellyIconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
                     Icons.more_vert_rounded,

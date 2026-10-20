@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_font.dart';
 import '../providers/music_provider.dart';
@@ -135,7 +136,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-            IconButton(
+            JellyIconButton(
                 icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white : Colors.black),
                 onPressed: () => Navigator.pop(context),
             ),
@@ -161,7 +162,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
                                     border: InputBorder.none,
                                     prefixIcon: Icon(Icons.search_rounded, color: isDark ? Colors.white54 : Colors.black54),
                                     suffixIcon: _searchQuery.isNotEmpty 
-                                        ? IconButton(
+                                        ? JellyIconButton(
                                             icon: Icon(Icons.close_rounded, color: isDark ? Colors.white54 : Colors.black54),
                                             onPressed: () {
                                                 _searchController.clear();
@@ -215,7 +216,7 @@ class _GlassLibrarySearchScreenState extends State<GlassLibrarySearchScreen> {
                       _searchController.text = query;
                       _onSearchChanged(query);
                   },
-                  trailing: IconButton(
+                  trailing: JellyIconButton(
                       icon: Icon(Icons.close_rounded, size: 18, color: isDark ? Colors.white30 : Colors.black26),
                       onPressed: () {
                           setState(() {

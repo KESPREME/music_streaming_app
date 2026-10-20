@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../jelly_icon_button.dart';
 
 import '../../design/tokens/space.dart';
 import '../../design/tokens/type.dart' as type;
@@ -173,7 +174,7 @@ class _SettingsSearchFieldState extends State<SettingsSearchField> {
               color: theme.colorScheme.onSurfaceVariant, size: 20),
           suffixIcon: _controller.text.isEmpty
               ? null
-              : IconButton(
+              : JellyIconButton(
                   tooltip: 'Clear',
                   icon: Icon(Icons.close_rounded,
                       size: 18, color: theme.colorScheme.onSurfaceVariant),

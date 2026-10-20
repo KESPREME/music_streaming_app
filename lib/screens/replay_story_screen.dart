@@ -15,6 +15,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -222,7 +223,7 @@ class _ReplayStoryScreenState extends State<ReplayStoryScreen>
                           Semantics(
                             button: true,
                             label: 'Close Replay',
-                            child: IconButton(
+                            child: JellyIconButton(
                               onPressed: () => Navigator.maybePop(context),
                               icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
                             ),

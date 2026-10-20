@@ -12,6 +12,7 @@
 // Built from the collection kit.
 
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -518,7 +519,7 @@ class _DownloadingRow extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
+            JellyIconButton(
               tooltip: 'Cancel download of ${track.trackName}',
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               icon: Icon(Icons.close_rounded, color: Colors.white.withValues(alpha: 0.7)),

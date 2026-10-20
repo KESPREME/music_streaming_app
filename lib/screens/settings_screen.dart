@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,6 +14,8 @@ import '../screens/song_transitions_screen.dart';
 import '../widgets/themed_downloaded_songs_screen.dart';
 import '../widgets/accent_settings_card.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/home_sections.dart' show PressableScale;
+import '../widgets/jelly_press.dart';
 import '../widgets/liquid_switch.dart';
 import '../widgets/lyric_providers_sheet.dart';
 import '../widgets/settings/font_picker_sheet.dart';
@@ -140,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ),
-                      IconButton(
+                      JellyIconButton(
                         onPressed: () => Navigator.maybePop(context),
                         icon: const Icon(Icons.close_rounded, color: Colors.white54),
                       ),
@@ -421,7 +424,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           iconColor: Colors.white70,
                           title: 'Clear Cache',
                           subtitle: 'Free up storage space',
-                          trailing: IconButton(
+                          trailing: JellyIconButton(
                             icon: const Icon(Icons.cleaning_services_rounded, size: 20, color: Colors.white70),
                             onPressed: () async {
                               await musicProvider.clearAllCaches();
@@ -725,7 +728,7 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PressableScale(
       onTap: () { HapticFeedback.lightImpact(); onTap(); },
       child: GlassSurface(
         tier: GlassTier.card,
@@ -876,8 +879,8 @@ class _MusicSourcePill extends StatelessWidget {
         child: Stack(children: [
           AnimatedAlign(duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic, alignment: current == MusicSource.youtube ? Alignment.centerLeft : Alignment.centerRight, child: FractionallySizedBox(widthFactor: 0.5, child: Container(margin: const EdgeInsets.all(4), decoration: BoxDecoration(gradient: RadialGradient(center: Alignment.center, radius: 2.5, colors: [accent.withValues(alpha: 0.28), accent.withValues(alpha: 0.10)]), borderRadius: BorderRadius.circular(24), border: Border.all(color: accent.withValues(alpha: 0.38)), boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.15), blurRadius: 12)])))),
           Row(children: [
-            Expanded(child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () => musicProvider.setMusicSource(MusicSource.youtube), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.cloud_queue_rounded, size: 18, color: current == MusicSource.youtube ? accent : Colors.white54), const SizedBox(width: 8), Text('Stream', style: AppFont.style(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.youtube ? accent : Colors.white54))])))),
-            Expanded(child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () => musicProvider.setMusicSource(MusicSource.local), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.folder_open_rounded, size: 18, color: current == MusicSource.local ? accent : Colors.white54), const SizedBox(width: 8), Text('Local', style: AppFont.style(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.local ? accent : Colors.white54))])))),
+            Expanded(child: JellyPress(profile: JellyProfile.icon, haptic: JellyHaptic.selection, onTap: () => musicProvider.setMusicSource(MusicSource.youtube), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.cloud_queue_rounded, size: 18, color: current == MusicSource.youtube ? accent : Colors.white54), const SizedBox(width: 8), Text('Stream', style: AppFont.style(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.youtube ? accent : Colors.white54))])))),
+            Expanded(child: JellyPress(profile: JellyProfile.icon, haptic: JellyHaptic.selection, onTap: () => musicProvider.setMusicSource(MusicSource.local), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.folder_open_rounded, size: 18, color: current == MusicSource.local ? accent : Colors.white54), const SizedBox(width: 8), Text('Local', style: AppFont.style(fontWeight: FontWeight.w700, fontSize: 15, color: current == MusicSource.local ? accent : Colors.white54))])))),
           ]),
         ]),
       ),

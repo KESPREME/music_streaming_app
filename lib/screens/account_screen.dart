@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/jelly_icon_button.dart';
 import 'package:provider/provider.dart';
 
 import '../core/navigation/root_navigator.dart';
@@ -224,7 +225,7 @@ class _AccountCard extends StatelessWidget {
                   ),
                 ),
                 _ActiveCheck(active: _isActive),
-                IconButton(
+                JellyIconButton(
                   tooltip: 'Remove account',
                   icon: const Icon(Icons.close_rounded, size: 20),
                   onPressed: () => _confirmRemove(context),

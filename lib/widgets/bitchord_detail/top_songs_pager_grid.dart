@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../jelly_icon_button.dart';
 import '../../theme/app_font.dart';
 
 import '../../models/track.dart';
@@ -182,7 +183,7 @@ class TopSongsPagerGrid extends StatelessWidget {
                                 ),
                               ),
                               // More ⋮ button
-                              IconButton(
+                              JellyIconButton(
                                 icon: Icon(
                                   Icons.more_vert_rounded,
                                   color: Colors.white.withValues(alpha: 0.5),

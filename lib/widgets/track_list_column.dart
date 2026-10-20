@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'jelly_icon_button.dart';
 
 import '../models/track.dart';
 import '../presentation/home/home_tokens.dart' as t;
@@ -120,7 +121,7 @@ class TrackListRow extends StatelessWidget {
         SizedBox(
           width: t.HomeTokens.rowOverflowSize,
           height: t.HomeTokens.rowOverflowSize,
-          child: IconButton(
+          child: JellyIconButton(
             onPressed: onOptions,
             padding: EdgeInsets.zero,
             iconSize: 19,
