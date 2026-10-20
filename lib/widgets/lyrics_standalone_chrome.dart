@@ -21,6 +21,7 @@ import '../utils/app_image_cache.dart';
 import '../utils/image_quality_utils.dart';
 import 'audio_quality_language_sheet.dart';
 import 'glass_options_sheet.dart';
+import 'jelly_press.dart';
 import 'thin_slider.dart';
 
 /// Blurred artwork under a dark scrim.
@@ -263,9 +264,10 @@ class LyricsMiniScrubber extends StatelessWidget {
                   Semantics(
                     label: isPlaying ? 'Pause' : 'Play',
                     button: true,
-                    child: GestureDetector(
+                    child: JellyPress(
+                      profile: JellyProfile.circle,
+                      haptic: JellyHaptic.light,
                       onTap: () {
-                        HapticFeedback.lightImpact();
                         if (isPlaying) {
                           provider.pauseTrack();
                         } else {
@@ -380,7 +382,10 @@ class _CircleButton extends StatelessWidget {
       label: semanticLabel,
       button: true,
       excludeSemantics: true,
-      child: GestureDetector(
+      // The callers play their own haptic (as before); the jelly adds none.
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.none,
         onTap: onTap,
         child: Container(
           width: 38,

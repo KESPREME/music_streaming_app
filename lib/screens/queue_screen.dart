@@ -16,6 +16,7 @@ import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/audio_quality_language_sheet.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
 import '../widgets/liquid_glass_pill.dart';
+import '../widgets/jelly_press.dart';
 import '../utils/color_utils.dart';
 import '../utils/app_image_cache.dart';
 import '../utils/image_quality_utils.dart';
@@ -284,11 +285,10 @@ class QueueScreen extends StatelessWidget {
               TransitionChip(settings: musicProvider.transitionSettings),
               if (musicProvider.canClearQueue) ...[
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    _showClearDialog(context, musicProvider);
-                  },
+                JellyPress(
+                  profile: JellyProfile.pill,
+                  haptic: JellyHaptic.light,
+                  onTap: () => _showClearDialog(context, musicProvider),
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -1048,12 +1048,10 @@ child: Column(
           Semantics(
             label: 'Remove from queue',
             button: true,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                HapticFeedback.lightImpact();
-                musicProvider.removeFromQueue(track);
-              },
+            child: JellyPress(
+              profile: JellyProfile.icon,
+              haptic: JellyHaptic.light,
+              onTap: () => musicProvider.removeFromQueue(track),
               child: const Padding(
                 padding: EdgeInsets.all(12.0),
                 child: Icon(
@@ -1078,7 +1076,10 @@ child: Column(
     return Semantics(
       label: semanticLabel,
       button: true,
-      child: GestureDetector(
+      // The callers play their own haptic (as before); the jelly adds none.
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.none,
         onTap: onTap,
         child: Container(
           width: 38,
@@ -1105,7 +1106,9 @@ child: Column(
     return Semantics(
       label: semanticLabel,
       button: true,
-      child: GestureDetector(
+      child: JellyPress(
+        profile: JellyProfile.circle,
+        haptic: JellyHaptic.none,
         onTap: onTap,
         child: Container(
           width: 38,

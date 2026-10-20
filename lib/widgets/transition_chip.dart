@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'jelly_press.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_font.dart';
 
@@ -49,10 +50,12 @@ class TransitionChip extends StatelessWidget {
           selected: on,
           label: 'Song transitions: ${on ? text : 'off'}. Tap to change, '
               'long press for settings.',
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          // Tap cycles (a tick, from the jelly); long press opens the settings
+          // (its own heavier buzz). Before this the chip showed no press at all.
+          child: JellyPress(
+            profile: JellyProfile.pill,
+            haptic: JellyHaptic.selection,
             onTap: () {
-              HapticFeedback.selectionClick();
               final n = next(settings);
               settings.setStyle(n.style);
               settings.setEnabled(n.enabled);
