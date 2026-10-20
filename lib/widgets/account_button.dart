@@ -139,6 +139,24 @@ class _AccountButtonState extends State<AccountButton>
   }
 }
 
+/// The account picture as drawn in Home's button, for other chrome (the detail
+/// pages' top-right capsule). Signed out it is the person glyph.
+class AccountAvatar extends StatelessWidget {
+  const AccountAvatar({super.key, required this.auth});
+
+  final AuthService auth;
+
+  @override
+  Widget build(BuildContext context) {
+    final account = auth.activeAccount;
+    return _Avatar(
+      url: account?.bestAvatarUrl,
+      name: account?.displayName ?? '',
+      signedIn: auth.isLoggedIn,
+    );
+  }
+}
+
 class _Avatar extends StatelessWidget {
   const _Avatar({
     required this.url,
