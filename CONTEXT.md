@@ -24,6 +24,36 @@ Path: `D:\Projects\music_streaming_app` · Branch: `refactor/liquid-glass` · 81
 
 ## CURRENT STATE (commit 7f6777a)
 
+### Art, canvas, dock, Home, detail pages, fonts (plan: docs/PLAN-art-canvas-home-detail-fonts.md)
+- Local songs: the current local track is swapped for a copy whose `albumArtUrl` is a 720px file in
+  `<tmp>/local_art/` (`_ensureCurrentLocalArt`, single-flight per id). The lock screen gets `file://`.
+- Canvas (`canvas_resolution_service.dart`): `LatestFirstGate` (2 running, 4 waiting, newest first;
+  the oldest waiter is dropped with `false`). Exceptions/timeouts are TRANSIENT (`_failedAt`, retried
+  after 3 min); only a clean miss is cached as null. `evict(id)` on player error. Explore resolves
+  only on the settled card (`isSettled`), uses `userAgentForStreamUrl`, keeps the cover until
+  `_canvasReady && activePlaying`. Runtime on device NOT verified.
+- Dock: the docking end is the full hero (t==0, soft edge), the landed lyric header (t==1 while
+  lyrics open, corner 8, hard edge) or the queue page header (`headerArtWrapper`, q==1). Lyrics ->
+  queue leaves the morph at 1; `_restHeroAfterQueue` resets it on the way home (that was a stuck
+  46dp cover bug).
+- Home continuation: `browseContinuationJson` + `fetchMore` (classic `sectionListContinuation` and
+  `appendContinuationItemsAction`) + `MusicProvider.loadMoreHome` (single-flight; stops on failure
+  or a page with nothing new; restarts with a new feed). Paged shelves render AFTER Moods
+  (`homePagedSectionIds`) so nothing above the reader moves. In memory only; no network in tests.
+  Continuation shape is from Metrolist/BitChord, not captured from a device. Straplines ->
+  `HomeSection.sourceSubtitle` -> header description. Type: page 34/w800, section 20/w700, card
+  16/14; gutter stays 10 (pinned to the nav bar).
+- Album page: framed sleeve (`releaseSleeveSize`), `releaseMetaLine` (no invented year), Play pill /
+  shuffle / download (`ReleaseDownloadButton`), search + more in the top bar. Artist: 70dp Play disc,
+  share (no subscribe: no write path), `LatestReleaseCard`, top songs <= 20, Show all > 5 items,
+  About + stats last. Widgets in `bitchord_detail/release_header.dart`; old `BitchordActionBar`,
+  `PlayPill` kept (tests pin them).
+- Fonts: every glass/common style is `AppFont.style(...)` (same signature as GoogleFonts.x). New
+  code must use it, not `GoogleFonts.plusJakartaSans`. Default path is the bundled PJS, unchanged.
+  Prefs `font_family` / `font_weight_delta` in ThemeProvider; families preload before applying;
+  `AppFont.rebuildAll()` marks every element dirty. Static caches of a style must key off
+  `AppFont.revision` (see now_playing `_scrubberTimeStyle`).
+
 ### Motion / perf / downloads pass (plan: docs/PLAN-motion-perf-downloads.md)
 - NEVER pass `path:` to on_audio_query's `querySongs`: it is pasted into SQL unescaped and a file
   name with `'` kills the app natively. Artwork goes by MediaStore id (`LocalMusicService._idByPath`);
