@@ -107,3 +107,22 @@ segmented, font-weight segments, accent dots, style cards. Detail: top-songs cel
 - `LiquidGlassSegmented` and the Explore top pill already stack package flex + wrappers; they are left alone
   (a fourth effect would compound).
 - Rows (settings / sheets / lists) keep Material ink. A highlight-fade row response is a separate follow-up.
+
+## 6. Outcome (what shipped)
+| Phase | Commit |
+|---|---|
+| P1 JellySpring + JellyPress | `146522e` |
+| P2 shared primitives | `b41a129` |
+| P3 Now Playing, mini player, queue, lyrics chrome | `31d4f28`, `3bbf13d` |
+| P4 browse: See all, view toggles, filter chips, Library segments, grid cards | `5f2e693` |
+| P5 LiquidSwitch thumb, settings segments/tiles, accent dots, weight segments, every bare `IconButton` -> `JellyIconButton` | `1d11ef3` |
+| P5b Explore Play + options, lyric discs, shelf cards, About toggle, option tiles | `2e82659` |
+| P6 playlist page onto ImmersiveHeader + DetailTopBar + glass row | `eb4a75d` |
+
+Gates at the end: analyzer 181 (limit 186), full suite 2283 pass, `flutter build apk --debug --no-pub` built.
+
+Finding on the way: `LiquidSwitch`'s thumb was always a 24.4 circle (the track clamps the 26dp it asked for); the
+stretch keeps that size at rest so the switch looks exactly as before until touched.
+
+Not proven here (no device): the feel on a phone, the glow's look, growth clipped by horizontal rails.
+Follow-up: a highlight-fade response for Material-ink rows (settings / sheets / lists).

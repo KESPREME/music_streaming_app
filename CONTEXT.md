@@ -801,6 +801,63 @@ queue heading (tap cycles Off, Crossfade, AutoMix; long-press opens the screen).
   plain `MusicProvider` subclass for playlist tests); never `await Future.delayed` inside
   `testWidgets` (fake async); `compute()` needs `tester.runAsync`.
 
+## PILL PHYSICS: ONE TOUCH LANGUAGE (plan: docs/PLAN-pill-physics.md)
+
+Every pill, circle, chip, toggle and bare icon button in the glass UI answers a touch the same way
+the bottom bar does: it compresses under the finger, stays compressed while held, leans and stretches
+toward a dragging finger (volume kept), and springs back past rest on release.
+
+- `lib/design/tokens/jelly.dart` - `JellyProfile` (icon / circle / pill / chrome), `JellySpring`,
+  `JellyHaptic`. Pure Dart; the numbers are pinned by `test/jelly_spring_test.dart` (overshoot bands,
+  settle < 650ms, volume kept, no NaN). The old house spring `Motion.spring` overshoots only 0.12% -
+  invisible - which is why it was not enough.
+- `lib/widgets/jelly_press.dart` - `JellyPress(profile:, haptic:, onTap:, onLongPress:)`. Use it for
+  ANY new pill/circle/chip/toggle. It listens with a passive `Listener` (never joins the gesture
+  arena for movement, so a Dismissible / PageView / rail / pull-up is never fought over), the child
+  is built once, reduce-motion = no ticker (tap still works), ONE haptic per touch on confirm
+  (sites that play their own pass `JellyHaptic.none`). `JellyPress.passive` + `quietInk` flexes a
+  control that already owns its tap (an `IconButton`, an `InkWell`) without touching its semantics.
+- `lib/widgets/jelly_icon_button.dart` - `JellyIconButton`: a drop-in for `IconButton` (same
+  tooltip/semantics, Material splash off, body flexes). Use it instead of `IconButton` in glass UI.
+- Three tiers (Apple, WWDC25 "Meet Liquid Glass"): A floating glass chrome = full jelly + glow
+  (`GlassCircleButton`, Explore centre Play); B controls in content = jelly, no glow; C cards and rows
+  = `PressableScale` 0.97 (rows keep Material ink; `skeleton_and_press_test` and
+  `track_list_row_test` read its `ScaleTransition`).
+- `LiquidSwitch` is its own thing: the thumb stretches along the track while held and springs back
+  past rest (`restThumb` 24.4 is the room the track leaves it - a 26dp thumb never fitted; do not
+  "fix" it to 26 or the thumb stops being a circle).
+
+Rules learned the hard way:
+- NEVER `onTapCancel: _letGo`: a tap recogniser cancels on every drag past touch slop, which released
+  the body when the user was meant to drag it. JellyPress watches the ancestor `Scrollable`s'
+  `isScrollingNotifier` (up to 4 levels) and lets go when the finger leaves the bounds + 24px.
+- Never wrap a package `GlassButton` / `LiquidGlassSegmented` / the Explore top pill: they already
+  carry the package's own flex; a second effect compounds.
+- Do not touch `material_you_*` or `lib/theme/material_you_*`: they import none of the shared widgets.
+- A ticker's FIRST frame starts its clock: in a test do `pump()` then `pump(120ms)` or nothing moves.
+- `tester.binding.setSurfaceSize` does not apply here (800x600); use `tester.view.physicalSize` +
+  `devicePixelRatio` and `addTearDown(tester.view.reset)`.
+- `getCenter` reads the layout rect; read the painted position with `box.getTransformTo(null)`.
+- Provider fakes subclass the real `MusicProvider` and override only what the widget reads
+  (`FakeMusicProvider` in `test/player_flow_widget_test.dart`); a `noSuchMethod`-null fake throws.
+- Tests that pin identity: `search_glass_pills_test` needs exactly ONE `GlassCircleButton`;
+  `explore_screen_widget_test` one 'Play' and one 'Like' label; `app_font_test` one
+  `Icons.check_rounded`; `player_flow_widget_test` one `GlassSurface` in `GlassOptionsSheet`;
+  `detail_glass_test` asserts the capsule slot `AnimatedScale` 1.18 (left as is).
+- Left alone on purpose: queue rows and the drag handle (Dismissible + ReorderableListView), the 38x5
+  pull handles, `AccountButton`'s `lightImpact` (belongs to the channel-swipe), the Material dialogs in
+  `account_screen.dart`, and dead code never mounted (`CanvasVideoScreen`, `GlassPlaybackBar`,
+  `ExploreWheel`, `DiscoverScreen`, `LibraryActionCard`, `LibraryBrandPromoCard`, `_ExploreTabBar`).
+- Proven: the numbers, tap / hold / drag routing, reduce motion, haptic counts, no test regressions.
+  NOT proven (no device here): how it feels on a phone, the look of the glow, growth clipped by
+  horizontal rails.
+
+The playlist page (`PlaylistDetailScreen`) now has the album page's recipe: `ImmersiveHeader` +
+`DetailTopBar` + `DetailActionRow`, one surface, no `MergeBand` / `ArtworkFootFade` /
+`BitchordSliverAppBar` / `BitchordActionBar` (`test/playlist_page_test.dart`).
+
+---
+
 ## KNOWN LIMITATIONS
 
 - `musicTastebuilderShelfRenderer`: unsupported, diagnosed every response.
@@ -984,7 +1041,15 @@ c4f76b9 feat(lyrics): BitChord-parity kinetic lyric engine
 86b4efe fix(lyrics): three providers were visible, reorderable and never asked
 4542ebd fix(lyrics): the globe said nothing when it had nothing to do
 f8a3eeb feat(lyrics): the word-sync preference lives next to the list it changes
-```
+146522e feat(motion): JellyPress - one measured touch language for pills, circles, chips and toggles
+b41a129 feat(motion): the shared press primitives now flex like the bottom bar
+31d4f28 feat(motion): Now Playing and the mini player flex like the bottom bar
+3bbf13d feat(motion): queue header, chips and lyrics controls flex like the bottom bar
+5f2e693 feat(motion): browse controls flex like the bottom bar
+1d11ef3 feat(motion): switches, settings segments and every bare icon button flex
+2e82659 feat(motion): Explore play and options, lyric discs, shelf cards, About toggle, option tiles
+eb4a75d feat(playlist): the playlist page gets the album page's full-bleed header and glass chrome
+``````
 
 ---
 
