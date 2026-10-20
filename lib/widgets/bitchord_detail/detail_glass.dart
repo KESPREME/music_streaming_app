@@ -157,12 +157,24 @@ class DetailGlassPill extends StatelessWidget {
     this.label = 'Play',
     this.width,
     this.height = DetailGlass.actionSize,
-  });
+  }) : iconOnly = false;
+
+  /// The same frosted glass as a circle with just the play glyph (the artist
+  /// page's big Play).
+  const DetailGlassPill.disc({
+    super.key,
+    required this.onTap,
+    this.label = 'Play',
+    double size = 70,
+  })  : width = size,
+        height = size,
+        iconOnly = true;
 
   final VoidCallback onTap;
   final String label;
   final double? width;
   final double height;
+  final bool iconOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -185,17 +197,19 @@ class DetailGlassPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 28),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: AppFont.style(
-              color: Colors.black,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.1,
+          Icon(Icons.play_arrow_rounded, color: Colors.black, size: iconOnly ? 40 : 28),
+          if (!iconOnly) ...[
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppFont.style(
+                color: Colors.black,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.1,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

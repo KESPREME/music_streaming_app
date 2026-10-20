@@ -65,6 +65,10 @@ class AlbumDetailData {
   final String? description;
   final List<Track> tracks;
 
+  /// Carousels the page sends under the track list: More by the artist, You
+  /// might also like, Other versions. Empty when the response has none.
+  final List<DetailShelf> shelves;
+
   const AlbumDetailData({
     required this.title,
     required this.artistName,
@@ -75,6 +79,7 @@ class AlbumDetailData {
     required this.coverUrl,
     this.description,
     this.tracks = const [],
+    this.shelves = const [],
   });
 }
 

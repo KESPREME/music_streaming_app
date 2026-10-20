@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import '../utils/app_image_cache.dart';
 import '../theme/app_font.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,11 @@ import 'package:share_plus/share_plus.dart';
 import '../models/bitchord_page_models.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
+import '../core/navigation/root_navigator.dart';
+import '../services/auth_service.dart';
+import '../widgets/account_button.dart';
+import '../widgets/themed_settings_screen.dart';
+import 'account_switcher_sheet.dart';
 import '../services/innertube/innertube_service.dart';
 import '../utils/artwork_palette_resolver.dart';
 import '../utils/image_quality_utils.dart';
@@ -16,7 +22,6 @@ import '../widgets/bitchord_detail/bitchord_detail.dart';
 
 /// Aspect ratio for artist hero photography matching BitChord ARTIST_PHOTO_RATIO in DetailScreen.kt
 const double _kArtistPhotoRatio = 0.95;
-const double _kHeaderDrop = 44.0;
 
 /// BitChord 1:1 Parity Artist Detail Screen (Screenshots 4, 5, 6, 7, 8)
 class ArtistDetailScreen extends StatefulWidget {
@@ -264,135 +269,280 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
-    final darkBg = artPalette.background;
-    final washColor = artPalette.wash;
-    final accentColor = artPalette.accent;
+  // ── Actions ────────────────────────────────────────────────────────────────
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final artHeight = screenWidth / _kArtistPhotoRatio;
+  void _toast(String message) =>
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(message)));
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
+  List<Track> get _shownSongs =>
+      _topSongs.length > _topSongsCap ? _topSongs.sublist(0, _topSongsCap) : _topSongs;
+
+  void _playNextAll() {
+    final songs = _shownSongs;
+    if (songs.isEmpty) return;
+    final mp = context.read<MusicProvider>();
+    // playNext inserts at the front, so go backwards to keep the order.
+    for (final t in songs.reversed) {
+      mp.playNext(t);
+    }
+    _toast('Playing next: ${songs.length} songs');
+  }
+
+  void _queueAll() {
+    final songs = _shownSongs;
+    if (songs.isEmpty) return;
+    context.read<MusicProvider>().addListToQueue(songs);
+    _toast('Added ${songs.length} songs to the queue');
+  }
+
+  Future<void> _saveAsPlaylist() async {
+    final songs = _shownSongs;
+    if (songs.isEmpty) return;
+    final name = '$_resolvedArtistName: top songs';
+    final pl = await context.read<MusicProvider>().createPlaylistWith(
+          name: name,
+          tracks: songs,
+          imageUrl: _resolvedArtistImage,
+        );
+    if (!mounted) return;
+    _toast(pl == null ? "Couldn't save the playlist" : 'Saved "$name" to your playlists');
+  }
+
+  void _onDownloadTap(ReleaseDownloadState state) {
+    switch (state) {
+      case ReleaseDownloadState.downloading:
+        _toast('Downloading their top songs…');
+        return;
+      case ReleaseDownloadState.done:
+        _toast('Every top song is downloaded');
+        return;
+      case ReleaseDownloadState.none:
+      case ReleaseDownloadState.partial:
+        final mp = context.read<MusicProvider>();
+        final missing = _shownSongs
+            .where((t) => t.source != 'local' && !mp.isTrackDownloadedSync(t.id))
+            .toList();
+        if (missing.isEmpty) return;
+        mp.downloadTracks(missing);
+        _toast('Downloading ${missing.length} ${missing.length == 1 ? 'song' : 'songs'}');
+    }
+  }
+
+  /// Signed in: the account switcher. Signed out: Settings, which is where
+  /// sign-in lives (the same two destinations as the avatar on Home).
+  void _openAccount(AuthService? auth) {
+    if (auth != null && auth.isLoggedIn) {
+      AccountSwitcherSheet.show(context);
+    } else {
+      pushAboveShell<void>(context, const ThemedSettingsScreen());
+    }
+  }
+
+  List<Widget> _moreItems(ReleaseDownloadState dl) => [
+        lgw.GlassMenuItem(
+          title: 'Play next',
+          icon: const Icon(Icons.queue_play_next_rounded),
+          onTap: _playNextAll,
+        ),
+        lgw.GlassMenuItem(
+          title: 'Add to queue',
+          icon: const Icon(Icons.playlist_add_rounded),
+          onTap: _queueAll,
+        ),
+        lgw.GlassMenuItem(
+          title: 'Save top songs as playlist',
+          icon: const Icon(Icons.library_add_rounded),
+          onTap: _saveAsPlaylist,
+        ),
+        lgw.GlassMenuItem(
+          title: dl == ReleaseDownloadState.done ? 'Top songs downloaded' : 'Download top songs',
+          icon: Icon(dl == ReleaseDownloadState.done ? Icons.download_done_rounded : Icons.download_rounded),
+          onTap: () => _onDownloadTap(dl),
+        ),
+        const lgw.GlassMenuDivider(),
+        lgw.GlassMenuItem(
+          title: 'Share',
+          icon: const Icon(Icons.ios_share_rounded),
+          onTap: _share,
+        ),
+      ];
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  Widget _photo(Color wash) {
+    final url = _resolvedArtistImage ?? '';
+    if (url.isEmpty) return ColoredBox(color: wash);
+    return CachedNetworkImage(
+      imageUrl: ImageQualityUtils.getHighQualityUrl(url),
+      fit: BoxFit.cover,
+      // Faces sit in the upper third of a portrait: crop the foot, not the head.
+      alignment: const Alignment(0, -0.6),
+      memCacheWidth: AppImageCache.heroMemCache,
+      fadeInDuration: const Duration(milliseconds: 180),
+      placeholder: (_, __) => ColoredBox(color: wash),
+      errorWidget: (_, __, ___) => ColoredBox(color: wash),
+    );
+  }
+
+  /// "239M monthly listeners" from YouTube's "239M monthly audience".
+  String? get _listenersCaption {
+    final raw = _monthlyListenerCount?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return '${raw.split(' ').first} monthly listeners';
+  }
+
+  Widget _titleBlock({
+    required ArtworkPalette pal,
+    required MusicProvider musicProvider,
+  }) {
+    final accent = pal.accent;
+    final caption = _listenersCaption;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 1. Layer 1: PageBackground with ArtworkWash
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: ArtworkWash(
-                backgroundColor: darkBg,
-                washColor: washColor,
-                accentColor: accentColor,
-                elevatedColor: artPalette.elevated,
-                washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
-                imageUrl: _resolvedArtistImage ?? widget.artistImage,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              _resolvedArtistName,
+              key: const ValueKey('artist_name'),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppFont.style(
+                color: Colors.white,
+                fontSize: 38,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -1.0,
+                height: 1.05,
+                shadows: const [Shadow(color: Color(0x66000000), blurRadius: 16)],
               ),
             ),
           ),
-
-          // 2. Layer 2: Full-bleed Hero Photography with isolated parallax render offset (BitChord 120 FPS parity)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: artHeight,
-            child: RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _scrollController,
-                builder: (context, child) {
-                  final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-                  final clamped = offset.clamp(0.0, artHeight * 1.5);
-                  return Transform.translate(
-                    offset: Offset(0, -clamped),
-                    child: child,
-                  );
-                },
-                child: Stack(
-                  fit: StackFit.expand,
+          if (caption != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: Text(
+                caption,
+                key: const ValueKey('artist_listeners'),
+                textAlign: TextAlign.center,
+                style: AppFont.style(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          if (_topSongs.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            DetailGlassScope(
+              accent: accent,
+              child: Padding(
+                // Room for the press to inflate without being clipped.
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Cinematic Artist Portrait
-                    if (_resolvedArtistImage != null && _resolvedArtistImage!.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: ImageQualityUtils.getHighQualityUrl(_resolvedArtistImage!),
-                          fit: BoxFit.cover,
-                          memCacheWidth: AppImageCache.heroMemCache,
-                          memCacheHeight: AppImageCache.heroMemCache,
-                        errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
-                      ),
-
-                    // Top shade under the glass bar (BitChord DetailScreen.kt parity)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: artHeight * 0.28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              darkBg.withValues(alpha: 0.55),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
+                    DetailGlassCircle(
+                      icon: Icons.shuffle_rounded,
+                      label: 'Shuffle',
+                      size: DetailGlass.actionSize,
+                      accent: accent,
+                      onTap: () {
+                        final shuffled = List<Track>.from(_topSongs)..shuffle();
+                        musicProvider.playTrackList(shuffled, initialIndex: 0);
+                      },
                     ),
-
-                    // Eased foot fade settling onto the wash (BitChord PageBackground
-                    // parity); the MergeBand veil covers the seam the rest of the way.
-                    Positioned.fill(
-                      child: RepaintBoundary(
-                        child: ArtworkFootFade(washColor: washColor),
-                      ),
+                    const SizedBox(width: 26),
+                    DetailGlassPill.disc(
+                      onTap: () => musicProvider.playTrackList(_topSongs, initialIndex: 0),
+                    ),
+                    const SizedBox(width: 26),
+                    Selector<MusicProvider, ReleaseDownloadState>(
+                      selector: (_, mp) => releaseDownloadStateFor(mp, _shownSongs),
+                      builder: (context, state, _) {
+                        final busy = state == ReleaseDownloadState.downloading;
+                        final done = state == ReleaseDownloadState.done;
+                        return DetailGlassCircle(
+                          label: busy ? 'Downloading' : (done ? 'Downloaded' : 'Download'),
+                          size: DetailGlass.actionSize,
+                          accent: accent,
+                          icon: done ? Icons.download_done_rounded : Icons.download_rounded,
+                          iconColor: done ? accent : Colors.white,
+                          onTap: () => _onDownloadTap(state),
+                          child: busy
+                              ? SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2, color: accent),
+                                )
+                              : null,
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final musicProvider = Provider.of<MusicProvider>(context, listen: false);
+    final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
+    final accentColor = artPalette.accent;
+
+    // The signed-in picture for the capsule. Absent in isolated tests.
+    AuthService? auth;
+    try {
+      auth = context.watch<AuthService>();
+    } catch (_) {
+      auth = null;
+    }
+
+    final media = MediaQuery.of(context);
+    // FULL BLEED, ONE SURFACE: the portrait is the page's header and dissolves
+    // into the page colour (ImmersiveHeader). Tall enough that name, caption
+    // and the action row always sit over the fade.
+    final heroH = (media.size.width / _kArtistPhotoRatio).clamp(media.padding.top + 56 + 290, 620.0);
+    final dl = releaseDownloadStateFor(musicProvider, _shownSongs);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: ArtworkWash(
+                backgroundColor: artPalette.background,
+                washColor: artPalette.wash,
+                accentColor: accentColor,
+                elevatedColor: artPalette.elevated,
+                washFraction: (heroH / media.size.height).clamp(0.30, 0.80),
+                seamOverhang: 160,
+                meshInset: 120,
+                imageUrl: _resolvedArtistImage ?? widget.artistImage,
+              ),
+            ),
           ),
 
-          // 2.5 Layer 2.5: MergeBand across the artwork join (BitChord parity)
-          MergeBand(
-            scrollController: _scrollController,
-            artHeight: artHeight,
-            washColor: washColor,
-          ),
-
-          // 3. Layer 3: Scrollable content
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
-            cacheExtent: 600.0,
             slivers: [
-              // Scroll-linked Frosted SliverAppBar (BitChord parity)
-              BitchordSliverAppBar(
-                title: _resolvedArtistName,
-                scrollController: _scrollController,
-                artHeight: artHeight,
-                backgroundColor: darkBg,
-                actions: [
-                  Container(
-                    margin: const EdgeInsets.only(right: 14),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF23201E),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.person_rounded, color: Colors.white70, size: 20),
-                    ),
-                  ),
-                ],
+              SliverToBoxAdapter(
+                child: ImmersiveHeader(
+                  height: heroH,
+                  washColor: artPalette.wash,
+                  scrollController: _scrollController,
+                  photo: _photo(artPalette.wash),
+                  child: _titleBlock(pal: artPalette, musicProvider: musicProvider),
+                ),
               ),
 
               if (_isLoading)
@@ -404,27 +554,22 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                   ),
                 )
               else if (_error != null && _topSongs.isEmpty && _shelves.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.person_off_rounded, size: 56, color: Colors.white.withValues(alpha: 0.4)),
-                        const SizedBox(height: 16),
+                        Icon(Icons.person_off_rounded, size: 48, color: Colors.white.withValues(alpha: 0.4)),
+                        const SizedBox(height: 12),
                         Text(_error!, style: AppFont.style(color: Colors.white70, fontSize: 16)),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         TextButton(
                           onPressed: () {
                             setState(() {
                               _isLoading = true;
                               _error = null;
                             });
-                            final initialImg = widget.artistImage;
-    _artworkPalette = ArtworkPaletteResolver.getCached(initialImg);
-    if (_artworkPalette == null && initialImg != null && initialImg.isNotEmpty) {
-      _resolvePalette(initialImg);
-    }
-    _fetchDetails();
+                            _fetchDetails();
                           },
                           child: const Text('Try Again'),
                         ),
@@ -433,56 +578,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                   ),
                 )
               else ...[
-                // ArtistHeader: matches artHeight + HEADER_DROP and pins artist name to bottomCenter
-                // (BitChord DetailScreen.kt lines 870-887 parity)
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: (artHeight + _kHeaderDrop - kToolbarHeight - MediaQuery.of(context).padding.top)
-                        .clamp(180.0, double.infinity),
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 24.0, right: 24.0, top: 14.0, bottom: 7.0),
-                        child: Text(
-                          _resolvedArtistName,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppFont.style(
-                            color: Colors.white,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 10)),
-
-                // [ shuffle ]  ( ▶ )  [ share ] (BitChord's artist row; its
-                // star is a subscribe, which needs a signed-in write path this
-                // app does not have, so it is not faked.)
-                if (_topSongs.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 22.0),
-                      child: ArtistActionRow(
-                        onShuffle: () {
-                          final shuffled = List<Track>.from(_topSongs)..shuffle();
-                          musicProvider.playTrackList(shuffled, initialIndex: 0);
-                        },
-                        onPlay: () => musicProvider.playTrackList(_topSongs, initialIndex: 0),
-                        trailing: GhostCircleButton(
-                          icon: Icons.ios_share_rounded,
-                          semanticLabel: 'Share',
-                          onTap: _share,
-                        ),
-                      ),
-                    ),
-                  ),
-
                 // Latest release
                 if (_latestRelease case final latest?)
                   SliverToBoxAdapter(
@@ -513,9 +608,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         isPlaying: mp.isPlaying,
                       ),
                       builder: (context, playbackState, _) => TopSongsPagerGrid(
-                        songs: _topSongs.length > _topSongsCap
-                            ? _topSongs.sublist(0, _topSongsCap)
-                            : _topSongs,
+                        songs: _shownSongs,
                         onSongTap: (queue, index) {
                           context.read<MusicProvider>().playTrackList(queue, initialIndex: index);
                         },
@@ -537,8 +630,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     ),
                   ),
 
-                // About, then the listener stats, at the end (BitChord order):
-                // the page leads with music, not a biography.
+                // About, then the listener stats, at the end (BitChord order).
                 if (_description != null && _description!.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -560,10 +652,40 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     ),
                   ),
                 ),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 100), // Bottom clearance for mini player & nav bar
-                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 120)), // mini player + nav bar
               ],
+            ],
+          ),
+
+          // The glass chrome floats ABOVE the scroll view.
+          DetailTopBar(
+            controller: _scrollController,
+            title: _resolvedArtistName,
+            background: artPalette.background,
+            accent: accentColor,
+            titleAppearsAt: heroH - media.padding.top - 120,
+            slots: [
+              DetailGlassSlot(
+                icon: Icons.ios_share_rounded,
+                label: 'Share',
+                onTap: _share,
+              ),
+              DetailGlassSlot(
+                icon: Icons.more_horiz_rounded,
+                label: 'More',
+                menuItems: _moreItems(dl),
+                menuWidth: 244,
+              ),
+              DetailGlassSlot(
+                label: auth != null && auth.isLoggedIn ? 'Account' : 'Sign in',
+                child: auth == null
+                    ? const Icon(Icons.person_rounded, color: Colors.white, size: 22)
+                    : IconTheme(
+                        data: const IconThemeData(color: Colors.white),
+                        child: AccountAvatar(auth: auth),
+                      ),
+                onTap: () => _openAccount(auth),
+              ),
             ],
           ),
         ],

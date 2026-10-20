@@ -55,12 +55,12 @@ Future<Uint8List> _render(WidgetTester tester, Widget content) async {
 Widget _page({ScrollController? controller}) {
   return Stack(
     children: [
-      Positioned.fill(
+      const Positioned.fill(
         child: ArtworkWash(
           backgroundColor: _bg,
           washColor: _wash,
-          accentColor: const Color(0xFFFF8040),
-          elevatedColor: const Color(0xFF402820),
+          accentColor: Color(0xFFFF8040),
+          elevatedColor: Color(0xFF402820),
           washFraction: _headerH / _screenH,
           seamOverhang: 160,
           meshInset: 120,

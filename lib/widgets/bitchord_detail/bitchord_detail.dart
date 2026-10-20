@@ -13,3 +13,5 @@ export 'bitchord_swipeable_track_row.dart';
 export 'bitchord_tracklist_skeleton.dart';
 export 'bitchord_explicit_badge.dart';
 export 'release_header.dart';
+export 'immersive_header.dart';
+export 'detail_glass.dart';

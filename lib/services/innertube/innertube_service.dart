@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'detail_shelves_parser.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_exp;
@@ -2109,6 +2110,8 @@ class InnerTubeService {
         coverUrl: coverUrl,
         description: description,
         tracks: tracks,
+        // More by the artist / You might also like / Other versions.
+        shelves: parseDetailShelves(data, selfBrowseId: browseId, selfTitle: title),
       );
     } catch (e) {
       if (kDebugMode) debugPrint('InnerTubeService: getAlbumPageData error: $e');
