@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
+import 'design/glass/chrome_glass.dart';
 import 'package:video_player_win/video_player_win.dart';
 
 import 'core/navigation/root_navigator.dart';
@@ -298,6 +299,8 @@ class _MyAppState extends State<MyApp> {
     // Selected, not watched: only this one flag rebuilds the app's theme, not
     // every unrelated ThemeProvider change.
     final amoled = context.select<ThemeProvider, bool>((t) => t.isAmoled);
+    final glassRendering =
+        context.select<ThemeProvider, GlassRendering>((t) => t.glassRendering);
     // The font setting (Settings > Appearance): watched so a change rebuilds
     // the theme, and with it every style that inherits from it.
     context.select<ThemeProvider, (String, int)>((t) => (t.fontFamily, t.fontWeightDelta));
@@ -319,7 +322,10 @@ class _MyAppState extends State<MyApp> {
       navigatorKey: rootNavigatorKey, // Assigned Key
       navigatorObservers: [AppRouteObserver.instance],
       debugShowCheckedModeBanner: false,
-      theme: GlassTheme.build(accent, textTheme: textTheme, amoled: amoled),
+      theme: GlassTheme.build(accent,
+          textTheme: textTheme,
+          amoled: amoled,
+          glassRendering: glassRendering),
       // Integrate Global Music Overlay here.
       //
       // The transparency Material is required, not cosmetic: liquid_glass_widgets

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../design/glass/chrome_glass.dart';
 import 'amoled_theme.dart';
 
 /// Shared preset colors (re-exported for theme consumers).
@@ -36,6 +37,7 @@ class GlassTheme {
     Color accent, {
     TextTheme? textTheme,
     bool amoled = false,
+    GlassRendering glassRendering = GlassRendering.auto,
   }) {
     final onAccentColor = onAccent(accent);
     // The surfaces a theme names itself. In pure-black mode they are one step
@@ -66,7 +68,10 @@ class GlassTheme {
       brightness: Brightness.dark,
       colorScheme: scheme,
       scaffoldBackgroundColor: Colors.black,
-      extensions: <ThemeExtension<dynamic>>[AmoledTheme(enabled: amoled)],
+      extensions: <ThemeExtension<dynamic>>[
+      AmoledTheme(enabled: amoled),
+      ChromeGlassTheme(rendering: glassRendering),
+    ],
       splashFactory: InkSparkle.splashFactory,
       textTheme: textTheme,
       appBarTheme: const AppBarTheme(

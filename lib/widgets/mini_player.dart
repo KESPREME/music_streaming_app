@@ -6,6 +6,7 @@ import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 
+import '../design/glass/chrome_glass.dart';
 import '../theme/app_font.dart';
 import '../models/track.dart';
 import '../providers/music_provider.dart';
@@ -188,6 +189,7 @@ class _PillBody extends StatelessWidget {
     final placement = lgw.GlassTabBarAccessoryPlacementScope.of(context);
     final isInline = placement == lgw.GlassTabBarAccessoryPlacement.inline;
     final isHostedInTabBar = placement != null;
+    final glassSpec = ChromeGlassSpec.of(context);
 
     final outerPadding = isHostedInTabBar
         ? EdgeInsets.zero
@@ -255,11 +257,16 @@ class _PillBody extends StatelessWidget {
                       lightDirection: 135.0,
                       lightIntensity: 1.15,
                     ),
-                    appearance: const LiquidGlassAppearance(
-                      color: Color(0x14FFFFFF),
-                      blur: LiquidGlassBlur(sigmaX: 16, sigmaY: 16),
-                      saturation: 1.15,
+                    appearance: LiquidGlassAppearance(
+                      color: glassSpec.lensTint,
+                      blur: LiquidGlassBlur(
+                          sigmaX: glassSpec.lensBlur, sigmaY: glassSpec.lensBlur),
+                      saturation: glassSpec.frosted ? 1.0 : 1.15,
                     ),
+                    // Frosted: lite glass (frost + tint + rim) with no
+                    // refraction shader. The lens is the one piece of chrome
+                    // that does not go through lgw, so it needs its own switch.
+                    liteGlass: glassSpec.lensLite,
                     refraction: const LiquidGlassRefraction(
                       distortion: 0.08,
                       distortionWidth: 24,

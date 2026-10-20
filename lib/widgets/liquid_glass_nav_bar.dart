@@ -3,6 +3,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import 'package:provider/provider.dart';
 
+import '../design/glass/chrome_glass.dart';
 import '../design/tokens/type.dart' as type_tokens;
 import '../providers/music_provider.dart';
 import '../utils/color_utils.dart';
@@ -50,6 +51,9 @@ class LiquidGlassNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Refraction by default; dark frosted glass on pure black (see
+    // chrome_glass.dart for why). Read once per build, not per frame.
+    final spec = ChromeGlassSpec.of(context);
 
     // Only the three things this bar shows. A full listen rebuilt the most
     // expensive widget in the app (glass, refraction, the tab bar and the pill)
@@ -94,20 +98,20 @@ class LiquidGlassNavBar extends StatelessWidget {
         ];
 
         final glassSettings = lgw.LiquidGlassSettings(
-          thickness: 24,
-          blur: 24,
-          chromaticAberration: 0.04,
-          lightIntensity: 0.85,
+          thickness: spec.barThickness,
+          blur: spec.barBlur,
+          chromaticAberration: spec.barChromatic,
+          lightIntensity: spec.barLight,
           refractiveIndex: 1.18,
-          saturation: 1.15,
-          ambientStrength: 0.9,
-          glassColor: Color.lerp(const Color(0x0EFFFFFF), albumAccent.withValues(alpha: 0.08), 0.35) ?? const Color(0x0EFFFFFF),
+          saturation: spec.barSaturation,
+          ambientStrength: spec.barAmbient,
+          glassColor: Color.lerp(spec.barTint, albumAccent.withValues(alpha: 0.08), spec.frosted ? 0.22 : 0.35) ?? spec.barTint,
         );
 
         final indicatorSettings = lgw.LiquidGlassSettings(
-          thickness: 22,
+          thickness: spec.frosted ? 14 : 22,
           blur: 0,
-          chromaticAberration: 0.05,
+          chromaticAberration: spec.indicatorChromatic,
           lightIntensity: 1.0,
           refractiveIndex: 1.12,
           ambientStrength: 1.0,
@@ -128,7 +132,9 @@ class LiquidGlassNavBar extends StatelessWidget {
             searchBarHeight: 52.0,
             whitenAtBottom: false,
             indicatorExpansion: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            indicatorPinchStrength: 0.45,
+            indicatorPinchStrength: spec.indicatorPinch,
+            quality: spec.quality,
+            backgroundQuality: spec.quality,
             indicatorColor: albumAccent.withValues(alpha: 0.24),
             selectedIconColor: albumAccent,
             selectedLabelColor: albumAccent,
@@ -191,7 +197,9 @@ class LiquidGlassNavBar extends StatelessWidget {
           minimizedBarHeight: 52.0,
           whitenAtBottom: false,
           indicatorExpansion: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          indicatorPinchStrength: 0.45,
+          indicatorPinchStrength: spec.indicatorPinch,
+          quality: spec.quality,
+          backgroundQuality: spec.quality,
           indicatorColor: albumAccent.withValues(alpha: 0.24),
           selectedIconColor: albumAccent,
           selectedLabelColor: albumAccent,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../design/glass/chrome_glass.dart';
 import '../theme/app_font.dart';
 
 /// Theme modes available in the app
@@ -16,11 +17,13 @@ class ThemeProvider extends ChangeNotifier {
   static const String _amoledPreferenceKey = 'amoled_black_enabled';
   static const String _fontFamilyKey = 'font_family';
   static const String _fontWeightDeltaKey = 'font_weight_delta';
+  static const String _glassRenderingKey = 'glass_rendering';
 
   AppThemeMode _currentTheme = AppThemeMode.glassmorphism; // Default to glassmorphism
   bool _isDynamicColorEnabled = true;
   bool _isAmoled = false;
   bool _isInitialized = false;
+  GlassRendering _glassRendering = GlassRendering.auto;
 
   AppThemeMode get currentTheme => _currentTheme;
   bool get isDynamicColorEnabled => _isDynamicColorEnabled;
@@ -29,6 +32,10 @@ class ThemeProvider extends ChangeNotifier {
   /// album art until the listener asks for black. See `AmoledTheme`.
   bool get isAmoled => _isAmoled;
   bool get isInitialized => _isInitialized;
+
+  /// How the bottom chrome (tab bar, pills, mini player) is drawn. Auto picks
+  /// frosted glass on pure black and refraction elsewhere; see [ChromeGlassSpec].
+  GlassRendering get glassRendering => _glassRendering;
 
   /// The app typeface and weight step (see [AppFont]).
   String get fontFamily => AppFont.family;
@@ -58,6 +65,9 @@ class ThemeProvider extends ChangeNotifier {
 
       // Load pure-black preference
       _isAmoled = prefs.getBool(_amoledPreferenceKey) ?? false;
+
+      _glassRendering =
+          GlassRendering.parse(prefs.getString(_glassRenderingKey));
 
       // Font: a family that is no longer offered falls back to the default.
       AppFont.apply(
@@ -129,6 +139,20 @@ class ThemeProvider extends ChangeNotifier {
       await prefs.setBool(_amoledPreferenceKey, enabled);
     } catch (e) {
       debugPrint('Error saving pure black preference: $e');
+    }
+  }
+
+  /// Chooses how the bottom chrome is drawn. Applied first, written after, like
+  /// [setAmoled].
+  Future<void> setGlassRendering(GlassRendering value) async {
+    if (_glassRendering == value) return;
+    _glassRendering = value;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_glassRenderingKey, value.name);
+    } catch (e) {
+      debugPrint('Error saving glass rendering preference: ');
     }
   }
 
