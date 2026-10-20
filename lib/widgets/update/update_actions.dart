@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../services/app_platform.dart';
 import '../../services/update/update_models.dart';
@@ -13,6 +14,16 @@ import '../../services/update/update_service.dart';
 import '../../theme/app_font.dart';
 import '../jelly_press.dart';
 import 'update_copy.dart';
+
+/// The app's updater, or null when the tree has none (a test, a preview). Screens
+/// that merely MENTION updates (Settings) use this so they never depend on one.
+UpdateService? maybeUpdateService(BuildContext context) {
+  try {
+    return Provider.of<UpdateService>(context, listen: false);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
 
 Future<void> runUpdateAction(UpdateService service, UpdateAction action) async {
   switch (action) {

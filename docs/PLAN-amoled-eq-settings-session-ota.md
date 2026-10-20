@@ -158,3 +158,25 @@ P5 settings rebuild  - P6 CI/CD + tools + docs.
 Whether the frosted tier looks right on your GPU; the audio effects actually attaching on your
 phone and on Bluetooth; the system installer hand-off; the GitHub workflow end to end (YAML is
 parsed and the tools are run locally, but Actions has not run).
+
+## 7. Outcome
+
+Everything above shipped, one commit per phase, with the full suite at 2,930 tests green, the
+analyzer at 179 issues (baseline 180) and a debug APK building. Additions beyond the plan, found
+while building:
+
+* **Home published its cache after three network awaits** (`_initialize`), which on a slow
+  connection looked exactly like the app having forgotten everything. It now publishes first.
+* **Two APKs per release** (universal ~105 MB measured, plus arm64-only), because a 105 MB OTA is a
+  bad update. The app chooses by CPU; both share a versionCode (a `--split-per-abi` build would have
+  offset it and broken the update comparison).
+* **A CI-to-app contract test** that runs the real release tool and feeds its output to the real
+  client. It already caught one real mismatch class (UTF-8 bodies) while being written.
+* A local signed release build was proven end to end with a throwaway keystore and the same
+  environment variables CI uses; the guard that refuses to build unsigned in CI was proven to fail.
+* The Windows release build flakes with "Permission denied" on Gradle intermediates when a previous
+  build was interrupted (`gradlew --stop`, delete `build/app/intermediates`, retry). Linux CI is clean.
+
+Still unproven (needs a device or GitHub): how the frosted tier looks on your GPU; the audio effects
+attaching and the Bluetooth/wired profile switch; the system installer hand-off; the workflow running
+on Actions. Nothing here was run on hardware.

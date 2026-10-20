@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:music_streaming_app/providers/accent_controller.dart';
 import 'package:music_streaming_app/screens/equalizer_screen.dart';
 import 'package:music_streaming_app/services/eq/eq_models.dart';
 import 'package:music_streaming_app/services/eq/eq_platform.dart';

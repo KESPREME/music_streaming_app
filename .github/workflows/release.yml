@@ -123,10 +123,17 @@ jobs:
               || echo "::warning::banner generation failed; the release goes out without one"
           fi
 
-      - name: Build the APK
+      # Two APKs from one source. The universal one runs anywhere but is ~100 MB;
+      # the arm64 one is about a third of that and is what almost every phone
+      # downloads (the app picks by CPU). Both carry the same versionCode.
+      - name: Build the APKs
         env:
           REQUIRE_RELEASE_SIGNING: 'true'
         run: |
+          flutter build apk --release --no-pub --target-platform android-arm64 \
+            --build-name "${{ steps.plan.outputs.name }}" \
+            --build-number "${{ steps.plan.outputs.build }}"
+          cp build/app/outputs/flutter-apk/app-release.apk build/app-arm64.apk
           flutter build apk --release --no-pub \
             --build-name "${{ steps.plan.outputs.name }}" \
             --build-number "${{ steps.plan.outputs.build }}"
@@ -160,6 +167,7 @@ jobs:
             --build "${{ steps.plan.outputs.build }}" \
             --tag "$tag" \
             --apk build/app/outputs/flutter-apk/app-release.apk \
+            --apk-arm64 build/app-arm64.apk \
             --out build/release \
             --from "$prev" --to HEAD \
             --min-sdk 24 $flags

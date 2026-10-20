@@ -508,9 +508,9 @@ class _GraphCard extends StatelessWidget {
                   ),
                 ),
               if (available && on && !eq.engineHealthy)
-                Positioned(
+                const Positioned(
                   top: 0,
-                  child: const _Pill(
+                  child: _Pill(
                     icon: Icons.warning_amber_rounded,
                     label: 'Couldn\u2019t reach the audio effect',
                     accent: Color(0xFFFFB74D),

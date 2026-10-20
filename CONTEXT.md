@@ -1277,6 +1277,40 @@ eb4a75d feat(playlist): the playlist page gets the album page's full-bleed heade
 
 ---
 
+## PURE-BLACK GLASS, EQUALIZER, SESSION, OTA (plan: docs/PLAN-amoled-eq-settings-session-ota.md)
+
+**Bottom chrome** (`design/glass/chrome_glass.dart`): `ChromeGlassSpec.resolve(amoled, rendering)` decides
+whether the tab bar, pills and mini player use the refraction shader (lgw premium + easy lens) or
+dark frosted glass (lgw `standard`, lens `liteGlass`). Auto = frosted on pure black. The screenshots
+showed premium tearing over flat #000 and a sharp (un-blurred) list through the glass; the avatar/play
+discs at standard/minimal were clean. User setting: Settings > Appearance > Glass rendering
+(`ThemeProvider.glassRendering`, carried to widgets by the `ChromeGlassTheme` extension).
+
+**Session** (`services/session/`): `SessionStore.instance` is DISABLED until `main()` calls `enable()` so
+tests never write prefs or leave timers. `MusicProvider` records through `SessionRecorder` from its one
+`notifyListeners` override and restores (paused, never auto-play) in `_initialize` before the network.
+`resumeTrack`'s "stopped-but-loaded" branch + `_resumeStart` start the song at the saved position
+(`playSources(initialPosition:)`). Back on the Home root calls `AppPlatform.leaveApp()` (moveTaskToBack),
+not `finish()`. Tab + Library filter/sort restore; Explore never restores.
+
+**Equalizer**: native `EqualizerChannel.java` (`android.media.audiofx`, per audio session, attached only
+while on - an attached effect defeats audio offload). Dart: `services/eq/*` (pure maths: log-frequency
+resampling, RBJ peaking response, headroom), `EqualizerService` (singleton; `EqualizerService.test`
+for tests). `AudioService._withSessionReport` feeds each deck's session id. Legacy API kept for the Material
+You screen. UI: `screens/equalizer_screen.dart`, `widgets/eq/*`.
+
+**Updates**: `services/update/*` (GitHub releases, `update.json`, resumable SHA-256-verified download,
+state machine), UI `screens/software_update_screen.dart` + `widgets/update/*`, `UpdateCoordinator` in
+`MaterialApp.builder`. Native `AppChannel.java` (`mine_music/app`: version, ABIs, install via
+`UpdateFileProvider`, moveToBack). CI: `.github/workflows/{ci,release}.yml`, `tool/release/*`,
+`docs/RELEASING.md`. Signing secrets: `tool/release/setup-signing.ps1`.
+
+**Test traps learned**: the updater's futures complete in the REAL zone while widget timers are in the
+FAKE one - take turns with `tester.runAsync` and `pump` (see `letItRun` in `update_ui_test.dart`); never
+`pumpAndSettle` with a looping animation on screen (the update hero, the EQ intro); a mock
+`http.Response(String)` is Latin-1 - use `Response.bytes(utf8.encode(..))` for emoji bodies.
+---
+
 ## USER PREFERENCES
 
 - Caveman mode active (terse responses, drop fluff)

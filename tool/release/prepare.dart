@@ -102,6 +102,25 @@ Future<void> _notes(Map<String, String> o) async {
   final sha = (await sha256.bind(target.openRead()).first).toString();
   File('${out.path}/$apkName.sha256').writeAsStringSync('$sha  $apkName\n');
 
+  // 1b. The arm64-only APK, when CI built one: a third of the download for
+  // nearly every phone. Same versionCode as the universal build, so Android
+  // treats them as the same app.
+  final extra = <ApkAsset>[];
+  final arm = o['apk-arm64'];
+  if (arm != null && File(arm).existsSync()) {
+    final armName = 'MineMusic-$fileId-arm64-v8a.apk';
+    final armFile = File('${out.path}/$armName');
+    File(arm).copySync(armFile.path);
+    final armSha = (await sha256.bind(armFile.openRead()).first).toString();
+    File('${out.path}/$armName.sha256').writeAsStringSync('$armSha  $armName\n');
+    extra.add(ApkAsset(
+      name: armName,
+      abi: 'arm64-v8a',
+      size: armFile.lengthSync(),
+      sha256: armSha,
+    ));
+  }
+
   // 2. Images: banner + screenshots, each renamed with the build id.
   final banner = _findBanner(imagesDir, o['banner']);
   String? bannerName;
@@ -172,12 +191,14 @@ Future<void> _notes(Map<String, String> o) async {
     summary: summary,
     bannerName: bannerName,
     gallery: gallery,
+    extraApks: extra,
   ));
   File('${out.path}/update.json').writeAsStringSync(encodeManifest(manifest));
 
   stdout
     ..writeln('apk=${target.path}')
     ..writeln('sha256=$sha')
+    ..writeln('arm64=${extra.isEmpty ? 'none' : extra.first.name}')
     ..writeln('images=${[if (bannerName != null) bannerName, ...gallery.map((g) => g.$1)].length}');
 }
 

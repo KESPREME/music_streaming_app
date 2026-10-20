@@ -15,6 +15,22 @@ import 'dart:convert';
 
 import 'commit_notes.dart';
 
+/// An APK built for one ABI (arm64 is the one worth shipping: about a third of
+/// the universal download, and almost every phone sold since 2017 runs it).
+class ApkAsset {
+  const ApkAsset({
+    required this.name,
+    required this.abi,
+    required this.size,
+    required this.sha256,
+  });
+
+  final String name;
+  final String abi;
+  final int size;
+  final String sha256;
+}
+
 class ManifestInput {
   const ManifestInput({
     required this.repo,
@@ -33,6 +49,7 @@ class ManifestInput {
     this.summary,
     this.bannerName,
     this.gallery = const [],
+    this.extraApks = const [],
   });
 
   final String repo;
@@ -55,6 +72,10 @@ class ManifestInput {
 
   /// (file name, caption) of each screenshot asset on the release.
   final List<(String, String)> gallery;
+
+  /// Per-ABI APKs offered alongside the universal one. The app takes the first
+  /// that matches its CPU and falls back to the universal APK.
+  final List<ApkAsset> extraApks;
 }
 
 /// `https://github.com/<repo>/releases/download/<tag>/<file>`, URL-encoded.
@@ -70,8 +91,10 @@ List<String> highlightsOf(List<NoteSection> sections) => [
     ].take(3).toList();
 
 Map<String, Object?> buildManifest(ManifestInput i) {
-  if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(i.apkSha256)) {
-    throw ArgumentError.value(i.apkSha256, 'apkSha256', 'must be 64 lowercase hex');
+  for (final sha in [i.apkSha256, for (final a in i.extraApks) a.sha256]) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(sha)) {
+      throw ArgumentError.value(sha, 'apkSha256', 'must be 64 lowercase hex');
+    }
   }
   return {
     'schema': 1,
@@ -95,6 +118,14 @@ Map<String, Object?> buildManifest(ManifestInput i) {
       ],
     },
     'assets': [
+      for (final a in i.extraApks)
+        {
+          'name': a.name,
+          'abi': a.abi,
+          'url': assetUrl(i.repo, i.tag, a.name),
+          'size': a.size,
+          'sha256': a.sha256,
+        },
       {
         'name': i.apkName,
         'abi': 'universal',

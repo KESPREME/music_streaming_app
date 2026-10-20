@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:music_streaming_app/core/navigation/root_navigator.dart';
-import 'package:music_streaming_app/providers/accent_controller.dart';
 import 'package:music_streaming_app/screens/software_update_screen.dart';
 import 'package:music_streaming_app/services/app_platform.dart';
 import 'package:music_streaming_app/services/update/update_downloader.dart';

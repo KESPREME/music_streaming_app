@@ -6,7 +6,6 @@ import 'package:music_streaming_app/design/glass/chrome_glass.dart';
 import 'package:music_streaming_app/models/track.dart';
 import 'package:music_streaming_app/providers/music_provider.dart';
 import 'package:music_streaming_app/providers/theme_provider.dart';
-import 'package:music_streaming_app/providers/accent_controller.dart';
 import 'package:music_streaming_app/theme/glass_theme.dart';
 import 'package:music_streaming_app/widgets/liquid_glass_nav_bar.dart';
 import 'package:provider/provider.dart';
