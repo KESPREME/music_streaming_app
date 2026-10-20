@@ -48,6 +48,7 @@ import '../services/home/home_diagnostics.dart';
 import '../services/home/home_models.dart';
 import '../services/home/ytm_home_source.dart';
 import '../services/home/home_composer.dart';
+import '../core/test_environment.dart';
 import '../services/palette/palette_service.dart';
 import 'accent_controller.dart';
 import 'lofi_controller.dart';
@@ -323,7 +324,86 @@ bool get isHomeLoadExhausted => !hasHomeContent && _homeLoadFailed;
     );
     if (feed == null || identical(feed, _homeFeed)) return;
     _homeFeed = feed;
+    _homeMoreExhausted = false;
+    _homePagedIds.clear();
     _generateQuickPicks(feed);
+    _bumpHomeContent();
+    notifyListeners();
+  }
+
+  // ── Home continuation ("more categories") ────────────────────────────────
+  // FEmusic_home sends ~7 shelves and a continuation for the rest; BitChord
+  // follows it as you scroll, which is where its Similar to / From the
+  // community / Covers and remixes shelves come from. Pages live in memory
+  // only: the cached snapshot stays the first page, and a refresh starts over.
+  bool _homeMoreLoading = false;
+  bool _homeMoreExhausted = false;
+
+  bool get isLoadingMoreHome => _homeMoreLoading;
+  bool get canLoadMoreHome =>
+      !_homeMoreExhausted &&
+      (_homeFeed?.continuationToken?.isNotEmpty ?? false);
+
+  /// Ids of the shelves that arrived by continuation, so Home can draw them
+  /// after its own sections instead of pushing those down mid-scroll.
+  Set<String> get homePagedSectionIds => _homePagedIds;
+  final Set<String> _homePagedIds = {};
+
+  @visibleForTesting
+  Future<HomeFeed?> Function(String token)? debugFetchMoreHome;
+
+  @visibleForTesting
+  void debugPublishHomeFeed(HomeFeed? feed) => _publishHomeFeed(feed);
+
+  /// Appends the next page of Home shelves. Single-flight; stops for this
+  /// feed when a page fails or brings nothing new (same-title shelves
+  /// collapse in the composer, first wins).
+  Future<void> loadMoreHome() async {
+    final current = _homeFeed;
+    final token = current?.continuationToken;
+    if (current == null || token == null || token.isEmpty) return;
+    if (_homeMoreLoading || _homeMoreExhausted) return;
+    // No network from widget tests that scroll Home to the end.
+    if (debugFetchMoreHome == null && TestEnvironment.isTesting) return;
+    _homeMoreLoading = true;
+    _bumpHomeContent();
+    notifyListeners();
+    HomeFeed? page;
+    try {
+      page = await (debugFetchMoreHome ?? _homeSource.fetchMore)(token);
+    } catch (_) {
+      page = null;
+    }
+    _homeMoreLoading = false;
+    // A refresh landed while this page was in flight: it belongs to a feed
+    // that is gone.
+    if (!identical(current, _homeFeed)) {
+      _bumpHomeContent();
+      notifyListeners();
+      return;
+    }
+    HomeFeed? merged;
+    if (page != null) {
+      merged = _homeComposer.compose(
+        primary: HomeFeed(
+          sections: [...current.sections, ...page.sections],
+          fetchedAt: current.fetchedAt,
+          source: current.source,
+          heroCandidate: current.heroCandidate,
+          continuationToken: page.continuationToken,
+        ),
+        fallback: null,
+      );
+    }
+    if (merged == null || merged.sections.length <= current.sections.length) {
+      _homeMoreExhausted = true;
+    } else {
+      final before = {for (final s in current.sections) s.id};
+      _homePagedIds.addAll(
+          merged.sections.map((s) => s.id).where((id) => !before.contains(id)));
+      _homeFeed = merged;
+      if (merged.continuationToken == null) _homeMoreExhausted = true;
+    }
     _bumpHomeContent();
     notifyListeners();
   }

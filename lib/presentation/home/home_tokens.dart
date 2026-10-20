@@ -27,7 +27,7 @@ abstract final class HomeTokens {
 ///
 /// 10dp, and this is a deliberate departure from the reference, which uses none.
 /// Its section title is a 22sp display face with tall metrics, so the label
-/// carries its own air and the rail can butt up against it. Ours is 24sp bold on
+/// carries its own air and the rail can butt up against it. Ours is 20sp bold on
 /// a tighter line, and with no gap at all the title reads as joined to the first
 /// card rather than as labelling it - it looked like a rendering seam, not
 /// spacing. The separation between sections still comes from [sectionGap];
@@ -98,10 +98,13 @@ static const double headerToContent = 10.0;
   // Hero title > normal card title. Weights create contrast, not size.
   // All styles scale with the system textScaler (spec #61).
 
-  /// Page header "Home".
+  /// Page header "Home". 34/w800 with tight tracking: BitChord's display
+  /// title, which is what makes its page read as one confident heading over
+  /// quiet shelves.
   static TextStyle homeTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
+        fontSize: 34,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.8,
         height: 1.1,
         color: titleColor(context),
       );
@@ -133,6 +136,7 @@ static const double headerToContent = 10.0;
   static TextStyle sectionTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
         fontSize: sectionTitleSize,
         fontWeight: FontWeight.w700,
+        letterSpacing: -0.3,
         height: 1.15,
         color: titleColor(context),
       );
@@ -186,7 +190,11 @@ static const double headerToContent = 10.0;
 
   /// Font size for [sectionTitle], exposed so it can be asserted without a
   /// widget tree.
-  static const double sectionTitleSize = 24.0;
+  ///
+  /// 20, not 24. With fourteen-odd shelves on the page a 24sp bold heading on
+  /// every one shouts; BitChord's 20/w700 (-0.3) lets the artwork lead and the
+  /// page title own the hierarchy.
+  static const double sectionTitleSize = 20.0;
 
   /// Hero *section* heading - the label above the carousel itself.
   ///
@@ -217,15 +225,16 @@ static const double headerToContent = 10.0;
 
   /// Standard card title.
   static TextStyle cardTitle(BuildContext context) => GoogleFonts.plusJakartaSans(
-        fontSize: 15.5,
+        fontSize: 16,
         fontWeight: FontWeight.w600,
+        letterSpacing: -0.2,
         height: 1.25,
         color: titleColor(context),
       );
 
   /// Card metadata (artist, muted — never bold).
   static TextStyle cardMetadata(BuildContext context) => GoogleFonts.plusJakartaSans(
-        fontSize: 13.5,
+        fontSize: 14,
         fontWeight: FontWeight.w400,
         height: 1.25,
         color: mutedColor(context),

@@ -1223,6 +1223,30 @@ class InnerTubeService {
     throw Exception('Browse $browseId returned unexpected payload');
   }
 
+  /// Next page of a browse surface (Home's section list) after [token].
+  /// Sent both ways YouTube Music has accepted it - query `ctoken`/
+  /// `continuation`/`type=next` and a body `continuation` - as Metrolist and
+  /// BitChord do.
+  Future<Map<String, dynamic>> browseContinuationJson(String token) async {
+    await _ensureVisitorData();
+    final enc = Uri.encodeQueryComponent(token);
+    final response = await _httpClient.post(
+      Uri.parse(
+          '$_apiUrl/browse?prettyPrint=false&ctoken=$enc&continuation=$enc&type=next'),
+      headers: _buildHeaders(),
+      body: jsonEncode({
+        'context': _buildBrowseContext(),
+        'continuation': token,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Browse continuation failed: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    throw Exception('Browse continuation returned unexpected payload');
+  }
+
   /// Browse-only context (Muzo v3.9 parity). Dynamic clientVersion —
   /// stale versions receive a degraded/limited Home surface.
   Map<String, dynamic> _buildBrowseContext() {

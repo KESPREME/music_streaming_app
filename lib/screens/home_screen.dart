@@ -112,7 +112,9 @@ class _HomeScreenState extends State<HomeScreen>
                   '(previous: ${previous?.sections.length ?? 0})');
             }
           },
-          child: CustomScrollView(
+          child: NotificationListener<Notification>(
+            onNotification: _maybeLoadMoreHome,
+            child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _buildHeader(context)),
@@ -149,10 +151,33 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  /// Within a screen and a half of the end, ask for the feed's next page of
+  /// shelves. Scroll and metrics notifications both count: a page that lands
+  /// short of the viewport has to be able to ask for the next one without a
+  /// scroll. Only the page's own vertical scroll (depth 0), never a rail.
+  bool _maybeLoadMoreHome(Notification n) {
+    final ScrollMetrics metrics;
+    if (n is ScrollNotification && n.depth == 0) {
+      metrics = n.metrics;
+    } else if (n is ScrollMetricsNotification && n.depth == 0) {
+      metrics = n.metrics;
+    } else {
+      return false;
+    }
+    if (metrics.axis != Axis.vertical) return false;
+    if (metrics.extentAfter > metrics.viewportDimension * 1.5) return false;
+    final provider = context.read<MusicProvider>();
+    if (provider.canLoadMoreHome && !provider.isLoadingMoreHome) {
+      unawaited(provider.loadMoreHome());
+    }
+    return false;
   }
 
   // ── Header: one title, small utility action ──────────────────────────────
@@ -508,7 +533,7 @@ class _SquareRailSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: section.title),
+        HomeSectionHeader(title: section.title, description: section.sourceSubtitle),
         SizedBox(
           height: cardW + homeRailTextBlockHeight(context) + 12,
           child: ListView.builder(
@@ -612,7 +637,7 @@ class _CompactListSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: section.title),
+        HomeSectionHeader(title: section.title, description: section.sourceSubtitle),
         ...tracks.take(6).map((track) => ForYouRow(
               key: ValueKey('compact_${track.id}'),
               artUrl: track.albumArtUrl,
@@ -643,7 +668,7 @@ class _ArtistShelf extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: section.title),
+        HomeSectionHeader(title: section.title, description: section.sourceSubtitle),
         SizedBox(
           height: homeArtistPortraitHeight(context),
           child: ListView.builder(
@@ -697,7 +722,7 @@ class _PlaylistShelf extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: section.title),
+        HomeSectionHeader(title: section.title, description: section.sourceSubtitle),
         SizedBox(
           height: 168 + homeRailTextBlockHeight(context),
           child: ListView.builder(
@@ -783,7 +808,7 @@ class _VideoShelf extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: section.title),
+        HomeSectionHeader(title: section.title, description: section.sourceSubtitle),
         SizedBox(
           height: 124 + homeRailTextBlockHeight(context),
           child: ListView.builder(
@@ -1149,6 +1174,7 @@ const _LowerSections({
     // else would move.
     final viewModes = context.watch<HomeViewModeStore>();
     final sections = <Widget>[];
+    final pagedSections = <Widget>[];
     final renderedKinds = <String>[];
 
     // WHICH SHELVES. The app has shelves of its own (Jump back in, Quick picks)
@@ -1222,13 +1248,21 @@ const _LowerSections({
           }
         }
       }
+      final pagedIds = provider.homePagedSectionIds;
       for (final section in plan.feedSections) {
         if (kDebugMode) {
           renderedKinds.add(planPresentation(section).semanticType.name);
         }
-        sections.add(identical(section, plan.quickPicksSection)
+        final widget = identical(section, plan.quickPicksSection)
             ? _FeedQuickPicks(section: section)
-            : _FeedSection(section: section));
+            : _FeedSection(section: section);
+        // Shelves from the feed's continuation go after Home's own sections,
+        // so their arrival never pushes down what the listener is reading.
+        if (pagedIds.contains(section.id)) {
+          pagedSections.add(widget);
+        } else {
+          sections.add(widget);
+        }
       }
     } else {
       // No feed yet → legacy fallback sections (trusted sources only).
@@ -1303,6 +1337,11 @@ const _LowerSections({
 
     // EXPLORATION — moods: real Moods & Genres discovery from InnerTube
     sections.add(const _MoodsSection());
+
+    // More categories: the feed's later pages, then placeholders while the
+    // next one loads (the scroll listener in HomeScreen asks for it).
+    sections.addAll(pagedSections);
+    if (provider.isLoadingMoreHome) sections.add(const HomeMoreSkeleton());
 
     // `_MoodsSection` is always last, so a gap after it when it collapses to
     // nothing just merges into the tail spacer below and is never seen.
@@ -1716,7 +1755,7 @@ class _AlbumGridSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: section.title),
+        HomeSectionHeader(title: section.title, description: section.sourceSubtitle),
         _albumGridBody(context, section),
       ],
     );
@@ -1846,6 +1885,7 @@ class _HistoryFeedSection extends StatelessWidget {
       children: [
         HomeSectionHeader(
           title: section.title,
+          description: section.sourceSubtitle,
           trailing: SectionViewToggle(
             mode: viewModes.modeOf(HomeViewSection.listenAgain),
             onToggle: () => viewModes.toggle(HomeViewSection.listenAgain),

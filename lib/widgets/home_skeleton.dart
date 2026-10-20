@@ -94,6 +94,59 @@ class _HomeSkeletonState extends State<HomeSkeleton>
   }
 }
 
+/// Two placeholder rails at the foot of Home while the next page of shelves
+/// (the feed's continuation) is on its way. Same metrics as [HomeSkeleton]'s
+/// rails, so the shelves land where the grey blocks were.
+class HomeMoreSkeleton extends StatefulWidget {
+  const HomeMoreSkeleton({super.key});
+
+  @override
+  State<HomeMoreSkeleton> createState() => _HomeMoreSkeletonState();
+}
+
+class _HomeMoreSkeletonState extends State<HomeMoreSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _sweep = AnimationController(
+    vsync: this,
+    duration: kShimmerPeriod,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduceMotion) {
+      _sweep.stop();
+    } else if (!_sweep.isAnimating) {
+      _sweep.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _sweep.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final sweep = reduceMotion ? null : _sweep;
+    return IgnorePointer(
+      child: Semantics(
+        label: 'Loading more',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _RailSkeleton(sweep: sweep, index: 0, bottomInset: t.HomeTokens.sectionGap),
+            _RailSkeleton(sweep: sweep, index: 1, bottomInset: 0),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Hero-sized placeholder, matched to the real carousel's height formula.
 class _HeroSkeleton extends StatelessWidget {
   const _HeroSkeleton({required this.sweep, required this.bottomInset});

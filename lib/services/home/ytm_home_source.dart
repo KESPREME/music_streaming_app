@@ -286,6 +286,7 @@ class YouTubeMusicHomeSource {
             presentation: _presentationFor(items),
             sourcePath: candidate.path,
             renderer: candidate.renderer,
+            sourceSubtitle: _straplineOf(shelf['header']),
           );
           sections.add(section);
 
@@ -408,6 +409,64 @@ class YouTubeMusicHomeSource {
           final t = runs[0]?['text'];
           if (t is String && t.isNotEmpty) return t;
         }
+      }
+    }
+    return null;
+  }
+
+  /// The grey line YouTube Music runs with a shelf heading ("Similar to",
+  /// "From the community"): `musicCarouselShelfBasicHeaderRenderer.strapline`.
+  /// Shown under the title, as BitChord does.
+  static String? _straplineOf(dynamic header) {
+    if (header is! Map<String, dynamic>) return null;
+    final r = header['musicCarouselShelfBasicHeaderRenderer'];
+    if (r is! Map<String, dynamic>) return null;
+    final text = _runsText(r['strapline']).trim();
+    return text.isEmpty ? null : text;
+  }
+
+  /// Next page of Home shelves after [token] (the section list's
+  /// continuation). Same parser, same accounting; [lastReport] keeps
+  /// describing the first page.
+  Future<HomeFeed?> fetchMore(String token, {int perShelfLimit = 12}) async {
+    try {
+      final data = await _innerTube
+          .browseContinuationJson(token)
+          .timeout(const Duration(seconds: 12));
+      return await parseContinuation(data, perShelfLimit: perShelfLimit);
+    } catch (e) {
+      if (kDebugMode) debugPrint('YTMHomeSource: fetchMore failed: $e');
+      return null;
+    }
+  }
+
+  /// Testable continuation parse (no network). Handles the classic
+  /// `continuationContents.sectionListContinuation` page and the newer
+  /// `onResponseReceivedActions[].appendContinuationItemsAction` shape.
+  Future<HomeFeed?> parseContinuation(Map<String, dynamic> data,
+      {int perShelfLimit = 12}) async {
+    final root = continuationRootOf(data);
+    if (root == null) return null;
+    final firstPage = lastReport;
+    try {
+      return await _parseSectionList(root, perShelfLimit);
+    } finally {
+      lastReport = firstPage;
+    }
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic>? continuationRootOf(Map<String, dynamic> data) {
+    final classic = data['continuationContents']?['sectionListContinuation'];
+    if (classic is Map<String, dynamic>) return classic;
+    final actions = data['onResponseReceivedActions'];
+    if (actions is List) {
+      for (final a in actions) {
+        if (a is! Map<String, dynamic>) continue;
+        final append = a['appendContinuationItemsAction'];
+        final items =
+            append is Map<String, dynamic> ? append['continuationItems'] : null;
+        if (items is List) return {'contents': items};
       }
     }
     return null;

@@ -622,7 +622,9 @@ class StaggerIn extends StatelessWidget {
 /// at any scale (spec: zero overflow).
 double homeRailTextBlockHeight(BuildContext context) {
   final scale = MediaQuery.textScalerOf(context).scale(1.0);
-  const base = 20.0 + 2.0 + 20.0 + 4.0;
+  // 16sp title and 14sp metadata (HomeTokens) render a line or so taller
+  // than the 15.5/13.5 this was calibrated on: 21 per line keeps them clear.
+  const base = 21.0 + 2.0 + 21.0 + 4.0;
   return base * scale;
 }
 
