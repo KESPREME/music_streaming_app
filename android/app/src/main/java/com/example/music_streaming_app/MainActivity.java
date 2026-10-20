@@ -47,6 +47,8 @@ public class MainActivity extends AudioServiceFragmentActivity {
 
         // Version, ABIs, install hand-off, move-to-background.
         AppChannel.register(this, flutterEngine.getDartExecutor().getBinaryMessenger());
+        // Equalizer, bass boost, spatial widening, loudness: native audio effects.
+        EqualizerChannel.register(audioManager, flutterEngine.getDartExecutor().getBinaryMessenger());
 
         // Analysis decode: file in, small mono PCM out. See AudioDecoder.
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DECODE)

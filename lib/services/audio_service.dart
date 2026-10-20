@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart' show MediaItem;
+import 'equalizer_service.dart';
 import 'playback/decks.dart';
 import 'playback/mine_audio_handler.dart';
 import 'package:audio_session/audio_session.dart';
@@ -16,8 +17,6 @@ import 'dart:math';
 
 
 class AudioService {
-  // FIX: Create equalizer first, then pass to audio pipeline
-  late final AndroidEqualizer _equalizer;
   /// The pair of decks. [_audioPlayer] is whichever one is the session deck
   /// right now; every call below that said "the player" still means that one.
   late final DeckPair _decks;
@@ -35,9 +34,9 @@ class AudioService {
   bool _hasPrevious = false; // State to persist window
   bool _hasNext = false;     // State to persist window
   
-  // Public getters for EQ access
-  AndroidEqualizer get equalizer => _equalizer;
-  
+  // The equalizer is not part of this player: it is a native effect attached to
+  // each deck's audio session (see EqualizerService / EqualizerChannel.java), so
+  // a device that cannot create it can never affect play() or pause().
   // Subscription management for proper cleanup
   final List<StreamSubscription> _subscriptions = [];
 
@@ -268,8 +267,6 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
 }
 
   AudioService({bool enableEqualizer = false}) {
-    // Initialize audio effects
-    _equalizer = AndroidEqualizer();
     _enableEqualizer = enableEqualizer;
     _decks = DeckPair(_newPlayer);
     _attachFeeds(_decks.active);
@@ -282,7 +279,7 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
   }
 
   /// One deck, configured the way the single player always was.
-  AudioPlayer _newPlayer() => AudioPlayer(
+  AudioPlayer _newPlayer() => _withSessionReport(AudioPlayer(
         audioPipeline: AudioPipeline(
           androidAudioEffects:
               _buildAndroidAudioEffects(enableEqualizer: _enableEqualizer),
@@ -325,7 +322,26 @@ List<AndroidAudioEffect> _buildAndroidAudioEffects({
             automaticallyWaitsToMinimizeStalling: false,
           ),
         ),
-      );
+      ));
+
+  /// Tells the equalizer which Android audio session each deck plays in, so its
+  /// effects follow the audio - both decks of a crossfade, and any deck created
+  /// later. The ids arrive with playback events and never exist before a source
+  /// is loaded, which is why this is a stream and not a read.
+  ///
+  /// Reports only; nothing here can affect playback, and the equalizer ignores
+  /// it entirely while it is off.
+  AudioPlayer _withSessionReport(AudioPlayer player) {
+    void report(int? id) {
+      try {
+        EqualizerService().reportSession(player, id);
+      } catch (_) {}
+    }
+
+    report(player.androidAudioSessionId);
+    _subscriptions.add(player.androidAudioSessionIdStream.listen(report));
+    return player;
+  }
 
   /// The MediaItem id of whichever window entry the player is on, or null.
   ///

@@ -221,6 +221,8 @@ class _MyAppState extends State<MyApp> {
       Provider.of<ThemeProvider>(context, listen: false).initialize();
       Provider.of<AccentController>(context, listen: false).initialize();
       Provider.of<HomeViewModeStore>(context, listen: false).initialize();
+      // The equalizer follows the phone's output (speaker / wired / Bluetooth).
+      EqualizerService().bindOutput(Provider.of<AudioOutputService>(context, listen: false));
       _deepLinks.start();
       _deepLinkSub = _deepLinks.links.listen(_handleDeepLink);
     });
