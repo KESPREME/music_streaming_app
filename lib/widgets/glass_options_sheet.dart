@@ -20,6 +20,7 @@ import 'glass_download_selection_sheet.dart';
 import '../presentation/explore/explore_top_pill.dart';
 import '../utils/color_utils.dart';
 import '../utils/image_quality_utils.dart';
+import '../utils/share_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class GlassOptionsSheet extends StatelessWidget {
@@ -343,16 +344,15 @@ class GlassOptionsSheet extends StatelessWidget {
                           icon: Icons.playlist_add_rounded,
                           label: _addToPlaylistLabel(provider.playlistsContaining(track.id).length),
                           onTap: () async {
-                            final rootContext = context;
+                            // The navigator's context outlives this sheet; this
+                            // sheet's own does not (see showAddToPlaylistSheet).
+                            final host = Navigator.of(context).context;
                             Navigator.pop(context);
                             await Future.delayed(
                               const Duration(milliseconds: 100),
                             );
-                            if (rootContext.mounted) {
-                              await showPlaylistSelectionDialog(
-                                rootContext,
-                                track,
-                              );
+                            if (host.mounted) {
+                              await showPlaylistSelectionDialog(host, track);
                             }
                           },
                         ),
@@ -497,10 +497,7 @@ class GlassOptionsSheet extends StatelessWidget {
                           onTap: () {
                             Navigator.pop(context);
                             SharePlus.instance.share(
-                              ShareParams(
-                                text:
-                                    'Check out this track: ${track.trackName} by ${track.artistName}\n${track.previewUrl}',
-                              ),
+                              ShareParams(text: songShareText(track)),
                             );
                           },
                         ),
@@ -721,6 +718,10 @@ class GlassOptionsSheet extends StatelessWidget {
   }
 
   void _showSleepTimerSheet(BuildContext context, MusicProvider provider) {
+    // The choices stay up for as long as a person takes to pick one - long after the
+    // options sheet that opened them has closed - so the confirmation must go
+    // through the navigator's context, not this sheet's (which is gone by then).
+    final host = Navigator.of(context).context;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -760,7 +761,7 @@ class GlassOptionsSheet extends StatelessWidget {
                   onTap: () {
                     provider.setSleepTimer(mins);
                     Navigator.pop(ctx);
-                    showGlassSnackBar(context, 'Sleep timer set for $mins minutes');
+                    showGlassSnackBar(host, 'Sleep timer set for $mins minutes');
                   },
                 ),
               ),
@@ -772,7 +773,7 @@ class GlassOptionsSheet extends StatelessWidget {
                 onTap: () {
                   provider.setSleepTimer(0);
                   Navigator.pop(ctx);
-                  showGlassSnackBar(context, 'Playback will stop after this track');
+                  showGlassSnackBar(host, 'Playback will stop after this track');
                 },
               ),
               ListTile(
@@ -783,7 +784,7 @@ class GlassOptionsSheet extends StatelessWidget {
                 onTap: () {
                   provider.setSleepTimer(-1);
                   Navigator.pop(ctx);
-                  showGlassSnackBar(context, 'Sleep timer turned off');
+                  showGlassSnackBar(host, 'Sleep timer turned off');
                 },
               ),
               const SizedBox(height: 16),
@@ -1087,12 +1088,12 @@ class GlassPlaylistOptionsSheet extends StatelessWidget {
                       icon: Icons.checklist_rounded,
                       label: 'Select to Download',
                       onTap: () async {
-                        final rootContext = context;
+                        final host = Navigator.of(context).context;
                         Navigator.pop(context);
                         await Future.delayed(const Duration(milliseconds: 100));
-                        if (rootContext.mounted) {
+                        if (host.mounted) {
                           await showModalBottomSheet(
-                            context: rootContext,
+                            context: host,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
                             builder: (c) => GlassDownloadSelectionSheet(

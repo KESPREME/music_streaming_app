@@ -25,9 +25,15 @@ import 'playlist_edit_sheet.dart';
 /// Opens the sheet for [tracks]. Resolves when it closes.
 Future<void> showAddToPlaylistSheet(BuildContext context, List<Track> tracks) async {
   if (tracks.isEmpty) return;
-  final outer = context;
+  // Hold the NAVIGATOR's context, not the caller's. The caller is usually the song
+  // options sheet, which closes itself before opening this one and is gone about
+  // 300 ms later - long before the listener has chosen. A check like
+  // caller.mounted afterwards could only ever be false, so "New playlist" and the
+  // "Added to ..." confirmation were silently dropped. The navigator outlives every
+  // sheet it shows, and Navigator.of(...) accepts the navigator's own context.
+  final outer = Navigator.of(context).context;
   final createdOrAdded = await showModalBottomSheet<_Outcome>(
-    context: context,
+    context: outer,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
