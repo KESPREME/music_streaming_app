@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../utils/app_image_cache.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/bitchord_page_models.dart';
 import '../models/track.dart';
@@ -48,6 +49,41 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
   List<Track> _topSongs = [];
   List<DetailShelf> _shelves = [];
+
+  /// The YouTube channel behind the page, for Share.
+  String? _channelId;
+
+  /// Top songs shown: BitChord's page lists 20 at most.
+  static const int _topSongsCap = 20;
+
+  /// The first item of the first Albums / Singles shelf: YouTube Music orders
+  /// those newest first.
+  ({DetailShelfItem item, String kind})? get _latestRelease {
+    for (final shelf in _shelves) {
+      final t = shelf.title.toLowerCase();
+      final isReleases = t.contains('album') || t.contains('single') || t.contains(' ep');
+      if (!isReleases || shelf.items.isEmpty) continue;
+      final item = shelf.items.first;
+      if (item.type == 'artist' || item.type == 'playlist') continue;
+      final kind = item.type == 'single' || t.startsWith('single') ? 'Single' : 'Album';
+      return (item: item, kind: kind);
+    }
+    return null;
+  }
+
+  /// "Single · 2023": the kind, and the year when the card's subtitle has one.
+  static String _releaseEyebrow(String kind, String subtitle) {
+    final year = RegExp(r'\b(19|20)\d{2}\b').firstMatch(subtitle)?.group(0);
+    return year == null ? kind : '$kind · $year';
+  }
+
+  void _share() {
+    final id = _channelId;
+    final text = id != null
+        ? '$_resolvedArtistName on YouTube Music\nhttps://music.youtube.com/channel/$id'
+        : '$_resolvedArtistName on YouTube Music';
+    SharePlus.instance.share(ShareParams(text: text));
+  }
 
   // Isolated scroll controller for 120 FPS sliver interpolation
   final ScrollController _scrollController = ScrollController();
@@ -136,6 +172,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       }
 
       // 1. Fetch rich BitChord ArtistPageData (hero image, subscribers, monthly listeners, bio, shelves)
+      _channelId = artistIdToFetch.startsWith('UC') ? artistIdToFetch : null;
       final pageData = await provider
           .fetchArtistPageData(artistIdToFetch)
           .timeout(const Duration(seconds: 12));
@@ -422,57 +459,52 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     ),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                const SliverToBoxAdapter(child: SizedBox(height: 10)),
 
-                // Subscriber & Monthly Listener Stat Chips (Screenshot 8)
-                SliverToBoxAdapter(
-                  child: ArtistStatsRow(
-                    subscriberCountText: _subscriberCountText,
-                    monthlyListenerCount: _monthlyListenerCount,
-                    palette: artPalette,
-                  ),
-                ),
-
-                // Action Row: [ 🔀 ]  [ ▶ Play ]
+                // [ shuffle ]  ( ▶ )  [ share ] (BitChord's artist row; its
+                // star is a subscribe, which needs a signed-in write path this
+                // app does not have, so it is not faked.)
                 if (_topSongs.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 18.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircleIconButton(
-                            icon: Icons.shuffle_rounded,
-                            palette: artPalette,
-                            onTap: () {
-                              final shuffled = List<Track>.from(_topSongs)..shuffle();
-                              musicProvider.playTrackList(shuffled, initialIndex: 0);
-                            },
-                          ),
-                          const SizedBox(width: 10),
-                          PlayPill(
-                            onPlay: () {
-                              musicProvider.playTrackList(_topSongs, initialIndex: 0);
-                            },
-                            accentColor: accentColor,
-                            palette: artPalette,
-                          ),
-                        ],
+                      padding: const EdgeInsets.only(bottom: 22.0),
+                      child: ArtistActionRow(
+                        onShuffle: () {
+                          final shuffled = List<Track>.from(_topSongs)..shuffle();
+                          musicProvider.playTrackList(shuffled, initialIndex: 0);
+                        },
+                        onPlay: () => musicProvider.playTrackList(_topSongs, initialIndex: 0),
+                        trailing: GhostCircleButton(
+                          icon: Icons.ios_share_rounded,
+                          semanticLabel: 'Share',
+                          onTap: _share,
+                        ),
                       ),
                     ),
                   ),
 
-                // "About the artist" editorial section (Screenshot 7 & 8)
-                if (_description != null && _description!.isNotEmpty)
+                // Latest release
+                if (_latestRelease case final latest?)
                   SliverToBoxAdapter(
-                    child: AboutSection(
-                      title: 'About the artist',
-                      text: _description!,
-                      accentColor: accentColor,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: LatestReleaseCard(
+                        key: const ValueKey('artist_latest_release'),
+                        title: latest.item.title,
+                        imageUrl: latest.item.imageUrl,
+                        eyebrow: _releaseEyebrow(latest.kind, latest.item.subtitle),
+                        caption: 'Latest release',
+                        palette: artPalette,
+                        onTap: () => openDetailShelfItem(
+                          context,
+                          latest.item,
+                          artistNameHint: _resolvedArtistName,
+                        ),
+                      ),
                     ),
                   ),
 
-                // "Top songs" horizontal 4-row pager grid (Screenshot 7)
+                // "Top songs" horizontal 4-row pager grid, 20 at most
                 if (_topSongs.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Selector<MusicProvider, ({Track? currentTrack, bool isPlaying})>(
@@ -481,7 +513,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         isPlaying: mp.isPlaying,
                       ),
                       builder: (context, playbackState, _) => TopSongsPagerGrid(
-                        songs: _topSongs,
+                        songs: _topSongs.length > _topSongsCap
+                            ? _topSongs.sublist(0, _topSongsCap)
+                            : _topSongs,
                         onSongTap: (queue, index) {
                           context.read<MusicProvider>().playTrackList(queue, initialIndex: index);
                         },
@@ -493,8 +527,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     ),
                   ),
 
-                // Carousels: "Albums", "Singles & EPs", "Featured on", "Playlists by [Artist]", "Fans might also like"
-                // (Screenshots 4, 5, 6)
+                // Albums, Singles & EPs, Featured on, Playlists, Fans might
+                // also like - each with Show all past five items.
                 for (final shelf in _shelves)
                   SliverToBoxAdapter(
                     child: ShelfCarousel(
@@ -503,6 +537,29 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     ),
                   ),
 
+                // About, then the listener stats, at the end (BitChord order):
+                // the page leads with music, not a biography.
+                if (_description != null && _description!.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 18),
+                      child: AboutSection(
+                        title: 'About the artist',
+                        text: _description!,
+                        accentColor: accentColor,
+                      ),
+                    ),
+                  ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: ArtistStatsRow(
+                      subscriberCountText: _subscriberCountText,
+                      monthlyListenerCount: _monthlyListenerCount,
+                      palette: artPalette,
+                    ),
+                  ),
+                ),
                 const SliverToBoxAdapter(
                   child: SizedBox(height: 100), // Bottom clearance for mini player & nav bar
                 ),

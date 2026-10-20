@@ -14,6 +14,9 @@ class ShelfCarousel extends StatelessWidget {
   final DetailShelf shelf;
   final String? artistNameHint;
 
+  /// More items than the row shows at a glance: a "Show all" grid.
+  static const int showAllThreshold = 5;
+
   const ShelfCarousel({
     super.key,
     required this.shelf,
@@ -23,19 +26,45 @@ class ShelfCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (shelf.items.isEmpty) return const SizedBox.shrink();
+    final canShowAll = shelf.items.length > showAllThreshold;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 20.0, right: 20.0, top: 22.0, bottom: 10.0),
-          child: Text(
-            shelf.title,
-            style: GoogleFonts.plusJakartaSans(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
+          padding: const EdgeInsets.only(left: 20.0, right: 12.0, top: 22.0, bottom: 10.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  shelf.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              if (canShowAll)
+                TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ShelfGridScreen(shelf: shelf, artistNameHint: artistNameHint),
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white.withValues(alpha: 0.72),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: Text(
+                    'Show all',
+                    style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+            ],
           ),
         ),
         SizedBox(
@@ -71,13 +100,14 @@ class _ShelfCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const cardWidth = 154.0;
-    final isArtist = item.type == 'artist';
+    return _ShelfCardBody(item: item, width: 154.0, artistNameHint: artistNameHint);
+  }
+}
 
-    return GestureDetector(
-      onTap: () {
+/// Opens what a shelf card points at: an artist, a playlist, or a release.
+void openDetailShelfItem(BuildContext context, DetailShelfItem item, {String? artistNameHint}) {
         final nav = Navigator.of(context);
-        if (isArtist) {
+        if (item.type == 'artist') {
           nav.push(
             MaterialPageRoute(
               builder: (_) => ThemedArtistDetailScreen(
@@ -111,7 +141,20 @@ class _ShelfCard extends StatelessWidget {
             ),
           );
         }
-      },
+}
+
+class _ShelfCardBody extends StatelessWidget {
+  final DetailShelfItem item;
+  final double width;
+  final String? artistNameHint;
+
+  const _ShelfCardBody({required this.item, required this.width, this.artistNameHint});
+
+  @override
+  Widget build(BuildContext context) {
+    final cardWidth = width;
+    return GestureDetector(
+      onTap: () => openDetailShelfItem(context, item, artistNameHint: artistNameHint),
       child: SizedBox(
         width: cardWidth,
         child: Column(
@@ -169,6 +212,53 @@ class _ShelfCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Every item of a shelf as a two-column grid ("Show all").
+class ShelfGridScreen extends StatelessWidget {
+  final DetailShelf shelf;
+  final String? artistNameHint;
+
+  const ShelfGridScreen({super.key, required this.shelf, this.artistNameHint});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        title: Text(
+          shelf.title,
+          style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+        ),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          const gutter = 20.0;
+          const gap = 14.0;
+          final cardW = (constraints.maxWidth - gutter * 2 - gap) / 2;
+          return GridView.builder(
+            padding: const EdgeInsets.fromLTRB(gutter, 8, gutter, 120),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: gap,
+              mainAxisSpacing: 18,
+              // Square art + 8 gap + two caption lines.
+              childAspectRatio: cardW / (cardW + 56),
+            ),
+            itemCount: shelf.items.length,
+            itemBuilder: (context, i) => _ShelfCardBody(
+              item: shelf.items[i],
+              width: cardW,
+              artistNameHint: artistNameHint,
+            ),
+          );
+        },
       ),
     );
   }

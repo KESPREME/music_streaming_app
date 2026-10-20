@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,9 +9,7 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../services/canvas_resolution_service.dart';
 import '../services/innertube/innertube_service.dart';
-import '../utils/app_image_cache.dart';
 import '../utils/artwork_palette_resolver.dart';
-import '../utils/image_quality_utils.dart';
 import '../widgets/covered_gate.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
@@ -24,8 +21,6 @@ import '../core/navigation/root_navigator.dart';
 import '../services/innertube/track_artist_credit.dart';
 
 /// Sleeve aspect ratio matching BitChord's SLEEVE_RATIO in DetailScreen.kt
-const double _kSleeveRatio = 0.92;
-const double _kHeaderDrop = 44.0;
 
 /// BitChord 1:1 Parity Album Detail Screen (Screenshots 1 & 2)
 class AlbumDetailScreen extends StatefulWidget {
@@ -59,6 +54,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   String? _resolvedYear;
   String? _resolvedImageUrl;
   String? _resolvedDescription;
+
+  /// The page's own title and release kind ("Album", "EP", "Single"): the
+  /// name a search result passed can be shortened or decorated.
+  String? _resolvedTitle;
+  String? _resolvedKind;
 
   // Video canvas controller (BitChord album canvas parity)
   VideoPlayerController? _albumVideoController;
@@ -251,6 +251,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             if (pageData.description != null && pageData.description!.isNotEmpty) {
               _resolvedDescription = pageData.description;
             }
+            if (pageData.title.trim().isNotEmpty) _resolvedTitle = pageData.title.trim();
+            _resolvedKind = pageData.kind;
             _isLoading = false;
             _extractMetadata();
           });
@@ -325,6 +327,70 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         _normalize(t.artistName).contains(q)).toList();
   }
 
+  int _totalSeconds() {
+    var total = 0;
+    for (final t in _tracks) {
+      final ms = t.durationMs;
+      if (ms != null && ms > 0) total += (ms / 1000).round();
+    }
+    return total;
+  }
+
+  ReleaseDownloadState _downloadState(MusicProvider mp) {
+    final ids = [for (final t in _tracks) if (t.source != 'local') t.id];
+    if (ids.isEmpty) return ReleaseDownloadState.none;
+    final active = {
+      for (final t in mp.currentlyDownloadingTracks) t.id,
+      for (final t in mp.downloadQueue) t.id,
+    };
+    if (ids.any(active.contains)) return ReleaseDownloadState.downloading;
+    final done = ids.where(mp.isTrackDownloadedSync).length;
+    if (done == ids.length) return ReleaseDownloadState.done;
+    return done > 0 ? ReleaseDownloadState.partial : ReleaseDownloadState.none;
+  }
+
+  void _onDownloadTap(ReleaseDownloadState state) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    switch (state) {
+      case ReleaseDownloadState.downloading:
+        messenger?.showSnackBar(const SnackBar(content: Text('Downloading this album…')));
+        return;
+      case ReleaseDownloadState.done:
+        messenger?.showSnackBar(const SnackBar(content: Text('Every song is downloaded')));
+        return;
+      case ReleaseDownloadState.none:
+      case ReleaseDownloadState.partial:
+        final mp = context.read<MusicProvider>();
+        final missing = _tracks
+            .where((t) => t.source != 'local' && !mp.isTrackDownloadedSync(t.id))
+            .toList();
+        if (missing.isEmpty) return;
+        mp.downloadTracks(missing);
+        messenger?.showSnackBar(SnackBar(
+          content: Text('Downloading ${missing.length} ${missing.length == 1 ? 'song' : 'songs'}'),
+        ));
+    }
+  }
+
+  void _openArtist(MusicProvider musicProvider) {
+    final artist = _resolvedArtist;
+    if (artist == null || artist.isEmpty) return;
+    if (ArtistPickerSheet.hasMultipleArtists(artist)) {
+      ArtistPickerSheet.showIfNeeded(context, musicProvider, artist);
+      return;
+    }
+    final nav = mainNavigatorKey.currentState ?? Navigator.of(context);
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => ThemedArtistDetailScreen(
+          artistId: _resolvedArtistId ?? 'artist_${widget.albumName}',
+          artistName: artist,
+          artistImage: _resolvedImageUrl,
+        ),
+      ),
+    );
+  }
+
   String _formatTotalDuration() {
     int totalSec = 0;
     for (final t in _tracks) {
@@ -352,19 +418,35 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final accentColor = artPalette.accent;
     final elevatedColor = artPalette.elevated;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final artHeight = screenWidth / _kSleeveRatio;
+    final media = MediaQuery.of(context);
+    final topInset = media.padding.top;
+    final sleeveSize = releaseSleeveSize(media.size);
+    // Where the album title sits: the bar's own title fades in once it has
+    // scrolled under the bar.
+    final headerHeight = topInset + kToolbarHeight + 8 + sleeveSize + 60;
     final displayedTracks = _getFilteredTracks();
+    final title = _resolvedTitle ?? widget.albumName;
 
-    // Year display
-    final yearText = _resolvedYear ?? '2024';
-    final metadataLine = 'ALBUM • $yearText • ${_tracks.length} TRACKS';
+    // Track numbers once per build, by identity: indexOf per row was O(n^2)
+    // and numbered a repeated track by its first appearance.
+    final numberOf = Map<Track, int>.identity();
+    for (var i = 0; i < _tracks.length; i++) {
+      numberOf[_tracks[i]] = i + 1;
+    }
+
+    final metadataLine = releaseMetaLine(
+      kind: _resolvedKind ?? 'Album',
+      year: _resolvedYear,
+      trackCount: _tracks.length,
+      totalSeconds: _totalSeconds(),
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // 1. Layer 1: PageBackground with ArtworkWash
+          // Flat palette colour, washed down from the sleeve (no full-bleed
+          // photo behind the page: the framed cover is the picture).
           Positioned.fill(
             child: RepaintBoundary(
               child: ArtworkWash(
@@ -372,136 +454,178 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 washColor: washColor,
                 accentColor: accentColor,
                 elevatedColor: elevatedColor,
-                washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
+                washFraction: (headerHeight / media.size.height).clamp(0.40, 0.75),
                 imageUrl: _resolvedImageUrl ?? widget.albumImage,
               ),
             ),
           ),
 
-          // 2. Layer 2: Full-bleed Immersive Artwork with isolated parallax render offset (GPU transform)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: artHeight,
-            child: AnimatedBuilder(
-              animation: _scrollController,
-              builder: (context, child) {
-                final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-                final clamped = offset.clamp(0.0, artHeight * 1.5);
-                return Transform.translate(
-                  offset: Offset(0, -clamped),
-                  child: child,
-                );
-              },
-              child: RepaintBoundary(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Still Image
-                    if (_resolvedImageUrl != null && _resolvedImageUrl!.isNotEmpty)
-                      CachedNetworkImage(
-                        imageUrl: ImageQualityUtils.getHighQualityUrl(_resolvedImageUrl!),
-                        fit: BoxFit.cover,
-                        memCacheWidth: AppImageCache.heroMemCache,
-                        memCacheHeight: AppImageCache.heroMemCache,
-                        errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black38),
-                      ),
-
-                    // Looping Video Canvas (Only for authentic album motion covers)
-                    if (_albumVideoController != null && _albumVideoController!.value.isInitialized)
-                      FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: _albumVideoController!.value.size.width,
-                          height: _albumVideoController!.value.size.height,
-                          child: VideoPlayer(_albumVideoController!),
-                        ),
-                      ),
-
-                    // Top shade under the glass bar (BitChord DetailScreen.kt parity)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: artHeight * 0.28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              darkBg.withValues(alpha: 0.55),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Eased foot fade settling onto the wash (BitChord PageBackground
-                    // parity); the MergeBand veil covers the seam the rest of the way.
-                    Positioned.fill(
-                      child: RepaintBoundary(
-                        child: ArtworkFootFade(washColor: washColor),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // 2.5 Layer 2.5: MergeBand across the artwork join (BitChord parity)
-          MergeBand(
-            scrollController: _scrollController,
-            artHeight: artHeight,
-            washColor: washColor,
-          ),
-
-          // 3. Layer 3: Scrollable content (Titles, Pills, Bio, Tracklist)
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
             cacheExtent: 600.0,
             slivers: [
-              // Scroll-linked Frosted SliverAppBar (BitChord parity)
               BitchordSliverAppBar(
-                title: widget.albumName,
+                title: title,
                 scrollController: _scrollController,
-                artHeight: artHeight,
+                artHeight: headerHeight,
                 backgroundColor: darkBg,
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+                    tooltip: _isSearching ? 'Close search' : 'Search in album',
+                    icon: Icon(
+                      _isSearching ? Icons.search_off_rounded : Icons.search_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _isSearching = !_isSearching;
+                        if (!_isSearching) {
+                          _searchQuery = '';
+                          _searchController.clear();
+                        }
+                      });
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'More',
+                    icon: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 24),
                     onPressed: () {
                       HapticFeedback.lightImpact();
                       GlassPlaylistOptionsSheet.show(
                         context,
-                        playlistName: widget.albumName,
+                        playlistName: title,
                         playlistImage: _resolvedImageUrl,
                         tracks: _tracks,
                       );
                     },
                   ),
-                  Container(
-                    margin: const EdgeInsets.only(right: 14),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF23201E),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.person_rounded, color: Colors.white70, size: 20),
-                    ),
-                  ),
+                  const SizedBox(width: 6),
                 ],
+              ),
+
+              // The release header: framed sleeve, title, artist, one meta
+              // line, actions. Shown while loading too, from what the caller
+              // passed, so the page does not jump when the tracks land.
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 18),
+                  child: Column(
+                    children: [
+                      AnimatedBuilder(
+                        animation: _scrollController,
+                        builder: (context, child) {
+                          final offset =
+                              _scrollController.hasClients ? _scrollController.offset : 0.0;
+                          // Recedes as it scrolls under the bar instead of
+                          // being cut by it.
+                          final p = (offset / (sleeveSize * 0.9)).clamp(0.0, 1.0);
+                          return Opacity(
+                            opacity: 1 - 0.85 * p,
+                            child: Transform.scale(scale: 1 - 0.12 * p, child: child),
+                          );
+                        },
+                        child: RepaintBoundary(
+                          child: FramedSleeve(
+                            key: const ValueKey('album_sleeve'),
+                            imageUrl: _resolvedImageUrl ?? widget.albumImage,
+                            size: sleeveSize,
+                            overlay: (_albumVideoController != null &&
+                                    _albumVideoController!.value.isInitialized)
+                                ? FittedBox(
+                                    fit: BoxFit.cover,
+                                    clipBehavior: Clip.hardEdge,
+                                    child: SizedBox(
+                                      width: _albumVideoController!.value.size.width,
+                                      height: _albumVideoController!.value.size.height,
+                                      child: VideoPlayer(_albumVideoController!),
+                                    ),
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28.0),
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (_resolvedArtist != null && _resolvedArtist!.isNotEmpty)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _openArtist(musicProvider),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 2),
+                            child: Text(
+                              _resolvedArtist!,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Color.lerp(accentColor, Colors.white, 0.35),
+                                fontSize: 20,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (metadataLine.isNotEmpty && !_isLoading) ...[
+                        const SizedBox(height: 6),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 28.0),
+                          child: Text(
+                            metadataLine,
+                            key: const ValueKey('album_meta'),
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white.withValues(alpha: 0.62),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      ReleaseActionRow(
+                        onPlay: () {
+                          if (_tracks.isNotEmpty) {
+                            musicProvider.playTrackList(_tracks, initialIndex: 0);
+                          }
+                        },
+                        onShuffle: () {
+                          if (_tracks.isNotEmpty) {
+                            final shuffled = List<Track>.from(_tracks)..shuffle();
+                            musicProvider.playTrackList(shuffled, initialIndex: 0);
+                          }
+                        },
+                        trailing: Selector<MusicProvider, ReleaseDownloadState>(
+                          selector: (_, mp) => _downloadState(mp),
+                          builder: (context, state, _) => ReleaseDownloadButton(
+                            state: state,
+                            accent: accentColor,
+                            onTap: () => _onDownloadTap(state),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
 
               if (_isLoading)
@@ -513,15 +637,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                 )
               else if (_error != null && _tracks.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.album_outlined, size: 56, color: Colors.white.withValues(alpha: 0.4)),
-                        const SizedBox(height: 16),
                         Text(_error!, style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 16)),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         TextButton(
                           onPressed: () {
                             setState(() {
@@ -537,135 +659,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                 )
               else ...[
-                // ReleaseHeader: unified box of height artHeight + HEADER_DROP with content
-                // pinned to bottomCenter (BitChord DetailScreen.kt lines 604-615 parity)
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: (artHeight + _kHeaderDrop - kToolbarHeight - MediaQuery.of(context).padding.top)
-                        .clamp(240.0, double.infinity),
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 14.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Album Title
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: Text(
-                                widget.albumName,
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                  height: 1.15,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-
-                            // Artist Credit in Accent Color
-                            if (_resolvedArtist != null && _resolvedArtist!.isNotEmpty)
-                              GestureDetector(
-                                onTap: () {
-                                  if (ArtistPickerSheet.hasMultipleArtists(_resolvedArtist!)) {
-                                    ArtistPickerSheet.showIfNeeded(
-                                      context,
-                                      musicProvider,
-                                      _resolvedArtist!,
-                                    );
-                                  } else {
-                                    final nav = mainNavigatorKey.currentState ??
-                                        Navigator.of(context);
-                                    nav.push(
-                                      MaterialPageRoute(
-                                        builder: (_) => ThemedArtistDetailScreen(
-                                          artistId: _resolvedArtistId ?? 'artist_${widget.albumName}',
-                                          artistName: _resolvedArtist!,
-                                          artistImage: _resolvedImageUrl,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                                  child: Text(
-                                    _resolvedArtist!,
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: accentColor,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-
-                            // Metadata (ALBUM • 2024 • 18 TRACKS)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: Text(
-                                metadataLine,
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: Colors.white.withValues(alpha: 0.6),
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-
-                            // Action Pills: [ 🔀 ]  [ ▶ Play ]  [ 🔍 ]  [ ••• ]
-                            BitchordActionBar(
-                              palette: artPalette,
-                              onPlay: () {
-                                if (_tracks.isNotEmpty) {
-                                  musicProvider.playTrackList(_tracks, initialIndex: 0);
-                                }
-                              },
-                              onShuffle: () {
-                                if (_tracks.isNotEmpty) {
-                                  final shuffled = List<Track>.from(_tracks)..shuffle();
-                                  musicProvider.playTrackList(shuffled, initialIndex: 0);
-                                }
-                              },
-                              searching: _isSearching,
-                              onSearch: () {
-                                setState(() {
-                                  _isSearching = !_isSearching;
-                                  if (!_isSearching) {
-                                    _searchQuery = '';
-                                    _searchController.clear();
-                                  }
-                                });
-                              },
-                              onMore: () {
-                                GlassPlaylistOptionsSheet.show(
-                                  context,
-                                  playlistName: widget.albumName,
-                                  playlistImage: _resolvedImageUrl,
-                                  tracks: _tracks,
-                                );
-                              },
-                              accentColor: accentColor,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
 
                 // In-album Search field
                 if (_isSearching)
@@ -701,7 +694,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final track = displayedTracks[index];
-                        final originalTrackNumber = _tracks.indexOf(track) + 1;
+                        final originalTrackNumber = numberOf[track] ?? (index + 1);
 
                         return RepaintBoundary(
                           child: Selector<MusicProvider, ({bool isCurrent, bool isPlaying})>(
@@ -722,7 +715,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                       : Colors.transparent,
                                   child: InkWell(
                                     onTap: () {
-                                      final startIndex = _tracks.indexOf(track);
+                                      final startIndex = (numberOf[track] ?? 1) - 1;
                                       context.read<MusicProvider>().playTrackList(
                                         _tracks,
                                         initialIndex: startIndex >= 0 ? startIndex : 0,
@@ -845,7 +838,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '℗ $yearText ${_resolvedArtist ?? widget.albumName}',
+                          // The year only when the page said it.
+                          _resolvedYear != null
+                              ? '℗ $_resolvedYear ${_resolvedArtist ?? title}'
+                              : '℗ ${_resolvedArtist ?? title}',
                           style: GoogleFonts.plusJakartaSans(
                             color: Colors.white.withValues(alpha: 0.35),
                             fontSize: 12,

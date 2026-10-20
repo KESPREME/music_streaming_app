@@ -57,6 +57,9 @@ class AlbumDetailData {
   final String artistName;
   final String? artistBrowseId;
   final String? year;
+
+  /// "Album", "EP" or "Single" from the header, when it says.
+  final String? kind;
   final int? trackCount;
   final String coverUrl;
   final String? description;
@@ -67,6 +70,7 @@ class AlbumDetailData {
     required this.artistName,
     this.artistBrowseId,
     this.year,
+    this.kind,
     this.trackCount,
     required this.coverUrl,
     this.description,
@@ -97,4 +101,21 @@ class PlaylistDetailData {
     this.tracks = const [],
     this.suggestedTracks = const [],
   });
+}
+
+/// The release kind YouTube Music prints first in an album header's subtitle
+/// ("Album", "EP", "Single"), or null.
+String? releaseKindFrom(String? subtitleFirstRun) {
+  final t = (subtitleFirstRun ?? '').trim().toLowerCase();
+  switch (t) {
+    case 'album':
+      return 'Album';
+    case 'ep':
+      return 'EP';
+    case 'single':
+      return 'Single';
+    case 'audiobook':
+      return 'Audiobook';
+  }
+  return null;
 }

@@ -2007,6 +2007,7 @@ class InnerTubeService {
       String artistName = '';
       String? artistBrowseId;
       String? year;
+      String? kind;
       int? trackCount;
       String coverUrl = '';
 
@@ -2048,6 +2049,10 @@ class InnerTubeService {
             year = match.group(1);
             break;
           }
+        }
+        for (final run in allRuns) {
+          kind = releaseKindFrom(run['text']?.toString());
+          if (kind != null) break;
         }
 
         final thumbs = _collectRenderers(header, 'musicThumbnailRenderer').firstOrNull?['thumbnail']?['thumbnails'] as List?;
@@ -2099,6 +2104,7 @@ class InnerTubeService {
         artistName: artistName,
         artistBrowseId: artistBrowseId,
         year: year,
+        kind: kind,
         trackCount: trackCount,
         coverUrl: coverUrl,
         description: description,

@@ -12,3 +12,4 @@ export 'bitchord_sliver_app_bar.dart';
 export 'bitchord_swipeable_track_row.dart';
 export 'bitchord_tracklist_skeleton.dart';
 export 'bitchord_explicit_badge.dart';
+export 'release_header.dart';
