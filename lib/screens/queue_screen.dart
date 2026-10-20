@@ -42,12 +42,18 @@ class QueueScreen extends StatelessWidget {
   /// moment the flight ends.
   final bool showMiniHeader;
 
+  /// Wraps the header's cover, given that cover and a builder for the same
+  /// image. The player uses it to let this cover dock into the mini player
+  /// when it is closed from the queue.
+  final Widget Function(Widget art, WidgetBuilder image)? headerArtWrapper;
+
   const QueueScreen({
     super.key,
     this.onMinimize,
     this.onTabTap,
     this.isEmbedded = false,
     this.showPlayingNow = true,
+    this.headerArtWrapper,
     this.showMiniHeader = false,
   });
 
@@ -403,7 +409,8 @@ class QueueScreen extends StatelessWidget {
               HapticFeedback.lightImpact();
               onTabTap?.call(1);
             },
-child: ClipRRect(
+child: _wrapHeaderArt(
+              ClipRRect(
                 key: const ValueKey('queueHeaderArt'),
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
@@ -412,6 +419,8 @@ child: ClipRRect(
                   child: _buildAlbumArtImage(track),
                 ),
               ),
+              track,
+            ),
           ),
           const SizedBox(width: 12),
 
@@ -1113,6 +1122,12 @@ child: Column(
         ),
       ),
     );
+  }
+
+  Widget _wrapHeaderArt(Widget art, Track track) {
+    final wrap = headerArtWrapper;
+    if (wrap == null) return art;
+    return wrap(art, (_) => _buildAlbumArtImage(track));
   }
 
   Widget _buildAlbumArtImage(Track track) {

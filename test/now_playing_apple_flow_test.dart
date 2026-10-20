@@ -15,6 +15,7 @@ import 'package:music_streaming_app/screens/lyrics_screen.dart';
 import 'package:music_streaming_app/widgets/lyric_line/lyric_line.dart';
 import 'package:music_streaming_app/screens/queue_screen.dart';
 import 'package:music_streaming_app/widgets/apple_player_icons.dart';
+import 'package:music_streaming_app/widgets/player_dock.dart';
 
 class TestMusicProvider extends MusicProvider {
   TestMusicProvider({this.initialTrack, bool playing = false}) : _playing = playing;
@@ -369,6 +370,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('queueMorphArt')), findsNothing);
     expect(find.byKey(const ValueKey('queueHeaderArt')), findsOneWidget);
+  });
+
+  testWidgets('closing from lyrics or the queue docks the header cover',
+      (tester) async {
+    PlayerDock.instance.debugReset();
+    addTearDown(PlayerDock.instance.debugReset);
+    final provider = TestMusicProvider(initialTrack: testTrack(), playing: true);
+    final theme = GlassTheme.build(AccentColors.peach).copyWith(
+      splashFactory: NoSplash.splashFactory,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MusicProvider>.value(
+        value: provider,
+        child: MaterialApp(
+          theme: theme,
+          home: NowPlayingScreen(track: testTrack(), onMinimize: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // At rest: the full-size hero, soft bottom edge.
+    final hero = PlayerDock.instance.artRect();
+    expect(hero, isNotNull);
+    expect(hero!.width, greaterThan(300));
+    expect(PlayerDock.instance.artSoftEdge, isTrue);
+
+    // Lyrics landed: the 46dp header is the end that docks, hard-edged.
+    await tester.tap(find.bySemanticsLabel('Lyrics tab'));
+    await tester.pumpAndSettle();
+    final lyricHeader = PlayerDock.instance.artRect();
+    expect(lyricHeader, isNotNull);
+    expect(lyricHeader!.size, const Size(46, 46));
+    expect(PlayerDock.instance.artSoftEdge, isFalse);
+    expect(PlayerDock.instance.artCorner, 8);
+
+    // Queue landed: its own header cover takes over.
+    await tester.tap(find.bySemanticsLabel('Queue tab'));
+    await tester.pumpAndSettle();
+    final queueArt = tester.getRect(find.byKey(const ValueKey('queueHeaderArt')));
+    expect(PlayerDock.instance.artRect(), queueArt);
+    expect(PlayerDock.instance.artSoftEdge, isFalse);
+
+    // Back home: the hero again.
+    await tester.tap(find.byKey(const ValueKey('queueHeaderArt')));
+    await tester.pumpAndSettle();
+    expect(PlayerDock.instance.artRect()?.width, greaterThan(300));
+    expect(
+      tester.getRect(find.byKey(const ValueKey('now_playing_album_art'))).width,
+      greaterThan(300),
+      reason: 'lyrics -> queue -> home must not leave the cover in the corner',
+    );
   });
 
   testWidgets('queue to lyrics swaps the middle without replaying the flight',

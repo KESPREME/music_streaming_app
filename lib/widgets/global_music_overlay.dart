@@ -482,9 +482,9 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
   double? _lastCardOffset;
 
   /// This frame of the artwork's trip, or null for the plain slide: reduce
-  /// motion, Material You, no cover on screen (pill hidden), no artwork in the
-  /// player (lyrics or queue open), a player subroute, or the first frame of
-  /// an open before the player has been laid out.
+  /// motion, Material You, no cover on screen (pill hidden), no artwork
+  /// attached in the player, a player subroute, or the first frame of an open
+  /// before the player has been laid out.
   DockFrame? _dockFrameFor(double t, double pageHeight) {
     if (MediaQuery.disableAnimationsOf(context)) return null;
     if (!Provider.of<ThemeProvider>(context, listen: false).isGlassmorphism) return null;
@@ -501,6 +501,7 @@ class _GlobalMusicOverlayState extends State<GlobalMusicOverlay>
       travel: pageHeight,
       miniCorner: _dock.miniCorner,
       openCorner: _dock.artCorner,
+      softEdge: _dock.artSoftEdge,
     );
   }
 

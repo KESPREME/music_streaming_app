@@ -16,8 +16,9 @@
 //     build. Nothing here triggers a rebuild.
 //   * Hiding the two real artworks while the copy flies is a paint-level gate
 //     (markNeedsPaint), so it may be flipped mid-build and costs no layout.
-//   * When an end is missing (pill hidden, lyrics or queue open, reduce
-//     motion) the overlay keeps its plain slide. Nothing is guessed.
+//   * When an end is missing (pill hidden, a player subroute, reduce motion)
+//     the overlay keeps its plain slide. Nothing is guessed. With lyrics or
+//     the queue open, the small header cover is the end that docks.
 
 import 'dart:ui' show lerpDouble;
 
@@ -60,6 +61,7 @@ DockFrame dockFrame({
   required double travel,
   required double miniCorner,
   required double openCorner,
+  bool softEdge = true,
 }) {
   final p = t.clamp(0.0, 1.0);
   final offset = (1 - p) * travel;
@@ -69,7 +71,7 @@ DockFrame dockFrame({
     rect: Rect.lerp(mini, target, p)!,
     corner: lerpDouble(miniCorner, openCorner, p)!,
     playerAlpha: ((p - kDockFadeLead) / (1 - kDockFadeLead)).clamp(0.0, 1.0),
-    edgeFade: p,
+    edgeFade: softEdge ? p : 0.0,
   );
 }
 
@@ -82,6 +84,7 @@ class PlayerDock extends ChangeNotifier {
   double _miniCorner = 8;
   BuildContext? _art;
   double _artCorner = 0;
+  bool _artSoftEdge = true;
   WidgetBuilder? _sleeve;
   bool _docking = false;
 
@@ -103,9 +106,18 @@ class PlayerDock extends ChangeNotifier {
     if (identical(_mini, context)) _mini = null;
   }
 
-  void attachArt(BuildContext context, {required double corner, required WidgetBuilder sleeve}) {
+  /// [softEdge]: the artwork fades out at the bottom (the full-size hero), so
+  /// the flying copy starts with that fade. The small lyric and queue header
+  /// covers have hard edges.
+  void attachArt(
+    BuildContext context, {
+    required double corner,
+    required WidgetBuilder sleeve,
+    bool softEdge = true,
+  }) {
     _art = context;
     _artCorner = corner;
+    _artSoftEdge = softEdge;
     _sleeve = sleeve;
   }
 
@@ -117,6 +129,7 @@ class PlayerDock extends ChangeNotifier {
 
   double get miniCorner => _miniCorner;
   double get artCorner => _artCorner;
+  bool get artSoftEdge => _artSoftEdge;
   WidgetBuilder? get sleeve => _sleeve;
 
   /// The mini player's cover on screen (through every transform above it),
@@ -203,10 +216,12 @@ class DockPlayerArt extends StatefulWidget {
     required this.corner,
     required this.sleeve,
     required this.child,
+    this.softEdge = true,
   });
 
   final bool enabled;
   final double corner;
+  final bool softEdge;
   final WidgetBuilder sleeve;
   final Widget child;
 
@@ -217,7 +232,12 @@ class DockPlayerArt extends StatefulWidget {
 class _DockPlayerArtState extends State<DockPlayerArt> {
   void _sync() {
     if (widget.enabled) {
-      PlayerDock.instance.attachArt(context, corner: widget.corner, sleeve: widget.sleeve);
+      PlayerDock.instance.attachArt(
+        context,
+        corner: widget.corner,
+        sleeve: widget.sleeve,
+        softEdge: widget.softEdge,
+      );
     } else {
       PlayerDock.instance.detachArt(context);
     }

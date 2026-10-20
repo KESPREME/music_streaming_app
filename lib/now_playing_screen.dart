@@ -1038,6 +1038,7 @@ child: Transform.scale(
                               _queueMorphController.value = 0;
                               _queueMorphOpen = false;
                             }
+                            _restHeroAfterQueue();
                             _currentTab = _isLyricsOpen
                                         ? 0
                                         : (musicProvider.animatedCanvasEnabled
@@ -1106,6 +1107,24 @@ child: Transform.scale(
                                     isEmbedded: true,
                                     showPlayingNow: false,
                                     showMiniHeader: true,
+                                    // Closing the player from the queue docks
+                                    // the header cover, once the flight has
+                                    // handed the header over (q == 1).
+                                    headerArtWrapper: widget.onMinimize == null
+                                        ? null
+                                        : (art, image) => AnimatedBuilder(
+                                              animation: _queueMorphController,
+                                              builder: (context, child) =>
+                                                  DockPlayerArt(
+                                                enabled: _queueMorphOpen &&
+                                                    _queueMorphController.value >= 1.0,
+                                                corner: 8.0,
+                                                softEdge: false,
+                                                sleeve: image,
+                                                child: child!,
+                                              ),
+                                              child: art,
+                                            ),
                                   ),
                                 ),
                               ],
@@ -1297,16 +1316,24 @@ child: Transform.scale(
                   width: lerpDouble(totalW, 46.0, t)!,
                   height: lerpDouble(heroH, 46.0, t)!,
                   // The artwork docks into the mini player on close (see
-                  // player_dock.dart) only from its resting place: not while
-                  // it is the lyric or queue header, and not over a canvas
-                  // video (a still would replace the moving picture).
+                  // player_dock.dart) from its resting places: full size, or
+                  // landed as the lyric header (t == 1). Not mid-morph, not
+                  // while the queue holds the header (its own cover docks),
+                  // and not over a canvas video (a still would replace the
+                  // moving picture).
                   child: DockPlayerArt(
-                    enabled: t == 0.0 &&
+                    enabled: widget.onMinimize != null &&
                         !_queueMorphOpen &&
-                        widget.onMinimize != null &&
-                        !musicProvider.animatedCanvasEnabled,
-                    corner: _kHeroStartRadius,
-                    sleeve: (_) => _buildAlbumArtImage(currentTrack),
+                        !musicProvider.animatedCanvasEnabled &&
+                        (t == 0.0 || (t == 1.0 && _isLyricsOpen)),
+                    corner: t == 0.0 ? _kHeroStartRadius : 8.0,
+                    softEdge: t == 0.0,
+                    sleeve: (_) => _buildAlbumArtImage(
+                      currentTrack,
+                      cacheSize: t == 0.0
+                          ? AppImageCache.heroMemCache
+                          : AppImageCache.morphMemCache,
+                    ),
                     child: Listener(
                     onPointerDown: _onArtPointerDown,
                     onPointerMove: _onArtPointerMove,
@@ -2124,10 +2151,22 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
     unawaited(_queueMorphController.reverse().then((_) {
       PerfTrace.summary('queue-morph-close');
       if (!mounted || gen != _queueMorphGen) return;
+      _restHeroAfterQueue();
       if (_pageController.hasClients) _pageController.jumpToPage(0);
       setState(() => _queueMorphOpen = false);
     }));
     _queueCollapse.reset();
+  }
+
+  /// Lyrics -> queue closes the lyrics silently and leaves the artwork landed
+  /// as the header (t = 1) so the queue can take it over. Going home from the
+  /// queue must put it back: the flight just landed on the full-size rect, so
+  /// snapping the hero there is invisible. Before this the album page came
+  /// back with a 46dp cover stuck in the corner.
+  void _restHeroAfterQueue() {
+    if (_isLyricsOpen) return;
+    if (_morphController.value != 0) _morphController.value = 0;
+    if (_panelFadeController.value != 0) _panelFadeController.value = 0;
   }
 
   // Queue shared-element morph, mirroring _buildMainPlayerPage layers 3-4

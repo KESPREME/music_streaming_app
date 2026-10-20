@@ -145,5 +145,67 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       expect(PlayerDock.instance.miniRect(), isNull);
     });
+
+    testWidgets('a header cover docks with a hard edge; the hero keeps its fade', (tester) async {
+      Widget art({required bool hero, required bool queue}) => Directionality(
+            textDirection: TextDirection.ltr,
+            child: Stack(children: [
+              Positioned(
+                left: 20,
+                top: 56,
+                width: 46,
+                height: 46,
+                child: DockPlayerArt(
+                  key: const ValueKey('hero'),
+                  enabled: hero,
+                  corner: 8,
+                  softEdge: false,
+                  sleeve: (_) => const SizedBox(),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                top: 300,
+                width: 46,
+                height: 46,
+                child: DockPlayerArt(
+                  key: const ValueKey('queue'),
+                  enabled: queue,
+                  corner: 8,
+                  softEdge: false,
+                  sleeve: (_) => const SizedBox(),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ]),
+          );
+      // Lyrics open: the landed hero is the docking end.
+      await tester.pumpWidget(art(hero: true, queue: false));
+      expect(PlayerDock.instance.artRect(), const Rect.fromLTWH(20, 56, 46, 46));
+      expect(PlayerDock.instance.artSoftEdge, isFalse);
+      // Queue takes the header over: its cover docks, the hero is let go.
+      await tester.pumpWidget(art(hero: false, queue: true));
+      expect(PlayerDock.instance.artRect(), const Rect.fromLTWH(20, 300, 46, 46));
+      // Mid-flight neither end is attached: the plain slide.
+      await tester.pumpWidget(art(hero: false, queue: false));
+      expect(PlayerDock.instance.artRect(), isNull);
+    });
+  });
+
+  group('edge fade', () {
+    const mini = Rect.fromLTWH(10, 700, 40, 40);
+    const open = Rect.fromLTWH(20, 56, 46, 46);
+    test('a soft-edged hero fades in with progress', () {
+      final f = dockFrame(t: 0.6, mini: mini, open: open, travel: 800, miniCorner: 8, openCorner: 8);
+      expect(f.edgeFade, closeTo(0.6, 1e-9));
+    });
+    test('a hard-edged header cover never fades', () {
+      for (final t in [0.0, 0.3, 1.0]) {
+        final f = dockFrame(
+            t: t, mini: mini, open: open, travel: 800, miniCorner: 8, openCorner: 8, softEdge: false);
+        expect(f.edgeFade, 0);
+      }
+    });
   });
 }
