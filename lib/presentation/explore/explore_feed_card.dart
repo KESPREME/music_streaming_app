@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../services/canvas_resolution_service.dart';
+import '../../services/innertube/innertube_service.dart';
 import '../../services/explore/explore_engine.dart';
 import '../../services/explore/explore_palette.dart';
 import '../../utils/app_image_cache.dart';
@@ -30,6 +31,7 @@ class ExploreFeedCard extends StatefulWidget {
     required this.isLiked,
     required this.embedded,
     this.isActive = true,
+    this.isSettled,
     required this.onTogglePlay,
     required this.onOpenPlayer,
     required this.onOpenArtist,
@@ -44,6 +46,10 @@ class ExploreFeedCard extends StatefulWidget {
   final bool isLiked;
   final bool embedded;
   final bool isActive;
+
+  /// The feed has come to rest on this card. Only that card resolves and
+  /// decodes a canvas; null falls back to [isCurrentTrack].
+  final bool? isSettled;
   final VoidCallback onTogglePlay;
   final VoidCallback onOpenPlayer;
   final VoidCallback onOpenArtist;
@@ -68,6 +74,11 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   bool get _isTesting => TestEnvironment.isTesting;
 
   bool get _isVisuallyActive => widget.isActive && widget.isCurrentTrack;
+
+  bool get _canvasActive => _wasCanvasActive(widget);
+
+  static bool _wasCanvasActive(ExploreFeedCard w) =>
+      w.isActive && (w.isSettled ?? w.isCurrentTrack);
 
   bool get _shouldAnimateEq =>
       !_isTesting && _isVisuallyActive && widget.isPlaying && !_canvasReady && !_covered;
@@ -98,7 +109,7 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
   void _checkCanvas() {
     _canvasDebounceTimer?.cancel();
     _canvasDebounceTimer = null;
-    if (_isTesting || !_isVisuallyActive) return;
+    if (_isTesting || !_canvasActive) return;
     final track = widget.item.track;
     final cached = CanvasResolutionService.instance.cachedCanvas(track.id);
     if (cached != null && cached.isNotEmpty) {
@@ -114,13 +125,13 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
     // Dwell debounce: only resolve canvas if user dwells on this card for >= 650ms.
     // This stops rapid swipes from firing multiple video searches while loading promptly.
     _canvasDebounceTimer = Timer(const Duration(milliseconds: 650), () {
-      if (!mounted || !_isVisuallyActive || widget.item.track.id != track.id) return;
+      if (!mounted || !_canvasActive || widget.item.track.id != track.id) return;
       CanvasResolutionService.instance.resolveCanvas(track).then((url) {
         if (mounted &&
             url != null &&
             url.isNotEmpty &&
             widget.item.track.id == track.id &&
-            _isVisuallyActive) {
+            _canvasActive) {
           setState(() {
             _canvasUrl = url;
             _canvasReady = false;
@@ -148,9 +159,9 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
       _canvasUrl = null;
       _canvasReady = false;
       _checkCanvas();
-    } else if (_isVisuallyActive && (!oldWidget.isCurrentTrack || !oldWidget.isActive)) {
+    } else if (_canvasActive && !_wasCanvasActive(oldWidget)) {
       _checkCanvas();
-    } else if (!_isVisuallyActive) {
+    } else if (!_canvasActive) {
       _canvasDebounceTimer?.cancel();
       if (_canvasUrl != null) {
         setState(() {
@@ -178,7 +189,11 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
     // The decoder is released the same way a scrolled-off card's is.
     final covered = CoveredScope.of(context);
     final activePlaying = _isVisuallyActive && widget.isPlaying && !covered;
-    final hasCanvas = _isVisuallyActive && (_canvasUrl != null && _canvasUrl!.isNotEmpty) && !_isTesting;
+    final hasCanvas = _canvasActive && (_canvasUrl != null && _canvasUrl!.isNotEmpty) && !_isTesting;
+    // The video surface is offstage while paused, so the cover stays until
+    // the loop is actually on screen; a paused but ready canvas used to leave
+    // the card with neither.
+    final showingCanvas = _canvasReady && activePlaying;
 
     return Container(
       key: ValueKey('explore_row_${widget.item.id}'),
@@ -207,12 +222,15 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
                   }
                 },
                 onError: () {
-                  if (mounted && _canvasReady) {
-                    setState(() => _canvasReady = false);
-                    if (_shouldAnimateEq && !_eqAnim.isAnimating) {
-                      _eqAnim.repeat();
-                    }
-                  }
+                  if (!mounted) return;
+                  // A dead URL (expired stream, corrupt clip) is forgotten so
+                  // a later visit resolves a fresh one; the cover comes back.
+                  CanvasResolutionService.instance.evict(track.id);
+                  setState(() {
+                    _canvasUrl = null;
+                    _canvasReady = false;
+                  });
+                  _syncEq();
                 },
               ),
             ),
@@ -231,11 +249,11 @@ class _ExploreFeedCardState extends State<ExploreFeedCard>
           // 4. Center Column: Cover Art + Animated Soundwave Equalizer (smoothly fades out when canvas is active)
           Center(
             child: AnimatedOpacity(
-              opacity: _canvasReady ? 0.0 : 1.0,
+              opacity: showingCanvas ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeInOut,
               child: IgnorePointer(
-                ignoring: _canvasReady,
+                ignoring: showingCanvas,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Column(
@@ -600,13 +618,14 @@ class _CanvasVideoPlayerState extends State<_CanvasVideoPlayer> {
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
         );
       } else {
+        // googlevideo rejects a stream whose UA does not match the client
+        // that signed it (the old fixed iOS UA 403'd WEB/VR-signed URLs).
+        // Apple/Tidal CDNs need no particular UA.
+        final ua = InnerTubeService.userAgentForStreamUrl(raw);
         c = VideoPlayerController.networkUrl(
           uri!,
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-          httpHeaders: const {
-            'User-Agent':
-                'com.google.ios.youtube/20.51.39 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)',
-          },
+          httpHeaders: ua == null ? const {} : {'User-Agent': ua},
         );
       }
       _controller = c;

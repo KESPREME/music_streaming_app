@@ -719,6 +719,7 @@ class _ExploreScreenState extends State<ExploreScreen>
               isLiked: isItemLiked,
               embedded: widget.embedded,
               isActive: isVisuallyActive,
+              isSettled: controller.session?.active?.id == item.id,
               onTogglePlay: () {
                 final session = controller.session;
                 if (session != null && session.currentIndex != index) {

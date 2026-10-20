@@ -34,18 +34,66 @@ class CanvasResolutionService {
   /// Check if canvas is already resolved in memory.
   String? cachedCanvas(String trackId) => _cache[trackId];
 
-  Future<void> _concurrencyLock = Future.value();
+  /// When a lookup failed for a transient reason (timeout, network,
+  /// throttling) the track is not remembered as "has no canvas"; it is
+  /// retried once this window has passed.
+  static const Duration transientRetryAfter = Duration(minutes: 3);
+  final Map<String, DateTime> _failedAt = {};
+
+  /// Newest request first, two at a time. The Explore feed asks for the card
+  /// the user just settled on; with a FIFO queue that card waited behind
+  /// every card scrolled past.
+  final LatestFirstGate _gate = LatestFirstGate(maxConcurrent: 2, maxWaiting: 4);
+
+  @visibleForTesting
+  Future<({String? url, bool transient})> Function(Track track)? debugResolver;
+  @visibleForTesting
+  bool debugAllowInTests = false;
+  @visibleForTesting
+  DateTime Function() debugNow = DateTime.now;
+
+  @visibleForTesting
+  void debugReset() {
+    _cache.clear();
+    _inFlight.clear();
+    _failedAt.clear();
+    debugResolver = null;
+    debugAllowInTests = false;
+    debugNow = DateTime.now;
+  }
+
+  /// Forget [trackId]'s canvas after the player failed to open it, so the
+  /// next visit resolves again instead of replaying a dead URL. A bad local
+  /// clip is deleted. The retry window keeps a broken source from looping.
+  void evict(String trackId) {
+    final previous = _cache.remove(trackId);
+    _failedAt[trackId] = debugNow();
+    if (previous != null && !previous.startsWith('http')) {
+      try {
+        final f = File(previous);
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
+  }
 
   /// Resolves a video stream URL or local cached MP4 for [track].
   Future<String?> resolveCanvas(Track track) async {
     final trackId = track.id;
     if (trackId.isEmpty) return null;
-    final isTesting =
-        WidgetsBinding.instance.runtimeType.toString().contains('Test');
-    if (isTesting) return null;
+    if (!debugAllowInTests) {
+      final isTesting =
+          WidgetsBinding.instance.runtimeType.toString().contains('Test');
+      if (isTesting) return null;
+    }
 
     if (_cache.containsKey(trackId)) {
       return _cache[trackId];
+    }
+
+    final failed = _failedAt[trackId];
+    if (failed != null) {
+      if (debugNow().difference(failed) < transientRetryAfter) return null;
+      _failedAt.remove(trackId);
     }
 
     if (_inFlight.containsKey(trackId)) {
@@ -61,18 +109,36 @@ class CanvasResolutionService {
   }
 
   Future<String?> _queueResolve(Track track) async {
-    final prev = _concurrencyLock;
-    final completer = Completer<void>();
-    _concurrencyLock = completer.future;
+    final admitted = await _gate.acquire();
+    // Pushed out of the queue by newer requests; not a verdict on the track.
+    if (!admitted) return null;
     try {
-      await prev.timeout(const Duration(seconds: 4), onTimeout: () {});
-      return await _resolveUncached(track);
+      final result = await (debugResolver ?? _resolveUncached)(track);
+      if (result.url != null) {
+        _cache[track.id] = result.url;
+      } else if (result.transient) {
+        _cache.remove(track.id);
+        _failedAt[track.id] = debugNow();
+      } else {
+        _cache[track.id] = null;
+      }
+      return result.url;
+    } catch (e) {
+      _cache.remove(track.id);
+      _failedAt[track.id] = debugNow();
+      return null;
     } finally {
-      completer.complete();
+      _gate.release();
     }
   }
 
-  Future<String?> _resolveUncached(Track track) async {
+  Future<({String? url, bool transient})> _resolveUncached(Track track) async {
+    var transient = false;
+    final url = await _resolveSources(track, () => transient = true);
+    return (url: url, transient: transient);
+  }
+
+  Future<String?> _resolveSources(Track track, void Function() markTransient) async {
     // 1. Direct video URL in previewUrl (local file, MP4, HLS)
     final preview = track.previewUrl.trim();
     if (preview.isNotEmpty) {
@@ -110,6 +176,7 @@ class CanvasResolutionService {
           return localPath;
         }
       } catch (e) {
+        markTransient();
         if (kDebugMode) debugPrint('CanvasResolutionService: Apple Music check failed: $e');
       }
     }
@@ -127,6 +194,7 @@ class CanvasResolutionService {
           return localPath;
         }
       } catch (e) {
+        markTransient();
         if (kDebugMode) debugPrint('CanvasResolutionService: Tidal check failed: $e');
       }
     }
@@ -144,6 +212,7 @@ class CanvasResolutionService {
           return localPath;
         }
       } catch (e) {
+        markTransient();
         if (kDebugMode) debugPrint('CanvasResolutionService: Community check failed: $e');
       }
     }
@@ -201,11 +270,11 @@ class CanvasResolutionService {
           }
         }
       } catch (e) {
+        markTransient();
         debugPrint('CanvasResolutionService: video search failed for ${track.trackName}: $e');
       }
     }
 
-    _cache[track.id] = null;
     return null;
   }
 
@@ -725,7 +794,10 @@ class CanvasResolutionService {
         Uri.parse('https://music.apple.com/us/browse'),
         headers: {'User-Agent': _canvasUa},
       ).timeout(const Duration(seconds: 4));
-      if (browseRes.statusCode != 200) return null;
+      if (browseRes.statusCode != 200) {
+        _appleRetryAfter = now.add(const Duration(minutes: 15));
+        return null;
+      }
 
       final scriptMatches = RegExp(r'/assets/index(?:-legacy)?[~-][A-Za-z0-9_-]+\.js')
           .allMatches(browseRes.body)
@@ -781,6 +853,9 @@ class CanvasResolutionService {
           return bestToken;
         }
       }
+      // No usable token in any bundle: without this every track re-downloaded
+      // Apple's page and scripts before reaching the other sources.
+      _appleRetryAfter = now.add(const Duration(minutes: 15));
     } catch (_) {
       _appleRetryAfter = now.add(const Duration(minutes: 15));
     }
@@ -1023,5 +1098,46 @@ class CanvasResolutionService {
 
   static String cleanSearchQuery(String raw) {
     return raw.replaceAll(RegExp(r'[^\w\s]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+}
+
+/// Concurrency gate that admits the newest waiter first.
+///
+/// [acquire] resolves `true` once a slot is held (the caller must then call
+/// [release]) or `false` when the request was pushed out of a full queue by
+/// newer ones; a `false` caller holds nothing and must not release.
+class LatestFirstGate {
+  LatestFirstGate({required this.maxConcurrent, required this.maxWaiting})
+      : assert(maxConcurrent > 0),
+        assert(maxWaiting >= 0);
+
+  final int maxConcurrent;
+  final int maxWaiting;
+  int _active = 0;
+  final List<Completer<bool>> _waiting = [];
+
+  int get active => _active;
+  int get waiting => _waiting.length;
+
+  Future<bool> acquire() {
+    if (_active < maxConcurrent) {
+      _active++;
+      return Future.value(true);
+    }
+    final c = Completer<bool>();
+    _waiting.add(c);
+    while (_waiting.length > maxWaiting) {
+      _waiting.removeAt(0).complete(false);
+    }
+    return c.future;
+  }
+
+  void release() {
+    if (_waiting.isNotEmpty) {
+      // The slot passes straight to the newest waiter.
+      _waiting.removeLast().complete(true);
+    } else if (_active > 0) {
+      _active--;
+    }
   }
 }
