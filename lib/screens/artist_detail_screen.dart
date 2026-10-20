@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
 import '../utils/app_image_cache.dart';
@@ -19,6 +18,7 @@ import '../services/innertube/innertube_service.dart';
 import '../utils/artwork_palette_resolver.dart';
 import '../utils/image_quality_utils.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
+import '../widgets/fallback_network_image.dart';
 
 /// Aspect ratio for artist hero photography matching BitChord ARTIST_PHOTO_RATIO in DetailScreen.kt
 const double _kArtistPhotoRatio = 0.95;
@@ -30,12 +30,19 @@ class ArtistDetailScreen extends StatefulWidget {
   final String? artistImage;
   final bool searchByName;
 
+  /// A picture to fall back on when the page finds no photo of the artist - the
+  /// cover of the song the listener came from. Artists reached by NAME (Now
+  /// Playing, Explore) arrive with no image, and the lookup can fail or return
+  /// nothing; a blank hero is worse than the song's own cover.
+  final String? fallbackImage;
+
   const ArtistDetailScreen({
     super.key,
     required this.artistId,
     required this.artistName,
     this.artistImage,
     this.searchByName = false,
+    this.fallbackImage,
   });
 
   @override
@@ -150,9 +157,12 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           );
           artistIdToFetch = exactMatch.id;
           if (_resolvedArtistImage == null || _resolvedArtistImage!.isEmpty) {
-            _resolvedArtistImage = exactMatch.albumArtUrl;
-            if (_resolvedArtistImage != null && _resolvedArtistImage!.isNotEmpty) {
-              _resolvePalette(_resolvedArtistImage!);
+            final found = exactMatch.albumArtUrl;
+            if (found.isNotEmpty && mounted) {
+              // Inside setState: assigned outside it, the photo sat unpainted until
+              // some unrelated rebuild.
+              setState(() => _resolvedArtistImage = found);
+              _resolvePalette(found);
             }
           }
         } else {
@@ -266,7 +276,21 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           _isLoading = false;
         });
       }
+    } finally {
+      _adoptFallbackImage();
     }
+  }
+
+  /// When the lookup ended (found, empty, timed out or failed) with no photo of the
+  /// artist, show the song's cover rather than a blank header, and tint the page
+  /// from it.
+  void _adoptFallbackImage() {
+    final fallback = widget.fallbackImage;
+    if (!mounted || fallback == null || fallback.isEmpty) return;
+    final have = _resolvedArtistImage;
+    if (have != null && have.isNotEmpty) return;
+    setState(() => _resolvedArtistImage = fallback);
+    _resolvePalette(fallback);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -372,15 +396,19 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   Widget _photo(Color wash) {
     final url = _resolvedArtistImage ?? '';
     if (url.isEmpty) return ColoredBox(color: wash);
-    return CachedNetworkImage(
-      imageUrl: ImageQualityUtils.getHighQualityUrl(url),
+    // The upgraded link, then the one the source gave, then - only if the page
+    // has nothing else - the song's cover, then the plain colour.
+    final fallback = widget.fallbackImage ?? '';
+    return FallbackNetworkImage(
+      urls: [
+        ...ImageQualityUtils.candidates(url),
+        if (fallback.isNotEmpty && fallback != url) ...ImageQualityUtils.candidates(fallback),
+      ],
       fit: BoxFit.cover,
       // Faces sit in the upper third of a portrait: crop the foot, not the head.
       alignment: const Alignment(0, -0.6),
       memCacheWidth: AppImageCache.heroMemCache,
-      fadeInDuration: const Duration(milliseconds: 180),
-      placeholder: (_, __) => ColoredBox(color: wash),
-      errorWidget: (_, __, ___) => ColoredBox(color: wash),
+      placeholder: ColoredBox(color: wash),
     );
   }
 

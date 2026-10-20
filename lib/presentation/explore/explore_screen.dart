@@ -617,6 +617,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                           context,
                           provider,
                           active.track.artistName,
+                          fallbackImage: active.track.albumArtUrl,
                         );
                       }
                     },
@@ -731,7 +732,8 @@ class _ExploreScreenState extends State<ExploreScreen>
               },
               onOpenPlayer: () => provider.setPlayerExpanded(true),
               onOpenArtist: () => ArtistPickerSheet.showIfNeeded(
-                  context, provider, item.track.artistName),
+                  context, provider, item.track.artistName,
+                  fallbackImage: item.track.albumArtUrl),
               onToggleLike: () => provider.toggleLike(item.track),
               onMore: () => _openMore(context, provider, controller, item.track),
             );

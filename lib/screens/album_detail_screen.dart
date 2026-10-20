@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../widgets/jelly_icon_button.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lgw;
@@ -15,10 +14,10 @@ import '../services/innertube/innertube_service.dart';
 import '../models/bitchord_page_models.dart';
 import '../utils/app_image_cache.dart';
 import '../utils/artwork_palette_resolver.dart';
-import '../utils/image_quality_utils.dart';
 import '../widgets/covered_gate.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
+import '../widgets/fallback_network_image.dart';
 import '../widgets/themed_options_sheet.dart';
 import '../widgets/themed_artist_detail_screen.dart';
 import '../widgets/artist_picker_sheet.dart';
@@ -524,14 +523,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   Widget _cover(Color wash) {
     final url = _resolvedImageUrl ?? widget.albumImage ?? '';
     if (url.isEmpty) return ColoredBox(color: wash);
-    return CachedNetworkImage(
-      imageUrl: ImageQualityUtils.getHighQualityUrl(url),
+    return FallbackNetworkImage.forUrl(
+      url,
       fit: BoxFit.cover,
       alignment: Alignment.topCenter,
       memCacheWidth: AppImageCache.heroMemCache,
-      fadeInDuration: const Duration(milliseconds: 180),
-      placeholder: (_, __) => ColoredBox(color: wash),
-      errorWidget: (_, __, ___) => ColoredBox(color: wash),
+      placeholder: ColoredBox(color: wash),
     );
   }
 

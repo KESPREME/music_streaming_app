@@ -63,13 +63,15 @@ class ArtistPickerSheet extends StatelessWidget {
   static Future<void> showIfNeeded(
     BuildContext context,
     MusicProvider provider,
-    String artistString,
-  ) async {
+    String artistString, {
+    String? fallbackImage,
+  }) async {
     final artists = parseArtists(artistString);
 
     if (artists.length <= 1) {
       // Single artist - navigate directly
-      await _navigateToArtist(context, provider, artistString.trim());
+      await _navigateToArtist(context, provider, artistString.trim(),
+          fallbackImage: fallbackImage);
     } else {
       // Multiple artists - show picker
       HapticFeedback.selectionClick();
@@ -96,7 +98,8 @@ class ArtistPickerSheet extends StatelessWidget {
 
       // Navigate using the PARENT context
       if (selectedArtist != null && context.mounted) {
-        await _navigateToArtist(context, provider, selectedArtist);
+        await _navigateToArtist(context, provider, selectedArtist,
+            fallbackImage: fallbackImage);
       }
     }
   }
@@ -104,8 +107,9 @@ class ArtistPickerSheet extends StatelessWidget {
   static Future<void> _navigateToArtist(
     BuildContext context,
     MusicProvider provider,
-    String artistName,
-  ) async {
+    String artistName, {
+    String? fallbackImage,
+  }) async {
     provider.setHideMiniPlayer(false);
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
@@ -118,6 +122,7 @@ class ArtistPickerSheet extends StatelessWidget {
           artistId: 'artist_$artistName',
           artistName: artistName,
           searchByName: true,
+          fallbackImage: fallbackImage,
         ),
       ),
     );

@@ -413,6 +413,7 @@ class GlassOptionsSheet extends StatelessWidget {
                                   targetCtx,
                                   provider,
                                   track.artistName,
+                                  fallbackImage: track.albumArtUrl,
                                 );
                               } else {
                                 Navigator.pop(context);
@@ -420,6 +421,7 @@ class GlassOptionsSheet extends StatelessWidget {
                                   targetCtx,
                                   provider,
                                   track.artistName,
+                                  fallbackImage: track.albumArtUrl,
                                 );
                               }
                             },
@@ -698,8 +700,9 @@ class GlassOptionsSheet extends StatelessWidget {
   void _navigateToArtist(
     BuildContext context,
     MusicProvider provider,
-    String artistName,
-  ) {
+    String artistName, {
+    String? fallbackImage,
+  }) {
     provider.setHideMiniPlayer(false);
     provider.setPlayerExpanded(false);
     provider.playerNavigatorKey.currentState?.popUntil((r) => r.isFirst);
@@ -712,6 +715,7 @@ class GlassOptionsSheet extends StatelessWidget {
           artistId: 'artist_$artistName',
           artistName: artistName,
           searchByName: true,
+          fallbackImage: fallbackImage,
         ),
       ),
     );

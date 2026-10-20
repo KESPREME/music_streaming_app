@@ -453,10 +453,12 @@ String exploreBackdropUrl(String url) {
   if (url.contains('googleusercontent.com') || url.contains('ggpht.com')) {
     return url.replaceAll(RegExp(r'=w\d+-h\d+.*'), '=w300-h300-l80-rj');
   }
-  if (url.contains('i.ytimg.com')) {
-    if (url.contains('maxresdefault.jpg') || url.contains('hqdefault.jpg') || url.contains('default.jpg')) {
-      return url.replaceAll(RegExp(r'(maxresdefault|hqdefault|default)\.jpg'), 'mqdefault.jpg');
-    }
+  if (url.contains('i.ytimg.com') && !url.contains('?')) {
+    // Anchored on the slash: the old pattern matched the default.jpg INSIDE
+    // mqdefault.jpg and sddefault.jpg, producing mqmqdefault.jpg - a 404.
+    // A signed link (?sqp=...) is left alone for the same reason it is in
+    // ImageQualityUtils.
+    return url.replaceAll(RegExp(r'/(maxresdefault|sddefault|hqdefault|default)\.jpg'), '/mqdefault.jpg');
   }
   return url;
 }

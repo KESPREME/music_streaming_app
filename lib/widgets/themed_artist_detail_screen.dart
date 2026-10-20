@@ -10,11 +10,16 @@ class ThemedArtistDetailScreen extends StatelessWidget {
   final String? artistImage;
   final bool searchByName;
 
+  /// The cover of the song the listener came from; the glass artist page falls
+  /// back to it when it finds no photo of the artist.
+  final String? fallbackImage;
+
   const ThemedArtistDetailScreen({
     required this.artistId,
     required this.artistName,
     this.artistImage,
     this.searchByName = false,
+    this.fallbackImage,
     super.key,
   });
 
@@ -33,6 +38,7 @@ class ThemedArtistDetailScreen extends StatelessWidget {
             artistName: artistName,
             artistImage: artistImage,
             searchByName: searchByName,
+            fallbackImage: fallbackImage,
           );
   }
 }

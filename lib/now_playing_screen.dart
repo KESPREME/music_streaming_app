@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:palette_generator/palette_generator.dart';
 
@@ -42,6 +41,7 @@ import '../screens/lyrics_screen.dart';
 import '../screens/queue_screen.dart';
 import '../utils/color_utils.dart';
 import '../utils/image_quality_utils.dart';
+import 'widgets/fallback_network_image.dart';
 
 /// Full-screen Now Playing experience matching Apple Music / Muzo liquid glass UI/UX
 /// and BitChord full-bleed hero artwork architecture.
@@ -1428,6 +1428,9 @@ child: Transform.scale(
                             context,
                             musicProvider,
                             currentTrack.artistName,
+                            // The song's own cover, for an artist page that finds no
+                            // photo of the artist.
+                            fallbackImage: currentTrack.albumArtUrl,
                           );
                         }
                       }
@@ -2492,12 +2495,15 @@ if (_pageController.hasClients) _pageController.jumpToPage(1);
         return Image.file(f, fit: fit, cacheWidth: size, gaplessPlayback: true);
       }
     }
-    return CachedNetworkImage(
-      imageUrl: art,
+    // The upgraded link, then the one the source gave, then the placeholder. Width
+    // only: with a height as well a 16:9 thumbnail is squashed to a square before
+    // the crop.
+    return FallbackNetworkImage.forUrl(
+      track.albumArtUrl,
       fit: fit,
       memCacheWidth: size,
-      memCacheHeight: size,
-      errorWidget: (_, __, ___) => _buildArtPlaceholder(),
+      fadeInDuration: const Duration(milliseconds: 120),
+      placeholder: _buildArtPlaceholder(),
     );
   }
 
