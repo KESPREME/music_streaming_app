@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../theme/app_font.dart';
@@ -8,6 +7,7 @@ import '../models/track.dart';
 import '../providers/music_provider.dart';
 import '../utils/app_image_cache.dart';
 import '../utils/artwork_palette_resolver.dart';
+import '../widgets/jelly_icon_button.dart';
 import '../widgets/animated_equalizer_icon.dart';
 import '../widgets/bitchord_detail/bitchord_detail.dart';
 import '../widgets/themed_options_sheet.dart';
@@ -15,7 +15,6 @@ import '../widgets/glass_options_sheet.dart';
 import 'album_detail_screen.dart';
 
 const double _kPlaylistArtRatio = 0.92;
-const double _kHeaderDrop = 44.0;
 
 /// BitChord 1:1 Parity Playlist Detail Screen (Screenshot 3)
 class PlaylistDetailScreen extends StatefulWidget {
@@ -218,6 +217,387 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     return '${_tracks.length} songs, $hrs hr $remMins min';
   }
 
+  int _totalSeconds() {
+    var total = 0;
+    for (final t in _tracks) {
+      final ms = t.durationMs;
+      if (ms != null && ms > 0) total += (ms / 1000).round();
+    }
+    return total;
+  }
+
+  void _onDownloadTap(ReleaseDownloadState state) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    switch (state) {
+      case ReleaseDownloadState.downloading:
+        messenger?.showSnackBar(const SnackBar(content: Text('Downloading this playlist.')));
+        return;
+      case ReleaseDownloadState.done:
+        messenger?.showSnackBar(const SnackBar(content: Text('Every song is downloaded')));
+        return;
+      case ReleaseDownloadState.none:
+      case ReleaseDownloadState.partial:
+        final mp = context.read<MusicProvider>();
+        final missing = _tracks
+            .where((t) => t.source != 'local' && !mp.isTrackDownloadedSync(t.id))
+            .toList();
+        if (missing.isEmpty) return;
+        mp.downloadTracks(missing);
+        messenger?.showSnackBar(SnackBar(
+          content: Text('Downloading ${missing.length} ${missing.length == 1 ? 'song' : 'songs'}'),
+        ));
+    }
+  }
+
+  void _openOptions() {
+    GlassPlaylistOptionsSheet.show(
+      context,
+      playlistName: widget.playlistName,
+      playlistImage: _resolvedImageUrl,
+      tracks: _tracks,
+    );
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchQuery = '';
+        _searchController.clear();
+      }
+    });
+  }
+
+  void _playFrom(List<Track> order, int index) {
+    if (order.isEmpty) return;
+    context.read<MusicProvider>().playTrackList(order, initialIndex: index.clamp(0, order.length - 1));
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  /// The playlist's picture: the 2x2 collage when the page gave four covers,
+  /// else its single cover. Full bleed, like the album page.
+  Widget _cover(Color wash) {
+    final url = _resolvedImageUrl ?? widget.playlistImage ?? '';
+    if (url.isEmpty && (_collageThumbnails == null || _collageThumbnails!.length < 4)) {
+      return ColoredBox(color: wash);
+    }
+    return CollageArtwork(
+      collageUrls: _collageThumbnails,
+      fallbackUrl: url,
+      fit: BoxFit.cover,
+    );
+  }
+
+  /// Title, curator, one meta line and the action row, over the fade.
+  Widget _titleBlock({
+    required String subtitleLine,
+    required String metaLine,
+    required ArtworkPalette pal,
+  }) {
+    final accent = pal.accent;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Text(
+              widget.playlistName,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppFont.style(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.7,
+                height: 1.1,
+                shadows: const [Shadow(color: Color(0x66000000), blurRadius: 14)],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 6, 28, 2),
+            child: Text(
+              subtitleLine,
+              key: const ValueKey('playlist_curator'),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppFont.style(
+                color: Color.lerp(accent, Colors.white, 0.35),
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+          if (metaLine.isNotEmpty && !_isLoading)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(28, 6, 28, 0),
+              child: Text(
+                metaLine,
+                key: const ValueKey('playlist_meta'),
+                textAlign: TextAlign.center,
+                style: AppFont.style(
+                  color: Colors.white.withValues(alpha: 0.66),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          const SizedBox(height: 14),
+          DetailActionRow(
+            accent: accent,
+            onPlay: () => _playFrom(_tracks, 0),
+            leading: DetailGlassCircle(
+              icon: Icons.shuffle_rounded,
+              label: 'Shuffle',
+              size: DetailGlass.actionSize,
+              accent: accent,
+              onTap: () {
+                if (_tracks.isEmpty) return;
+                _playFrom(List<Track>.from(_tracks)..shuffle(), 0);
+              },
+            ),
+            trailing: Selector<MusicProvider, ReleaseDownloadState>(
+              selector: (_, mp) => releaseDownloadStateFor(mp, _tracks),
+              builder: (context, state, _) {
+                final busy = state == ReleaseDownloadState.downloading;
+                final done = state == ReleaseDownloadState.done;
+                return DetailGlassCircle(
+                  label: busy ? 'Downloading' : (done ? 'Downloaded' : 'Download'),
+                  size: DetailGlass.actionSize,
+                  accent: accent,
+                  icon: done ? Icons.download_done_rounded : Icons.download_rounded,
+                  iconColor: done ? accent : Colors.white,
+                  onTap: () => _onDownloadTap(state),
+                  child: busy
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.2, color: accent),
+                        )
+                      : null,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _trackRow(Track track, ArtworkPalette pal) {
+    final accentColor = pal.accent;
+    return RepaintBoundary(
+      child: Selector<MusicProvider, ({bool isCurrent, bool isPlaying})>(
+        selector: (_, mp) => (
+          isCurrent: track.isSameTrackAs(mp.currentTrack),
+          isPlaying: mp.isPlaying,
+        ),
+        builder: (context, playbackState, _) {
+          final isPlayingThis = playbackState.isCurrent;
+          final isPlaying = playbackState.isPlaying;
+
+          return BitchordSwipeableTrackRow(
+            track: track,
+            palette: pal,
+            child: Material(
+              color: isPlayingThis ? accentColor.withValues(alpha: 0.12) : Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  final startIndex = _tracks.indexOf(track);
+                  _playFrom(_tracks, startIndex >= 0 ? startIndex : 0);
+                },
+                splashColor: Colors.white.withValues(alpha: 0.08),
+                highlightColor: Colors.white.withValues(alpha: 0.04),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                  child: Row(
+                    children: [
+                      // 48x48 squircle artwork thumbnail
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          color: Colors.white.withValues(alpha: 0.08),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              CachedNetworkImage(
+                                imageUrl: track.albumArtUrl,
+                                memCacheWidth: AppImageCache.thumbnailMemCache,
+                                memCacheHeight: AppImageCache.thumbnailMemCache,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => const Icon(
+                                  Icons.music_note_rounded,
+                                  color: Colors.white38,
+                                ),
+                              ),
+                              if (isPlayingThis)
+                                Container(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  child: Center(
+                                    child: isPlaying
+                                        ? AnimatedEqualizerIcon(
+                                            isPlaying: true,
+                                            color: accentColor,
+                                            size: 20,
+                                          )
+                                        : Icon(
+                                            Icons.play_arrow_rounded,
+                                            color: accentColor,
+                                            size: 22,
+                                          ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+
+                      // Track title & artist
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                if (track.isExplicit) ...[
+                                  const BitchordExplicitBadge(),
+                                  const SizedBox(width: 6),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    track.trackName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppFont.style(
+                                      color: isPlayingThis ? accentColor : Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              track.artistName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppFont.style(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      if (track.durationText.isNotEmpty)
+                        Text(
+                          track.durationText,
+                          style: AppFont.style(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+
+                      JellyIconButton(
+                        tooltip: 'More options for ${track.trackName}',
+                        icon: Icon(
+                          Icons.more_vert_rounded,
+                          color: Colors.white.withValues(alpha: 0.5),
+                          size: 20,
+                        ),
+                        onPressed: () => ThemedOptionsSheet.show(context, track: track),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _suggestedRow(Track song, ArtworkPalette pal, MusicProvider musicProvider) {
+    return BitchordSwipeableTrackRow(
+      track: song,
+      palette: pal,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: song.albumArtUrl,
+                memCacheWidth: AppImageCache.thumbnailMemCache,
+                memCacheHeight: AppImageCache.thumbnailMemCache,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => const Icon(Icons.music_note_rounded),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    song.trackName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppFont.style(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    song.artistName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppFont.style(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            JellyIconButton(
+              tooltip: 'Add ${song.trackName} to this playlist',
+              icon: Icon(
+                Icons.add_rounded,
+                color: pal.accent,
+                size: 24,
+              ),
+              onPressed: () {
+                musicProvider.addTrackToPlaylist(
+                  widget.playlistName,
+                  song,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // If album, delegate cleanly to AlbumDetailScreen
@@ -235,14 +615,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
 
     final musicProvider = Provider.of<MusicProvider>(context, listen: false);
-    final artPalette = _artworkPalette ?? ArtworkPalette.defaultDark;
-    final darkBg = artPalette.background;
-    final washColor = artPalette.wash;
-    final accentColor = artPalette.accent;
-    final elevatedColor = artPalette.elevated;
-
-    final screenWidth = MediaQuery.of(context).size.width;
-    final artHeight = screenWidth / _kPlaylistArtRatio;
+    final pal = _artworkPalette ?? ArtworkPalette.defaultDark;
+    final media = MediaQuery.of(context);
+    // FULL BLEED, like the album page: the cover is the page's header, edge to
+    // edge, and dissolves into the page colour (see ImmersiveHeader).
+    final heroH = (media.size.width / _kPlaylistArtRatio).clamp(media.padding.top + 56 + 262, 560.0);
     final displayedTracks = _getFilteredTracks();
 
     // Curator & views subtitle (e.g. "Tems, 78K views" or "YouTube Music")
@@ -250,155 +627,83 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final subtitleLine = _resolvedViews != null && _resolvedViews!.isNotEmpty
         ? '$curatorText, $_resolvedViews'
         : curatorText;
-    final metadataLine = 'PLAYLIST • ${_tracks.length} TRACKS';
+    final metaLine = releaseMetaLine(
+      kind: 'Playlist',
+      trackCount: _tracks.length,
+      totalSeconds: _totalSeconds(),
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // 1. Layer 1: PageBackground with ArtworkWash
           Positioned.fill(
             child: RepaintBoundary(
               child: ArtworkWash(
-                backgroundColor: darkBg,
-                washColor: washColor,
-                accentColor: accentColor,
-                elevatedColor: elevatedColor,
-                washFraction: (artHeight / MediaQuery.of(context).size.height).clamp(0.40, 0.70),
+                backgroundColor: pal.background,
+                washColor: pal.wash,
+                accentColor: pal.accent,
+                elevatedColor: pal.elevated,
+                washFraction: (heroH / media.size.height).clamp(0.30, 0.80),
+                seamOverhang: 160,
+                meshInset: 120,
                 imageUrl: _resolvedImageUrl ?? widget.playlistImage,
               ),
             ),
           ),
 
-          // 2. Layer 2: Full-bleed Top Cover / 2x2 Collage Artwork with isolated parallax render offset (BitChord 120 FPS parity)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: artHeight,
-            child: RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _scrollController,
-                builder: (context, child) {
-                  final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-                  final clamped = offset.clamp(0.0, artHeight * 1.5);
-                  return Transform.translate(
-                    offset: Offset(0, -clamped),
-                    child: child,
-                  );
-                },
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // 2x2 Collage or Single Image
-                    CollageArtwork(
-                      collageUrls: _collageThumbnails,
-                      fallbackUrl: _resolvedImageUrl ?? (widget.playlistImage ?? ''),
-                      fit: BoxFit.cover,
-                    ),
-
-                    // Top shade under the glass bar (BitChord DetailScreen.kt parity)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: artHeight * 0.28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              darkBg.withValues(alpha: 0.55),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Eased foot fade settling onto the wash (BitChord PageBackground
-                    // parity); the MergeBand veil covers the seam the rest of the way.
-                    Positioned.fill(
-                      child: RepaintBoundary(
-                        child: ArtworkFootFade(washColor: washColor),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // 2.5 Layer 2.5: MergeBand across the artwork join (BitChord parity)
-          MergeBand(
-            scrollController: _scrollController,
-            artHeight: artHeight,
-            washColor: washColor,
-          ),
-
-          // 3. Layer 3: Scrollable content
           CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
-            cacheExtent: 600.0,
             slivers: [
-              // Scroll-linked Frosted SliverAppBar (BitChord parity)
-              BitchordSliverAppBar(
-                title: widget.playlistName,
-                scrollController: _scrollController,
-                artHeight: artHeight,
-                backgroundColor: darkBg,
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      GlassPlaylistOptionsSheet.show(
-                        context,
-                        playlistName: widget.playlistName,
-                        playlistImage: _resolvedImageUrl,
-                        tracks: _tracks,
-                      );
-                    },
+              SliverToBoxAdapter(
+                child: ImmersiveHeader(
+                  height: heroH,
+                  washColor: pal.wash,
+                  scrollController: _scrollController,
+                  photo: _cover(pal.wash),
+                  child: _titleBlock(
+                    subtitleLine: subtitleLine,
+                    metaLine: metaLine,
+                    pal: pal,
                   ),
-                  Container(
-                    margin: const EdgeInsets.only(right: 14),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF23201E),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.person_rounded, color: Colors.white70, size: 20),
-                    ),
-                  ),
-                ],
+                ),
               ),
+
+              if (_isSearching)
+                SliverToBoxAdapter(
+                  child: DetailSearchField(
+                    controller: _searchController,
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                    onClose: () {
+                      setState(() {
+                        _isSearching = false;
+                        _searchQuery = '';
+                        _searchController.clear();
+                      });
+                    },
+                    accentColor: pal.accent,
+                  ),
+                ),
 
               if (_isLoading)
                 SliverToBoxAdapter(
                   child: BitchordTracklistSkeleton(
-                    baseColor: accentColor,
+                    baseColor: pal.accent,
                     itemCount: 8,
                     hasLeadingThumb: true,
                   ),
                 )
               else if (_error != null && _tracks.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.queue_music_rounded, size: 56, color: Colors.white.withValues(alpha: 0.4)),
-                        const SizedBox(height: 16),
+                        Icon(Icons.queue_music_rounded, size: 48, color: Colors.white.withValues(alpha: 0.4)),
+                        const SizedBox(height: 12),
                         Text(_error!, style: AppFont.style(color: Colors.white70, fontSize: 16)),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         TextButton(
                           onPressed: () {
                             setState(() {
@@ -414,293 +719,33 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   ),
                 )
               else ...[
-                // ReleaseHeader: unified box of height artHeight + HEADER_DROP with content
-                // pinned to bottomCenter (BitChord DetailScreen.kt lines 604-615 parity)
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: (artHeight + _kHeaderDrop - kToolbarHeight - MediaQuery.of(context).padding.top)
-                        .clamp(240.0, double.infinity),
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 14.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Playlist Title
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: Text(
-                                widget.playlistName,
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppFont.style(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                  height: 1.15,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-
-                            // Curator & Views in Accent Color (Screenshot 3: "Tems, 78K views")
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: Text(
-                                subtitleLine,
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppFont.style(
-                                  color: accentColor,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-
-                            // Metadata (PLAYLIST • 5 TRACKS)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: Text(
-                                metadataLine,
-                                textAlign: TextAlign.center,
-                                style: AppFont.style(
-                                  color: Colors.white.withValues(alpha: 0.6),
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-
-                            // Action Pills: [ 🔀 ]  [ ▶ Play ]  [ 🔍 ]  [ ••• ]
-                            BitchordActionBar(
-                              palette: artPalette,
-                              onPlay: () {
-                                if (_tracks.isNotEmpty) {
-                                  musicProvider.playTrackList(_tracks, initialIndex: 0);
-                                }
-                              },
-                              onShuffle: () {
-                                if (_tracks.isNotEmpty) {
-                                  final shuffled = List<Track>.from(_tracks)..shuffle();
-                                  musicProvider.playTrackList(shuffled, initialIndex: 0);
-                                }
-                              },
-                              searching: _isSearching,
-                              onSearch: () {
-                                setState(() {
-                                  _isSearching = !_isSearching;
-                                  if (!_isSearching) {
-                                    _searchQuery = '';
-                                    _searchController.clear();
-                                  }
-                                });
-                              },
-                              onMore: () {
-                                GlassPlaylistOptionsSheet.show(
-                                  context,
-                                  playlistName: widget.playlistName,
-                                  playlistImage: _resolvedImageUrl,
-                                  tracks: _tracks,
-                                );
-                              },
-                              accentColor: accentColor,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // In-playlist Search Field
-                if (_isSearching)
-                  SliverToBoxAdapter(
-                    child: DetailSearchField(
-                      controller: _searchController,
-                      onChanged: (val) => setState(() => _searchQuery = val),
-                      onClose: () {
-                        setState(() {
-                          _isSearching = false;
-                          _searchQuery = '';
-                          _searchController.clear();
-                        });
-                      },
-                      accentColor: accentColor,
-                    ),
-                  ),
-
-                // Description (if any)
                 if (_resolvedDescription != null && _resolvedDescription!.isNotEmpty)
                   SliverToBoxAdapter(
                     child: AboutSection(
                       title: 'About',
                       text: _resolvedDescription!,
-                      accentColor: accentColor,
+                      accentColor: pal.accent,
                     ),
                   ),
 
-                // Playlist Tracklist (Squircle Thumbnails + Title + Artist + Duration + More)
+                if (_isSearching && displayedTracks.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 28),
+                      child: Center(
+                        child: Text(
+                          'No songs match "$_searchQuery"',
+                          style: AppFont.style(color: Colors.white.withValues(alpha: 0.6), fontSize: 15),
+                        ),
+                      ),
+                    ),
+                  ),
+
                 SliverPadding(
                   padding: const EdgeInsets.only(top: 8, bottom: 24),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final track = displayedTracks[index];
-
-                        return RepaintBoundary(
-                          child: Selector<MusicProvider, ({bool isCurrent, bool isPlaying})>(
-                            selector: (_, mp) => (
-                              isCurrent: track.isSameTrackAs(mp.currentTrack),
-                              isPlaying: mp.isPlaying,
-                            ),
-                            builder: (context, playbackState, _) {
-                              final isPlayingThis = playbackState.isCurrent;
-                              final isPlaying = playbackState.isPlaying;
-
-                              return BitchordSwipeableTrackRow(
-                                track: track,
-                                palette: artPalette,
-                                child: Material(
-                                  color: isPlayingThis
-                                      ? accentColor.withValues(alpha: 0.12)
-                                      : Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () {
-                                      final startIndex = _tracks.indexOf(track);
-                                      context.read<MusicProvider>().playTrackList(
-                                        _tracks,
-                                        initialIndex: startIndex >= 0 ? startIndex : 0,
-                                      );
-                                    },
-                                    splashColor: Colors.white.withValues(alpha: 0.08),
-                                    highlightColor: Colors.white.withValues(alpha: 0.04),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                                      child: Row(
-                                        children: [
-                                          // 48x48 Squircle Artwork Thumbnail (Screenshot 3)
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: Container(
-                                              width: 48,
-                                              height: 48,
-                                              color: Colors.white.withValues(alpha: 0.08),
-                                              child: Stack(
-                                                fit: StackFit.expand,
-                                                children: [
-                                                  CachedNetworkImage(
-                                                    imageUrl: track.albumArtUrl,
-                                                    memCacheWidth: AppImageCache.thumbnailMemCache,
-                                                    memCacheHeight: AppImageCache.thumbnailMemCache,
-                                                    fit: BoxFit.cover,
-                                                    errorWidget: (_, __, ___) => const Icon(
-                                                      Icons.music_note_rounded,
-                                                      color: Colors.white38,
-                                                    ),
-                                                  ),
-                                                  if (isPlayingThis)
-                                                    Container(
-                                                      color: Colors.black.withValues(alpha: 0.55),
-                                                      child: Center(
-                                                        child: isPlaying
-                                                            ? AnimatedEqualizerIcon(
-                                                                isPlaying: true,
-                                                                color: accentColor,
-                                                                size: 20,
-                                                              )
-                                                            : Icon(
-                                                                Icons.play_arrow_rounded,
-                                                                color: accentColor,
-                                                                size: 22,
-                                                              ),
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 14),
-
-                                          // Track Title & Artist
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    if (track.isExplicit) ...[
-                                                      const BitchordExplicitBadge(),
-                                                      const SizedBox(width: 6),
-                                                    ],
-                                                    Expanded(
-                                                      child: Text(
-                                                        track.trackName,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: AppFont.style(
-                                                          color: isPlayingThis ? accentColor : Colors.white,
-                                                          fontSize: 16,
-                                                          fontWeight: isPlayingThis ? FontWeight.w700 : FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 3),
-                                                Text(
-                                                  track.artistName,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: AppFont.style(
-                                                    color: Colors.white.withValues(alpha: 0.55),
-                                                    fontSize: 13.5,
-                                                    fontWeight: FontWeight.w400,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                          // Duration ("3:28")
-                                          if (track.durationText.isNotEmpty)
-                                            Text(
-                                              track.durationText,
-                                              style: AppFont.style(
-                                                color: Colors.white.withValues(alpha: 0.5),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w400,
-                                              ),
-                                            ),
-
-                                          // More Vertical Dots ⋮
-                                          IconButton(
-                                            icon: Icon(
-                                              Icons.more_vert_rounded,
-                                              color: Colors.white.withValues(alpha: 0.5),
-                                              size: 20,
-                                            ),
-                                            onPressed: () {
-                                              ThemedOptionsSheet.show(context, track: track);
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
+                      (context, index) => _trackRow(displayedTracks[index], pal),
                       childCount: displayedTracks.length,
                       addRepaintBoundaries: true,
                       addAutomaticKeepAlives: false,
@@ -708,7 +753,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   ),
                 ),
 
-                // Suggested Songs section (if returned by YouTube)
+                // Suggested songs (if returned by YouTube)
                 if (_suggestedTracks.isNotEmpty) ...[
                   SliverToBoxAdapter(
                     child: Padding(
@@ -725,78 +770,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   ),
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final song = _suggestedTracks[index];
-                        return BitchordSwipeableTrackRow(
-                          track: song,
-                          palette: artPalette,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
-                            child: Row(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: CachedNetworkImage(
-                                    imageUrl: song.albumArtUrl,
-                                    memCacheWidth: AppImageCache.thumbnailMemCache,
-                                    memCacheHeight: AppImageCache.thumbnailMemCache,
-                                    width: 48,
-                                    height: 48,
-                                    fit: BoxFit.cover,
-                                    errorWidget: (_, __, ___) => const Icon(Icons.music_note_rounded),
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        song.trackName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppFont.style(
-                                          color: Colors.white,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      Text(
-                                        song.artistName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppFont.style(
-                                          color: Colors.white54,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.add_rounded,
-                                    color: accentColor,
-                                    size: 24,
-                                  ),
-                                  onPressed: () {
-                                    musicProvider.addTrackToPlaylist(
-                                      widget.playlistName,
-                                      song,
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+                      (context, index) => _suggestedRow(_suggestedTracks[index], pal, musicProvider),
                       childCount: _suggestedTracks.length,
                     ),
                   ),
                 ],
 
-                // Runtime Summary Footer
+                // Runtime summary footer
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -817,6 +797,27 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   ),
                 ),
               ],
+            ],
+          ),
+
+          // The glass chrome floats ABOVE the scroll view.
+          DetailTopBar(
+            controller: _scrollController,
+            title: widget.playlistName,
+            background: pal.background,
+            accent: pal.accent,
+            titleAppearsAt: heroH - media.padding.top - 120,
+            slots: [
+              DetailGlassSlot(
+                icon: _isSearching ? Icons.search_off_rounded : Icons.search_rounded,
+                label: _isSearching ? 'Close search' : 'Search in playlist',
+                onTap: _toggleSearch,
+              ),
+              DetailGlassSlot(
+                icon: Icons.more_horiz_rounded,
+                label: 'More',
+                onTap: _openOptions,
+              ),
             ],
           ),
         ],
