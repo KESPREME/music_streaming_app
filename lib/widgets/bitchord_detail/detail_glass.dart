@@ -10,6 +10,9 @@
 // settings below are LiquidGlassNavBar's, so a pill here has the same material
 // and the same spring. Nothing is re-implemented: the physics is the package's.
 //
+// HAPTICS. One buzz per touch, on confirm (lightImpact in each onTap). There used
+// to be a second, touch-down tick as well: two buzzes per tap.
+//
 // QUALITY. Standard everywhere ([DetailGlass.quality]): the package keeps
 // premium for static, non-scrolling surfaces, and this chrome floats over a
 // scrolling photo. One constant to flip if a device shows it can afford more.
@@ -77,14 +80,6 @@ class DetailGlassScope extends StatelessWidget {
       );
 }
 
-/// Touch-down tick (iOS 26 plays one as the glass is pressed); the release
-/// click is the button's own.
-Widget _withTick(Widget child) => Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => HapticFeedback.selectionClick(),
-      child: child,
-    );
-
 /// A glass circle: back, shuffle, download. Press inflates it, a drag stretches
 /// it, hold keeps it inflated (the package's `persistPressOnDrag`).
 class DetailGlassCircle extends StatelessWidget {
@@ -144,7 +139,7 @@ class DetailGlassCircle extends StatelessWidget {
       button: true,
       label: label,
       excludeSemantics: true,
-      child: _withTick(button),
+      child: button,
     );
   }
 }
@@ -213,7 +208,7 @@ class DetailGlassPill extends StatelessWidget {
         ],
       ),
     );
-    return Semantics(button: true, label: label, excludeSemantics: true, child: _withTick(button));
+    return Semantics(button: true, label: label, excludeSemantics: true, child: button);
   }
 }
 
@@ -361,10 +356,7 @@ class _CapsuleSlotState extends State<_CapsuleSlot> {
           excludeSemantics: true,
           child: Listener(
             behavior: HitTestBehavior.translucent,
-            onPointerDown: (_) {
-              HapticFeedback.selectionClick();
-              _set(true);
-            },
+            onPointerDown: (_) => _set(true),
             onPointerUp: (_) => _set(false),
             onPointerCancel: (_) => _set(false),
             child: GestureDetector(
