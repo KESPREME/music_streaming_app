@@ -71,6 +71,20 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// on_audio_query_android 1.1.0 predates AGP 8's mandatory namespace, so the CI
+// release build stops while configuring that module:
+//   "Namespace not specified. Specify a namespace in the module's build file"
+// The patch is applied the moment com.android.library is added to THAT project
+// only - before its own build file runs and long before AGP creates the library
+// variant, which is where the check fires. No other module is touched.
+subprojects {
+    if (project.name == "on_audio_query_android") {
+        project.pluginManager.withPlugin("com.android.library") {
+            project.apply(from = "${rootProject.projectDir}/on_audio_query_android.gradle")
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

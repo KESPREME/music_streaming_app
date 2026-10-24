@@ -1,0 +1,19 @@
+// on_audio_query_android 1.1.0 was published before AGP 8 made a Gradle
+// namespace mandatory: it identifies itself only through the package attribute
+// in its AndroidManifest.xml, which AGP 8 ignores, so the release build dies
+// while configuring that module with
+//
+//   Namespace not specified. Specify a namespace in the module's build file
+//
+// This file is applied to that one project the moment com.android.library lands
+// on it (see android/build.gradle.kts), which is before AGP creates the library
+// variant. The value is the package the plugin already declares in its manifest,
+// so the generated R class and manifest keep the same identity.
+android {
+    namespace "com.lucasjosino.on_audio_query"
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
