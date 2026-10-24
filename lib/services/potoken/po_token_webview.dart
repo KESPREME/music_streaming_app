@@ -25,6 +25,9 @@ class PoTokenResult {
 class PoTokenWebGenerator {
   PoTokenWebGenerator._();
 
+  // Google's own public WEB key: it is sent by youtube.com in the clear on
+  // every request and cannot be rotated by us. Secret scanning flags it; it is
+  // an identifier, not a credential. See SECURITY.md.
   static const String _googleApiKey = 'AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw';
   static const String _requestKey = 'O43z0dpjhgX20SCx4KAo';
   static const String _userAgent =
