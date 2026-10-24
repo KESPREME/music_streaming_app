@@ -3,7 +3,7 @@ description: A new Flutter project.
 
 publish_to: 'none'
 
-version: 1.0.4+1
+version: 1.1.0+1
 
 environment:
   sdk: ">=3.0.0 <4.0.0" # Updated to support super-parameters
@@ -76,7 +76,11 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/images/app_logo.png"
+  # The glowing ribbon "M" the app uses in Library and Settings, on black.
+  # app_icon.png is app_logo.png cropped so the ribbon is large enough to read
+  # at launcher size while staying inside the adaptive-icon safe zone.
+  image_path: "tool/icon/app_icon.png"
+  remove_alpha_ios: true
   min_sdk_android: 21 # min supported by most apps now
-  adaptive_icon_background: "#121212" # Dark background
-  adaptive_icon_foreground: "assets/images/app_logo.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "tool/icon/app_icon.png"

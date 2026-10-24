@@ -56,3 +56,7 @@ android/release.jks
 android/key.properties
 tool/release/keystore.base64.txt
 build/release/
+
+# Banner generator helper (local only)
+tool/regen_banner.ps1
+

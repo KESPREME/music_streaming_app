@@ -22,7 +22,6 @@ import '../screens/song_transitions_screen.dart';
 import '../widgets/eq/eq_curve_glyph.dart';
 import '../widgets/themed_downloaded_songs_screen.dart';
 import '../widgets/accent_settings_card.dart';
-import '../widgets/glass_surface.dart';
 import '../widgets/home_sections.dart' show PressableScale;
 import '../widgets/jelly_press.dart';
 import '../widgets/liquid_switch.dart';
@@ -121,6 +120,37 @@ const List<SettingsEntry> settingsSearchEntries = <SettingsEntry>[
     SettingsEntry('data.cache', ['Clear Cache', 'storage', 'free up space']),
   ];
 
+/// The values of MusicProvider this screen shows. A record, so select compares
+/// by value and the screen rebuilds only when one of them really changed.
+typedef _MusicPrefs = ({
+  bool autoBitrate,
+  int wifi,
+  int cellular,
+  bool autoQueue,
+  bool lowData,
+  bool offline,
+  bool canvas,
+  bool canvasCellular,
+  bool bleed,
+  bool synced,
+  bool syllable,
+  MusicSource source,
+});
+
+/// What ThemeProvider contributes to this screen, isolated so a palette
+/// download or auth flip never rebuilds 11 slivers mid-scroll.
+typedef _ThemePrefs = ({
+  bool isMaterialYou,
+  bool isDynamic,
+  bool isAmoled,
+  bool isGlass,
+  String fontFamily,
+  int fontWeightDelta,
+  String themeName,
+  String themeDesc,
+  GlassRendering glassRendering,
+});
+
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
   /// Current filter. Held here rather than in a search widget so the same query
@@ -144,7 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _section(int i, Widget child) => SliverToBoxAdapter(
-        child: _Reveal(intro: _intro, index: i, child: child),
+        child: RepaintBoundary(child: _Reveal(intro: _intro, index: i, child: child)),
       );
 
   Widget _header(int i, String text, Color accent) => _section(
@@ -163,15 +193,16 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       );
 
-  Widget _card(List<Widget> rows, {Key? key}) => Container(
-        key: key,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+  Widget _card(List<Widget> rows, {Key? key}) => RepaintBoundary(
+        child: Container(
+          key: key,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+          ),
+          child: Column(children: rows),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(children: rows),
       );
 
   Widget _gap(double h) => SliverToBoxAdapter(child: SizedBox(height: h));
@@ -181,8 +212,38 @@ class _SettingsScreenState extends State<SettingsScreen>
     final index = SettingsSearchIndex(_query)
       ..registerAll(settingsSearchEntries);
     final theme = Theme.of(context);
-    final musicProvider = context.watch<MusicProvider>();
-    final themeProvider = context.watch<ThemeProvider>();
+    // NOT a watch. A watch rebuilt this whole screen - every card, tile and
+    // switch - on every notification the provider makes (downloads, palette,
+    // lyrics, the feed...), including while music plays and the page is being
+    // scrolled. It now rebuilds only when one of the values it SHOWS changes;
+    // actions go through the read-only handle.
+    final musicProvider = context.read<MusicProvider>();
+    final prefs = context.select<MusicProvider, _MusicPrefs>((p) => (
+          autoBitrate: p.isAutoBitrate,
+          wifi: p.wifiBitrate,
+          cellular: p.cellularBitrate,
+          autoQueue: p.isAutoQueueEnabled,
+          lowData: p.isLowDataMode,
+          offline: p.isOfflineMode,
+          canvas: p.animatedCanvasEnabled,
+          canvasCellular: p.canvasOverCellular,
+          bleed: p.fullBleedArtwork,
+          synced: p.syncedLyricsEnabled,
+          syllable: p.prioritizeSyllableSync,
+          source: p.currentMusicSource,
+        ));
+    final themeProvider = context.read<ThemeProvider>();
+    final themePrefs = context.select<ThemeProvider, _ThemePrefs>((t) => (
+          isMaterialYou: t.isMaterialYou,
+          isDynamic: t.isDynamicColorEnabled,
+          isAmoled: t.isAmoled,
+          isGlass: t.isGlassmorphism,
+          fontFamily: t.fontFamily,
+          fontWeightDelta: t.fontWeightDelta,
+          themeName: t.getThemeName(),
+          themeDesc: t.getThemeDescription(),
+          glassRendering: t.glassRendering,
+        ));
     final authService = Provider.of<AuthService>(context, listen: false);
     final updates = maybeUpdateService(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -202,10 +263,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 : [const Color(0xFFF7F7F7), const Color(0xFFFFFFFF)]),
           ),
         ),
-        child: SafeArea(
+          child: SafeArea(
           bottom: false,
           child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
+            // Clamping on Android: no stretch glow, no dark chrome tearing,
+            // no BackdropFilter sampling garbage mid-scroll.
+            physics: const ClampingScrollPhysics(),
             slivers: [
               // Large header
               _section(
@@ -290,9 +353,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 child: _QuickTile(
                                   icon: Icons.high_quality_rounded,
                                   title: 'Quality',
-                                  subtitle: musicProvider.isAutoBitrate
+                                  subtitle: prefs.autoBitrate
                                       ? 'Auto'
-                                      : '${musicProvider.wifiBitrate} kbps',
+                                      : '${prefs.wifi} kbps',
                                   accent: accent,
                                   onTap: () {
                                     final ctx = _qualityKey.currentContext;
@@ -368,8 +431,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconBg: accent.withValues(alpha: 0.18),
                         iconColor: accent,
                         title: 'Theme',
-                        subtitle: '${themeProvider.getThemeName()} · ${themeProvider.getThemeDescription()}',
-                        trailing: LiquidSwitch(value: themeProvider.isMaterialYou, onChanged: (_) => themeProvider.toggleTheme()),
+                        subtitle: '${themePrefs.themeName} · ${themePrefs.themeDesc}',
+                        trailing: LiquidSwitch(value: themePrefs.isMaterialYou, onChanged: (_) => themeProvider.toggleTheme()),
                       ),
                       _divider(),
                       _GlassRow(
@@ -377,8 +440,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconBg: accent.withValues(alpha: 0.18),
                         iconColor: accent,
                         title: 'Dynamic Colors',
-                        subtitle: themeProvider.isDynamicColorEnabled ? 'Enabled' : 'Disabled',
-                        trailing: LiquidSwitch(value: themeProvider.isDynamicColorEnabled, onChanged: (v) => themeProvider.setDynamicColorEnabled(v)),
+                        subtitle: themePrefs.isDynamic ? 'Enabled' : 'Disabled',
+                        trailing: LiquidSwitch(value: themePrefs.isDynamic, onChanged: (v) => themeProvider.setDynamicColorEnabled(v)),
                       ),
                       _divider(),
                       // Off by default. The backdrop and the full-screen pages
@@ -388,28 +451,28 @@ class _SettingsScreenState extends State<SettingsScreen>
                       // switch, on" instead of a bare unlabeled toggle.
                       Semantics(
                         container: true,
-                        toggled: themeProvider.isAmoled,
+                        toggled: themePrefs.isAmoled,
                         label: 'Pure black (AMOLED)',
                         hint: 'True black backgrounds, saves power on OLED screens',
-                        onTap: () => themeProvider.setAmoled(!themeProvider.isAmoled),
+                        onTap: () => themeProvider.setAmoled(!themePrefs.isAmoled),
                         excludeSemantics: true,
                         child: _GlassRow(
                           icon: Icons.contrast_rounded,
                           iconBg: accent.withValues(alpha: 0.18),
                           iconColor: accent,
                           title: 'Pure black (AMOLED)',
-                          subtitle: themeProvider.isAmoled
+                          subtitle: themePrefs.isAmoled
                               ? 'On · true black, saves power on OLED screens'
                               : 'Off · backgrounds follow the album art',
-                          onTap: () => themeProvider.setAmoled(!themeProvider.isAmoled),
-                          trailing: LiquidSwitch(value: themeProvider.isAmoled, onChanged: (v) => themeProvider.setAmoled(v)),
+                          onTap: () => themeProvider.setAmoled(!themePrefs.isAmoled),
+                          trailing: LiquidSwitch(value: themePrefs.isAmoled, onChanged: (v) => themeProvider.setAmoled(v)),
                         ),
                       ),
                       // How the bottom bar, its pills and the mini player are
                       // drawn. An escape hatch as much as a preference: if a
                       // phone's GPU renders the refraction badly, this is one
                       // tap, not a new release.
-                      if (themeProvider.isGlassmorphism) ...[
+                      if (themePrefs.isGlass) ...[
                         _divider(),
                         _GlassRenderingRow(themeProvider: themeProvider, accent: accent),
                       ],
@@ -420,7 +483,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconBg: accent.withValues(alpha: 0.18),
                         iconColor: accent,
                         title: 'Font',
-                        subtitle: themeProvider.fontFamily,
+                        subtitle: themePrefs.fontFamily,
                         onTap: () => FontPickerSheet.show(context),
                         trailing: Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.4)),
                       ),
@@ -431,7 +494,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconBg: accent.withValues(alpha: 0.18),
                         iconColor: accent,
                         title: 'Text weight',
-                        subtitle: FontPickerSheet.weightLabel(themeProvider.fontWeightDelta),
+                        subtitle: FontPickerSheet.weightLabel(themePrefs.fontWeightDelta),
                         onTap: () => FontPickerSheet.show(context),
                         trailing: Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.4)),
                       ),
@@ -449,8 +512,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 6,
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: GlassSurface(
-                    tier: GlassTier.card,
+                  child: _FlatCard(
                     borderRadius: 22,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
                     child: const AccentSettingsCard(),
@@ -497,7 +559,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconColor: accent,
                         title: 'Auto Queue',
                         subtitle: 'Keep music going when queue ends',
-                        trailing: LiquidSwitch(value: musicProvider.isAutoQueueEnabled, onChanged: (v) => musicProvider.setAutoQueueEnabled(v)),
+                        trailing: LiquidSwitch(value: prefs.autoQueue, onChanged: (v) => musicProvider.setAutoQueueEnabled(v)),
                       ),
                       _divider(),
                       _GlassRow(
@@ -518,7 +580,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconColor: accent,
                         title: 'Low Data Mode',
                         subtitle: 'Reduces quality to save data',
-                        trailing: LiquidSwitch(value: musicProvider.isLowDataMode, onChanged: (_) => musicProvider.toggleLowDataMode()),
+                        trailing: LiquidSwitch(value: prefs.lowData, onChanged: (_) => musicProvider.toggleLowDataMode()),
                       ),
                       _divider(),
                       _GlassRow(
@@ -527,7 +589,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         iconColor: accent,
                         title: 'Offline Mode',
                         subtitle: 'Play only downloaded songs',
-                        trailing: LiquidSwitch(value: musicProvider.isOfflineMode, onChanged: (_) => musicProvider.toggleOfflineMode()),
+                        trailing: LiquidSwitch(value: prefs.offline, onChanged: (_) => musicProvider.toggleOfflineMode()),
                       ),
                     ]),
                   ),
@@ -558,8 +620,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         icon: Icons.wifi_rounded,
                         title: 'Wi-Fi quality',
                         options: const [64, 128, 256, 320],
-                        current: musicProvider.wifiBitrate,
-                        auto: musicProvider.isAutoBitrate,
+                        current: prefs.wifi,
+                        auto: prefs.autoBitrate,
                         onAuto: () => musicProvider.setAutoBitrate(true),
                         onPick: musicProvider.setWifiBitrate,
                       ),
@@ -568,8 +630,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         icon: Icons.signal_cellular_alt_rounded,
                         title: 'Cellular quality',
                         options: const [32, 64, 128],
-                        current: musicProvider.cellularBitrate,
-                        auto: musicProvider.isAutoBitrate,
+                        current: prefs.cellular,
+                        auto: prefs.autoBitrate,
                         onAuto: () => musicProvider.setAutoBitrate(true),
                         onPick: musicProvider.setCellularBitrate,
                       ),
@@ -620,7 +682,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         title: 'Animated Cover Art',
                         subtitle: 'Play looping canvas video on normal screen',
                         trailing: LiquidSwitch(
-                          value: musicProvider.animatedCanvasEnabled,
+                          value: prefs.canvas,
                           onChanged: (v) => musicProvider.setAnimatedCanvasEnabled(v),
                         ),
                       ),
@@ -632,7 +694,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         title: 'Stream Over Mobile Data',
                         subtitle: 'Allow video covers over cellular connections',
                         trailing: LiquidSwitch(
-                          value: musicProvider.canvasOverCellular,
+                          value: prefs.canvasCellular,
                           onChanged: (v) => musicProvider.setCanvasOverCellular(v),
                         ),
                       ),
@@ -644,7 +706,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         title: 'Full-Bleed Artwork',
                         subtitle: 'Bleed artwork to screen edges like BitChord',
                         trailing: LiquidSwitch(
-                          value: musicProvider.fullBleedArtwork,
+                          value: prefs.bleed,
                           onChanged: (v) => musicProvider.setFullBleedArtwork(v),
                         ),
                       ),
@@ -656,7 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         title: 'Synced Lyrics',
                         subtitle: 'Real-time time-synced vocal tracking',
                         trailing: LiquidSwitch(
-                          value: musicProvider.syncedLyricsEnabled,
+                          value: prefs.synced,
                           onChanged: (v) => musicProvider.setSyncedLyricsEnabled(v),
                         ),
                       ),
@@ -672,7 +734,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         // can make the first lyric arrive later.
                         subtitle: 'Keep searching past a line-synced match for word-level timings',
                         trailing: LiquidSwitch(
-                          value: musicProvider.prioritizeSyllableSync,
+                          value: prefs.syllable,
                           onChanged: (v) => musicProvider.setPrioritizeSyllableSync(v),
                         ),
                       ),
@@ -766,7 +828,37 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget _divider() => Divider(height: 1, thickness: 1, color: Colors.white.withValues(alpha: 0.06), indent: 62);
 }
 
-/// Fades and lifts a section in, one after another.
+/// The look of a raised card on this screen: a faint fill and a hairline.
+///
+/// These used to be glass (a BackdropFilter each, six of them on one scrolling
+/// page). Over this page's dark ground a blur shows nothing, but every filter
+/// forces the content behind it to be re-rendered into an offscreen texture on
+/// every scrolled frame - and a backdrop that is sampled while the list moves is
+/// what turned neighbouring cards black. Same look, no filter.
+class _FlatCard extends StatelessWidget {
+  const _FlatCard({required this.child, this.borderRadius = 22, this.padding});
+
+  final Widget child;
+  final double borderRadius;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.055),
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Fades and lifts a section in, one after another - and then gets out of the
+/// way. Once the intro has finished the section is returned as it is: no opacity
+/// or transform layer stays above it for the rest of the screen's life.
 class _Reveal extends StatelessWidget {
   const _Reveal({required this.intro, required this.index, required this.child});
 
@@ -779,16 +871,18 @@ class _Reveal extends StatelessWidget {
     final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     if (reduce) return child;
     final start = (index * 0.055).clamp(0.0, 0.65);
-    final anim = CurvedAnimation(
-      parent: intro,
+    final anim = intro.drive(CurveTween(
       curve: Interval(start, (start + 0.35).clamp(0.0, 1.0), curve: Curves.easeOutCubic),
-    );
+    ));
     return AnimatedBuilder(
       animation: anim,
-      builder: (context, child) => Opacity(
-        opacity: anim.value,
-        child: Transform.translate(offset: Offset(0, 18 * (1 - anim.value)), child: child),
-      ),
+      builder: (context, child) {
+        if (intro.status == AnimationStatus.completed) return child!;
+        return Opacity(
+          opacity: anim.value,
+          child: Transform.translate(offset: Offset(0, 18 * (1 - anim.value)), child: child),
+        );
+      },
       child: child,
     );
   }
@@ -819,8 +913,7 @@ class _EqualizerTile extends StatelessWidget {
             button: true,
             label: 'Equalizer, $subtitle',
             excludeSemantics: true,
-            child: GlassSurface(
-              tier: GlassTier.card,
+            child: _FlatCard(
               borderRadius: 18,
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
               child: Column(
@@ -1122,8 +1215,7 @@ class _ProfileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     final isLoggedIn = authService.isLoggedIn;
-    return GlassSurface(
-      tier: GlassTier.card,
+    return _FlatCard(
       borderRadius: 22,
       padding: const EdgeInsets.all(16),
       child: InkWell(
@@ -1182,8 +1274,7 @@ class _QuickTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableScale(
       onTap: () { HapticFeedback.lightImpact(); onTap(); },
-      child: GlassSurface(
-        tier: GlassTier.card,
+      child: _FlatCard(
         borderRadius: 18,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(

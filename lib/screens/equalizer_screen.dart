@@ -663,22 +663,38 @@ class _CompareButton extends StatelessWidget {
                 : const [],
           ),
           alignment: Alignment.center,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.hearing_rounded,
-                  size: 18,
-                  color: enabled ? Colors.white : Colors.white30),
-              const SizedBox(width: 8),
-              Text(
-                held ? 'Hearing the original' : 'Hold to compare',
-                style: AppFont.style(
-                  color: enabled ? Colors.white : Colors.white30,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                ),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          // Shares the row with Reset + Save. FittedBox + ConstrainedBox keeps
+          // the longer "Hearing…" from spilling into its neighbour on 320dp.
+          child: LayoutBuilder(
+            builder: (context, c) => ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: c.maxWidth),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.hearing_rounded,
+                      size: 18,
+                      color: enabled ? Colors.white : Colors.white30),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        held ? 'Hearing the original' : 'Hold to compare',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppFont.style(
+                          color: enabled ? Colors.white : Colors.white30,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -713,7 +729,7 @@ class _ToolButton extends StatelessWidget {
         borderRadius: 22,
         child: Container(
           height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
             color: Colors.white.withValues(alpha: enabled ? 0.07 : 0.03),
