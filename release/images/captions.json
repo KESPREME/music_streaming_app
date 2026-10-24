@@ -1,1 +1,8 @@
-{ "album.jpg": "Album pages with full-bleed artwork", "artist.jpg": "Artist pages that follow the cover" }
+{
+  "01-home.jpg": "Home shelves that follow what you play",
+  "02-album.jpg": "Full-bleed album pages",
+  "03-artist.jpg": "Artist pages that follow the cover",
+  "04-lyrics.jpg": "Kinetic lyrics, word by word",
+  "05-queue.jpg": "Queue with AutoMix and Autoplay",
+  "06-search.jpg": "Search that remembers where you were"
+}

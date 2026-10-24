@@ -99,11 +99,15 @@ Every push to `main` that passes CI ships a signed release: APK + SHA-256 + `upd
 
 <h1><a id="screenshots"></a>Screens</h1>
 
-| Album detail | Artist detail |
-|---|---|
-| <img src="docs/images/album.jpg" alt="Album page" width="360" /> | <img src="docs/images/artist.jpg" alt="Artist page" width="360" /> |
+| Home | Album | Artist |
+|---|---|---|
+| <img src="docs/images/01-home.jpg" alt="Home feed with the For you carousel" width="300" /> | <img src="docs/images/02-album.jpg" alt="Album page with full-bleed artwork" width="300" /> | <img src="docs/images/03-artist.jpg" alt="Artist page" width="300" /> |
 
-More in [`release/images/`](release/images/) — banner + screenshots shown in the app’s Software Update screen.
+| Kinetic lyrics | Queue &amp; AutoMix | Search |
+|---|---|---|
+| <img src="docs/images/04-lyrics.jpg" alt="Word-synced lyrics sweeping line by line" width="300" /> | <img src="docs/images/05-queue.jpg" alt="Queue with AutoMix and Autoplay" width="300" /> | <img src="docs/images/06-search.jpg" alt="Search with recent searches" width="300" /> |
+
+More in [`release/images/`](release/images/) — the banner and the six screenshots shipped with each release and shown in the app’s Software Update screen.
 
 </div>
 
