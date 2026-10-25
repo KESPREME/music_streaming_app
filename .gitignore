@@ -60,3 +60,6 @@ build/release/
 # Banner generator helper (local only)
 tool/regen_banner.ps1
 
+
+# Local agent tooling
+.commandcode/
